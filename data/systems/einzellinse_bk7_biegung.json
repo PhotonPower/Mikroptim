@@ -1,0 +1,26 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7, Biegung",
+  "description": "Beispiel für mikroptim optimize (M3-T5): Linse wie einzellinse_bk7_variablen.json, Mittendicke 6 mm fest. Variablen sind beide Krümmungen und der Arbeitsabstand, die Brennweite 100 mm ist eine schwach gewichtete Gleichung (Gewicht 0,029/mm² nach der Faustregel in docs/optimierung.md, Abschnitt 2.2). Das Optimum ist die Biegung minimaler sphärischer Aberration.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 100.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 5.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.00967, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.00967, "thickness": 99.05, "material": "AIR", "semi_diameter": 12.5 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.05, "max": 0.05 },
+      { "type": "working_distance", "min": 50.0, "max": 150.0, "typical": 10.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 0.029, "comment": "Merit in Wellen²: 0,029/mm² hält f am Optimum auf ~1e-6 mm, ohne die Biegung zu verdecken" }
+    ]
+  }
+}
