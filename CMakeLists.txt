@@ -104,6 +104,18 @@ target_link_libraries(mikroptim_paraxial
     PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# CPU-Tracer (Host): Lader, Flächentabelle, CPU-Referenztracer über trace_ray
+# --------------------------------------------------------------------------
+add_library(mikroptim_cpu STATIC
+    src/cpu/cpu_trace.cpp
+    src/cpu/host_surface_table.cpp
+    src/cpu/load_system.cpp)
+add_library(Mikroptim::cpu ALIAS mikroptim_cpu)
+target_link_libraries(mikroptim_cpu
+    PUBLIC mikroptim_core mikroptim_model mikroptim_glass
+    PRIVATE mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
@@ -111,7 +123,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_info.cu
         src/cuda/dispersion_eval.cu
         src/cuda/quadrature_check.cu
-        src/cuda/smoke_trace.cu)
+        src/cuda/smoke_trace.cu
+        src/cuda/trace_check.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda PUBLIC mikroptim_core PRIVATE CUDA::cudart mikroptim_warnings)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)

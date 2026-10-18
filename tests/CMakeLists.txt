@@ -14,13 +14,15 @@ add_executable(mikroptim_tests
     test_dispersion.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
+    test_load_system.cpp
     test_paraxial.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
-    test_system_io.cpp)
+    test_system_io.cpp
+    test_trace.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
-    mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_warnings
-    GTest::gtest_main)
+    mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
+    mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
@@ -28,7 +30,8 @@ if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_dispersion.cpp
         test_cuda_quadrature.cpp
-        test_cuda_smoke.cpp)
+        test_cuda_smoke.cpp
+        test_cuda_trace.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()
 
