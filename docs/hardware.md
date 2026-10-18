@@ -49,3 +49,5 @@ Annahme: ca. 140 Flop-Äquivalente pro Strahl und Fläche (inklusive zwei Wurzel
 | LM-Iteration für 1.000 Läufe (2·10⁸ Strahlen) | ca. 4 s | ca. 1 s | ca. 0,5 s |
 
 Diese Werte sind Schätzungen und werden in M2 durch Messungen in [benchmarks.md](benchmarks.md) ersetzt. Weicht eine Messung um mehr als den Faktor 3 ab, wird die Ursache im PR erklärt.
+
+**Messung (M2-T6, `bench/trace_throughput`, [benchmarks.md](benchmarks.md)):** Auf der RTX 3090 in FP64 liefert der Kernel bei S = 30 und 10.000 Varianten 8,4·10⁷ Strahlen/s (über die TraceEngine mit Upload und Download 7,0–7,7·10⁷), die Jacobi mit 225.000 Strahlen dauert 3,2 ms (Engine 3,5–3,8 ms), 2·10⁸ Strahlen 2,4 s (Engine 2,6–2,7 s). Die Schätzung ist also um den Faktor 1,3–1,7 pessimistisch; der Kernel ist auf der RTX 3090 durch den FP64-Durchsatz begrenzt (ca. 2,5·10⁹ Strahl-Flächen/s unabhängig von S). Die P100-Messung steht noch aus.
