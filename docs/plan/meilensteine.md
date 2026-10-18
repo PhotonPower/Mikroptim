@@ -29,7 +29,9 @@ Erledigt mit dem ersten Commit: Verzeichnisstruktur, CMake mit Presets (CPU, CUD
 
 ---
 
-## M1 – Datenmodell, Glas, CPU-Referenztracer
+## M1 – Datenmodell, Glas, CPU-Referenztracer ✅
+
+Erledigt mit den PRs #1–#6, #8 und #10 (Oktober 2026).
 
 Ziel: Ein System aus JSON laden und auf der CPU exakt tracen, mit Paraxialdaten und RMS-Wellenfront.
 

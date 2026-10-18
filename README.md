@@ -6,7 +6,7 @@ Mikroptim optimiert sequenzielle Linsensysteme aus sphärischen Flächen auf CUD
 
 ## Status
 
-Projektgerüst (Meilenstein M0). Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
+M0 und M1 abgeschlossen: Systeme und Glaskataloge aus JSON laden, sequenzieller CPU-Referenztracer, Paraxialoptik, Pupillenquadratur, OPD und RMS-Wellenfront, Kommandozeile `mikroptim trace` ([docs/cli.md](docs/cli.md)). In Arbeit: M2 (CUDA-Vorwärtskernel). Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
 
 ## Erstes Zielsystem
 
@@ -44,7 +44,12 @@ cmake --preset release-cuda
 cmake --build --preset release-cuda
 ctest --preset release-cuda
 ./build/release-cuda/mikroptim --devices
+
+# Beispiel: Paraxialdaten und RMS-Wellenfront einer Testlinse
+./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json
 ```
+
+Mit Visual Studio liegen die Programme unter `build/<preset>/Release/` bzw. `Debug/`. Sind unter Windows mehrere CUDA-Toolkits installiert, wählt `-T "cuda=<Pfad zu CUDA 12.x>"` beim Konfigurieren das richtige (siehe [docs/hardware.md](docs/hardware.md)).
 
 Ein System auswerten (Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge, versagte Strahlen; mit `--json` maschinenlesbar, siehe [docs/cli.md](docs/cli.md)):
 
