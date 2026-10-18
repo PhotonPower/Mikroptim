@@ -26,7 +26,7 @@ struct CpuTraceResult {
     // Sonst: teilweise fortgeschriebener Zustand, nicht weiter verwenden.
     std::vector<Ray<double>> rays;
     std::vector<TraceStatus> status;
-    std::vector<int> failed_surface; // Fläche des Versagens, −1 bei Ok
+    std::vector<int> failed_surface; // Fläche des Versagens (Tabellenfläche), −1 bei Ok
 
     std::size_t at(int field, int wavelength, int sample) const {
         return (static_cast<std::size_t>(field) * static_cast<std::size_t>(wavelengths) +

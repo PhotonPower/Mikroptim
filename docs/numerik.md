@@ -74,7 +74,7 @@ k < 0 bedeutet Totalreflexion.
 Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_surface`, `transfer_to_image_plane`).
 
 - **Start:** Der Strahl steht in lokalen Koordinaten von Fläche 0, im Medium **nach** Fläche 0 (Brechzahl index[0][l]). An Fläche 0 wird nicht gebrochen; bei Systemen aus Dateien ist sie die Blende in Luft, und die kollimierte Quelle startet in ihrer Ebene.
-- **Schritt** für s = 1 … S−1: Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l].
+- **Schritt** für s = 1 … S−1: Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l]. Bei einer Geisterplatte (Typ GhostPlate, g-te ihrer Art in Tracerichtung) statt Schnitt und Brechung der Schritt aus Abschnitt 6 mit den Daten der Geisterplatte g.
 - **Ende:** im Schnittpunkt mit der letzten Fläche S−1, in deren lokalen Koordinaten, Richtung nach der Brechung, OPL bis zu diesem Punkt. Hier setzt die Referenzsphäre an (Abschnitt 7, Mittelpunkt **M**_f in denselben Koordinaten).
 - **Bildebene:** `transfer_to_image_plane` transportiert um thickness[S−1] im Medium index[S−1][l] in die Ebene z = 0 der Bildebene (OPL += n_B · s₀).
 - **Versagen:** Der Trace kehrt bei der ersten versagenden Fläche mit deren Status und Nummer zurück (hartes Versagen, kein Werfen). Der Strahlzustand ist dann teilweise fortgeschrieben und wird nicht weiter verwendet. Weiches Versagen (Abschnitt 11) folgt in M4-T2.
@@ -87,9 +87,9 @@ Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_su
 |---|---|---|
 | 0 | `Ok` | Strahl hat alle Flächen passiert |
 | 1 | `Missed` | Fläche verfehlt: B² − cH < 0 oder B + √(B² − cH) ≤ 0 |
-| 2 | `TIR` | Totalreflexion, k < 0 |
+| 2 | `TIR` | Totalreflexion, k < 0; an einer Geisterplatte Radikand 1 − \|d′_⊥\|² < 0 (Abschnitt 6) |
 | 3 | `Backward` | d_z ≤ 0 (oder NaN) vor einem Transfer oder nach der Brechung an der letzten Fläche (vor dem Schritt auf die Referenzsphäre, dann versagende Fläche S); Abschnitt 11 |
-| 4 | `Unsupported` | Flächentyp vom Tracer nicht unterstützt (z. B. Geisterplatte vor M4-T5) |
+| 4 | `Unsupported` | Flächentyp vom Tracer nicht unterstützt (z. B. Fläche vom Typ GhostPlate ohne Geisterdaten in der Tabelle) |
 
 Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen).
 
@@ -112,6 +112,41 @@ Paraxiale Brechkraft der Geisterplatte (für die Petzval-Nebenbedingung, Beitrag
 $$\varphi_G = -2\,(n_G - 1)\,t_2,\qquad t_2 = \frac{1}{r_g^2}\sum_k a_k\,(-1)^{k+1}\,k(k+1)$$
 
 Begründung für das virtuelle Glas statt einer abstrakten Phase: Eine wellenlängenunabhängige Phase wäre achromatisch, und eine ideale Phasenfläche hätte keinen Petzvalbeitrag. Beides würde dem Optimierer genau die schwersten Probleme (Farbe, Bildfeldebnung) „gratis“ lösen.
+
+### Festlegungen der Implementierung (M4-T5)
+
+Implementiert in `include/mikroptim/trace/ghost_plate.hpp` (header-only, `MKO_HD`, templatisiert über R), Zweig `SurfaceKind::GhostPlate` in `propagate_surface` (`include/mikroptim/trace/trace.hpp`). Daten in der Flächentabelle, Batch und Kernel: [architektur.md](architektur.md#geisterplatten-m4-t5), Dateiformat: [dateiformat.md](dateiformat.md#geisterplatten).
+
+**Prüfung der Formeln** (keine Abweichung von den Formeln oben gefunden):
+
+- Gradient: Mit u = (x² + y²)/r_g² ist ∂u/∂x = 2x/r_g² und dξ/du = 2 (ξ = 2u − 1), also dt/du = 2 Σ a_k P′_k(ξ) und ∇t = (dt/du)·(2/r_g²)·(x, y) = (4/r_g²) Σ a_k P′_k(ξ)·(x, y).
+- Vorzeichen der Ablenkung: Die Platte verzögert die Welle um Φ; hinter ihr ist das Eikonal S′ = S + Φ und n_m **d** = ∇S, also n_m **d**′_⊥ = n_m **d**_⊥ + ∇Φ. Eine in der Mitte dickere Platte (t₂ < 0) lenkt zur Achse hin ab (sammelnd, φ_G > 0), wie eine Sammellinse aus demselben Glas.
+- t₂: Aus P′_k(−1) = (−1)^{k+1} k(k+1)/2 folgt t₂ = dt/d(r²) bei r = 0 = (1/r_g²)·dt/du(0) = (1/r_g²) Σ a_k (−1)^{k+1} k(k+1).
+- φ_G: Paraxial ist ∇Φ = 2(n_G − n_m) t₂ (x, y), also n_m u′ = n_m u − y φ_G mit φ_G = −2(n_G − n_m) t₂; für n_m = 1 die Formel oben.
+- Petzvalbeitrag: Eine dünne Linse aus dem Glas n_G im Medium n_m hat Σ c (n′ − n)/(n n′) = φ/(n_m n_G); für Luft φ_G/n_G wie oben.
+
+**Schritt an der Geisterplatte.** Der Strahl wird wie bei einer Ebene in die Ebene z = 0 der Geisterplatte transportiert (OPL += n_m·s₀, Schnitt s = 0), dann:
+
+$$u = \frac{x^2 + y^2}{r_g^2},\quad \Phi = (n_G - n_m)\,t(u),\quad \nabla\Phi = (n_G - n_m)\,\frac{dt}{du}\,\frac{2}{r_g^2}\,(x,\ y),\quad \mathrm{OPL} \mathrel{+}= \Phi,\quad n'\,\mathbf{d}'_\perp = n\,\mathbf{d}_\perp + \nabla\Phi,\quad d'_z = \sqrt{1 - |\mathbf{d}'_\perp|^2}$$
+
+mit n_m = n = n_vor und n′ = n_nach. Tabellen aus Systemdateien haben n = n′ = 1 (Luftspalt, Validierung im Dateiformat); n ≠ n′ ist als brechende Ebene mit Phase definiert (Tabellen-API). Der allgemeine Schritt mit gegebenem Φ und ∇Φ ist `phase_surface_step` (z. B. lineare Phase Φ = a·y), das Profil `ghost_profile` (t und dt/du in einem Durchlauf der Rekursionen, Summation in aufsteigender Ordnung k), der Schritt an der Geisterplatte `ghost_plate_step`.
+
+- **Status:** Radikand 1 − |**d**′_⊥|² < 0 meldet `TIR` (kein neuer Statuswert): Es ist dasselbe Ereignis wie die Totalreflexion (die abgelenkte Welle ist evaneszent), und das weiche Versagen (Abschnitt 11) behandelt beide gleich (Strafresiduum −k bzw. −Radikand). Ob eine Geisterplatte versagt hat, zeigt die versagende Fläche (Typ GhostPlate). Eine Fläche vom Typ GhostPlate ohne Daten in der Tabelle ergibt `Unsupported`.
+- **Außerhalb von r_g** (u > 1, ξ > 1) wird das Profil ohne Sonderbehandlung ausgewertet; die Polynome wachsen, bleiben aber endlich. Der Normierungsradius sollte daher den genutzten Strahlbereich abdecken.
+- **Ordnungen:** K ≤ `kMaxGhostTerms` = 32. Haben die Geisterplatten eines Systems verschiedene Ordnungen, ist K der Tabelle die größte; kürzere Profile werden mit 0 ergänzt, was das Ergebnis bitgenau nicht ändert.
+- **Paraxial:** `ghost_profile_t2`, `ghost_plate_power` (φ_G) und `ghost_plate_petzval` (φ_G/(n_m n_G)); Einbindung in den y-nu-Trace in Abschnitt 9.
+
+**Ergebnisse der Abnahme** (Tests in `tests/test_ghost_plate.cpp`, GPU in `tests/test_cuda_residuals.cpp`):
+
+| Kriterium | Ergebnis |
+|---|---|
+| Lineare Phase Φ = a·y (n = 1; 1,33; 1,7, a von 10⁻⁶ bis 0,4, verschiedene Richtungen): Δ(n d_y) = a | max \|Δ(n d_y) − a\| = 1,1·10⁻¹⁶; OPL wächst exakt um Φ |
+| Gradient des Dickenprofils gegen zentrale finite Differenzen mit Richardson-Extrapolation (5 Stufen), K = 1 … 16, r_g = 0,8 … 12 mm, 840 Punkte bis r = 1,1·√2·r_g | max. relativ 1,6·10⁻¹¹ (< 1·10⁻¹⁰) |
+| Ideale Fokussierphase Φ(r) = −(√(r² + F²) − F), F = 10 mm, NA 0,3, Geisterplatte direkt hinter der Blende, Legendre-Fit (L²-Projektion mit 16 Gauß-Knoten), Referenzsphäre im Brennpunkt | RMS-OPD 2,5·10⁻⁹ (K = 4), 8,2·10⁻¹³ (K = 6), 3,8·10⁻¹⁶ mm (K = 12, < 1·10⁻⁶) |
+| φ_G nach Formel gegen den Achsschnittpunkt realer Strahlen (dünnes Element in Luft, vier Profile bis K = 8) | Längsaberration ∝ h²; bei h = 10⁻⁷ r_g Abweichung ≤ 1,3·10⁻¹⁰ mm bei \|1/φ_G\| bis 4.558 mm |
+| Gesamtsystem `einzellinse_geisterplatte.json`: paraxiale Schnittweite gegen realen Strahl (h = 10⁻⁴ mm), Petzvalbeitrag Σ φ_G/n_G | 3,4·10⁻¹³ mm; Petzval innerhalb `kParaxialRelative` |
+
+Die gefittete Phase ist nur auf der Achse ideal; bei 0,5° Feldwinkel beträgt die RMS-OPD 4,5·10⁻⁴ mm (Koma der Phasenplatte, nur dokumentiert).
 
 ## 7. Referenzsphäre und OPD
 
@@ -288,7 +323,7 @@ Die effektive Brennweite ist 1/φ und nicht −y₀/u′_L, damit sie auch bei e
 
 **Wellenlänge.** Die Host-API rechnet entweder mit einer Spalte der Brechzahltabelle (Index in `spectrum.wavelengths_nm`) oder bei einer beliebigen Wellenlänge über `material_index`; Standard ist `spectrum.reference_nm`, die nicht unter den Spektralwellenlängen vorkommen muss.
 
-**Geisterplatten** (M4-T4, M4-T5) werden als dünne Elemente der Brechkraft φ_G im Luftspalt ergänzt: im Trace eine Brechung y φ_G an ihrer Position (`paraxial_refract` mit äquivalenter Brechkraft), in der Petzvalsumme der Beitrag φ_G/n_G.
+**Geisterplatten** (M4-T5) gehen als dünne Elemente der Brechkraft φ_G (Abschnitt 6) an ihrer Lage im Luftspalt ein: Der Trace läuft über die Tabellenflächen (Dateiflächen mit eingefügten Geisterplatten, Krümmung 0, Medium des Spalts); an einer Geisterplatte gilt n′u′ = nu − y (c (n′ − n) + φ_G) mit c = 0, in der Petzvalsumme kommt φ_G/(n_m n_G) = φ_G/n_G hinzu. Kern: `paraxial_trace(c, t, n, count, ray, at_surface, power)` und `petzval_sum(c, n, count, petzval)` mit optionalen Feldern der Zusatzbrechkraft bzw. des Petzvalbeitrags pro Fläche (ohne sie bitgleich zu vorher); Host: `compute_paraxial` mit den zusätzlichen Spannen `power`, `petzval` und die Überladungen für Systembeschreibungen, die Geisterplatten automatisch berücksichtigen (n_G aus `IndexTable::ghost_n` bzw. `material_index`). Die Petzval-Nebenbedingung (M4-T4) nutzt diese Summe.
 
 ## 10. Glasmodelle
 

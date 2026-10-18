@@ -273,7 +273,8 @@ TEST(ResidualLayout, VariantsMustNotLeaveAxisField) {
 // Ungestörtes System: residuals_cpu ist bitgleich zu evaluate_wavefront (OPD) für alle Felder
 // und Wellenlängen, für Standard- und andere Quadratur.
 TEST(ResidualsCpu, MatchesEvaluateWavefront) {
-    for (const char* file : {"einzellinse_bk7.json", "testsystem_mehrlinser.json"}) {
+    for (const char* file :
+         {"einzellinse_bk7.json", "testsystem_mehrlinser.json", "einzellinse_geisterplatte.json"}) {
         SCOPED_TRACE(file);
         const mko::LoadedSystem ls = mko::test::load_residual_system(file);
         const SystemBatchHost b = mko::make_system_batch(ls, 2);

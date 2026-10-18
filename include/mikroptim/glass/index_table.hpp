@@ -13,14 +13,23 @@ namespace mko {
 
 // Zeilenweise abgelegt: n[s * wavelengths + l] ist die Brechzahl des Mediums nach Fläche s
 // bei Wellenlänge l (docs/numerik.md, Abschnitt 2). Das Medium vor Fläche 0 ist Luft.
+// Für ein System aus einer Datei sind die Zeilen die Dateiflächen (ohne Geisterplatten);
+// ghost_n enthält zusätzlich die Brechzahlen der virtuellen Gläser der Geisterplatten
+// (make_system_index_table in mikroptim/cpu/host_surface_table.hpp).
 struct IndexTable {
     int surfaces = 0;
     int wavelengths = 0;
     std::vector<double> n;
+    int ghost_plates = 0;        // G
+    std::vector<double> ghost_n; // ghost_n[g * wavelengths + l], Glas der Geisterplatte g
 
     double at(int s, int l) const {
         return n[static_cast<std::size_t>(s) * static_cast<std::size_t>(wavelengths) +
                  static_cast<std::size_t>(l)];
+    }
+    double ghost_at(int g, int l) const {
+        return ghost_n[static_cast<std::size_t>(g) * static_cast<std::size_t>(wavelengths) +
+                       static_cast<std::size_t>(l)];
     }
 };
 

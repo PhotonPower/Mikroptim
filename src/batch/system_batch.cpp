@@ -77,6 +77,12 @@ void validate_topology(const BatchTopology& t) {
     if (t.ghost_plates == 0 && t.ghost_terms != 0) {
         fail_topology("ohne Geisterplatten muss K = 0 sein");
     }
+    if (t.ghost_terms > kMaxGhostTerms) {
+        fail_topology("K = " + std::to_string(t.ghost_terms) +
+                      " Koeffizienten pro Geisterplatte, "
+                      "erlaubt sind höchstens " +
+                      std::to_string(kMaxGhostTerms));
+    }
     if (t.source != SourceKind::Collimated && t.source != SourceKind::Point) {
         fail_topology("unbekannte Quellenart");
     }
@@ -488,6 +494,8 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
     t.fields = source_field_count(system);
     t.source = system.source.type == SourceType::Point ? SourceKind::Point : SourceKind::Collimated;
     t.type = table.type;
+    t.ghost_plates = table.ghost_plates;
+    t.ghost_terms = table.ghost_terms;
     // Pupillenart pro Feld, gleiche Regel wie wavefront_pupil_mode (merit/wavefront.cpp)
     for (int f = 0; f < t.fields; ++f) {
         if (t.source == SourceKind::Collimated) {
@@ -567,6 +575,19 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
         }
     }
     b.pupil_radius(0) = table.semi_diameter[0];
+    // Geisterplatten: Normierungsradien (gemeinsam), Koeffizienten (mit 0 auf K ergänzt) und
+    // Brechzahlen der Gläser (pro Variante), Layout wie die Flächentabelle.
+    const int G = b.ghost_plates();
+    const int K = b.ghost_terms();
+    for (int g = 0; g < G; ++g) {
+        b.ghost_norm_radius(g) = table.ghost_norm_radius[to_size(g)];
+        for (int k = 0; k < K; ++k) {
+            b.ghost_coeff(0, g, k) = table.ghost_coeff[to_size(g) * to_size(K) + to_size(k)];
+        }
+        for (int l = 0; l < L; ++l) {
+            b.ghost_index(0, g, l) = table.ghost_index[to_size(g) * to_size(L) + to_size(l)];
+        }
+    }
     for (int f = 0; f < F; ++f) {
         if (!collimated) {
             b.field_weight(f) = 1.0; // Punktquelle: ein Feld auf der Achse, h = 0

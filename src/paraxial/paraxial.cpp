@@ -2,6 +2,7 @@
 
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "mikroptim/paraxial/ynu_trace.hpp"
+#include "mikroptim/trace/ghost_plate.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -26,17 +27,55 @@ void check_finite(std::span<const double> values, const char* what) {
     }
 }
 
+// Flächendaten über die Tabellenflächen (Dateiflächen mit eingefügten Geisterplatten,
+// make_surface_map): Krümmung, Dicke, Brechzahl nach der Fläche, Brechkraft und
+// Petzvalbeitrag der Geisterplatten (0 bei Dateiflächen).
 struct SurfaceArrays {
-    std::vector<double> c, t;
+    std::vector<double> c, t, n, power, petzval;
 };
 
-SurfaceArrays surface_arrays(const SystemDescription& system) {
+// `file_index(i)` liefert die Brechzahl nach Dateifläche i, `ghost_index(g)` die des Glases
+// der Geisterplatte g.
+template <class FileIndex, class GhostIndex>
+SurfaceArrays surface_arrays(const SystemDescription& system, FileIndex file_index,
+                             GhostIndex ghost_index) {
+    const SurfaceMap map = make_surface_map(system);
+    const std::size_t total = static_cast<std::size_t>(map.table_surfaces());
     SurfaceArrays a;
-    a.c.reserve(system.surfaces.size());
-    a.t.reserve(system.surfaces.size());
-    for (const Surface& s : system.surfaces) {
-        a.c.push_back(s.type == SurfaceType::Sphere ? s.curvature : 0.0);
-        a.t.push_back(s.thickness);
+    a.c.reserve(total);
+    a.t.reserve(total);
+    a.n.reserve(total);
+    a.power.assign(total, 0.0);
+    a.petzval.assign(total, 0.0);
+    for (std::size_t j = 0; j < total; ++j) {
+        const int file = map.file_of_table[j];
+        const GhostPlate* plate =
+            file >= 0 ? nullptr
+                      : &system.ghost_plates[static_cast<std::size_t>(map.ghost_of_table[j])];
+        const int gap = file >= 0 ? file : plate->after_surface;
+        const Surface& s = system.surfaces[static_cast<std::size_t>(gap)];
+        const double n_medium = file_index(gap);
+        a.n.push_back(n_medium);
+        // Dicke wie make_surface_table: von der Lage im Spalt bis zur nächsten Geisterplatte
+        // desselben Spalts bzw. bis zum Ende des Spalts.
+        const double start = plate == nullptr ? 0.0 : plate->distance;
+        const bool next_is_ghost = j + 1 < total && map.ghost_of_table[j + 1] >= 0;
+        const double end =
+            next_is_ghost
+                ? system.ghost_plates[static_cast<std::size_t>(map.ghost_of_table[j + 1])].distance
+                : s.thickness;
+        a.t.push_back(end - start);
+        if (plate == nullptr) {
+            a.c.push_back(s.type == SurfaceType::Sphere ? s.curvature : 0.0);
+            continue;
+        }
+        a.c.push_back(0.0);
+        const double n_glass = ghost_index(map.ghost_of_table[j]);
+        const int K = static_cast<int>(plate->coefficients.size());
+        a.power[j] =
+            ghost_plate_power(plate->coefficients.data(), K, plate->norm_radius, n_glass, n_medium);
+        a.petzval[j] = ghost_plate_petzval(plate->coefficients.data(), K, plate->norm_radius,
+                                           n_glass, n_medium);
     }
     return a;
 }
@@ -53,6 +92,13 @@ double stop_semi_diameter(const SystemDescription& system) {
 ParaxialData compute_paraxial(std::span<const double> curvatures,
                               std::span<const double> thicknesses, std::span<const double> indices,
                               double stop_semi_diameter) {
+    return compute_paraxial(curvatures, thicknesses, indices, stop_semi_diameter, {}, {});
+}
+
+ParaxialData compute_paraxial(std::span<const double> curvatures,
+                              std::span<const double> thicknesses, std::span<const double> indices,
+                              double stop_semi_diameter, std::span<const double> power,
+                              std::span<const double> petzval) {
     if (curvatures.empty()) {
         throw std::invalid_argument("Paraxialtrace: keine Flächen");
     }
@@ -60,9 +106,16 @@ ParaxialData compute_paraxial(std::span<const double> curvatures,
         throw std::invalid_argument(
             "Paraxialtrace: Krümmungen, Dicken und Brechzahlen müssen gleich lang sein");
     }
+    if ((!power.empty() && power.size() != curvatures.size()) ||
+        (!petzval.empty() && petzval.size() != curvatures.size())) {
+        throw std::invalid_argument("Paraxialtrace: Brechkräfte und Petzvalbeiträge der dünnen "
+                                    "Elemente müssen so lang sein wie die Krümmungen");
+    }
     check_finite(curvatures, "Krümmung");
     check_finite(thicknesses, "Dicke");
     check_finite(indices, "Brechzahl");
+    check_finite(power, "Brechkraft");
+    check_finite(petzval, "Petzvalbeitrag");
     for (std::size_t s = 0; s < indices.size(); ++s) {
         if (!(indices[s] > 0.0)) {
             throw std::invalid_argument("Paraxialtrace: Brechzahl[" + std::to_string(s) +
@@ -81,8 +134,12 @@ ParaxialData compute_paraxial(std::span<const double> curvatures,
 
     // Spalten der Systemmatrix: Randstrahl (y0 = 1, u0 = 0) und Hauptstrahl durch die
     // Blendenmitte (y0 = 0, u0 = 1); reduzierte Winkel n' u' im Bildraum.
-    const ParaxialRay<double> marginal = paraxial_trace(c, t, n, count, ParaxialRay<double>{1, 0});
-    const ParaxialRay<double> chief = paraxial_trace(c, t, n, count, ParaxialRay<double>{0, 1});
+    const double* extra = power.empty() ? nullptr : power.data();
+    ParaxialRay<double>* const no_record = nullptr;
+    const ParaxialRay<double> marginal =
+        paraxial_trace(c, t, n, count, ParaxialRay<double>{1, 0}, no_record, extra);
+    const ParaxialRay<double> chief =
+        paraxial_trace(c, t, n, count, ParaxialRay<double>{0, 1}, no_record, extra);
     const double A = marginal.y;
     const double C = n_image * marginal.u;
     const double B = chief.y;
@@ -113,7 +170,7 @@ ParaxialData compute_paraxial(std::span<const double> curvatures,
         p.image_defocus = p.back_focal_distance - t[count - 1];
     }
 
-    p.petzval_sum = petzval_sum(c, n, count);
+    p.petzval_sum = petzval_sum(c, n, count, petzval.empty() ? nullptr : petzval.data());
     p.petzval_curvature = -n_image * p.petzval_sum;
     p.petzval_radius = p.petzval_curvature == 0.0 ? kInf : 1.0 / p.petzval_curvature;
 
@@ -136,28 +193,28 @@ ParaxialData compute_paraxial(const SystemDescription& system, const IndexTable&
                               int wavelength_index) {
     const double stop = stop_semi_diameter(system);
     const std::size_t count = system.surfaces.size();
-    if (indices.surfaces != static_cast<int>(count) || indices.wavelengths < 1 ||
-        indices.n.size() != count * static_cast<std::size_t>(indices.wavelengths)) {
-        throw std::invalid_argument(
-            "Paraxialtrace: Brechzahltabelle passt nicht zur Flächenzahl des Systems");
+    const std::size_t ghosts = system.ghost_plates.size();
+    const std::size_t L =
+        indices.wavelengths < 1 ? 0 : static_cast<std::size_t>(indices.wavelengths);
+    if (indices.surfaces != static_cast<int>(count) || L == 0 || indices.n.size() != count * L ||
+        indices.ghost_plates != static_cast<int>(ghosts) || indices.ghost_n.size() != ghosts * L) {
+        throw std::invalid_argument("Paraxialtrace: Brechzahltabelle passt nicht zur Flächen- "
+                                    "oder Geisterplattenzahl des Systems");
     }
     if (wavelength_index < 0 || wavelength_index >= indices.wavelengths) {
         throw std::out_of_range("Paraxialtrace: Wellenlängenindex " +
                                 std::to_string(wavelength_index) + " außerhalb von [0, " +
                                 std::to_string(indices.wavelengths) + ")");
     }
-    const SurfaceArrays a = surface_arrays(system);
-    std::vector<double> n(count);
-    for (std::size_t s = 0; s < count; ++s) {
-        n[s] = indices.at(static_cast<int>(s), wavelength_index);
-    }
-    return compute_paraxial(a.c, a.t, n, stop);
+    const SurfaceArrays a = surface_arrays(
+        system, [&](int s) { return indices.at(s, wavelength_index); },
+        [&](int g) { return indices.ghost_at(g, wavelength_index); });
+    return compute_paraxial(a.c, a.t, a.n, stop, a.power, a.petzval);
 }
 
 ParaxialData compute_paraxial(const SystemDescription& system, const GlassCatalog& catalog,
                               double wavelength_nm) {
     const double stop = stop_semi_diameter(system);
-    const SurfaceArrays a = surface_arrays(system);
     std::vector<double> n;
     n.reserve(system.surfaces.size());
     for (std::size_t s = 0; s < system.surfaces.size(); ++s) {
@@ -167,7 +224,19 @@ ParaxialData compute_paraxial(const SystemDescription& system, const GlassCatalo
             throw GlassError("Medium nach Fläche " + std::to_string(s) + ": " + e.what());
         }
     }
-    return compute_paraxial(a.c, a.t, n, stop);
+    std::vector<double> n_ghost;
+    n_ghost.reserve(system.ghost_plates.size());
+    for (std::size_t g = 0; g < system.ghost_plates.size(); ++g) {
+        try {
+            n_ghost.push_back(material_index(system.ghost_plates[g].glass, wavelength_nm, catalog));
+        } catch (const GlassError& e) {
+            throw GlassError("Glas der Geisterplatte " + std::to_string(g) + ": " + e.what());
+        }
+    }
+    const SurfaceArrays a = surface_arrays(
+        system, [&](int s) { return n[static_cast<std::size_t>(s)]; },
+        [&](int g) { return n_ghost[static_cast<std::size_t>(g)]; });
+    return compute_paraxial(a.c, a.t, a.n, stop, a.power, a.petzval);
 }
 
 ParaxialData compute_paraxial(const SystemDescription& system, const GlassCatalog& catalog) {

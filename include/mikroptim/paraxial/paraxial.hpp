@@ -66,15 +66,28 @@ ParaxialData compute_paraxial(std::span<const double> curvatures,
                               std::span<const double> thicknesses, std::span<const double> indices,
                               double stop_semi_diameter);
 
+// Wie oben, zusätzlich mit dünnen Elementen ohne Krümmung (Geisterplatten): `power[s]` ist
+// ihre Brechkraft φ_G an Fläche s, `petzval[s]` ihr Beitrag φ_G / (n_m n_G) zur Petzvalsumme
+// (beide 0 für gewöhnliche Flächen). Leere Spannen bedeuten „keine“, sonst Länge wie
+// `curvatures`. Fehler wie oben.
+ParaxialData compute_paraxial(std::span<const double> curvatures,
+                              std::span<const double> thicknesses, std::span<const double> indices,
+                              double stop_semi_diameter, std::span<const double> power,
+                              std::span<const double> petzval);
+
 // Paraxialdaten eines Systems bei Wellenlänge `wavelength_index` der Brechzahltabelle
-// (`indices` aus make_index_table für die Medien des Systems).
-// Wirft std::invalid_argument, wenn die Tabelle nicht zur Flächenzahl passt, und
-// std::out_of_range bei ungültigem Wellenlängenindex.
+// (`indices` aus make_system_index_table bzw. make_index_table für die Medien des Systems).
+// Geisterplatten gehen als dünne Elemente der Brechkraft φ_G = −2 (n_G − 1) t₂ an ihrer Lage
+// im Luftspalt ein (Trace über die Tabellenflächen, make_surface_map), mit dem Beitrag φ_G/n_G
+// zur Petzvalsumme (docs/numerik.md, Abschnitte 6 und 9); n_G aus indices.ghost_n.
+// Wirft std::invalid_argument, wenn die Tabelle nicht zur Flächen- oder Geisterplattenzahl
+// passt, und std::out_of_range bei ungültigem Wellenlängenindex.
 ParaxialData compute_paraxial(const SystemDescription& system, const IndexTable& indices,
                               int wavelength_index);
 
-// Paraxialdaten eines Systems bei beliebiger Wellenlänge [nm]; Brechzahlen über
-// material_index. Wirft GlassError (unbekanntes Glas, Wellenlänge außerhalb des Bereichs).
+// Paraxialdaten eines Systems bei beliebiger Wellenlänge [nm]; Brechzahlen (auch der Gläser der
+// Geisterplatten) über material_index, Geisterplatten wie oben.
+// Wirft GlassError (unbekanntes Glas, Wellenlänge außerhalb des Bereichs).
 ParaxialData compute_paraxial(const SystemDescription& system, const GlassCatalog& catalog,
                               double wavelength_nm);
 

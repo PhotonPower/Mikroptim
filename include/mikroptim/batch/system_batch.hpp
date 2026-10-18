@@ -185,14 +185,17 @@ private:
 // Wirft std::invalid_argument mit Variante und Feld, std::out_of_range bei ungültigem Bereich.
 void check_pupil_modes(const SystemBatchHost& batch, int first = 0, int count = -1);
 
-// Topologie eines Systems aus der Datei (G = K = 0, Geisterplatten folgen in M4) mit den
-// Pupillenarten pro Feld (siehe BatchTopology::pupil_mode).
+// Topologie eines Systems aus der Datei (Flächen der Flächentabelle mit eingefügten
+// Geisterplatten, G und K aus make_surface_table) mit den Pupillenarten pro Feld (siehe
+// BatchTopology::pupil_mode).
 BatchTopology topology_of(const SystemDescription& system, const IndexTable& index);
 
 // Baut einen Batch mit `variants` gleichen Varianten aus Systembeschreibung und Brechzahltabelle
-// (make_surface_table): Krümmungen (0 bei Stop und Plane), Dicken, Brechzahlen, Pupillenradius
-// = semi_diameter der Fläche 0, Feldwinkel θ_f = field_angles_deg[f] · π/180, Gewichte und
-// Wellenlängen aus spectrum bzw. source, λ_ref = spectrum.reference_nm.
+// (make_surface_table, Geisterplatten als eingefügte Flächen; Brechzahltabelle mit ghost_n aus
+// make_system_index_table): Krümmungen (0 bei Stop, Plane und GhostPlate), Dicken, Brechzahlen,
+// Pupillenradius = semi_diameter der Fläche 0, Feldwinkel θ_f = field_angles_deg[f] · π/180,
+// Gewichte und Wellenlängen aus spectrum bzw. source, λ_ref = spectrum.reference_nm,
+// Geisterplatten: ghost_norm_radius, ghost_coeff (mit 0 auf K ergänzt), ghost_index.
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
 // `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (nur wenn λ_ref
 // unter den Wellenlängen des Spektrums ist). Ist keine Brennweite bestimmbar (afokales System)

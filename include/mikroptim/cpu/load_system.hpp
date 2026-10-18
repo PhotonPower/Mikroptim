@@ -18,8 +18,8 @@ struct LoadedSystem {
     SystemDescription system;
     std::vector<std::filesystem::path> catalog_files; // aufgelöste Einträge von glass_catalogs
     GlassCatalog catalog;                             // alle Kataloge zusammengeführt
-    IndexTable index;                                 // n[s][l] für system.spectrum.wavelengths_nm
-    HostSurfaceTable table;                           // Eingabe für trace_ray
+    IndexTable index;       // n[s][l] der Dateiflächen und ghost_n (make_system_index_table)
+    HostSurfaceTable table; // Eingabe für trace_ray, mit eingefügten Geisterplatten
     std::vector<std::string> warnings; // ignorierte Felder in System- und Glasdateien
 };
 
