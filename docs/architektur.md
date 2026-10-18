@@ -71,6 +71,22 @@ Structure of Arrays im globalen Speicher, Index `[v][s]` bzw. `[v][s][l]`:
 
 Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
 
+## Brechzahltabelle
+
+Modul Glasmodell (`include/mikroptim/glass/`, Bibliothek `Mikroptim::glass`):
+
+- `dispersion.hpp` – header-only, `MKO_HD`, templatisiert über `R`: `sellmeier_index`, `buchdahl_omega`, `buchdahl_index` (λ in µm) und `nm_to_um` als einzige Umrechnungsstelle nm → µm.
+- `catalog.hpp` – `GlassCatalog` (Host), Einlesen siehe [dateiformat.md](dateiformat.md#glasdaten).
+- `index_table.hpp` – `material_index` und `make_index_table`.
+
+```cpp
+struct IndexTable { int surfaces; int wavelengths; std::vector<double> n; double at(int s, int l) const; };
+IndexTable make_index_table(std::span<const MaterialSpec> media,
+                            std::span<const double> wavelengths_nm, const GlassCatalog& catalog);
+```
+
+`media[s]` ist das Medium **nach** Fläche s (`mko::MaterialSpec` aus `include/mikroptim/model/material.hpp`), das Medium vor Fläche 0 ist Luft. Die Tabelle ist zeilenweise abgelegt: `n[s * wavelengths + l]`, also dasselbe Layout wie `index[v][s][l]` für eine Variante. Air → 1, `constant` → n, Katalogname → Sellmeier mit Prüfung von `range_nm`, `buchdahl` → Formel aus numerik.md, Abschnitt 10. Fehler (unbekanntes Glas, Wellenlänge außerhalb des Gültigkeitsbereichs) sind `GlassError` mit Fläche, Wellenlänge und Glasname.
+
 ## Kernel-Abbildung
 
 - **Grid:** ein Block pro Tupel (Variante v, Feld f, Wellenlänge l), linearisiert.
