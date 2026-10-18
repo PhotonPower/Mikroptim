@@ -183,6 +183,72 @@ int TraceEngine::max_variants(const BatchTopology& topology, TraceMode mode,
                             extra_bytes_per_variant(mode, settings));
 }
 
+TraceEngine::TranchePlan TraceEngine::plan_tranches(const BatchTopology& topology, TraceMode mode,
+                                                    const ResidualLayout& layout,
+                                                    const TraceSettings& settings, int variants,
+                                                    int granularity) {
+    const bool merit_mode = mode == TraceMode::Merit;
+    const OutputRequest request = output_request(mode, layout, settings);
+    const std::size_t extra_per_variant = extra_bytes_per_variant(mode, settings);
+    const auto g = static_cast<std::size_t>(granularity);
+    // Größte Tranche als Vielfaches von granularity
+    const auto rounded = [g](int capacity) {
+        return static_cast<int>(static_cast<std::size_t>(capacity) / g * g);
+    };
+    // Der Ausgabepuffer des anderen Modus bleibt erhalten (Wechsel RESIDUALS/MERIT im
+    // Optimierer) und zählt dann nicht als verfügbar, solange die Tranche dadurch nicht
+    // kleiner wird; sonst wird er freigegeben.
+    const std::size_t available = available_bytes();
+    const std::size_t other = merit_mode ? residuals_.capacity_bytes() : merit_.capacity_bytes();
+    std::size_t usable = usable_bytes(available - std::min(other, available), options_.reserve);
+    int capacity = rounded(tranche_capacity(usable, topology, request, extra_per_variant));
+    if (other > 0 && capacity < variants) {
+        const std::size_t usable_all = usable_bytes(available, options_.reserve);
+        const int capacity_all =
+            rounded(tranche_capacity(usable_all, topology, request, extra_per_variant));
+        if (capacity_all > capacity) {
+            if (merit_mode) {
+                residuals_.release();
+            } else {
+                merit_.release();
+            }
+            usable = usable_all;
+            capacity = capacity_all;
+        }
+    }
+    if (capacity < 1) {
+        const std::string what =
+            granularity == 1 ? std::string("eine Variante passt")
+                             : std::to_string(granularity) + " zusammengehörige Varianten passen";
+        throw CudaError(
+            "TraceEngine: nicht einmal " + what + " in den Gerätespeicher (Gerät " +
+            std::to_string(device_) + ", verfügbar " + mib(available) + ", nach Reserve " +
+            mib(usable) + ", benötigt " +
+            mib(estimate_device_bytes(topology, granularity, request, extra_per_variant) +
+                fixed_run_bytes(topology)) +
+            ")");
+    }
+    const int tranche = std::min(capacity, variants);
+    // Reichen die vorhandenen Puffer nicht, vorher Batch und Ausgabepuffer des Modus
+    // freigeben: Sonst lägen alter und neuer Puffer kurz gleichzeitig im Speicher, und das
+    // Budget würde überschritten.
+    const std::size_t need_batch = make_batch_layout(topology, tranche).total_bytes;
+    const std::size_t need_out =
+        make_output_layout(topology, tranche, request, extra_per_variant).total_bytes +
+        fixed_run_bytes(topology);
+    const std::size_t have_out = merit_mode ? merit_.capacity_bytes() : residuals_.capacity_bytes();
+    if (need_batch > batch_.capacity_bytes() || need_out > have_out) {
+        batch_.release();
+        if (merit_mode) {
+            merit_.release();
+        } else {
+            residuals_.release();
+        }
+    }
+
+    return TranchePlan{tranche, usable};
+}
+
 TraceOutput TraceEngine::run(const SystemBatchHost& batch, TraceMode mode,
                              const TraceSettings& settings) {
     TraceOutput out;
@@ -220,8 +286,6 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
                                         std::to_string(samples) + " angefordert)");
         }
     }
-    const OutputRequest request = output_request(mode, layout, settings);
-    const std::size_t extra_per_variant = extra_bytes_per_variant(mode, settings);
 
     // ---- Host-Ausgabe anlegen (Ergebnis des anderen Modus leer) ----
     const int S = topology.surfaces;
@@ -262,53 +326,9 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
         return;
     }
 
-    // ---- Tranchengröße ----
-    // Der Ausgabepuffer des anderen Modus bleibt erhalten (Wechsel RESIDUALS/MERIT im
-    // Optimierer) und zählt dann nicht als verfügbar, solange die Tranche dadurch nicht
-    // kleiner wird; sonst wird er freigegeben.
-    const std::size_t available = available_bytes();
-    const std::size_t other = merit_mode ? residuals_.capacity_bytes() : merit_.capacity_bytes();
-    std::size_t usable = usable_bytes(available - std::min(other, available), options_.reserve);
-    int capacity = tranche_capacity(usable, topology, request, extra_per_variant);
-    if (other > 0 && capacity < V) {
-        const std::size_t usable_all = usable_bytes(available, options_.reserve);
-        const int capacity_all = tranche_capacity(usable_all, topology, request, extra_per_variant);
-        if (capacity_all > capacity) {
-            if (merit_mode) {
-                residuals_.release();
-            } else {
-                merit_.release();
-            }
-            usable = usable_all;
-            capacity = capacity_all;
-        }
-    }
-    if (capacity < 1) {
-        throw CudaError("TraceEngine: nicht einmal eine Variante passt in den Gerätespeicher "
-                        "(Gerät " +
-                        std::to_string(device_) + ", verfügbar " + mib(available) +
-                        ", nach Reserve " + mib(usable) + ", eine Variante braucht " +
-                        mib(estimate_device_bytes(topology, 1, request, extra_per_variant) +
-                            fixed_run_bytes(topology)) +
-                        ")");
-    }
-    const int tranche = std::min(capacity, V);
-    // Reichen die vorhandenen Puffer nicht, vorher Batch und Ausgabepuffer des Modus
-    // freigeben: Sonst lägen alter und neuer Puffer kurz gleichzeitig im Speicher, und das
-    // Budget würde überschritten.
-    const std::size_t need_batch = make_batch_layout(topology, tranche).total_bytes;
-    const std::size_t need_out =
-        make_output_layout(topology, tranche, request, extra_per_variant).total_bytes +
-        fixed_run_bytes(topology);
-    const std::size_t have_out = merit_mode ? merit_.capacity_bytes() : residuals_.capacity_bytes();
-    if (need_batch > batch_.capacity_bytes() || need_out > have_out) {
-        batch_.release();
-        if (merit_mode) {
-            merit_.release();
-        } else {
-            residuals_.release();
-        }
-    }
+    // ---- Tranchengröße und Puffer ----
+    const TranchePlan plan = plan_tranches(topology, mode, out.layout, settings, V, 1);
+    const int tranche = plan.tranche;
 
     // ---- Tranchen: Upload, Kernel, Download an die richtige Stelle ----
     ResidualRunOptions residual_options;
@@ -357,8 +377,61 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
         ++out.info.tranches;
     }
     out.info.tranche_variants = tranche;
-    out.info.budget_bytes = usable;
+    out.info.budget_bytes = plan.usable;
     out.info.device_bytes = device_bytes();
+}
+
+TraceRunInfo TraceEngine::run_on_device(const SystemBatchHost& batch, const TraceSettings& settings,
+                                        int granularity, const DeviceTrancheFn& consume) {
+    // ---- Prüfen (Host, vor jeder Gerätearbeit) ----
+    check_settings(settings);
+    if (granularity < 1) {
+        throw std::invalid_argument("TraceEngine: granularity muss >= 1 sein");
+    }
+    if (!consume) {
+        throw std::invalid_argument("TraceEngine: run_on_device ohne Rückruf");
+    }
+    const BatchTopology& topology = batch.topology();
+    const ResidualLayout layout(topology, settings.quadrature);
+    batch.validate_values();
+    const int V = batch.variants();
+    TraceRunInfo info;
+    info.variants = V;
+    if (V == 0) {
+        info.device_bytes = device_bytes();
+        return info;
+    }
+
+    // ---- Tranchengröße und Puffer (wie run, Tranchen als Vielfache von granularity) ----
+    const TranchePlan plan =
+        plan_tranches(topology, TraceMode::Residuals, layout, settings, V, granularity);
+
+    // ---- Tranchen: Upload, Kernel, Rückruf mit den Gerätezeigern ----
+    ResidualRunOptions options;
+    options.opd = settings.opd;
+    options.extra_residuals = settings.extra_residuals;
+    options.extrema = settings.extrema;
+    const detail::DeviceGuard guard(device_);
+    for (int first = 0; first < V; first += plan.tranche) {
+        const int count = std::min(plan.tranche, V - first);
+        batch_.upload(batch, first, count);
+        residuals_.run(batch_, layout, options);
+        DeviceTranche tranche;
+        tranche.first = first;
+        tranche.count = count;
+        tranche.rays_per_variant = residuals_.rays_per_variant();
+        tranche.stride = residuals_.stride();
+        tranche.residuals = residuals_.device_residuals();
+        tranche.status = residuals_.device_status();
+        tranche.opd = settings.opd ? residuals_.device_opd() : nullptr;
+        tranche.extrema = settings.extrema ? residuals_.device_extrema() : nullptr;
+        consume(tranche);
+        ++info.tranches;
+    }
+    info.tranche_variants = plan.tranche;
+    info.budget_bytes = plan.usable;
+    info.device_bytes = device_bytes();
+    return info;
 }
 
 } // namespace mko::cuda

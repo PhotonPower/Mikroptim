@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -82,6 +83,25 @@ struct TraceOutput {
     TraceRunInfo info;
 };
 
+// Ausgaben einer Tranche im Modus Residuals auf dem Gerät (run_on_device). Die Zeiger zeigen in
+// die Puffer der Engine, Ablage wie DeviceResiduals (Variante first + j ab j·stride bzw.
+// j·rays_per_variant), und gelten nur während des Rückrufs.
+struct DeviceTranche {
+    int first = 0;                        // erste Variante der Tranche im Batch
+    int count = 0;                        // Varianten der Tranche
+    std::int64_t rays_per_variant = 0;    // Strahlresiduen pro Variante
+    std::int64_t stride = 0;              // rays_per_variant + extra_residuals
+    const double* residuals = nullptr;    // [count · stride], weitere Residuen 0
+    const std::uint8_t* status = nullptr; // [count · rays_per_variant], immer vorhanden
+    const double* opd = nullptr;          // [count · rays_per_variant], nur mit opd
+    const double* extrema = nullptr;      // [count][S][2], nur mit extrema
+};
+
+// Rückruf pro Tranche; läuft im Thread des Aufrufers mit dem Gerät der Engine als aktuellem
+// Gerät, nachdem der Kernel der Tranche fertig ist. Arbeit, die er im Default-Stream startet,
+// ist vor dem Upload der nächsten Tranche beendet.
+using DeviceTrancheFn = std::function<void(const DeviceTranche&)>;
+
 // Trace-Kernel auf einem festen CUDA-Gerät. Besitzt die Gerätepuffer (Batch und Ausgaben)
 // und verwendet sie über Läufe hinweg wieder; nur verschiebbar. Jeder Aufruf setzt das Gerät
 // der Engine und stellt danach das aktuelle Gerät des Aufrufers wieder her. Kein globaler
@@ -116,6 +136,20 @@ public:
     TraceOutput run(const SystemBatchHost& batch, TraceMode mode,
                     const TraceSettings& settings = {});
 
+    // Modus Residuals ohne Download, für Folgekernel auf dem Gerät (z. B. Differenzen der
+    // FD-Jacobi, M3-T2): Ablauf wie run, aber nach dem Kernel jeder Tranche ruft die Engine
+    // `consume` mit den Gerätezeigern der Tranche auf, statt die Ausgaben auf den Host zu
+    // kopieren. Die Tranchengröße ist ein Vielfaches von `granularity` (≥ 1, z. B. die
+    // Varianten eines FD-Laufs), damit zusammengehörige Varianten in derselben Tranche liegen;
+    // nur die letzte Tranche darf kleiner sein, wenn V kein Vielfaches ist. settings.status
+    // und extra_merit werden ignoriert (der Status liegt immer vor). Speicher, den der
+    // Aufrufer vorher selbst belegt, sieht die Engine als belegt (cudaMemGetInfo). Wirft wie
+    // run, zusätzlich std::invalid_argument bei granularity < 1 und CudaError, wenn nicht
+    // einmal `granularity` Varianten in den Speicher passen; Ausnahmen aus `consume` werden
+    // weitergereicht. Rückgabe: Statistik des Laufs.
+    TraceRunInfo run_on_device(const SystemBatchHost& batch, const TraceSettings& settings,
+                               int granularity, const DeviceTrancheFn& consume);
+
     // Größte Variantenzahl pro Tranche für Batches dieser Topologie: max_variants mit dem
     // freien Speicher des Geräts (zuzüglich der von der Engine schon belegten Puffer, die
     // ein Lauf freigibt oder wiederverwendet), höchstens memory_limit_bytes, abzüglich der
@@ -136,6 +170,16 @@ public:
 private:
     // Speicher, den ein Lauf belegen darf, vor Abzug der Reserve [Byte].
     std::size_t available_bytes() const;
+    // Tranchengröße (Vielfaches von granularity, höchstens V) und nutzbarer Speicher; gibt
+    // den Puffer des anderen Modus frei, wenn das die Tranche vergrößert, und die Puffer des
+    // Modus, wenn sie nicht reichen (docs/architektur.md, „Host-API TraceEngine“).
+    struct TranchePlan {
+        int tranche = 0;
+        std::size_t usable = 0;
+    };
+    TranchePlan plan_tranches(const BatchTopology& topology, TraceMode mode,
+                              const ResidualLayout& layout, const TraceSettings& settings,
+                              int variants, int granularity);
 
     int device_ = -1;
     std::string device_name_;

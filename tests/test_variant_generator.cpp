@@ -250,6 +250,7 @@ TEST(VariantGenerator, CentralPattern) {
         const std::size_t kk = static_cast<std::size_t>(k);
         const double h = mko::kFdStepFactor * std::max(std::abs(f.x0[kk]), f.set[k].typical);
         EXPECT_EQ(fd.pattern.nominal[kk], h);
+        EXPECT_EQ(fd.pattern.stencil[kk], mko::FdStencil::Central);
         EXPECT_EQ(fd.pattern.point_plus[kk], f.x0[kk] + h);
         EXPECT_EQ(fd.pattern.point_minus[kk], f.x0[kk] - h);
         EXPECT_EQ(fd.pattern.step_plus[kk], fd.pattern.point_plus[kk] - f.x0[kk]);
@@ -288,25 +289,33 @@ TEST(VariantGenerator, ForwardPattern) {
     }
 }
 
-// Schritte an den Schranken: einseitig, wenn x₀ auf der Schranke liegt, sonst bis zur Schranke.
+// Schritte an den Schranken (M3-T2): zentral, wenn x₀ ± h zulässig ist; sonst einseitig mit
+// x₀ + σh und x₀ + 2σh zur Seite mit mehr Platz; nur bei sehr engem Bereich gekürzt.
 TEST(VariantGenerator, FdStepsAtBounds) {
+    using mko::FdStencil;
     const Fixture f;
     std::vector<double> x = f.x0;
     x[0] = 0.05;                                   // c[1] auf der oberen Schranke
     x[1] = -0.05;                                  // c[2] auf der unteren Schranke
     x[2] = 12.0 - 0.5 * 12.0 * mko::kFdStepFactor; // t[1] knapp unter t_max = 12
     const mko::FdPattern c = mko::fd_pattern(f.set, x, FdScheme::Central);
-    EXPECT_EQ(c.step_plus[0], 0.0);
-    EXPECT_EQ(c.point_minus[0], 0.05 - c.nominal[0]);
+    ASSERT_EQ(c.stencil.size(), x.size());
+    EXPECT_EQ(c.stencil[0], FdStencil::OneSided);
+    EXPECT_EQ(c.point_plus[0], 0.05 - c.nominal[0]);
+    EXPECT_EQ(c.point_minus[0], 0.05 - 2.0 * c.nominal[0]);
+    EXPECT_EQ(c.step_plus[0], c.point_plus[0] - 0.05);
     EXPECT_EQ(c.step_minus[0], c.point_minus[0] - 0.05);
-    EXPECT_EQ(c.step_minus[1], 0.0);
+    EXPECT_EQ(c.stencil[1], FdStencil::OneSided);
     EXPECT_EQ(c.point_plus[1], -0.05 + c.nominal[1]);
-    EXPECT_EQ(c.point_plus[2], 12.0);
-    EXPECT_GT(c.step_plus[2], 0.0);
-    EXPECT_LT(c.step_plus[2], c.nominal[2]);
-    EXPECT_EQ(c.point_minus[2], x[2] - c.nominal[2]);
+    EXPECT_EQ(c.point_minus[1], -0.05 + 2.0 * c.nominal[1]);
+    EXPECT_EQ(c.stencil[2], FdStencil::OneSided);
+    EXPECT_EQ(c.point_plus[2], x[2] - c.nominal[2]);
+    EXPECT_EQ(c.point_minus[2], x[2] - 2.0 * c.nominal[2]);
+    EXPECT_EQ(c.stencil[3], FdStencil::Central);
     for (std::size_t k = 0; k < x.size(); ++k) {
-        EXPECT_GT(c.step_plus[k] - c.step_minus[k], 0.0);
+        EXPECT_NE(c.step_plus[k], 0.0);
+        EXPECT_NE(c.step_minus[k], 0.0);
+        EXPECT_NE(c.step_plus[k], c.step_minus[k]);
     }
 
     const mko::FdPattern fw = mko::fd_pattern(f.set, x, FdScheme::Forward);
@@ -328,7 +337,17 @@ TEST(VariantGenerator, FdStepsAtBounds) {
     const std::vector<double> t0 = {6.0};
     const mko::FdPattern tf = mko::fd_pattern(tight_set, t0, FdScheme::Forward);
     EXPECT_EQ(tf.point_plus[0], 6.0 + 2e-6);
+    EXPECT_EQ(tf.stencil[0], mko::FdStencil::Forward);
+    // Auf der oberen Schranke eines engen Bereichs: Schritt dorthin 0 (einseitige Differenz).
+    const std::vector<double> t1 = {6.0 + 2e-6};
+    const mko::FdPattern te = mko::fd_pattern(tight_set, t1, FdScheme::Central);
+    EXPECT_EQ(te.stencil[0], mko::FdStencil::Truncated);
+    EXPECT_EQ(te.step_plus[0], 0.0);
+    EXPECT_EQ(te.point_minus[0], 6.0 - 1e-6);
+    EXPECT_GT(te.step_plus[0] - te.step_minus[0], 0.0);
+    // Zentral: Bereich (3e-6) kürzer als 3h, also gekürzt bis an beide Schranken.
     const mko::FdPattern tc = mko::fd_pattern(tight_set, t0, FdScheme::Central);
+    EXPECT_EQ(tc.stencil[0], mko::FdStencil::Truncated);
     EXPECT_EQ(tc.point_plus[0], 6.0 + 2e-6);
     EXPECT_EQ(tc.point_minus[0], 6.0 - 1e-6);
 }
