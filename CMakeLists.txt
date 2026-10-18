@@ -94,6 +94,16 @@ target_link_libraries(mikroptim_glass
     PRIVATE nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# Paraxialoptik (Host): Brennweite, Schnittweite, Hauptebenen, Petzval, Pupillen
+# --------------------------------------------------------------------------
+add_library(mikroptim_paraxial STATIC
+    src/paraxial/paraxial.cpp)
+add_library(Mikroptim::paraxial ALIAS mikroptim_paraxial)
+target_link_libraries(mikroptim_paraxial
+    PUBLIC mikroptim_core mikroptim_model mikroptim_glass
+    PRIVATE mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)

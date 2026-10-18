@@ -29,6 +29,18 @@ inline constexpr double kQuadrature = 1e-14;
 // Gauß-Legendre-Knoten und -Gewichte gegen unabhängige FP64-Rechnungen (geschlossene
 // Formeln, Newton-Iteration): wenige ulp; Knoten absolut, Gewichte relativ.
 inline constexpr double kQuadratureNode = 1e-15;
+// Paraxialdaten gegen geschlossene Formeln (Linsenmacherformel, dünne Linse), relativ.
+// Abnahmekriterium M1-T6; der y-nu-Trace über wenige Flächen hat Rundungsfehler ~1e-15.
+inline constexpr double kParaxialRelative = 1e-12;
+// Gerundete Zahlenwerte aus Plan und Doku (zwei Nachkommastellen, z. B. f ≈ 101,05 mm) [mm].
+// Kein Maß für die Rechengenauigkeit; die exakte Prüfung läuft gegen die Formel.
+inline constexpr double kDocumentedValue = 1e-2;
+// Grenzwert realer Strahlen h -> 0 gegen die paraxiale Schnittweite [mm] (M1-T6): bei
+// h = 1e-4 mm ist die sphärische Längsaberration der Testlinse ~1.6e-10 mm.
+inline constexpr double kParaxialLimit = 1e-8;
+// Relative Abweichung vom Skalierungsgesetz Längsaberration ∝ h² (Verhältnis bei h und h/2
+// gleich 4) für h ≤ 0,5 mm; der Term höherer Ordnung (∝ h⁴) liefert dort ~1e-4.
+inline constexpr double kAberrationScaling = 1e-3;
 // df64 gegen FP64 (ab M7)
 inline constexpr double kDf64VsFp64 = 1e-9;
 

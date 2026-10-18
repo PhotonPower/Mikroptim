@@ -164,6 +164,48 @@ $$P = \sum_i c_i\,\frac{n'_i - n_i}{n_i\,n'_i},\qquad \kappa_P = -\,n'_{\mathrm{
 
 Geisterplatten tragen φ_G/n_G zu P bei (Abschnitt 6).
 
+### Festlegungen der Implementierung (M1-T6)
+
+Implementiert in `include/mikroptim/paraxial/ynu_trace.hpp` (Kern, header-only, `MKO_HD`) und `include/mikroptim/paraxial/paraxial.hpp` (Host-API, Bibliothek `Mikroptim::paraxial`).
+
+**Trace.** u ist der paraxiale Winkel (Steigung dy/dz) im jeweiligen Medium, das Medium vor Fläche 0 ist Luft (n₀ = 1). Pro Fläche s: erst Übergang y += t_{s−1} u (ab s = 1), dann Brechung n′u′ = nu − y c (n′ − n). Die Dicke der letzten Fläche (Abstand zur Bildebene) geht nicht in den Trace ein.
+
+**Systemmatrix.** Zwei Strahlen ab Fläche 0 liefern die Matrix in reduzierten Winkeln von Fläche 0 (vor der Brechung) bis zur letzten Fläche L (nach der Brechung):
+
+$$\begin{pmatrix} y_L \\ n'_L u'_L \end{pmatrix} = \begin{pmatrix} A & B \\ C & D \end{pmatrix} \begin{pmatrix} y_0 \\ u_0 \end{pmatrix},\qquad AD - BC = 1$$
+
+Randstrahl (y₀ = 1, u₀ = 0) → A, C; Hauptstrahl durch die Blendenmitte (y₀ = 0, u₀ = 1) → B, D.
+
+**Kenngrößen.** Alle Lagen sind z-Koordinaten entlang +z (Tracerichtung), gemessen vom Scheitel der genannten Fläche; negativ heißt „vor der Fläche“.
+
+| Größe | Formel | Bezug |
+|---|---|---|
+| Brechkraft φ | −C | |
+| effektive Brennweite f | 1/φ; bei Bildraum Luft gleich −y₀/u′_L (Formel oben) | |
+| hintere Schnittweite s′_F | −y_L/u′_L des Randstrahls = n′_L A/φ | letzte Fläche → F′ |
+| vordere Schnittweite s_F | −D/φ | Fläche 0 → F |
+| vordere Hauptebene z_H | (1 − D)/φ (F liegt um f vor H) | Fläche 0 |
+| hintere Hauptebene z_H′ | n′_L (A − 1)/φ (F′ liegt um n′_L f hinter H′) | letzte Fläche |
+| Defokus der Bildebene | s′_F − t_L (> 0: Brennpunkt hinter der Bildebene) | |
+| Petzvalsumme, -krümmung | P und κ_P wie oben; Petzvalradius 1/κ_P | |
+| Austrittspupille z_AP | −y_L/u′_L des Hauptstrahls = −n′_L B/D | letzte Fläche |
+| Pupillenvergrößerung m_P | 1/D (Lagrange: n₀u₀/(n′_L u′_L)) | |
+| Radius der Austrittspupille | a · \|m_P\| (a = Halbdurchmesser der Blende) | |
+
+Die effektive Brennweite ist 1/φ und nicht −y₀/u′_L, damit sie auch bei einem Bildraum mit n′ ≠ 1 (Immersion) die für die Vergrößerung maßgebliche Brennweite auf der Luftseite (Tubuslinse) ist; bei Bildraum Luft sind beide gleich. Für eine dicke Linse in Luft ergeben sich die Linsenmacherformel 1/f = (n − 1)[c₁ − c₂ + (n − 1) t c₁c₂/n], s′_F = f (1 − (n − 1) t c₁/n) und die Hauptebenen h₁ = −f (n − 1) t c₂/n (vom ersten Scheitel), h₂ = −f (n − 1) t c₁/n (vom zweiten Scheitel).
+
+**Pupillen.** Die Eintrittspupille ist die Blende selbst (Fläche 0, z = 0, Radius a), weil davor der kollimierte Raum liegt. Die Austrittspupille ist das paraxiale Bild der Blende durch alle Flächen.
+
+**Sonderfälle.** Beide werden nur bei exakt verschwindendem Matrixelement erkannt, damit das Ergebnis deterministisch ist; fast afokale Systeme liefern große endliche Werte.
+
+- Afokal (C = 0, z. B. Planplatte): `afocal = true`, φ = +0, f = +∞; Schnittweiten, Hauptebenen und Defokus sind NaN. Petzval und Austrittspupille bleiben definiert.
+- Austrittspupille im Unendlichen (D = 0, Blende im vorderen Brennpunkt, bildseitig telezentrisch): `exit_pupil_at_infinity = true`, Lage und Vergrößerung NaN, Radius +∞.
+- κ_P = 0: Petzvalradius +∞.
+
+**Wellenlänge.** Die Host-API rechnet entweder mit einer Spalte der Brechzahltabelle (Index in `spectrum.wavelengths_nm`) oder bei einer beliebigen Wellenlänge über `material_index`; Standard ist `spectrum.reference_nm`, die nicht unter den Spektralwellenlängen vorkommen muss.
+
+**Geisterplatten** (M4-T4, M4-T5) werden als dünne Elemente der Brechkraft φ_G im Luftspalt ergänzt: im Trace eine Brechung y φ_G an ihrer Position (`paraxial_refract` mit äquivalenter Brechkraft), in der Petzvalsumme der Beitrag φ_G/n_G.
+
 ## 10. Glasmodelle
 
 **Sellmeier** (λ in µm): n² = 1 + Σ_i B_i λ² / (λ² − C_i). Basis für Katalogdaten.

@@ -112,6 +112,32 @@ IndexTable make_index_table(std::span<const MaterialSpec> media,
 
 `media[s]` ist das Medium **nach** Fläche s (`mko::MaterialSpec` aus `include/mikroptim/model/material.hpp`), das Medium vor Fläche 0 ist Luft. Die Tabelle ist zeilenweise abgelegt: `n[s * wavelengths + l]`, also dasselbe Layout wie `index[v][s][l]` für eine Variante. Air → 1, `constant` → n, Katalogname → Sellmeier mit Prüfung von `range_nm`, `buchdahl` → Formel aus numerik.md, Abschnitt 10. Fehler (unbekanntes Glas, Wellenlänge außerhalb des Gültigkeitsbereichs) sind `GlassError` mit Fläche, Wellenlänge und Glasname.
 
+## Paraxialoptik
+
+Modul `include/mikroptim/paraxial/`, Bibliothek `mikroptim_paraxial` (Alias `Mikroptim::paraxial`, linkt `model` und `glass`). Definitionen und Vorzeichen: [numerik.md, Abschnitt 9](numerik.md#9-paraxialoptik).
+
+- `ynu_trace.hpp` – header-only, `MKO_HD`, templatisiert über `R`: `ParaxialRay<R>{y, u}`, `surface_power`, `paraxial_refract`, `paraxial_transfer`, `paraxial_trace(c, t, n, count, ray, at_surface)` und `petzval_sum(c, n, count)` über nackte Arrays (Layout wie eine Variante im SystemBatch). Für Paraxialdaten vieler Varianten (M3-T3, M4-T4) auf Host oder GPU.
+- `paraxial.hpp` – Host-API:
+
+```cpp
+struct ParaxialData {
+    std::array<double, 4> abcd;          // Systemmatrix {A, B, C, D}, reduzierte Winkel
+    double power; bool afocal;
+    double focal_length, back_focal_distance, front_focal_distance;
+    double front_principal_plane, rear_principal_plane, image_defocus;
+    double petzval_sum, petzval_curvature, petzval_radius;
+    bool exit_pupil_at_infinity;
+    double exit_pupil_position, exit_pupil_magnification, exit_pupil_semi_diameter;
+};
+ParaxialData compute_paraxial(std::span<const double> curvatures, std::span<const double> thicknesses,
+                              std::span<const double> indices, double stop_semi_diameter);
+ParaxialData compute_paraxial(const SystemDescription&, const IndexTable&, int wavelength_index);
+ParaxialData compute_paraxial(const SystemDescription&, const GlassCatalog&, double wavelength_nm);
+ParaxialData compute_paraxial(const SystemDescription&, const GlassCatalog&);   // reference_nm
+```
+
+Fehler: `std::invalid_argument` (leere oder ungleich lange Arrays, nicht endliche Werte, n ≤ 0, Blendenradius ≤ 0, Brechzahltabelle passt nicht zum System), `std::out_of_range` (Wellenlängenindex), `GlassError` (Brechzahl nicht bestimmbar). Geisterplatten kommen in M4 als zusätzliche dünne Elemente hinzu (eigene Überladung); `ParaxialData` bleibt dabei unverändert.
+
 ## Kernel-Abbildung
 
 - **Grid:** ein Block pro Tupel (Variante v, Feld f, Wellenlänge l), linearisiert.
