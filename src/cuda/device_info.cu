@@ -27,9 +27,8 @@ int print_devices() {
         if (cudaGetDeviceProperties(&p, i) != cudaSuccess) {
             continue;
         }
-        std::printf("GPU %d: %s, sm_%d%d, %.1f GiB, %d SMs, FP32:FP64 = %d:1\n", i, p.name,
-                    p.major, p.minor,
-                    static_cast<double>(p.totalGlobalMem) / (1024.0 * 1024.0 * 1024.0),
+        std::printf("GPU %d: %s, sm_%d%d, %.1f GiB, %d SMs, FP32:FP64 = %d:1\n", i, p.name, p.major,
+                    p.minor, static_cast<double>(p.totalGlobalMem) / (1024.0 * 1024.0 * 1024.0),
                     p.multiProcessorCount, p.singleToDoublePrecisionPerfRatio);
     }
     return n;

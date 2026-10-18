@@ -44,7 +44,8 @@ std::string sci(double x) {
 }
 
 // Erwartet GlassError, dessen Meldung alle `fragments` enthält.
-template <class F> void expect_error(F&& f, std::initializer_list<const char*> fragments) {
+template <class F>
+void expect_error(F&& f, std::initializer_list<const char*> fragments) {
     try {
         f();
         ADD_FAILURE() << "keine Ausnahme";

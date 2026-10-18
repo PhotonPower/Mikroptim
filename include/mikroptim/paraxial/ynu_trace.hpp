@@ -14,13 +14,15 @@ namespace mko {
 
 // Paraxialer Strahl an einer Fläche: Höhe y [mm] und paraxialer Winkel u (Steigung dy/dz)
 // im Medium, in dem der Strahl gerade läuft.
-template <class R> struct ParaxialRay {
+template <class R>
+struct ParaxialRay {
     R y;
     R u;
 };
 
 // Brechkraft einer Fläche: phi = c (n' - n).
-template <class R> MKO_HD inline R surface_power(R c, R n_before, R n_after) {
+template <class R>
+MKO_HD inline R surface_power(R c, R n_before, R n_after) {
     return c * (n_after - n_before);
 }
 
@@ -31,7 +33,8 @@ MKO_HD inline void paraxial_refract(ParaxialRay<R>& r, R c, R n_before, R n_afte
 }
 
 // Übergang zur nächsten Fläche im Abstand t: y <- y + t u.
-template <class R> MKO_HD inline void paraxial_transfer(ParaxialRay<R>& r, R t) {
+template <class R>
+MKO_HD inline void paraxial_transfer(ParaxialRay<R>& r, R t) {
     r.y += t * r.u;
 }
 
@@ -60,7 +63,8 @@ MKO_HD inline ParaxialRay<R> paraxial_trace(const R* c, const R* t, const R* n, 
 
 // Petzvalsumme P = sum_s c_s (n'_s - n_s) / (n_s n'_s) über alle Flächen (ohne Geisterplatten,
 // deren Beiträge phi_G / n_G ergänzt der Aufrufer, docs/numerik.md, Abschnitt 6).
-template <class R> MKO_HD inline R petzval_sum(const R* c, const R* n, int count) {
+template <class R>
+MKO_HD inline R petzval_sum(const R* c, const R* n, int count) {
     R p = R(0);
     R n_before = R(1);
     for (int s = 0; s < count; ++s) {

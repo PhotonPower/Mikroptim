@@ -17,7 +17,8 @@ namespace mko {
 namespace detail {
 // Verhindert die Ableitung von R aus einem Argument (R folgt allein aus dem Strahl), damit
 // `record` als nullptr übergeben werden kann.
-template <class T> struct NonDeduced {
+template <class T>
+struct NonDeduced {
     using type = T;
 };
 } // namespace detail
@@ -29,7 +30,8 @@ template <class T> struct NonDeduced {
 // Koordinaten von Fläche s, Richtung d[s] nach der Brechung und OPL bis dorthin. Eintrag 0 ist
 // der Startzustand. Die Richtung vor der Brechung an Fläche s ist d[s − 1]. Bei Versagen an
 // Fläche s ist count = s (die Einträge davor bleiben gültig).
-template <class R> struct TraceRecord {
+template <class R>
+struct TraceRecord {
     int count;
     Vec3<R> p[kMaxSurfaces];
     Vec3<R> d[kMaxSurfaces];
@@ -40,7 +42,8 @@ template <class R> struct TraceRecord {
 // (Halbdurchmesser der Blende), Feldwinkel theta [rad] in der y-z-Ebene, Pupillenkoordinaten
 // (rho, phi) mit phi gemessen von +y (wie PupilSample). Lokale Koordinaten der Blende;
 // OPL₀ = p₀·d₀ (Start auf der ebenen Wellenfront durch den Ursprung der Blendenebene).
-template <class R> MKO_HD inline Ray<R> collimated_ray(R a, R theta, R rho, R phi) {
+template <class R>
+MKO_HD inline Ray<R> collimated_ray(R a, R theta, R rho, R phi) {
     const R r = a * rho;
     Ray<R> ray;
     ray.p = Vec3<R>{r * msin(phi), r * mcos(phi), R(0)};
@@ -53,7 +56,8 @@ template <class R> MKO_HD inline Ray<R> collimated_ray(R a, R theta, R rho, R ph
 // von Fläche 0). Die Richtungen sind gleichmäßig im Raum der Richtungskosinus verteilt:
 // (d_x, d_y) = sin_max · rho · (sin phi, cos phi), d_z = √(1 − sin_max² rho²) > 0, mit
 // sin_max = NA / n_Quelle (Sinus des halben Öffnungswinkels). OPL₀ = 0 im Quellpunkt.
-template <class R> MKO_HD inline Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi) {
+template <class R>
+MKO_HD inline Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi) {
     const R s = sin_max * rho;
     Ray<R> ray;
     ray.p = q;
