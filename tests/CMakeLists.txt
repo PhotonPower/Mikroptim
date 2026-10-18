@@ -86,6 +86,17 @@ else()
         PASS_REGULAR_EXPRESSION "--gpu: ohne CUDA gebaut")
 endif()
 
+# Benchmark trace_throughput (M2-T6) als kurzer Smoke-Lauf: 10 Varianten, ein Lauf. Exit-Code 3 =
+# kein CUDA-Gerät (übersprungen); die Synthesesysteme dürfen keine versagten Strahlen haben.
+if(TARGET trace_throughput)
+    add_test(NAME bench_trace_throughput_smoke
+        COMMAND $<TARGET_FILE:trace_throughput> --surfaces 10,40 --variants 10 --repeat 1
+                --warmup 0 --mode all)
+    set_tests_properties(bench_trace_throughput_smoke PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "Versagte Strahlen insgesamt: 0 von 40800")
+endif()
+
 include(GoogleTest)
 # PRE_TEST: Testliste erst beim Ausführen ermitteln (CI ohne GPU baut nur).
 gtest_discover_tests(mikroptim_tests DISCOVERY_MODE PRE_TEST)

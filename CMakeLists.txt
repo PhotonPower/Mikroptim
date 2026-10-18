@@ -8,6 +8,8 @@ project(Mikroptim
 option(MIKROPTIM_ENABLE_CUDA "CUDA-Backend bauen" OFF)
 option(MIKROPTIM_BUILD_TESTS "Tests bauen" ON)
 option(MIKROPTIM_WARNINGS_AS_ERRORS "Warnungen als Fehler behandeln" OFF)
+# Benchmarks unter bench/ (nur zusammen mit MIKROPTIM_ENABLE_CUDA)
+option(MIKROPTIM_BUILD_BENCH "Benchmarks bauen (nur mit CUDA)" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -197,6 +199,13 @@ add_executable(mikroptim src/cli/main.cpp)
 target_link_libraries(mikroptim PRIVATE mikroptim_core mikroptim_cli mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     target_link_libraries(mikroptim PRIVATE mikroptim_cuda)
+endif()
+
+# --------------------------------------------------------------------------
+# Benchmarks (bench/README.md); vor den Tests, damit deren Smoke-Lauf das Ziel kennt
+# --------------------------------------------------------------------------
+if(MIKROPTIM_ENABLE_CUDA AND MIKROPTIM_BUILD_BENCH)
+    add_subdirectory(bench)
 endif()
 
 # --------------------------------------------------------------------------
