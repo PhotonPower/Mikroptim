@@ -1,3 +1,4 @@
+#include "cli/optimize_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
@@ -15,10 +16,13 @@ namespace {
 void print_usage() {
     std::puts("Aufruf: mikroptim [--version] [--devices]\n"
               "        mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
-              "                        [--gpu [--device N]]\n"
+              "                        [--gpu [--device N] [--precision fp64|df64]]\n"
+              "        mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
+              "                        [--max-iterations N] [--runs K ...] [--gpu [--device N]]\n"
               "  --version   Version ausgeben\n"
               "  --devices   CUDA-Geräte auflisten\n"
-              "  trace       System auswerten (Hilfe: mikroptim trace --help)");
+              "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
+              "  optimize    Variablen optimieren (Hilfe: mikroptim optimize --help)");
 }
 
 } // namespace
@@ -44,6 +48,10 @@ int main(int argc, char** argv) {
     if (arg == "trace") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_trace_command(args, std::cout, std::cerr);
+    }
+    if (arg == "optimize") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_optimize_command(args, std::cout, std::cerr);
     }
     print_usage();
     return 1;

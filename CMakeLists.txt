@@ -196,14 +196,17 @@ endif()
 # --------------------------------------------------------------------------
 # Unterbefehle als Bibliothek, damit die Tests sie direkt aufrufen können (docs/cli.md)
 add_library(mikroptim_cli STATIC
+    src/cli/cli_util.cpp
+    src/cli/optimize_command.cpp
     src/cli/trace_command.cpp)
 target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mikroptim_cli
     PUBLIC mikroptim_core
     PRIVATE mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-            nlohmann_json::nlohmann_json mikroptim_warnings)
+            mikroptim_batch mikroptim_optim nlohmann_json::nlohmann_json mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
-    # `mikroptim trace --gpu` (M2-T5) über die TraceEngine; setzt MIKROPTIM_HAS_CUDA
+    # `mikroptim trace --gpu` (M2-T5) über die TraceEngine und `mikroptim optimize --gpu`
+    # (M3-T5) über optimize_lm_gpu; setzt MIKROPTIM_HAS_CUDA
     target_link_libraries(mikroptim_cli PRIVATE mikroptim_cuda)
 endif()
 

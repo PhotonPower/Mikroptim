@@ -14,6 +14,7 @@ add_executable(mikroptim_tests
     test_batch_merit.cpp
     test_batch_residuals.cpp
     test_buchdahl_fit.cpp
+    test_cli_optimize.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_df64.cpp
@@ -93,6 +94,43 @@ else()
     add_test(NAME cli_trace_gpu_unavailable
         COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_EINZELLINSE} --gpu)
     set_tests_properties(cli_trace_gpu_unavailable PROPERTIES
+        PASS_REGULAR_EXPRESSION "--gpu: ohne CUDA gebaut")
+endif()
+
+# `mikroptim optimize` (M3-T5): Biegung der Einzellinse mit Ergebnisdatei im Build-Verzeichnis,
+# danach `mikroptim trace` auf der Ergebnisdatei (Reihenfolge über FIXTURES_SETUP/REQUIRED).
+set(MKO_BIEGUNG ${PROJECT_SOURCE_DIR}/data/systems/einzellinse_bk7_biegung.json)
+set(MKO_BIEGUNG_OPT ${CMAKE_CURRENT_BINARY_DIR}/einzellinse_bk7_biegung_opt.json)
+add_test(NAME cli_optimize_text
+    COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_BIEGUNG} -o ${MKO_BIEGUNG_OPT})
+set_tests_properties(cli_optimize_text PROPERTIES
+    FIXTURES_SETUP cli_optimize_result
+    PASS_REGULAR_EXPRESSION "Iterationsprotokoll.*Status +converged.*Ergebnis geschrieben: ")
+add_test(NAME cli_optimize_result_trace
+    COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_BIEGUNG_OPT})
+set_tests_properties(cli_optimize_result_trace PROPERTIES
+    FIXTURES_REQUIRED cli_optimize_result
+    PASS_REGULAR_EXPRESSION "Brennweite f' +100\\.0000.*Versagte Strahlen: 0 von 10")
+add_test(NAME cli_optimize_no_variables
+    COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_EINZELLINSE})
+set_tests_properties(cli_optimize_no_variables PROPERTIES
+    PASS_REGULAR_EXPRESSION "keine Variablen")
+if(MIKROPTIM_ENABLE_CUDA)
+    # Ohne CUDA-Gerät übersprungen (SKIP_RETURN_CODE); lokal auf der GPU ausführen.
+    add_test(NAME cli_optimize_gpu_json
+        COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_BIEGUNG} --json --quiet --gpu)
+    set_tests_properties(cli_optimize_gpu_json PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "\"format\": \"mikroptim\\.optimize/1\".*\"backend\": \"gpu\".*\"converged\": true")
+    add_test(NAME cli_optimize_gpu_no_device
+        COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_BIEGUNG} --gpu)
+    set_tests_properties(cli_optimize_gpu_no_device PROPERTIES
+        ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1"
+        PASS_REGULAR_EXPRESSION "--gpu: kein CUDA-Ger.+t gefunden")
+else()
+    add_test(NAME cli_optimize_gpu_unavailable
+        COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_BIEGUNG} --gpu)
+    set_tests_properties(cli_optimize_gpu_unavailable PROPERTIES
         PASS_REGULAR_EXPRESSION "--gpu: ohne CUDA gebaut")
 endif()
 

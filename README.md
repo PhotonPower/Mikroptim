@@ -58,6 +58,13 @@ Ein System auswerten (Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge, 
 ./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json --json
 ```
 
+Die Variablen eines Systems optimieren (Levenberg-Marquardt, Iterationsprotokoll, Ergebnis als neue Systemdatei; mit `--gpu` auf dem Gerät, mit `--runs K` als Multistart, siehe [docs/cli.md](docs/cli.md#mikroptim-optimize)):
+
+```bash
+./build/release-cpu/mikroptim optimize data/systems/einzellinse_bk7_biegung.json -o biegung_opt.json
+./build/release-cpu/mikroptim trace biegung_opt.json
+```
+
 Mit Visual Studio liegt das Programm unter `build/<preset>/Release/mikroptim.exe` bzw. `Debug/`.
 
 ## Verzeichnisstruktur

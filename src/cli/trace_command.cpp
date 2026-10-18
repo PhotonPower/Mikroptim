@@ -17,7 +17,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -37,12 +36,6 @@ using Json = nlohmann::ordered_json;
 constexpr int kDefaultRings = 10;
 constexpr int kDefaultSpokes = 8;
 
-// Fehler in der Kommandozeile (Exit-Code kExitUsage).
-class UsageError : public std::runtime_error {
-public:
-    using std::runtime_error::runtime_error;
-};
-
 struct TraceArgs {
     std::string file;
     bool json = false;
@@ -54,18 +47,6 @@ struct TraceArgs {
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
 };
-
-int parse_int(std::string_view option, std::string_view text) {
-    int value = 0;
-    const char* first = text.data();
-    const char* last = text.data() + text.size();
-    const auto [ptr, ec] = std::from_chars(first, last, value);
-    if (ec != std::errc{} || ptr != last || text.empty()) {
-        throw UsageError(std::string(option) + " erwartet eine ganze Zahl, nicht \"" +
-                         std::string(text) + "\"");
-    }
-    return value;
-}
 
 TraceArgs parse_args(std::span<const std::string_view> args) {
     TraceArgs a;
@@ -393,94 +374,6 @@ void write_json(const TraceReport& r, std::ostream& out) {
 // ------------------------------------------------------------------------------------------
 // Text
 // ------------------------------------------------------------------------------------------
-
-// printf-artige Formatierung (C-Locale, unabhängig von Plattform und Compiler). Nicht endliche
-// Werte werden ausgeschrieben, weil die C-Bibliotheken sie unterschiedlich drucken. Ein
-// Minuszeichen vor einer zu null gerundeten Zahl (-0 oder winzige negative Rundungsreste)
-// entfällt, damit das Vorzeichen von Rundungsresten nicht in der Ausgabe erscheint.
-std::string format_number(const char* fmt, double v) {
-    if (std::isnan(v)) {
-        return "-";
-    }
-    if (std::isinf(v)) {
-        return v > 0 ? "unendlich" : "-unendlich";
-    }
-    char buf[64];
-    std::snprintf(buf, sizeof buf, fmt, v);
-    std::string s(buf);
-    if (!s.empty() && s.front() == '-') {
-        const std::string mantissa = s.substr(1, s.find_first_of("eE") - 1);
-        if (mantissa.find_first_not_of("0.") == std::string::npos) {
-            s.erase(0, 1);
-        }
-    }
-    return s;
-}
-
-std::string fixed(double v, int decimals = 6) {
-    const std::string fmt = "%." + std::to_string(decimals) + "f";
-    return format_number(fmt.c_str(), v);
-}
-
-std::string sci(double v, int decimals = 6) {
-    const std::string fmt = "%." + std::to_string(decimals) + "e";
-    return format_number(fmt.c_str(), v);
-}
-
-// Wert mit Einheit; ohne Einheit, wenn der Wert nicht endlich ist.
-std::string with_unit(const std::string& value, double v, const char* unit) {
-    if (!std::isfinite(v) || unit[0] == '\0') {
-        return value;
-    }
-    return value + " " + unit;
-}
-
-// Zahl der Zeichen eines UTF-8-Texts (Fortsetzungsbytes 10xxxxxx zählen nicht).
-std::size_t display_width(std::string_view s) {
-    std::size_t n = 0;
-    for (const char c : s) {
-        if ((static_cast<unsigned char>(c) & 0xC0U) != 0x80U) {
-            ++n;
-        }
-    }
-    return n;
-}
-
-// Linksbündig auf `width` Zeichen aufgefüllt.
-std::string pad_right(std::string_view s, std::size_t width) {
-    std::string out(s);
-    const std::size_t w = display_width(s);
-    if (w < width) {
-        out.append(width - w, ' ');
-    }
-    return out;
-}
-
-// Rechtsbündig auf `width` Zeichen aufgefüllt.
-std::string pad_left(std::string_view s, std::size_t width) {
-    const std::size_t w = display_width(s);
-    std::string out;
-    if (w < width) {
-        out.append(width - w, ' ');
-    }
-    out += s;
-    return out;
-}
-
-void kv(std::ostream& out, std::string_view key, const std::string& value) {
-    out << "  " << pad_right(key, 44) << value << '\n';
-}
-
-std::string join_fixed(const std::vector<double>& values, int decimals) {
-    std::string s;
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        if (i > 0) {
-            s += ", ";
-        }
-        s += fixed(values[i], decimals);
-    }
-    return s;
-}
 
 void write_text(const TraceReport& r, std::ostream& out) {
     const SystemDescription& sys = r.loaded.system;
