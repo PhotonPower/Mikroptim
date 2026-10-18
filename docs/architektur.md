@@ -161,21 +161,125 @@ Jedes Feld hat eine eigene Quadratur (Achsfächer auf der Achse, sonst halbe Pup
 
 Ein Batch enthält V Varianten mit derselben Topologie (Flächenzahl und Flächentypen). Varianten mit anderer Topologie gehören in einen anderen Batch.
 
-Structure of Arrays im globalen Speicher, Index `[v][s]` bzw. `[v][s][l]`:
+### Topologie und Felder (M2-T1)
 
-| Feld | Typ | Bedeutung |
+Die Topologie `BatchTopology` umfasst S (Flächen, 2 … `kMaxSurfaces`), L (Wellenlängen), F (Felder), G (Geisterplatten), K (Koeffizienten pro Geisterplatte), die Quellenart (`SourceKind::Collimated` oder `Point`) und `type[s]`. Regeln (`validate_topology`, sonst `std::invalid_argument`): L, F ≥ 1; G = Anzahl der Flächen vom Typ `GhostPlate`; G > 0 ⇒ K ≥ 1, G = 0 ⇒ K = 0; Punktquelle ⇒ F = 1.
+
+Structure of Arrays, alle Werte FP64 (außer `type` und `ghost_surface`), Variante v immer als äußerster Index:
+
+| Feld | Typ | Ablage | Bedeutung |
+|---|---|---|---|
+| `type[s]` | uint8 | gemeinsam | Flächentyp `SurfaceKind`: Stop, Plane, Sphere, GhostPlate |
+| `ghost_surface[g]` | int32 | gemeinsam | Fläche der Geisterplatte g (abgeleitet: g-te Fläche vom Typ GhostPlate) |
+| `ghost_norm_radius[g]` | R | gemeinsam | Normierungsradius r_g des Dickenprofils [mm] |
+| `wavelength_nm[l]` | R | gemeinsam | Wellenlängen, für die `index` berechnet wurde [nm] |
+| `wavelength_weight[l]` | R | gemeinsam | Gewicht w_λ |
+| `field_weight[f]` | R | gemeinsam | Gewicht w_f |
+| `reference_wavelength_nm` | R | Skalar | λ_ref (OPD in Wellen, optimierung.md, Abschnitt 2) |
+| `source_point[3]`, `source_na` | R | Skalar | nur Punktquelle: Quellpunkt (lokal zu Fläche 0), NA im Medium nach Fläche 0 |
+| `curvature[v][s]` | R | pro Variante | Krümmung c = 1/R [1/mm], 0 bei Stop und Plane |
+| `thickness[v][s]` | R | pro Variante | Abstand zum nächsten Scheitel [mm]; `thickness[v][S−1]` = Arbeitsabstand |
+| `index[v][s][l]` | R | pro Variante | Brechzahl nach Fläche s bei Wellenlänge l (vorab aus dem Glasmodell) |
+| `pupil_radius[v]` | R | pro Variante | Pupillenradius a = Halbdurchmesser der Blende [mm] |
+| `field_angle[v][f]` | R | pro Variante | Feldwinkel θ_f [rad] (Punktquelle: 0) |
+| `field_target[v][f]` | R | pro Variante | ideale Bildhöhe h_f = f_soll · tan θ_f [mm] (numerik.md, Abschnitt 7) |
+| `ghost_coeff[v][g][k]` | R | pro Variante | Koeffizienten a_{g,k} der Geisterplatte g |
+| `ghost_index[v][g][l]` | R | pro Variante | Brechzahl des virtuellen Glases der Geisterplatte |
+
+Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
+
+| Feld | Index | Elemente pro Variante |
 |---|---|---|
-| `type[s]` | uint8 | Flächentyp (gemeinsam für den Batch): Plane, Sphere, GhostPlate |
-| `curvature[v][s]` | R | Krümmung c = 1/R |
-| `thickness[v][s]` | R | Abstand zum nächsten Scheitel |
-| `index[v][s][l]` | R | Brechzahl nach der Fläche bei Wellenlänge l (vorab aus dem Glasmodell) |
-| `ghost_coeff[v][g][k]` | R | Koeffizienten der Geisterplatte g |
-| `ghost_index[v][g][l]` | R | Brechzahl des virtuellen Glases der Geisterplatte |
-| `ghost_norm_radius[g]` | R | Normierungsradius des Dickenprofils |
-| `image_distance[v]` | R | Arbeitsabstand (Dicke der letzten Fläche) |
-| `field_target[v][f]` | R | ideale Bildhöhe h_f = f_soll · tan θ_f |
+| `curvature`, `thickness` | v·S + s | S |
+| `index` | (v·S + s)·L + l | S·L |
+| `pupil_radius` | v | 1 |
+| `field_angle`, `field_target` | v·F + f | F |
+| `ghost_coeff` | (v·G + g)·K + k | G·K |
+| `ghost_index` | (v·G + g)·L + l | G·L |
 
-Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
+Die Daten einer Variante liegen in jedem Feld zusammenhängend; Variante v der Flächentabelle ist daher eine `SurfaceTableView` mit um v·S bzw. v·S·L versetzten Zeigern (`SystemBatchView::surface_table(v)`), `type` ist für alle Varianten derselbe Zeiger. `index` hat für eine Variante dasselbe Layout wie `IndexTable::n`.
+
+Festlegungen:
+
+- **Arbeitsabstand:** Ein eigenes Feld `image_distance[v]` gibt es nicht. Einzige Quelle ist `thickness[v][S−1]` (so lesen es `trace_ray`, `transfer_to_image_plane` und die Paraxialrechnung); `image_distance(v)` ist nur ein Zugriff darauf. Die Variable „Arbeitsabstand w“ (M3) ist dieses Element.
+- **Pro Variante** liegt alles, was der Optimierer oder eine Homotopie für einzelne Läufe ändert: Krümmungen, Dicken (inklusive Arbeitsabstand), Brechzahlen (Glasvariablen M6), Geisterkoeffizienten (M4), Pupillenradius (NA-Homotopie), Feldwinkel und Feldziele (Feld-Homotopie).
+- **Gemeinsam** liegt, was die Meritfunktion definiert und für alle Varianten gleich sein muss, damit Merits vergleichbar sind: Gewichte, Wellenlängen, λ_ref, Quellenart und Punktquelle, Normierungsradien. Eine Spektrum-Homotopie verschiebt die Wellenlängen aller Varianten eines Batches gemeinsam (neue `index`-Zeilen pro Variante).
+- **Feldziel** beim Aufbau aus einem System: f_soll = `target.focal_length`, sonst die paraxiale Brennweite bei λ_ref; afokale Systeme (z. B. `planplatte_bk7.json`), θ_f = 0 und die Punktquelle haben h_f = 0.
+- **Feldwinkel** werden mit demselben Ausdruck wie im CPU-Tracer umgerechnet (θ = Grad · (π/180)), damit CPU-Trace über Batch und Einzeltabelle bitgleich sind.
+- **Geisterplatten:** Die Felder sind vorhanden (G = 0 erlaubt); Physik und Dateiformat folgen in M4. Der Tracer meldet für `GhostPlate` bis M4-T5 `Unsupported`.
+- Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
+
+### Host-Container (Bibliothek `Mikroptim::batch`, `src/batch/`)
+
+Statische Bibliothek `mikroptim_batch`, linkt `model`, `glass`, `cpu` und privat `paraxial`. Header unter `include/mikroptim/batch/`:
+
+```cpp
+// system_batch_view.hpp (header-only, MKO_HD, ohne std-Container)
+struct BatchShape { int variants, surfaces, wavelengths, fields, ghost_plates, ghost_terms;
+                    size_t surface_at(v, s), index_at(v, s, l), field_at(v, f),
+                           ghost_coeff_at(v, g, k), ghost_index_at(v, g, l); /* + *_stride() */ };
+template <class R> struct SystemBatchView {          // trivial kopierbar, per Wert an Kernel
+    BatchShape shape; SourceKind source; R source_point[3], source_na, reference_wavelength_nm;
+    const SurfaceKind* type; const int* ghost_surface; const R *ghost_norm_radius, *wavelength_nm,
+        *wavelength_weight, *field_weight, *curvature, *thickness, *index, *pupil_radius,
+        *field_angle, *field_target, *ghost_coeff, *ghost_index;
+    SurfaceTableView<R> surface_table(int v) const;  // Eingabe für trace_ray
+    R image_distance(int v) const;                   // = thickness[v][S−1]
+};
+template <class R> Ray<R> batch_source_ray(const SystemBatchView<R>&, int v, int f, int l,
+                                           const PupilSample<R>&);   // wie source_ray (cpu_trace)
+
+// system_batch.hpp
+void validate_topology(const BatchTopology&);
+class SystemBatchHost {                              // besitzt alle Felder (std::vector<double>)
+    explicit SystemBatchHost(BatchTopology, int variants = 0);   // alle Werte 0
+    void resize(int); int add_variant_copy(int from); void copy_variant(int from, int to);
+    void copy_variant_from(const SystemBatchHost& other, int from, int to); // gleiche Topologie
+    double& curvature(int v, int s); /* … jedes Feld, jeder Index geprüft (std::out_of_range) */
+    std::span<double> curvature_data(); /* … Rohfelder für Upload und schnelle Schleifen */
+    SystemBatchView<double> view() const; SurfaceTableView<double> surface_table(int v) const;
+    void validate_values() const;                    // endlich, n > 0, a > 0, Gewichte >= 0 …
+    friend bool operator==(const SystemBatchHost&, const SystemBatchHost&); // bitweise
+};
+BatchTopology topology_of(const SystemDescription&, const IndexTable&);
+SystemBatchHost make_system_batch(const SystemDescription&, const IndexTable&, int variants = 1,
+                                  std::optional<double> focal_length = std::nullopt);
+SystemBatchHost make_system_batch(const LoadedSystem&, int variants = 1);
+
+// batch_trace_cpu.hpp: CPU-Referenz pro Variante, Ablage wie trace_system_cpu
+CpuTraceResult trace_variant_cpu(const SystemBatchHost&, int v, const PupilQuadrature<double>&);
+```
+
+Für eine aus einem System gebaute Variante ist `trace_variant_cpu` bitgleich zu `trace_system_cpu` über dessen Einzeltabelle (Test `BatchTrace.*`).
+
+### Gerätespeicher (`Mikroptim::cuda`)
+
+`include/mikroptim/cuda/device_system_batch.hpp` (reines C++):
+
+```cpp
+class DeviceSystemBatch {                            // RAII, nur verschiebbar
+    explicit DeviceSystemBatch(const SystemBatchHost&, int device = -1);
+    void upload(const SystemBatchHost&, int first = 0, int count = -1); // Varianten-Bereich
+    void download(SystemBatchHost&, int first = 0) const; SystemBatchHost download() const;
+    void release() noexcept;
+    SystemBatchView<double> view() const;            // Gerätezeiger
+    int device() const; int variants() const; const SystemBatchLayout& layout() const;
+};
+int max_variants_on_device(const BatchTopology&, const OutputRequest&,
+                           const MemoryReserve& = {}, size_t extra_bytes_per_variant = 0,
+                           int device = -1);
+// device_info.hpp
+struct DeviceMemoryInfo { size_t free_bytes, total_bytes; };
+DeviceMemoryInfo device_memory_info(int device = -1);   // cudaMemGetInfo
+```
+
+Alle Felder liegen in **einem** Puffer (ein `cudaMalloc`) im Layout `make_batch_layout`: erst die gemeinsamen, dann die Felder pro Variante, in der Reihenfolge der Tabelle oben, jedes auf `kBatchAlignment` = 256 Byte ausgerichtet. Die Skalare liegen nur in der Sicht. `upload` lädt einen Variantenbereich [first, first + count) hoch, der auf dem Gerät die Nummern 0 … count − 1 trägt (Tranchen in M2-T4, Aufteilung auf GPUs in M7), und verwendet den Puffer weiter, wenn er groß genug ist. Kopien sind synchron. Das Gerät wird beim ersten Upload festgelegt; alle Aufrufe stellen das aktuelle Gerät des Aufrufers wieder her.
+
+Fehlerbehandlung: Konfigurations- und Speicherfehler sind Host-Fehler (AGENTS.md, Abschnitt 5) und werfen `mko::cuda::CudaError` (`include/mikroptim/cuda/cuda_error.hpp`, Makro `MKO_CUDA_CHECK` in `src/cuda/cuda_check.hpp`); falsche Argumente werfen `std::invalid_argument` bzw. `std::out_of_range`. Die älteren Prüfkernel (M1) melden Fehler weiterhin per `bool` (`MKO_CUDA_TRY`).
+
+Der Prüfkernel `trace_batch_gpu` (`include/mikroptim/cuda/batch_trace_check.hpp`) traced jeden Strahl (v, f, l, k) mit `batch_source_ray` und `trace_ray` über `view.surface_table(v)` direkt aus dem globalen Speicher. Er prüft nur das Layout gegen `trace_variant_cpu`; Grid-Abbildung, Shared Memory und Reduktionen sind Sache von M2-T2.
+
+Für df64 (M7) wird eine zweite, umgerechnete Sicht `SystemBatchView<df64>` nötig; der Host-Container bleibt FP64.
 
 ## Brechzahltabelle
 
@@ -259,6 +363,21 @@ Deterministisch: Baumreduktion im Block mit `__shfl_down_sync` und Shared Memory
 ## Speicherbedarf
 
 Residuenmatrix für finite Differenzen: Läufe × (P+1) × Residuen × 8 Byte. Beispiel 1.000 × 91 × 2.500 × 8 B ≈ 1,8 GB. Die Batchgröße wird zur Laufzeit aus `cudaMemGetInfo` bestimmt; reicht der Speicher nicht, werden Läufe in Tranchen verarbeitet.
+
+### Abschätzung (M2-T1, `include/mikroptim/batch/batch_memory.hpp`)
+
+Jedes Feld wird auf A = `kBatchAlignment` = 256 Byte aufgerundet, ⌈x⌉_A = A·⌈x/A⌉. Mit B = F·L Blöcken pro Variante und R_v = Strahlen pro Variante:
+
+- **Batch** (`make_batch_layout(topology, V).total_bytes`):
+  ⌈S⌉ + ⌈4G⌉ + ⌈8G⌉ + 2·⌈8L⌉ + ⌈8F⌉ + 2·⌈8VS⌉ + ⌈8VSL⌉ + ⌈8V⌉ + 2·⌈8VF⌉ + ⌈8VGK⌉ + ⌈8VGL⌉ (jeweils ⌈·⌉_A, leere Felder 0).
+- **Ausgaben** (`make_output_layout(topology, V, OutputRequest, extra)`), jede einzeln abschaltbar:
+  Residuen ⌈8V(R_v + E)⌉, Status pro Strahl ⌈V·R_v⌉ (1 Byte), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉, Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
+- **Strahlen pro Variante:** `rays_per_variant(F, L, N·M, F_Achse, N)` = L·(F_Achse·N + (F − F_Achse)·N·M), wenn die Achsfelder die Achsquadratur (M = 1) nutzen (`sample_count` in `include/mikroptim/pupil/quadrature.hpp`).
+- `estimate_device_bytes` = Batch + Ausgaben. Die Kernel in M2-T2/M2-T3 legen ihre Ausgaben nach diesem Schema an oder passen die Abschätzung an.
+
+Größte Batchgröße: `max_variants(free, topology, outputs, reserve, extra)` sucht (Bisektion, die Abschätzung ist monoton in V) das größte V mit Abschätzung ≤ free − max(`min_bytes`, `fraction`·free); Standardreserve max(256 MiB, 5 %) für Kontext, Kernel-Stacks, Local Memory (`TraceRecord`) und Fragmentierung. Zusätzlich gilt V·F·L ≤ 2³¹ − 1 (größtes Grid). Auf dem Gerät: `max_variants_on_device` mit `device_memory_info().free_bytes`; nie fest verdrahten (AGENTS.md, Abschnitt 7).
+
+Beispiel (Test `BatchMemory.MaxVariantsRespectsLimit`): Zielsystem-Topologie S = 30, L = 7, F = 5 (ein Achsfeld), G = 6, K = 8, N = 10, M = 8 ergibt 2.310 Strahlen und ca. 41,5 kB pro Variante mit allen Ausgaben, also ca. 395.000 Varianten bei 16 GiB und 592.000 bei 24 GiB freiem Speicher. Der Batch selbst ist klein (ca. 3 kB pro Variante); die Ausgaben dominieren.
 
 ## Host-API (Skizze)
 
