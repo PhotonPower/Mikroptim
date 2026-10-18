@@ -83,9 +83,11 @@ std::vector<double> run_vectors(const FdProblem& p, int runs) {
     return x;
 }
 
-// Abweichung eines Residuums zwischen GPU und CPU (Toleranz von RESIDUALS, M2-T2).
-double residual_tolerance(double r) {
-    return std::max(kCpuGpuFp64, kCpuGpuFp64Relative * std::abs(r));
+// Abweichung eines Strahlresiduums zwischen GPU und CPU (Toleranz von RESIDUALS, M2-T2, für die
+// OPD in mm): Mit r = u·OPD (M4-T1, u = s_{f,l}·√W aus residual_units) ist das
+// max(u·kCpuGpuFp64, kCpuGpuFp64Relative·|r|).
+double residual_tolerance(double unit, double r) {
+    return mko::test::residual_bound(unit, r, kCpuGpuFp64, kCpuGpuFp64Relative);
 }
 
 // Schranke für |J_GPU − J_CPU| eines Elements, abgeleitet aus den Residuen-Toleranzen: Die
@@ -93,9 +95,9 @@ double residual_tolerance(double r) {
 // einseitig c_a = d_b²/N, c_b = −d_a²/N, c₀ = −(c_a + c_b) mit N = d_a·d_b·(d_b − d_a),
 // vorwärts c_a = −c₀ = 1/d_a), also |ΔJ| ≤ Σ_x |c_x|·δ(r_x) mit δ = residual_tolerance (0 für
 // Zusatzresiduen, die auf dem Host gleich ausgewertet werden). Dazu die Rundung der Formel
-// selbst (FMA-Kontraktion im Kernel): 8ε·Σ_x |c_x·r_x|.
+// selbst (FMA-Kontraktion im Kernel): 8ε·Σ_x |c_x·r_x|. `unit` ist u der Zeile (Strahlzeilen).
 double element_bound(FdStencil s, double da, double db, double r0, double ra, double rb,
-                     bool ray_row) {
+                     bool ray_row, double unit) {
     double c0 = 0.0;
     double ca = 0.0;
     double cb = 0.0;
@@ -121,8 +123,9 @@ double element_bound(FdStencil s, double da, double db, double r0, double ra, do
     if (!ray_row) {
         return formula;
     }
-    return std::abs(c0) * residual_tolerance(r0) + std::abs(ca) * residual_tolerance(ra) +
-           std::abs(cb) * residual_tolerance(rb) + formula;
+    return std::abs(c0) * residual_tolerance(unit, r0) +
+           std::abs(ca) * residual_tolerance(unit, ra) +
+           std::abs(cb) * residual_tolerance(unit, rb) + formula;
 }
 
 // Vergleicht GPU- und CPU-Jacobi elementweise mit element_bound; Rückgabe: größtes Verhältnis
@@ -135,6 +138,12 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
     const mko::ResidualResult res =
         mko::residuals_cpu(fd.batch, ResidualLayout(p.base.topology(), opt.quadrature));
     const std::vector<double> extra = mko::test::extra_values(fd.batch, opt.extra);
+    const std::vector<double> units =
+        mko::test::residual_units(fd.batch, ResidualLayout(p.base.topology(), opt.quadrature));
+    const auto unit = [&](std::int64_t r) {
+        return r < static_cast<std::int64_t>(units.size()) ? units[static_cast<std::size_t>(r)]
+                                                           : 0.0;
+    };
     const std::int64_t rv = cpu.shape.ray_rows;
     const std::int64_t R = cpu.shape.rows();
     const auto value = [&](int v, std::int64_t r) {
@@ -149,7 +158,7 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
     for (int i = 0; i < cpu.shape.runs; ++i) {
         const mko::FdPattern& pat = cpu.patterns[static_cast<std::size_t>(i)];
         for (std::int64_t r = 0; r < R; ++r) {
-            const double tol = residual_tolerance(value(i * n, r));
+            const double tol = residual_tolerance(unit(r), value(i * n, r));
             EXPECT_LE(std::abs(gpu.residual(i)[static_cast<std::size_t>(r)] -
                                cpu.residual(i)[static_cast<std::size_t>(r)]),
                       r < rv ? tol : 0.0);
@@ -162,7 +171,7 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
             const double db = central ? pat.step_minus[kk] : 0.0;
             for (std::int64_t r = 0; r < R; ++r) {
                 const double bound = element_bound(pat.stencil[kk], da, db, value(i * n, r),
-                                                   value(va, r), value(vb, r), r < rv);
+                                                   value(va, r), value(vb, r), r < rv, unit(r));
                 const double diff = std::abs(gpu.at(i, r, k) - cpu.at(i, r, k));
                 EXPECT_LE(diff, bound) << "Lauf " << i << ", " << p.set[k].name << ", Zeile " << r;
                 if (bound > 0.0) {
@@ -358,7 +367,7 @@ TEST(CudaFdJacobian, DevicePathMatchesHostDifferences) {
         for (std::int64_t r = 0; r < host.shape.rows(); ++r) {
             const double bound =
                 element_bound(FdStencil::OneSided, pat.step_plus[kk], pat.step_minus[kk],
-                              value(0, r), value(2 * k + 1, r), value(2 * k + 2, r), false);
+                              value(0, r), value(2 * k + 1, r), value(2 * k + 2, r), false, 0.0);
             EXPECT_LE(std::abs(dev.at(0, r, k) - host.at(0, r, k)), bound)
                 << p.set[k].name << ", Zeile " << r;
         }

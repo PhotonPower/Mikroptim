@@ -1,7 +1,8 @@
 // Kernel MERIT (M2-T3, nur mit MIKROPTIM_ENABLE_CUDA): Merit gegen die Summe der
 // RESIDUALS-Ausgabe, Determinismus, GPU gegen CPU-Referenz (merit_cpu, surface_extrema_cpu),
-// Max-Reduktionen, Grenzfälle. Fachliche Tests laufen über die öffentliche API TraceEngine
-// (M2-T4); nur DeviceBufferReuse und InvalidUseThrows prüfen den Baustein DeviceMerit direkt.
+// Max-Reduktionen, Grenzfälle, gewichtete Merit gegen die RMS-Werte aus M1-T7 (M4-T1). Fachliche
+// Tests laufen über die öffentliche API TraceEngine (M2-T4); nur DeviceBufferReuse und
+// InvalidUseThrows prüfen den Baustein DeviceMerit direkt.
 
 #include "mikroptim/batch/batch_extrema.hpp"
 #include "mikroptim/batch/batch_merit.hpp"
@@ -11,7 +12,9 @@
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/merit.hpp"
+#include "mikroptim/cuda/precision.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/merit/wavefront.hpp"
 #include "residual_test_systems.hpp"
 #include "tolerances.hpp"
 
@@ -47,6 +50,7 @@ using mko::cuda::TraceSettings;
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
 using mko::test::kMeritVsResidualSum;
+using mko::test::kWeightedMerit;
 
 namespace {
 
@@ -188,18 +192,20 @@ MeritComparison compare_with_residuals(const MeritResult& m, const ResidualResul
 }
 
 struct CpuComparison {
-    double max_sqrt_merit = 0.0; // max |√F_GPU − √F_CPU| [mm]
+    double max_sqrt_merit = 0.0; // max |√F_GPU − √F_CPU| [Wellen]
     double max_height = 0.0;     // max |h_GPU − h_CPU| [mm]
     double max_cos = 0.0;        // max |cos I_GPU − cos I_CPU|
 };
 
 // GPU gegen CPU-Referenz. Merit: |√F_GPU − √F_CPU| = | ‖r_GPU‖ − ‖r_CPU‖ | <= ‖r_GPU − r_CPU‖,
-// und jedes Residuum liegt innerhalb max(kCpuGpuFp64, kCpuGpuFp64Relative · |r|) (Abnahme
-// M2-T2); die Schranke ist die 2-Norm dieser Toleranzen plus Summationsrundung
+// und jedes Residuum liegt innerhalb max(u_k · kCpuGpuFp64, kCpuGpuFp64Relative · |r|) (Abnahme
+// M2-T2 für die OPD, mit r = u_k · OPD in Wellen umgerechnet, M4-T1; u_k aus residual_units);
+// die Schranke ist die 2-Norm dieser Toleranzen plus Summationsrundung
 // (kMeritVsResidualSum · √F). Extrema: max ist 1-Lipschitz, also dieselben Toleranzen wie pro
 // Strahl (Höhe absolut bzw. relativ, cos I absolut).
 CpuComparison compare_with_cpu(const MeritResult& gpu, const MeritResult& cpu,
-                               const ResidualResult& cpu_residuals) {
+                               const ResidualResult& cpu_residuals,
+                               const std::vector<double>& units) {
     CpuComparison c;
     EXPECT_EQ(gpu.variants, cpu.variants);
     EXPECT_TRUE(same_bytes(gpu.failed, cpu.failed));
@@ -207,8 +213,9 @@ CpuComparison compare_with_cpu(const MeritResult& gpu, const MeritResult& cpu,
         const auto vi = static_cast<std::size_t>(v);
         double bound_sq = 0.0;
         for (std::int64_t i = 0; i < cpu_residuals.rays_per_variant; ++i) {
-            const double t =
-                std::max(kCpuGpuFp64, kCpuGpuFp64Relative * std::abs(cpu_residuals.residual(v, i)));
+            const double t = mko::test::residual_bound(units[static_cast<std::size_t>(i)],
+                                                       cpu_residuals.residual(v, i), kCpuGpuFp64,
+                                                       kCpuGpuFp64Relative);
             bound_sq += t * t;
         }
         const double d = std::abs(std::sqrt(gpu.merit[vi]) - std::sqrt(cpu.merit[vi]));
@@ -288,8 +295,9 @@ TEST(CudaMerit, MatchesCpu) {
         const ResidualLayout layout(batch.topology(), cs.settings);
         const MeritResult gpu = gpu_merit(batch, cs.settings);
         const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-        const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout));
-        std::printf("[ Info     ] %s: max |√F_GPU - √F_CPU| = %.3e mm, max |dh| = %.3e mm, "
+        const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
+                                                 mko::test::residual_units(batch, layout));
+        std::printf("[ Info     ] %s: max |√F_GPU - √F_CPU| = %.3e Wellen, max |dh| = %.3e mm, "
                     "max |d cos I| = %.3e\n",
                     cs.file, c.max_sqrt_merit, c.max_height, c.max_cos);
     }
@@ -326,7 +334,8 @@ TEST(CudaMerit, GhostPlates) {
     EXPECT_TRUE(same_bytes(r.extrema.values, gpu.extrema.values));
     EXPECT_EQ(gpu.extrema.surfaces, batch.surfaces()); // Tabellenflächen
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout));
+    const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
+                                             mko::test::residual_units(batch, layout));
     // Die Geisterplatten sind Ebenen (c = 0): cos I = d_z vor dem Phasenschritt, also <= 1
     for (int s = 0; s < batch.surfaces(); ++s) {
         if (batch.type(s) == mko::SurfaceKind::GhostPlate) {
@@ -335,7 +344,7 @@ TEST(CudaMerit, GhostPlates) {
         }
     }
     std::printf("[ Info     ] %s (G = %d, K = %d, S = %d Tabellenflächen): max |F - Σr²| / Σr² = "
-                "%.2e, %d mit versagten Strahlen, max |√F_GPU - √F_CPU| = %.3e mm, max |dh| = "
+                "%.2e, %d mit versagten Strahlen, max |√F_GPU - √F_CPU| = %.3e Wellen, max |dh| = "
                 "%.3e mm, max |d cos I| = %.3e\n",
                 ls.system.name.c_str(), batch.ghost_plates(), batch.ghost_terms(), batch.surfaces(),
                 c.max_relative, c.with_failures, d.max_sqrt_merit, d.max_height, d.max_cos);
@@ -360,9 +369,10 @@ TEST(CudaMerit, PointSourceAndMaxSurfaces) {
         const MeritResult gpu = gpu_merit(batch);
         const MeritComparison c = compare_with_residuals(gpu, gpu_residuals(batch), layout);
         const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-        const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout));
+        const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
+                                                 mko::test::residual_units(batch, layout));
         std::printf("[ Info     ] S = %d: max |F - Σr²| / Σr² = %.2e, max |√F_GPU - √F_CPU| = "
-                    "%.3e mm, max |dh| = %.3e mm, max |d cos I| = %.3e\n",
+                    "%.3e Wellen, max |dh| = %.3e mm, max |d cos I| = %.3e\n",
                     batch.surfaces(), c.max_relative, d.max_sqrt_merit, d.max_height, d.max_cos);
     }
 }
@@ -470,7 +480,8 @@ TEST(CudaMerit, FailedRaysAndClosedForm) {
     const ResidualLayout layout(batch.topology());
     const MeritResult gpu = gpu_merit(batch);
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout));
+    compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
+                     mko::test::residual_units(batch, layout));
     compare_with_residuals(gpu, gpu_residuals(batch), layout);
     EXPECT_EQ(gpu.failed[0], 0);
     EXPECT_EQ(gpu.failed[4], 0);
@@ -552,14 +563,15 @@ TEST(CudaMerit, LargeBatch) {
     const MeritResult& gpu = merit_out.merit;
     ASSERT_EQ(gpu.variants, 10000);
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout));
+    const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
+                                             mko::test::residual_units(batch, layout));
     const MeritComparison r = compare_with_residuals(gpu, residual_out.residuals, layout);
     const double rays = 10000.0 * static_cast<double>(layout.rays_per_variant());
     std::printf(
         "[ Info     ] 10.000 Varianten x %lld Strahlen (S = %d), TraceEngine mit Upload und "
         "Download: MERIT %.3f ms (%.3e Strahlen/s), MERIT + Extrema %.3f ms (%.3e "
         "Strahlen/s), RESIDUALS %.3f ms (%.3e Strahlen/s); max |√F_GPU - √F_CPU| = %.3e "
-        "mm, max |F - Σr²| / Σr² = %.2e\n",
+        "Wellen, max |F - Σr²| / Σr² = %.2e\n",
         static_cast<long long>(layout.rays_per_variant()), batch.surfaces(), t_merit * 1e3,
         rays / t_merit, t_extrema * 1e3, rays / t_extrema, t_residuals * 1e3, rays / t_residuals,
         c.max_sqrt_merit, r.max_relative);
@@ -607,4 +619,64 @@ TEST(CudaMerit, InvalidUseThrows) {
     // Nach den Fehlern funktioniert der Puffer weiter
     EXPECT_NO_THROW(out.run(device, layout));
     EXPECT_EQ(out.download().variants, 2);
+}
+
+// Abnahme M4-T1 auf dem Gerät (Rechentyp FP64 und df64): Merit des Kernels MERIT gegen
+// Σ_f Σ_λ ŵ_f ŵ_λ (RMS_fλ / λ_ref)²
+// (a) mit dem RMS aus der OPD desselben Gerätelaufs (RESIDUALS mit OPD, tuple_wavefronts):
+//     < kWeightedMerit relativ; prüft die Gewichte im Kernel (dieselbe OPD auf beiden Seiten);
+// (b) mit dem RMS aus evaluate_wavefront (M1-T7, CPU): √F ist die 2-Norm der Residuen
+//     s_{f,l} √W_k OPD_k, also |√F_GPU − √F_M1| <= δ · √(Σ_(f,l) s²) (Σ_k W_k = 1 pro Tupel)
+//     mit der Schranke δ der OPD (kCpuGpuFp64 bzw. kDf64VsFp64, alle |OPD| < 0,1 mm) plus
+//     Summationsrundung kWeightedMerit · √F. Die relative Abweichung wird ausgegeben.
+TEST(CudaMerit, EqualsWeightedSumOfWavefrontRms) {
+    MKO_REQUIRE_GPU();
+    TraceEngine engine(0);
+    for (const mko::cuda::Precision p : {mko::cuda::Precision::Fp64, mko::cuda::Precision::Df64}) {
+        const bool df64 = p == mko::cuda::Precision::Df64;
+        const double opd_bound = df64 ? mko::test::kDf64VsFp64 : kCpuGpuFp64;
+        double worst_same = 0.0;
+        double worst_m1 = 0.0;
+        for (const mko::test::WeightedCase& c : mko::test::weighted_cases()) {
+            SCOPED_TRACE(c.name + (df64 ? " (df64)" : " (FP64)"));
+            const SystemBatchHost batch = mko::make_system_batch(c.system, 1);
+            const double lambda_mm = c.system.system.spectrum.reference_nm * 1e-6;
+            TraceSettings s;
+            s.precision = p;
+            s.opd = true;
+            const TraceOutput res = engine.run(batch, TraceMode::Residuals, s);
+            const TraceOutput mer = engine.run(batch, TraceMode::Merit, s);
+            ASSERT_EQ(res.residuals.failed_count(), 0u);
+            const double f_gpu = mer.merit.merit[0];
+
+            std::vector<double> rms_gpu;
+            for (const mko::TupleWavefront& t :
+                 mko::tuple_wavefronts(res.residuals, res.layout, 0)) {
+                rms_gpu.push_back(t.rms / lambda_mm);
+            }
+            const double same = mko::test::weighted_rms_merit(c.system.system, rms_gpu);
+            const double rel_same = std::abs(f_gpu - same) / same;
+            EXPECT_LT(rel_same, kWeightedMerit) << f_gpu << " vs " << same;
+
+            const mko::WavefrontResult wf = mko::evaluate_wavefront(c.system);
+            std::vector<double> rms_m1;
+            for (const mko::WavefrontMap& m : wf.maps) {
+                rms_m1.push_back(m.rms_waves);
+            }
+            const double m1 = mko::test::weighted_rms_merit(c.system.system, rms_m1);
+            const double bound = opd_bound * mko::test::residual_scale_norm(batch, res.layout) +
+                                 kWeightedMerit * std::sqrt(m1);
+            EXPECT_LE(std::abs(std::sqrt(f_gpu) - std::sqrt(m1)), bound);
+            const double rel_m1 = std::abs(f_gpu - m1) / m1;
+            worst_same = std::max(worst_same, rel_same);
+            worst_m1 = std::max(worst_m1, rel_m1);
+            std::printf("[ Info     ] %s %-46s F = %.15e Wellen², relativ zu Σ ŵ ŵ RMS² (gleicher "
+                        "Lauf) %.2e, zu M1-T7 (CPU) %.2e\n",
+                        df64 ? "df64" : "FP64", c.name.c_str(), f_gpu, rel_same, rel_m1);
+        }
+        RecordProperty(std::string(df64 ? "df64" : "fp64") + "_max_relative_same_run",
+                       std::to_string(worst_same));
+        RecordProperty(std::string(df64 ? "df64" : "fp64") + "_max_relative_m1t7",
+                       std::to_string(worst_m1));
+    }
 }

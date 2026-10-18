@@ -7,6 +7,7 @@
 
 #include "mikroptim/batch/system_batch_view.hpp"
 #include "mikroptim/config.hpp"
+#include "mikroptim/math/scalar.hpp"
 #include "mikroptim/math/vec3.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/ray.hpp"
@@ -52,15 +53,38 @@ MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<B>& b, const Surfa
     return st;
 }
 
-// Erweiterungspunkt für die Gewichte eines Tupels (Feld f, Wellenlänge l). In M2 ist der
-// Faktor 1: r_k = √(W_i V_j) · OPD_k [mm]. M4-T1 ersetzt ihn durch
-// √(w_f · w_λ) / λ_ref (docs/optimierung.md, Abschnitt 2) aus field_weight, wavelength_weight
-// und reference_wavelength_nm der Sicht; CPU-Referenz und Kernel rufen dieselbe Funktion.
-// Ergebnis im Speichertyp B des Batches; ein Kernel mit anderem Rechentyp wandelt es einmal
-// pro Block um (M7-T1).
+// Gewichtsfaktor s_{f,l} eines Tupels (Feld f, Wellenlänge l), M4-T1 (docs/numerik.md,
+// Abschnitt 7; docs/optimierung.md, Abschnitt 2):
+//
+//     s_{f,l} = √(ŵ_f · ŵ_λ) / λ_ref,   ŵ_f = w_f / Σ_f' w_f',   ŵ_λ = w_λ / Σ_l' w_λ',
+//
+// mit w_f = field_weight, w_λ = wavelength_weight und λ_ref = reference_wavelength_nm · 10⁻⁶
+// in mm (wie evaluate_wavefront). Damit ist r_k = s_{f,l} · √(W_i V_j) · OPD_k dimensionslos
+// (Wellen bei λ_ref) und die Merit ohne Versagen Σ_(f,l) ŵ_f ŵ_λ (RMS_fλ / λ_ref)², ein
+// gewichteter mittlerer quadratischer RMS in Wellen², unabhängig von der Zahl der Felder und
+// Wellenlängen und vom Maßstab der Gewichte. Ein Tupel mit w_f = 0 oder w_λ = 0 erhält den
+// Faktor 0 (ohne Division; dann können die Summen 0 sein). Die Summen laufen in aufsteigender
+// Reihenfolge, die Rechnung enthält kein a·b + c (keine FMA-Kontraktion), und Division und
+// Wurzel sind auf dem Gerät korrekt gerundet: CPU und Kernel liefern bitgleiche Faktoren.
+// CPU-Referenz und Kernel rufen dieselbe Funktion. Ergebnis im Speichertyp B des Batches; ein
+// Kernel mit anderem Rechentyp wandelt es einmal pro Block um (M7-T1).
 template <class B>
-MKO_HD inline B residual_scale(const SystemBatchView<B>& /*b*/, int /*f*/, int /*l*/) {
-    return B(1);
+MKO_HD inline B residual_scale(const SystemBatchView<B>& b, int f, int l) {
+    const B wf = b.field_weight[f];
+    const B wl = b.wavelength_weight[l];
+    if (!(wf > B(0)) || !(wl > B(0))) {
+        return B(0);
+    }
+    B sum_f = B(0);
+    for (int i = 0; i < b.shape.fields; ++i) {
+        sum_f += b.field_weight[i];
+    }
+    B sum_l = B(0);
+    for (int i = 0; i < b.shape.wavelengths; ++i) {
+        sum_l += b.wavelength_weight[i];
+    }
+    const B lambda_ref_mm = b.reference_wavelength_nm * B(1e-6);
+    return msqrt((wf / sum_f) * (wl / sum_l)) / lambda_ref_mm;
 }
 
 // Residuum eines Strahls: scale · √(W_i V_j) · OPD_k. Versagte Strahlen übergeben OPD = 0

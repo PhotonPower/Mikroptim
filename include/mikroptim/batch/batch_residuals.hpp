@@ -90,7 +90,7 @@ struct ResidualResult {
     int variants = 0;
     std::int64_t rays_per_variant = 0;
     std::int64_t stride = 0;          // Residuen pro Variante (>= rays_per_variant)
-    std::vector<double> residuals;    // [V · stride], r_k [mm]; 0 bei versagten Strahlen
+    std::vector<double> residuals;    // [V · stride], r_k [Wellen bei λ_ref]; 0 bei Versagen
     std::vector<double> opd;          // [V · rays] OPD nach Kolbenabzug [mm] (0 bei Versagen);
                                       // leer, wenn nicht angefordert
     std::vector<std::uint8_t> status; // [V · rays] TraceStatus; leer, wenn nicht angefordert

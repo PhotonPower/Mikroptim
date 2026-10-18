@@ -1,15 +1,22 @@
 #pragma once
 
 // Testsysteme und zufällig gestörte Varianten für die Residuen- und Merit-Tests (CPU und GPU,
-// M2-T2, M2-T3).
+// M2-T2, M2-T3), Umrechnung zwischen Strahlresiduen und OPD (M4-T1).
 
+#include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/merit/ray_residual.hpp"
+#include "mikroptim/pupil/quadrature.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <random>
 #include <string>
+#include <vector>
 
 namespace mko::test {
 
@@ -111,6 +118,121 @@ inline SystemBatchHost many_surface_batch(int variants, std::uint64_t seed,
     }
     b.validate_values();
     return b;
+}
+
+// Umrechnung Strahlresiduum ↔ OPD (M4-T1): r_k = u_k · OPD_k mit u_k = s_{f,l} · √(W_i V_j)
+// [1/mm] (residual_scale und residual_weight), Ablage des Layouts (Länge rays_per_variant;
+// gleich für alle Varianten, weil die Gewichte gemeinsam sind). Eine Schranke δ [mm] für die
+// OPD eines Strahls ist damit die Schranke u_k · δ für sein Residuum (die Rundung des Produkts,
+// ≤ 2ε |r|, liegt weit unter den relativen Anteilen der Toleranzen).
+inline std::vector<double> residual_units(const SystemBatchHost& batch,
+                                          const ResidualLayout& layout) {
+    const SystemBatchView<double> view = batch.view();
+    std::vector<double> u(static_cast<std::size_t>(layout.rays_per_variant()));
+    for (int f = 0; f < layout.fields(); ++f) {
+        const PupilQuadrature<double>& q = layout.quadrature(f);
+        for (int l = 0; l < layout.wavelengths(); ++l) {
+            const double s = residual_scale(view, f, l);
+            const std::int64_t o = layout.offset(f, l);
+            for (int k = 0; k < layout.samples(f); ++k) {
+                u[static_cast<std::size_t>(o + k)] = s * residual_weight(sample(q, k));
+            }
+        }
+    }
+    return u;
+}
+
+// Schranke pro Strahlresiduum aus einer Toleranz der Form max(abs_mm, rel · |OPD|)
+// (z. B. kCpuGpuFp64, kCpuGpuFp64Relative): max(u · abs_mm, rel · |r|), weil r = u · OPD.
+inline double residual_bound(double unit, double r, double abs_mm, double rel) {
+    return std::max(unit * abs_mm, rel * std::abs(r));
+}
+
+// √(Σ_(f,l) s_(f,l)²) [1/mm]: Faktor, mit dem eine Schranke δ [mm], die für die OPD aller
+// Strahlen gilt, die Norm ‖δr‖₂ einer Variante begrenzt (Σ_k W_k <= 1 pro Tupel).
+inline double residual_scale_norm(const SystemBatchHost& batch, const ResidualLayout& layout) {
+    const SystemBatchView<double> view = batch.view();
+    double sum = 0.0;
+    for (int f = 0; f < layout.fields(); ++f) {
+        for (int l = 0; l < layout.wavelengths(); ++l) {
+            const double s = residual_scale(view, f, l);
+            sum += s * s;
+        }
+    }
+    return std::sqrt(sum);
+}
+
+// System `file` mit anderen Feld- und Spektralgewichten (M4-T1); leere Liste: wie in der Datei.
+inline LoadedSystem weighted_system(const std::string& file, std::vector<double> field_weights,
+                                    std::vector<double> spectrum_weights) {
+    SystemDescription d = load_residual_system(file).system;
+    if (!field_weights.empty()) {
+        d.source.field_weights = std::move(field_weights);
+    }
+    if (!spectrum_weights.empty()) {
+        d.spectrum.weights = std::move(spectrum_weights);
+    }
+    return prepare_system(std::move(d), std::filesystem::path(kResidualSystems));
+}
+
+// Testfälle der Abnahme M4-T1: gleiche und ungleiche Gewichte, ausgeschaltete Felder und
+// Wellenlängen (Gewicht 0), Geisterplatten, Punktquelle neben der Achse (ohne versagte Strahlen).
+struct WeightedCase {
+    std::string name;
+    LoadedSystem system;
+};
+
+inline std::vector<WeightedCase> weighted_cases() {
+    SystemDescription point = load_residual_system("einzellinse_bk7.json").system;
+    point.source.type = SourceType::Point;
+    point.source.field_angles_deg.clear();
+    point.source.field_weights.clear();
+    point.source.numerical_aperture = 0.05;
+    point.source.point = {0.0, 2.0, -300.0};
+    point.surfaces.back().thickness = 120.0;
+    point.spectrum.weights = {0.2, 1.0, 0.6};
+    std::vector<WeightedCase> out;
+    out.push_back(
+        {"Mehrlinser, gleiche Gewichte", load_residual_system("testsystem_mehrlinser.json")});
+    out.push_back(
+        {"Mehrlinser, ungleiche Gewichte",
+         weighted_system("testsystem_mehrlinser.json", {1.0, 0.7, 0.3}, {0.5, 1.0, 0.8, 0.3})});
+    out.push_back(
+        {"Mehrlinser, Feld 1, Wellenlängen 0 und 3 aus",
+         weighted_system("testsystem_mehrlinser.json", {2.0, 0.0, 1.0}, {0.0, 1.0, 1.0, 0.0})});
+    out.push_back({"Einzellinse, ungleiche Gewichte",
+                   weighted_system("einzellinse_bk7.json", {3.0, 2.0, 1.0}, {1.0, 4.0, 1.0})});
+    out.push_back(
+        {"Einzellinse mit Geisterplatten", load_residual_system("einzellinse_geisterplatte.json")});
+    out.push_back({"Punktquelle", prepare_system(point, std::filesystem::path(kResidualSystems))});
+    return out;
+}
+
+// Erwartete Merit nach M4-T1 aus den RMS-Werten der Tupel in Wellen bei λ_ref (Ablage
+// [f · L + l] wie WavefrontResult::maps), unabhängig von residual_scale direkt aus den Gewichten
+// der Beschreibung gerechnet: Σ_f Σ_λ ŵ_f ŵ_λ RMS_fλ² mit ŵ = w / Σ w (Punktquelle: ein Feld mit
+// Gewicht 1). Tupel mit Gewicht 0 tragen nicht bei (auch nicht mit RMS NaN).
+inline double weighted_rms_merit(const SystemDescription& d, const std::vector<double>& rms_waves) {
+    const std::vector<double> wf =
+        d.source.type == SourceType::Point ? std::vector<double>{1.0} : d.source.field_weights;
+    const std::vector<double>& wl = d.spectrum.weights;
+    double sum_f = 0.0;
+    double sum_l = 0.0;
+    for (const double w : wf) {
+        sum_f += w;
+    }
+    for (const double w : wl) {
+        sum_l += w;
+    }
+    double merit = 0.0;
+    for (std::size_t f = 0; f < wf.size(); ++f) {
+        for (std::size_t l = 0; l < wl.size(); ++l) {
+            const double w = (wf[f] / sum_f) * (wl[l] / sum_l);
+            const double rms = rms_waves[f * wl.size() + l];
+            merit += w > 0.0 ? w * rms * rms : 0.0;
+        }
+    }
+    return merit;
 }
 
 } // namespace mko::test

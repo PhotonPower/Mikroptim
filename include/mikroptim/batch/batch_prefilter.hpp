@@ -34,7 +34,7 @@ struct PrefilterCriteria {
     // Werte >= 1 schalten das Kriterium ab.
     double max_failed_fraction = 0.5;
     // (b) Merit über einer festen Schwelle: F > max_merit (F = Σ r² + Anteil weiterer
-    // Residuen, Einheit der Merit, in M2 mm²). +∞ schaltet ab.
+    // Residuen, Einheit der Merit: Wellen² bei λ_ref, ab M4-T1). +∞ schaltet ab.
     double max_merit = std::numeric_limits<double>::infinity();
     // (c) Merit relativ zur besten Variante des Batches: F > max_merit_factor · F_best. F_best
     // ist die kleinste Merit der Varianten, die (a) nicht aussortiert und die mindestens einen

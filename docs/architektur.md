@@ -397,7 +397,7 @@ SurfaceMap make_surface_map(const SystemDescription&); int table_surface_count(c
 
 ## Kernel RESIDUALS (M2-T2)
 
-Implementiert in `src/cuda/residuals.cu` (Kernel `residuals_kernel<R, kExtrema>`, templatisiert über den Rechentyp; instanziiert für `double` und `df64`, M7-T1), Host-API in `include/mikroptim/cuda/residuals.hpp` (reines C++), Ablage und CPU-Referenz in `include/mikroptim/batch/batch_residuals.hpp` (Bibliothek `Mikroptim::batch`), Pro-Strahl-Teil header-only in `include/mikroptim/merit/ray_residual.hpp`. Definition des Residuums: [numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2).
+Implementiert in `src/cuda/residuals.cu` (Kernel `residuals_kernel<R, kExtrema>`, templatisiert über den Rechentyp; instanziiert für `double` und `df64`, M7-T1), Host-API in `include/mikroptim/cuda/residuals.hpp` (reines C++), Ablage und CPU-Referenz in `include/mikroptim/batch/batch_residuals.hpp` (Bibliothek `Mikroptim::batch`), Pro-Strahl-Teil header-only in `include/mikroptim/merit/ray_residual.hpp`. Definition des Residuums: [numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1).
 
 ### Residuenlayout
 
@@ -431,7 +431,7 @@ void check_pupil_modes(const SystemBatchHost&, int first = 0, int count = -1);  
 template <class B, class T> Vec3<R> batch_image_point(const SystemBatchView<B>&, const T& table, int v, int f);
 template <class R, class B, class T> TraceStatus batch_ray_opl(const SystemBatchView<B>&, const T& table, int table_l,
                                                       int v, int f, int l, const PupilSample<R>&, Vec3<R> center, R* opl);
-template <class B> B residual_scale(const SystemBatchView<B>&, int f, int l);   // M2: 1
+template <class B> B residual_scale(const SystemBatchView<B>&, int f, int l);   // √(ŵ_f ŵ_λ)/λ_ref (M4-T1)
 template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       // scale·√(W)·OPD
 ```
 
@@ -448,7 +448,7 @@ template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       
 
 **Shared Memory** (statisch, unabhängig von S bis `kMaxSurfaces` = 64), für R = double: Typ 64 B + Krümmung, Dicke, Brechzahl 3 · 64 · 8 B = 1.536 B + Quadratur 272 B + Teilsummen 2 · 4 · 8 B + Kolben und Flag 12 B, zusammen ca. 1,9 KB. Dazu **dynamisch** die Geisterplatten der Variante (M4-T5): Koeffizienten G·K, Brechzahlen der Gläser bei der Wellenlänge des Blocks G und Normierungsradien G, also (G·K + 2G)·8 B, höchstens (64·32 + 128)·8 B = 17 KiB; ohne Geisterplatten 0 B. Zusammen ≤ 19 KB < 48 KB auf beiden Karten (kein Opt-in; `static_assert` und Prüfung beim Start). Geladen werden sie in Schritt 1 zusammen mit der Flächentabelle; die Sicht im Shared Memory hat dieselben Geisterfelder wie `surface_table(v)` mit `wavelengths = 1`.
 
-**Abweichung CPU/GPU:** Die Pro-Strahl-Rechnung ist dieselbe Funktion; Unterschiede kommen aus FMA-Kontraktion, `sin`/`cos` der CUDA-Bibliothek und der Summationsreihenfolge des Kolbens (≈ 10⁻¹⁶·OPL). Für je 1.000 gestörte Varianten der Testsysteme liegen alle Strahlen innerhalb `kCpuGpuFp64` = 10⁻¹² mm, außer einzelnen schlecht konditionierten Strahlen (nahe Totalreflexion oder streifend, |OPD| von mm), die relativ ≤ 1,3·10⁻¹² abweichen (`kCpuGpuFp64Relative`, Test `CudaResiduals.MatchCpuForPerturbedVariants`).
+**Abweichung CPU/GPU:** Die Pro-Strahl-Rechnung ist dieselbe Funktion; Unterschiede kommen aus FMA-Kontraktion, `sin`/`cos` der CUDA-Bibliothek und der Summationsreihenfolge des Kolbens (≈ 10⁻¹⁶·OPL); der Faktor `residual_scale` ist bitgleich. Für je 1.000 gestörte Varianten der Testsysteme liegen alle Strahlen innerhalb `kCpuGpuFp64` = 10⁻¹² mm (OPD; Residuen r_k = u_k·OPD_k mit u_k = s_{f,l}√(W_i V_j) entsprechend innerhalb u_k·10⁻¹², Testhilfe `residual_units`), außer einzelnen schlecht konditionierten Strahlen (nahe Totalreflexion oder streifend, |OPD| von mm), die relativ ≤ 1,3·10⁻¹² abweichen (`kCpuGpuFp64Relative`, Test `CudaResiduals.MatchCpuForPerturbedVariants`).
 
 ### Host-API
 
@@ -471,7 +471,7 @@ ResidualResult run_residuals(const DeviceSystemBatch&, const ResidualLayout&,
 
 `run` legt einen Puffer an (ein `cudaMalloc`, Layout `make_output_layout` plus `ResidualFieldPlan[F]`) oder verwendet ihn weiter, lädt die Feldablage hoch, startet den Kernel auf dem Gerät des Batches, prüft `cudaGetLastError` und wartet auf das Ende (`cudaDeviceSynchronize`; Streams und Überlappung sind Sache von M2-T4/M7). Fehler: `CudaError` (CUDA), `std::invalid_argument` (Layout passt nicht, zu großes Grid, negative Zahl weiterer Residuen), `std::logic_error` (leerer Batch, Download ohne Lauf). Die Werte der Varianten prüft der Aufrufer auf dem Host (`validate_values`; `check_pupil_modes` läuft beim Upload). Die [TraceEngine](#host-api-traceengine-m2-t4) (M2-T4) kapselt Gerätewahl, Prüfung, Tranchen und diese Klasse; Programme benutzen nur sie.
 
-**Erweiterungspunkte:** `residual_scale(view, f, l)` liefert in M2 den Faktor 1; M4-T1 setzt dort √(w_f·w_λ)/λ_ref ein (CPU und Kernel gemeinsam). Weiches Versagen (M4-T2) ersetzt die harte Maske in den Durchläufen 1 und 2 und hängt Strafresiduen an. Der Kernel `MERIT` (M2-T3, unten) bildet aus denselben Größen die Quadratsumme pro Block; Laden, Kolben und Reduktionen teilen sich beide Kernel in `src/cuda/wavefront_block.hpp`. Mit `extrema` liefert auch `RESIDUALS` die [Max-Reduktionen](#max-reduktionen-m2-t3) (`ResidualResult::extrema`, bitgleich zu denen aus `MERIT`).
+**Gewichte (M4-T1):** `residual_scale(view, f, l)` = √(ŵ_f·ŵ_λ)/λ_ref mit auf Summe 1 normierten Gewichten (CPU und Kernel gemeinsam, einmal pro Block in den Rechentyp gewandelt); die Residuen sind damit in Wellen bei λ_ref, die OPD-Ausgabe bleibt in mm ([numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)). **Erweiterungspunkte:** Weiches Versagen (M4-T2) ersetzt die harte Maske in den Durchläufen 1 und 2 und hängt Strafresiduen an. Der Kernel `MERIT` (M2-T3, unten) bildet aus denselben Größen die Quadratsumme pro Block; Laden, Kolben und Reduktionen teilen sich beide Kernel in `src/cuda/wavefront_block.hpp`. Mit `extrema` liefert auch `RESIDUALS` die [Max-Reduktionen](#max-reduktionen-m2-t3) (`ResidualResult::extrema`, bitgleich zu denen aus `MERIT`).
 
 **Erste Durchsatzzahl** (RTX 3090, FP64, Test `CudaResiduals.LargeBatch`, kein Benchmark): 10.000 Varianten von `testsystem_mehrlinser.json` (S = 8, 680 Strahlen pro Variante) in ca. 26 ms für den Kernel allein, also ca. 2,6·10⁸ Strahlen/s; über die TraceEngine mit Upload und Download (seit M2-T4) ca. 33 ms, 2,1·10⁸ Strahlen/s. Messungen über Flächenzahl und Batchgröße: [benchmarks.md](benchmarks.md) (M2-T6, `bench/trace_throughput`).
 

@@ -198,10 +198,13 @@ TEST(Prefilter, DecisionRuleSynthetic) {
     const SystemBatchHost batch = mko::make_system_batch(ls, 6);
     const ResidualLayout layout(batch.topology());
     const std::int64_t R = layout.rays_per_variant();
-    const double scale = std::sqrt(static_cast<double>(layout.fields() * layout.wavelengths()));
+    // √(Σ_(f,l) s²) mit s = residual_scale (M4-T1: √(ŵ_f ŵ_λ)/λ_ref, hier 1/λ_ref)
+    const double scale = mko::test::residual_scale_norm(batch, layout);
+    EXPECT_NEAR(scale * ls.system.spectrum.reference_nm * 1e-6, 1.0, mko::test::kUnitFp64);
     PrefilterStats s = synthetic_stats(6, R);
     s.merit = {4.0, 1.0, 100.0, 0.25, 9.0, std::nan("")};
-    s.optical_length = {0.0, 100.0, 0.0, 0.0, 0.0, 0.0};
+    // Λ_1 so, dass Δ_1 = κ u Λ_1 · scale ≈ 3·10⁻⁴ klein gegen √F_1 = 1 bleibt (Merit in Wellen²)
+    s.optical_length = {0.0, 0.1, 0.0, 0.0, 0.0, 0.0};
     s.failed = {0, 0, 0, R / 2 + 1, 0, 0};
     s.uncertain_ok = {0, 0, 0, 0, 1, 0};
     PrefilterOptions o;
@@ -211,7 +214,7 @@ TEST(Prefilter, DecisionRuleSynthetic) {
     const std::vector<double> extra = {0.5, 0.0, 0.0, 0.0, 0.0, 0.0};
     const PrefilterResult r = mko::prefilter_decide(s, batch, layout, o, extra);
     const double m = o.margins.merit_relative;
-    const double delta1 = o.margins.opl_error_factor * mko::kFloatUnitRoundoff * 100.0 * scale;
+    const double delta1 = o.margins.opl_error_factor * mko::kFloatUnitRoundoff * 0.1 * scale;
     // Schranken
     EXPECT_DOUBLE_EQ(r.merit_lower[0], std::pow(2.0 / (1.0 + m), 2) + 0.5);
     EXPECT_DOUBLE_EQ(r.merit_upper[0], std::pow(2.0 / (1.0 - m), 2) + 0.5);

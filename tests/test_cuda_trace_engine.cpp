@@ -157,14 +157,17 @@ TEST(TraceEngine, TranchesMatchSingleRun) {
     EXPECT_TRUE(identical(out.residuals, reference.residuals));
     EXPECT_EQ(out.layout.rays_per_variant(), layout.rays_per_variant());
 
-    // Gegen die CPU-Referenz (Status gleich, Residuen innerhalb der Toleranz von M2-T2)
+    // Gegen die CPU-Referenz (Status gleich, Residuen innerhalb der Toleranz von M2-T2, für
+    // Residuen in Wellen umgerechnet mit r = u·OPD, M4-T1)
     const ResidualResult cpu = mko::residuals_cpu(batch, layout);
+    const std::vector<double> units = mko::test::residual_units(batch, layout);
     std::size_t violations = 0;
     for (int v = 0; v < 700; ++v) {
         for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
             const double d = std::abs(out.residuals.residual(v, i) - cpu.residual(v, i));
             const double bound =
-                std::max(kCpuGpuFp64, kCpuGpuFp64Relative * std::abs(cpu.residual(v, i)));
+                mko::test::residual_bound(units[static_cast<std::size_t>(i)], cpu.residual(v, i),
+                                          kCpuGpuFp64, kCpuGpuFp64Relative);
             violations +=
                 (out.residuals.status_at(v, i) != cpu.status_at(v, i) || !(d <= bound)) ? 1 : 0;
         }

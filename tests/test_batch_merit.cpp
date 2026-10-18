@@ -1,6 +1,6 @@
 // Merit und Max-Reduktionen pro Variante (M2-T3, CPU-Teil): merit_cpu gegen die CPU-Residuen,
-// Beobachter von trace_ray gegen TraceRecord, Strahlhöhe und Einfallswinkel gegen
-// geschlossene Formeln, Versagensbehandlung.
+// gewichtete Merit gegen die RMS-Werte aus M1-T7 (M4-T1), Beobachter von trace_ray gegen
+// TraceRecord, Strahlhöhe und Einfallswinkel gegen geschlossene Formeln, Versagensbehandlung.
 
 #include "mikroptim/batch/batch_extrema.hpp"
 #include "mikroptim/batch/batch_merit.hpp"
@@ -8,6 +8,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/merit/ray_residual.hpp"
+#include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
 #include "mikroptim/trace/trace.hpp"
 #include "residual_test_systems.hpp"
@@ -19,9 +20,12 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 using mko::MeritResult;
 using mko::PupilQuadrature;
@@ -33,6 +37,7 @@ using mko::TraceStatus;
 using mko::Vec3;
 using mko::test::kLengthFp64;
 using mko::test::kUnitFp64;
+using mko::test::kWeightedMerit;
 
 namespace {
 
@@ -91,6 +96,33 @@ TEST(MeritCpu, EqualsSumOfCpuResiduals) {
     EXPECT_GT(total_failed, 0) << "Versagenspfad nicht geprüft";
     EXPECT_THROW((void)mko::merit_cpu(batch, 60, layout), std::out_of_range);
     EXPECT_THROW((void)mko::surface_extrema_cpu(batch, -1, layout), std::out_of_range);
+}
+
+// Abnahme M4-T1: Die Merit ist die gewichtete Summe der RMS-Werte aus M1-T7,
+// F = Σ_f Σ_λ ŵ_f ŵ_λ (RMS_fλ / λ_ref)² mit auf Summe 1 normierten Gewichten und dem RMS in
+// Wellen bei λ_ref aus evaluate_wavefront (< 1e-12 relativ). Gleiche und ungleiche Gewichte,
+// ausgeschaltete Felder und Wellenlängen (Gewicht 0), Geisterplatten, Punktquelle.
+TEST(MeritCpu, EqualsWeightedSumOfWavefrontRms) {
+    double worst = 0.0;
+    for (const mko::test::WeightedCase& c : mko::test::weighted_cases()) {
+        SCOPED_TRACE(c.name);
+        const mko::WavefrontResult wf = mko::evaluate_wavefront(c.system);
+        ASSERT_EQ(wf.failed_count(), 0u);
+        std::vector<double> rms_waves;
+        for (const mko::WavefrontMap& m : wf.maps) {
+            rms_waves.push_back(m.rms_waves);
+        }
+        const double expected = mko::test::weighted_rms_merit(c.system.system, rms_waves);
+        ASSERT_GT(expected, 0.0);
+        const SystemBatchHost batch = mko::make_system_batch(c.system, 1);
+        const MeritResult m = mko::merit_cpu(batch, ResidualLayout(batch.topology()), false);
+        const double rel = std::abs(m.merit[0] - expected) / expected;
+        EXPECT_LT(rel, kWeightedMerit) << m.merit[0] << " vs " << expected;
+        worst = std::max(worst, rel);
+        std::printf("[ Info     ] %-46s F = %.15e Wellen², Σ ŵ ŵ RMS² = %.15e, relativ %.2e\n",
+                    c.name.c_str(), m.merit[0], expected, rel);
+    }
+    RecordProperty("max_relative", std::to_string(worst));
 }
 
 // Der Beobachter ändert den Trace nicht (bitgleicher Endzustand) und liefert pro Fläche

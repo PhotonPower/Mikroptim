@@ -29,6 +29,11 @@ inline constexpr double kMeritVsResidualSum = 1e-13;
 // oben; dazu die Rundung der RESIDUALS-Ausgabe nach double (2 · 2⁻⁵³ pro r²). Schranke
 // ≈ 1,1e-13 bei n <= 128 Stützstellen pro Tupel.
 inline constexpr double kMeritVsResidualSumDf64 = 2e-13;
+// Gewichtete Merit (M4-T1) gegen Σ_f Σ_λ ŵ_f ŵ_λ (RMS_fλ/λ_ref)² mit dem RMS aus M1-T7 bzw. aus
+// der OPD desselben Laufs, relativ (Abnahmekriterium M4-T1). Dieselbe OPD auf beiden Seiten;
+// Unterschiede nur aus der Rundung von s_{f,l} und r_k (wenige ε) und der Summationsreihenfolge
+// (Σ W_k OPD_k² gegen Σ r_k², Baumreduktion im Kernel), ≈ 1e-14.
+inline constexpr double kWeightedMerit = 1e-12;
 // Brechzahl aus Katalogkoeffizienten gegen gedruckte Kontrollwerte (n_d mit 5 Nachkommastellen,
 // Rundung der Datenblätter und Koeffizienten). Kein Maß für die Rechengenauigkeit.
 inline constexpr double kIndexCatalog = 1e-5;

@@ -246,12 +246,12 @@ TEST(CudaPrefilter, MatchesCpuReference) {
                 ++count_mismatch;
                 continue;
             }
-            // Beide Seiten weichen von FP64 höchstens um Δ_v ab (numerik.md, Abschnitt 12)
-            const double bound =
-                2.0 * options.margins.opl_error_factor * mko::kFloatUnitRoundoff *
-                    cpu.optical_length[i] *
-                    std::sqrt(static_cast<double>(layout.fields() * layout.wavelengths())) +
-                2.0 * options.margins.merit_relative * std::sqrt(cpu.merit[i]);
+            // Beide Seiten weichen von FP64 höchstens um Δ_v ab (numerik.md, Abschnitt 12), mit
+            // √(Σ_(f,l) s²) der Residuen in Wellen (M4-T1)
+            const double bound = 2.0 * options.margins.opl_error_factor * mko::kFloatUnitRoundoff *
+                                     cpu.optical_length[i] *
+                                     mko::test::residual_scale_norm(batch, layout) +
+                                 2.0 * options.margins.merit_relative * std::sqrt(cpu.merit[i]);
             const double diff = std::abs(std::sqrt(cpu.merit[i]) - std::sqrt(gpu.stats.merit[i]));
             EXPECT_LE(diff, bound) << "Variante " << v;
             if (cpu.merit[i] > 0.0) {
