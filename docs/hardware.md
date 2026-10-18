@@ -15,6 +15,14 @@ CUDA **12.x**, empfohlen 12.9. CUDA 13 hat die Unterstützung für Maxwell, Pasc
 
 Architekturen: `CMAKE_CUDA_ARCHITECTURES = 60-real;86-real;86-virtual`.
 
+**Mehrere Toolkits unter Windows:** Liegt ein CUDA 13 im `PATH`, bricht CMake (richtigerweise) ab. Mit dem Visual-Studio-Generator wählt die Toolset-Option das Toolkit, z. B.
+
+```powershell
+cmake --preset release-cuda -T "cuda=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9"
+```
+
+nvcc 12.9 warnt bei sm_60, dass die Offline-Kompilierung für Architekturen unter sm_75 künftig entfällt; das ist erwartet (ADR-0002) und kein Fehler.
+
 ## Regeln für Kernel-Code
 
 - Warp-Primitive nur als `_sync`-Varianten.
