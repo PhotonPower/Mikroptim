@@ -3,10 +3,12 @@
 // fester Reihenfolge (f, l) pro Variante. Die Residuen entstehen im Block wie im Kernel
 // RESIDUALS (gemeinsame Bausteine in wavefront_block.hpp), die OPL liegen dazwischen im Shared
 // Memory statt im globalen Speicher. Optional Max-Reduktionen pro Fläche.
-// docs/architektur.md, Abschnitt "Kernel MERIT".
+// docs/architektur.md, Abschnitt "Kernel MERIT". Rechentyp double oder df64 (M7-T1,
+// MeritRunOptions::precision); Batch, Teilsummen und Ergebnisse sind FP64.
 
 #include "mikroptim/batch/system_batch_view.hpp"
 #include "mikroptim/cuda/merit.hpp"
+#include "mikroptim/math/df64.hpp"
 #include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
@@ -33,25 +35,25 @@ using detail::region_ptr;
 
 static_assert(kMeritThreads == kBlockThreads, "MERIT und RESIDUALS brauchen dieselbe Blockgröße");
 
-// Parameter des Kernels (per Wert, < 1 KB Parameterraum).
-template <class R>
+// Parameter des Kernels (per Wert, < 1 KB Parameterraum). Batch und Ausgaben in FP64,
+// unabhängig vom Rechentyp.
 struct MeritKernelArgs {
-    SystemBatchView<R> batch;
-    PupilQuadrature<R> pupil;      // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
+    SystemBatchView<double> batch;
+    PupilQuadrature<double> pupil; // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
     const ResidualFieldPlan* plan; // [F]
     int max_samples;               // Plätze für OPL und Status im dynamischen Shared Memory
     unsigned ghost_bytes;          // Geisterdaten am Anfang des dynamischen Shared Memory
-    R* partial;                    // [V · F · L] Σ r_k² des Blocks
+    double* partial;               // [V · F · L] Σ r_k² des Blocks
     std::int32_t* failed_partial;  // [V · F · L] versagte Strahlen des Blocks
-    R* extrema_partial;            // [V · F · L][S][2] (nur mit kExtrema)
+    double* extrema_partial;       // [V · F · L][S][2] (nur mit kExtrema)
 };
 
 // Block b = (v · F + f) · L + l. Ablauf wie residuals_kernel (Laden, Durchlauf 1, Kolben,
 // Durchlauf 2), aber OPL und Status im Shared Memory und statt der Ablage der Residuen die
-// Quadratsumme als Baumreduktion. Alle Threads durchlaufen jede Schleife und jedes
-// __syncthreads.
+// Quadratsumme als Baumreduktion (im Rechentyp R, Ablage als double). Alle Threads
+// durchlaufen jede Schleife und jedes __syncthreads.
 template <class R, bool kExtrema>
-__global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelArgs<R> a) {
+__global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelArgs a) {
     __shared__ detail::BlockTable<R> sh_table;
     __shared__ detail::PistonShared<R> sh_piston;
     __shared__ R sh_sum[kBlockWarps];
@@ -73,7 +75,8 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
     const ResidualFieldPlan plan = a.plan[f];
 
     detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
-    const detail::BlockGhosts<R> ghosts = detail::load_block_ghosts(sh_dynamic, a.batch, tu, tid);
+    const detail::BlockGhosts<R> ghosts =
+        detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
     __syncthreads();
 
     const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
@@ -112,7 +115,7 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
     R piston;
     bool valid;
     detail::block_piston(sh_piston, weight_ok, weighted_opl, tid, piston, valid);
-    const R scale = residual_scale(a.batch, f, l);
+    const R scale = R(residual_scale(a.batch, f, l));
 
     // Durchlauf 2: Residuen derselben Stützstellen wie in RESIDUALS, Quadratsumme in
     // aufsteigender Reihenfolge der eigenen Stützstellen, versagte Strahlen zählen.
@@ -132,7 +135,7 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
     const R total = detail::block_sum(sh_sum, sum, tid);
     const std::int32_t total_failed = detail::block_sum(sh_failed, failed, tid);
     if (tid == 0) {
-        a.partial[tu.block] = total;
+        a.partial[tu.block] = static_cast<double>(total);
         a.failed_partial[tu.block] = total_failed;
     }
     if constexpr (kExtrema) {
@@ -176,17 +179,36 @@ __global__ void merit_finalize_kernel(const MeritFinalizeArgs<R> a) {
 }
 
 // Statisches Shared Memory der Kernel-Variante (Kernelattribut).
-std::size_t static_shared_bytes(bool extrema) {
+template <class R>
+std::size_t static_shared_bytes_of(bool extrema) {
     cudaFuncAttributes attr{};
     if (extrema) {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<double, true>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, true>));
     } else {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<double, false>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, false>));
     }
     return attr.sharedSizeBytes;
 }
 
+std::size_t static_shared_bytes(bool extrema, Precision precision) {
+    return precision == Precision::Df64 ? static_shared_bytes_of<df64>(extrema)
+                                        : static_shared_bytes_of<double>(extrema);
+}
+
+// OPL im Rechentyp (df64 und double: 8 Byte) und Status (1 Byte) pro Stützstelle.
 constexpr std::size_t kBytesPerSample = sizeof(double) + sizeof(std::uint8_t);
+static_assert(sizeof(df64) == sizeof(double));
+
+// Startet den Block-Kernel mit Rechentyp R (Gerät ist gesetzt) und prüft den Start.
+template <class R>
+void launch_merit(const MeritKernelArgs& args, bool extrema, unsigned grid, std::size_t dynamic) {
+    if (extrema) {
+        merit_kernel<R, true><<<grid, kBlockThreads, dynamic>>>(args);
+    } else {
+        merit_kernel<R, false><<<grid, kBlockThreads, dynamic>>>(args);
+    }
+    MKO_CUDA_CHECK(cudaGetLastError());
+}
 
 std::size_t ghost_bytes_of(int ghost_plates, int ghost_terms) {
     BatchShape shape{};
@@ -197,12 +219,13 @@ std::size_t ghost_bytes_of(int ghost_plates, int ghost_terms) {
 
 } // namespace
 
-int merit_max_samples(bool extrema, int ghost_plates, int ghost_terms) {
+int merit_max_samples(bool extrema, int ghost_plates, int ghost_terms, Precision precision) {
     if (ghost_plates < 0 || ghost_terms < 0) {
         throw std::invalid_argument("merit_max_samples: negative Zahl von Geisterplatten");
     }
+    check_precision(precision);
     const std::size_t fixed =
-        static_shared_bytes(extrema) + ghost_bytes_of(ghost_plates, ghost_terms);
+        static_shared_bytes(extrema, precision) + ghost_bytes_of(ghost_plates, ghost_terms);
     if (fixed >= kMeritMaxSharedBytes) {
         return 0;
     }
@@ -260,6 +283,7 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
                       const MeritRunOptions& options) {
     const SystemBatchView<double> view = batch.view(); // wirft bei leerem Batch
     check_residual_layout(batch.topology(), layout);
+    check_precision(options.precision);
     const int V = batch.variants();
     if (!options.extra_merit.empty() && options.extra_merit.size() != static_cast<std::size_t>(V)) {
         throw std::invalid_argument("DeviceMerit::run: extra_merit muss leer sein oder " +
@@ -300,12 +324,12 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
     const std::size_t ghost_bytes = detail::ghost_shared_bytes(view.shape);
     const std::size_t dynamic =
         ghost_bytes + static_cast<std::size_t>(max_samples) * kBytesPerSample;
-    if (static_shared_bytes(options.extrema) + dynamic > kMeritMaxSharedBytes) {
+    if (static_shared_bytes(options.extrema, options.precision) + dynamic > kMeritMaxSharedBytes) {
         throw std::invalid_argument(
             "DeviceMerit::run: " + std::to_string(max_samples) +
             " Stützstellen pro Feld passen nicht in das Shared Memory (höchstens " +
             std::to_string(merit_max_samples(options.extrema, view.shape.ghost_plates,
-                                             view.shape.ghost_terms)) +
+                                             view.shape.ghost_terms, options.precision)) +
             ")");
     }
 
@@ -327,7 +351,7 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
     }
 
     if (blocks > 0) {
-        MeritKernelArgs<double> args{};
+        MeritKernelArgs args{};
         args.batch = view;
         args.pupil = make_pupil_quadrature<double>(layout.settings().rings,
                                                    layout.settings().spokes, PupilMode::Half);
@@ -337,14 +361,11 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
         args.partial = region_ptr<double>(buffer_, out.merit_partial);
         args.failed_partial = region_ptr<std::int32_t>(buffer_, out.failed_rays_partial);
         args.extrema_partial = region_ptr<double>(buffer_, out.surface_max_partial);
-        if (options.extrema) {
-            merit_kernel<double, true>
-                <<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        if (options.precision == Precision::Df64) {
+            launch_merit<df64>(args, options.extrema, static_cast<unsigned>(blocks), dynamic);
         } else {
-            merit_kernel<double, false>
-                <<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+            launch_merit<double>(args, options.extrema, static_cast<unsigned>(blocks), dynamic);
         }
-        MKO_CUDA_CHECK(cudaGetLastError());
 
         MeritFinalizeArgs<double> fin{};
         fin.variants = V;

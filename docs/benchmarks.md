@@ -9,6 +9,7 @@ Eine Zeile pro Messreihe: S = 30 Flächen, V = 10.000 Varianten, Standardquadrat
 | Datum | Commit | GPU | Treiber / CUDA | Typ | Flächen | Varianten × Strahlen | Strahlen/s |
 |---|---|---|---|---|---|---|---|
 | 2026-10-18 | 33356d9 + M2-T6 | RTX 3090 | 610.88 / 12.9 | FP64 | 30 | 10.000 × 510 | 7,7·10⁷ (Kernel 8,4·10⁷) |
+| 2026-10-18 | a210b89 + M7-T1 | RTX 3090 | 610.88 / 12.9 | df64 | 30 | 10.000 × 510 | 2,5·10⁸ (Kernel 3,5·10⁸) |
 | ausstehend | | Tesla P100 | | FP64 | 30 | 10.000 × 510 | ausstehend (Befehl unten) |
 
 ## Messprogramm in Kürze
@@ -124,6 +125,46 @@ Register und Stack aus `cuobjdump --dump-resource-usage build/release-cuda/Relea
 | `merit_kernel<double, true>` | 112 Register, Stack 2.120 B → 4 Blöcke/SM (33 %) | 105 Register, Stack 2.120 B → 4 Blöcke/SM (25 %) |
 
 Shared Memory (2–6 KB statisch) begrenzt nicht. Auf der RTX 3090 reichen 16 Warps pro SM, um die FP64-Einheiten zu sättigen. Auf der P100 (32 FP64-Ergebnisse pro Takt und SM) wird die Belegung von 25 % dagegen voraussichtlich zum begrenzenden Faktor (Latenz der FP64-Befehle und der Lade-Operationen schlecht versteckt); das prüft die P100-Messung. Hardwarezähler (Nsight Compute: erreichte Belegung, Auslastung der FP64-Pipeline) waren hier nicht verfügbar (`ERR_NVGPUCTRPERM`, Zähler nur mit Administratorrechten); das gehört zu M7-T4.
+
+## df64 (M7-T1)
+
+Rechentyp df64 (Paar aus zwei float, [numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)) gegen FP64 auf derselben Karte, Messprogramm und Systeme wie oben. Messumgebung wie in „Messumgebung RTX 3090“, Stand main a210b89 mit M7-T1 (Branch `m7/t1-df64`), Datum 2026-10-18. Befehle:
+
+```text
+trace_throughput --type fp64,df64 --surfaces 10,30,40 --variants 10000 --mode residuals,merit,merit+extrema --repeat 20 --warmup 3 --csv … --json …
+trace_throughput --type fp64,df64 --surfaces 30 --variants 441,392157 --mode residuals,merit --repeat 5
+```
+
+Kein Strahl versagt (9,2·10⁷ bzw. 8,0·10⁸ Strahlen). V = 10.000, 510 Strahlen pro Variante, Median aus 20 Läufen:
+
+| S | Modus | Engine FP64 [ms] | Engine df64 [ms] | Faktor | Kernel FP64 [ms] | Kernel df64 [ms] | Faktor | Kernel df64 [Str/s] | Kernel df64 [Strahl-Flächen/s] |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 10 | RESIDUALS | 37,85 | 16,14 | 2,3 | 22,46 | 5,71 | 3,9 | 8,93·10⁸ | 8,9·10⁹ |
+| 10 | MERIT | 25,30 | 8,06 | 3,1 | 22,73 | 6,16 | 3,7 | 8,29·10⁸ | 8,3·10⁹ |
+| 10 | MERIT + Extrema | 32,36 | 12,38 | 2,6 | 29,93 | 9,92 | 3,0 | 5,14·10⁸ | 5,1·10⁹ |
+| 30 | RESIDUALS | 74,01 | 27,16 | 2,7 | 61,25 | 14,51 | 4,2 | 3,52·10⁸ | 1,06·10¹⁰ |
+| 30 | MERIT | 68,34 | 20,56 | 3,3 | 61,39 | 14,66 | 4,2 | 3,48·10⁸ | 1,04·10¹⁰ |
+| 30 | MERIT + Extrema | 90,10 | 35,09 | 2,6 | 83,08 | 28,81 | 2,9 | 1,77·10⁸ | 5,3·10⁹ |
+| 40 | RESIDUALS | 96,02 | 33,66 | 2,9 | 80,74 | 19,29 | 4,2 | 2,64·10⁸ | 1,06·10¹⁰ |
+| 40 | MERIT | 88,98 | 26,84 | 3,3 | 80,92 | 19,51 | 4,1 | 2,61·10⁸ | 1,05·10¹⁰ |
+| 40 | MERIT + Extrema | 119,35 | 47,13 | 2,5 | 109,23 | 38,11 | 2,9 | 1,34·10⁸ | 5,4·10⁹ |
+
+Jacobi und LM-Iteration (S = 30, Median aus 5 Läufen):
+
+| Fall | Strahlen | FP64 MERIT Engine / Kernel | df64 MERIT Engine / Kernel | df64 RESIDUALS Engine / Kernel |
+|---|---:|---:|---:|---:|
+| V = 441 (Jacobi) | 224.910 | 3,59 / 3,19 ms | 1,56 / 0,76 ms | 1,84 / 0,77 ms |
+| V = 392.157 (LM) | 200.000.070 | 2,70 / 2,40 s | 0,94 / 0,59 s | 1,35 / 0,58 s |
+
+**Auswertung.**
+
+- **Kernel:** df64 ist für S ≥ 30 4,2-mal so schnell wie FP64, für S = 10 3,7–3,9-mal (der Anteil außerhalb der Flächenschleife – Startstrahl mit zwei df64-sincos, Referenzsphäre, Kolben, Umwandlungen – wiegt dort mehr). Wie in FP64 ist der Durchsatz in Strahl-Flächen/s nahezu unabhängig von S (1,05·10¹⁰ gegen 2,5·10⁹).
+- **Engine:** Nur 2,3–3,3-mal so schnell, weil Upload des Batches, Download der Ergebnisse und Prüfung auf dem Host nicht kürzer werden (gleiche Bytes wie FP64) und jetzt 29 % (MERIT) bzw. 47 % (RESIDUALS) der Engine-Zeit bei S = 30 ausmachen. Gepinnte Puffer und Überlappung über Streams (M7) bringen für df64 entsprechend mehr.
+- **Max-Reduktionen** verdoppeln die df64-Kernelzeit (in FP64 +35 %): `RaySurfaceRecord` und `SurfaceExtrema` im Local Memory werden nicht schneller. Kleinere Felder für kleine S sind ein Kandidat für M7-T4.
+- **Gegen die Schätzung** in [hardware.md](hardware.md#durchsatzabschätzung) (df64 ca. 2–3·10⁸ Strahlen/s bei S = 30, Jacobi ca. 1 ms, LM ca. 1 s): im Kernel 3,5·10⁸ Strahlen/s, 0,76 ms, 0,59 s, also 1,2–1,7-mal besser; über die Engine 2,5·10⁸ Strahlen/s, 1,6 ms und 0,94 s (MERIT), innerhalb der Schätzung.
+- **Warum nicht mehr als Faktor 4:** Eine df64-Operation kostet 9–20 FP32-Befehle (Addition 20, Multiplikation 9, Division und Wurzel je eine IEEE-Division bzw. -Wurzel als Unterprogramm plus ca. 15), und die Abhängigkeitsketten sind lang. Mit 96–104 Registern laufen 16–20 Warps pro SM (architektur.md, „Zahlentypen der Kernel“), zu wenig, um diese Latenzen ganz zu verstecken; dazu kommen die leeren Lanes der Blöcke (siehe oben, 76 % Lane-Ausnutzung). Hardwarezähler waren nicht verfügbar; Profil und Tuning (Blockgröße, `__launch_bounds__`, Registerdruck) sind M7-T4.
+
+Register und Stack der df64-Kernel: [architektur.md, „Zahlentypen der Kernel“](architektur.md#zahlentypen-der-kernel-m7-t1) (sm_86: `residuals_kernel<df64, false>` 96 Register, Stack 48 B → 5 Blöcke/SM = 20 von 48 Warps; `merit_kernel<df64, false>` 104 Register, Stack 32 B → 4 Blöcke/SM; mit Max-Reduktionen Stack 2.080–2.096 B). Genauigkeit gegen FP64 (Abnahme M7-T1): [numerik.md](numerik.md#zahlentyp-df64-m7-t1). Ergänzend misst der abgeschaltete GPU-Test `CudaDf64.DISABLED_Throughput` (`--gtest_also_run_disabled_tests`) gestörte Varianten der Testsysteme mit versagten Strahlen: `einzellinse_bk7.json` und `testsystem_mehrlinser.json`, je 10.000 Varianten, MERIT über die Engine 2,8–3,2-mal so schnell wie FP64.
 
 ## P100-Messung nachholen
 

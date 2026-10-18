@@ -1,10 +1,12 @@
 // Kernel RESIDUALS (M2-T2): ein Block pro (Variante, Feld, Wellenlänge), Threads über die
 // Pupillenstützstellen, Flächentabelle im Shared Memory, Kolbenabzug per deterministischer
 // Block-Reduktion (ADR-0004, ADR-0007; docs/architektur.md, Abschnitt "Kernel RESIDUALS").
-// Optional die Max-Reduktionen pro Fläche (M2-T3, Abschnitt "Max-Reduktionen").
+// Optional die Max-Reduktionen pro Fläche (M2-T3, Abschnitt "Max-Reduktionen"). Rechentyp
+// double oder df64 (M7-T1, ResidualRunOptions::precision); Batch und Ausgaben sind FP64.
 
 #include "mikroptim/batch/system_batch_view.hpp"
 #include "mikroptim/cuda/residuals.hpp"
+#include "mikroptim/math/df64.hpp"
 #include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
@@ -27,27 +29,28 @@ namespace {
 
 using detail::kBlockThreads;
 
-// Parameter des Kernels (per Wert, < 1 KB Parameterraum).
-template <class R>
+// Parameter des Kernels (per Wert, < 1 KB Parameterraum). Batch und Ausgaben in FP64,
+// unabhängig vom Rechentyp.
 struct ResidualKernelArgs {
-    SystemBatchView<R> batch;
-    PupilQuadrature<R> pupil;      // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
+    SystemBatchView<double> batch;
+    PupilQuadrature<double> pupil; // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
     const ResidualFieldPlan* plan; // [F]
     std::int64_t rays;             // Strahlresiduen pro Variante
     std::int64_t stride;           // Residuen pro Variante (rays + weitere)
-    R* residuals;                  // [V][stride]
-    R* opd;                        // [V][rays] oder nullptr
+    double* residuals;             // [V][stride]
+    double* opd;                   // [V][rays] oder nullptr
     std::uint8_t* status;          // [V][rays]
-    R* extrema_partial;            // [V · F · L][S][2] (nur mit kExtrema)
+    double* extrema_partial;       // [V · F · L][S][2] (nur mit kExtrema)
 };
 
 // Block b = (v · F + f) · L + l. Alle Threads durchlaufen jede Schleife und jedes
 // __syncthreads (versagte Strahlen und Threads ohne Stützstelle sind nur maskiert).
-// kExtrema: zusätzlich Max-Reduktionen pro Fläche (ohne kExtrema entfällt jeder Aufwand).
+// R: Rechentyp (double oder df64). kExtrema: zusätzlich Max-Reduktionen pro Fläche (ohne
+// kExtrema entfällt jeder Aufwand).
 template <class R, bool kExtrema>
-__global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const ResidualKernelArgs<R> a) {
-    // Shared Memory (statisch, für S = kMaxSurfaces und R = double ca. 1,9 KB, mit kExtrema
-    // zusätzlich 4 KB): Flächentabelle der Variante mit den Brechzahlen der Wellenlänge l,
+__global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const ResidualKernelArgs a) {
+    // Shared Memory (statisch, für S = kMaxSurfaces und R = double oder df64 ca. 1,9 KB, mit
+    // kExtrema zusätzlich 4 KB): Flächentabelle der Variante mit den Brechzahlen der Wellenlänge l,
     // Quadratur des Feldes, Teilsummen pro Warp, Kolben; dynamisch die Geisterplatten
     // (ghost_shared_bytes, höchstens 17 KiB).
     __shared__ detail::BlockTable<R> sh_table;
@@ -65,17 +68,21 @@ __global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const Residual
     const ResidualFieldPlan plan = a.plan[f];
 
     detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
-    const detail::BlockGhosts<R> ghosts = detail::load_block_ghosts(sh_dynamic, a.batch, tu, tid);
+    const detail::BlockGhosts<R> ghosts =
+        detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
     __syncthreads();
 
     const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const int n = plan.samples;
     const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n; // Tupel (f, l)
-    R* const residuals = a.residuals + static_cast<std::int64_t>(v) * a.stride + first;
+    double* const residuals = a.residuals + static_cast<std::int64_t>(v) * a.stride + first;
     std::uint8_t* const status = a.status + static_cast<std::int64_t>(v) * a.rays + first;
-    R* const opd =
+    double* const opd =
         a.opd != nullptr ? a.opd + static_cast<std::int64_t>(v) * a.rays + first : nullptr;
+    // Vorläufige OPL im Rechentyp auf dem Residuenplatz (sizeof(R) == sizeof(double)); für
+    // R = df64 ohne Rundung nach double zwischen den Durchläufen.
+    R* const opl_scratch = reinterpret_cast<R*>(residuals);
 
     // Durchlauf 1: Trace, OPL vorläufig in den Residuenplatz, Teilsummen (W_k, W_k · OPL_k)
     // der gültigen Strahlen in aufsteigender Reihenfolge der eigenen Stützstellen.
@@ -102,7 +109,7 @@ __global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const Residual
                 extrema.add_ray(record, S);
             }
         }
-        residuals[k] = opl;
+        opl_scratch[k] = opl;
         status[k] = static_cast<std::uint8_t>(st);
     }
 
@@ -111,25 +118,37 @@ __global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const Residual
     R piston;
     bool valid;
     detail::block_piston(sh_piston, weight_ok, weighted_opl, tid, piston, valid);
-    const R scale = residual_scale(a.batch, f, l);
+    const R scale = R(residual_scale(a.batch, f, l));
 
     // Durchlauf 2: OPD und Residuen derselben Stützstellen (gleicher Thread, eigene
-    // Schreibzugriffe).
+    // Schreibzugriffe), Ausgabe in FP64.
     for (int k = tid; k < n; k += kBlockThreads) {
         R e = R(0);
         if (valid && static_cast<TraceStatus>(status[k]) == TraceStatus::Ok) {
-            e = residuals[k] - piston;
+            e = opl_scratch[k] - piston;
         }
         if (opd != nullptr) {
-            opd[k] = e;
+            opd[k] = static_cast<double>(e);
         }
-        residuals[k] = ray_residual(scale, sample(sh_table.pupil, k), e);
+        residuals[k] = static_cast<double>(ray_residual(scale, sample(sh_table.pupil, k), e));
     }
 
     if constexpr (kExtrema) {
         detail::block_extrema(sh_extrema, extrema, S, tid,
                               a.extrema_partial + tu.block * static_cast<std::int64_t>(S) * 2);
     }
+}
+
+// Startet den Kernel mit Rechentyp R (Gerät ist gesetzt) und prüft den Start.
+template <class R>
+void launch_residuals(const ResidualKernelArgs& args, bool extrema, unsigned grid,
+                      std::size_t ghost_bytes) {
+    if (extrema) {
+        residuals_kernel<R, true><<<grid, kBlockThreads, ghost_bytes>>>(args);
+    } else {
+        residuals_kernel<R, false><<<grid, kBlockThreads, ghost_bytes>>>(args);
+    }
+    MKO_CUDA_CHECK(cudaGetLastError());
 }
 
 using detail::region_ptr;
@@ -193,6 +212,7 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     if (options.extra_residuals < 0) {
         throw std::invalid_argument("DeviceResiduals::run: negative Zahl weiterer Residuen");
     }
+    check_precision(options.precision);
     const int V = batch.variants();
     const std::int64_t blocks =
         static_cast<std::int64_t>(V) * view.shape.fields * view.shape.wavelengths;
@@ -237,7 +257,7 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     }
 
     if (blocks > 0) {
-        ResidualKernelArgs<double> args{};
+        ResidualKernelArgs args{};
         args.batch = view;
         args.pupil = make_pupil_quadrature<double>(layout.settings().rings,
                                                    layout.settings().spokes, PupilMode::Half);
@@ -255,12 +275,11 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
                                         " Byte) passen nicht in den Shared Memory");
         }
         const auto grid = static_cast<unsigned>(blocks);
-        if (options.extrema) {
-            residuals_kernel<double, true><<<grid, kBlockThreads, ghost_bytes>>>(args);
+        if (options.precision == Precision::Df64) {
+            launch_residuals<df64>(args, options.extrema, grid, ghost_bytes);
         } else {
-            residuals_kernel<double, false><<<grid, kBlockThreads, ghost_bytes>>>(args);
+            launch_residuals<double>(args, options.extrema, grid, ghost_bytes);
         }
-        MKO_CUDA_CHECK(cudaGetLastError());
         if (options.extrema) {
             detail::ExtremaFinalizeArgs<double> fin{};
             fin.variants = V;

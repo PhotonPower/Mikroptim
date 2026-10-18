@@ -166,6 +166,7 @@ target_link_libraries(mikroptim_optim
 if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
         src/cuda/batch_trace_check.cu
+        src/cuda/df64_check.cu
         src/cuda/device_info.cu
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu

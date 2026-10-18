@@ -298,7 +298,7 @@ Fehlerbehandlung: Konfigurations- und Speicherfehler sind Host-Fehler (AGENTS.md
 
 Der Prüfkernel `trace_batch_gpu` (`include/mikroptim/cuda/batch_trace_check.hpp`) traced jeden Strahl (v, f, l, k) mit `batch_source_ray` und `trace_ray` über `view.surface_table(v)` direkt aus dem globalen Speicher. Er prüft nur das Layout gegen `trace_variant_cpu`; Grid-Abbildung, Shared Memory und Reduktionen hat der Kernel `RESIDUALS` (unten).
 
-Für df64 (M7) wird eine zweite, umgerechnete Sicht `SystemBatchView<df64>` nötig; der Host-Container bleibt FP64.
+Für df64 (M7-T1) bleiben Host-Container, Gerätepuffer und Sicht FP64; die Kernel wandeln die Daten eines Blocks beim Laden in den Rechentyp um ([Zahlentypen der Kernel](#zahlentypen-der-kernel-m7-t1)). Eine eigene Sicht `SystemBatchView<df64>` gibt es nicht.
 
 ## Brechzahltabelle
 
@@ -397,7 +397,7 @@ SurfaceMap make_surface_map(const SystemDescription&); int table_surface_count(c
 
 ## Kernel RESIDUALS (M2-T2)
 
-Implementiert in `src/cuda/residuals.cu` (Kernel `residuals_kernel<R>`, templatisiert über den Zahlentyp; instanziiert für `double`, df64 in M7), Host-API in `include/mikroptim/cuda/residuals.hpp` (reines C++), Ablage und CPU-Referenz in `include/mikroptim/batch/batch_residuals.hpp` (Bibliothek `Mikroptim::batch`), Pro-Strahl-Teil header-only in `include/mikroptim/merit/ray_residual.hpp`. Definition des Residuums: [numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2).
+Implementiert in `src/cuda/residuals.cu` (Kernel `residuals_kernel<R, kExtrema>`, templatisiert über den Rechentyp; instanziiert für `double` und `df64`, M7-T1), Host-API in `include/mikroptim/cuda/residuals.hpp` (reines C++), Ablage und CPU-Referenz in `include/mikroptim/batch/batch_residuals.hpp` (Bibliothek `Mikroptim::batch`), Pro-Strahl-Teil header-only in `include/mikroptim/merit/ray_residual.hpp`. Definition des Residuums: [numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2).
 
 ### Residuenlayout
 
@@ -427,10 +427,11 @@ void check_residual_layout(const BatchTopology&, const ResidualLayout&);
 void check_pupil_modes(const SystemBatchHost&, int first = 0, int count = -1);   // system_batch.hpp
 
 // include/mikroptim/merit/ray_residual.hpp (header-only, MKO_HD, CPU und Kernel)
-template <class R, class T> Vec3<R> batch_image_point(const SystemBatchView<R>&, const T& table, int v, int f);
-template <class R, class T> TraceStatus batch_ray_opl(const SystemBatchView<R>&, const T& table, int table_l,
+// Rechentyp R (Tabelle, Stützstelle) und Speichertyp B des Batches dürfen verschieden sein (M7-T1)
+template <class B, class T> Vec3<R> batch_image_point(const SystemBatchView<B>&, const T& table, int v, int f);
+template <class R, class B, class T> TraceStatus batch_ray_opl(const SystemBatchView<B>&, const T& table, int table_l,
                                                       int v, int f, int l, const PupilSample<R>&, Vec3<R> center, R* opl);
-template <class R> R residual_scale(const SystemBatchView<R>&, int f, int l);   // M2: 1
+template <class B> B residual_scale(const SystemBatchView<B>&, int f, int l);   // M2: 1
 template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       // scale·√(W)·OPD
 ```
 
@@ -455,7 +456,8 @@ template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       
 // include/mikroptim/cuda/residuals.hpp (reines C++)
 inline constexpr int kResidualThreads = 128;
 struct ResidualRunOptions { bool opd = false; int64_t extra_residuals = 0;
-                            bool extrema = false; };   // Max-Reduktionen (M2-T3)
+                            bool extrema = false;      // Max-Reduktionen (M2-T3)
+                            Precision precision = Precision::Fp64; };   // Rechentyp (M7-T1)
 class DeviceResiduals {                  // Ausgabepuffer auf dem Gerät, RAII, nur verschiebbar
     void run(const DeviceSystemBatch&, const ResidualLayout&, const ResidualRunOptions& = {});
     ResidualResult download() const; void download(ResidualResult&) const; void release() noexcept;
@@ -520,7 +522,8 @@ Ohne Max-Reduktionen kostet die Erweiterung nichts Wesentliches (sm_60 identisch
 // include/mikroptim/cuda/merit.hpp (reines C++)
 inline constexpr int kMeritThreads = kResidualThreads;
 inline constexpr size_t kMeritMaxSharedBytes = 48 * 1024;
-struct MeritRunOptions { bool extrema = false; std::span<const double> extra_merit; /* leer oder [V] */ };
+struct MeritRunOptions { bool extrema = false; std::span<const double> extra_merit; /* leer oder [V] */
+                         Precision precision = Precision::Fp64; };   // Rechentyp (M7-T1)
 class DeviceMerit {                      // Ausgabepuffer auf dem Gerät, RAII, nur verschiebbar
     void run(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
     MeritResult download() const; void download(MeritResult&) const; void release() noexcept;
@@ -528,7 +531,8 @@ class DeviceMerit {                      // Ausgabepuffer auf dem Gerät, RAII, 
     const double* device_extrema() const; // [V][S][2] oder nullptr
 };
 MeritResult run_merit(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
-int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0);
+int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0,
+                      Precision precision = Precision::Fp64);
 
 // include/mikroptim/batch/batch_merit.hpp, batch_extrema.hpp (Host, auch ohne CUDA)
 struct MeritResult { int variants; int64_t rays_per_variant; std::vector<double> merit;  // [V]
@@ -558,6 +562,36 @@ Pro Variante v und Fläche s über alle **gültigen** Strahlen (Status Ok, einsc
 **Reduktion:** pro Thread `SurfaceExtrema`, im Block pro Fläche `warp_max`/`warp_min` mit `__shfl_down_sync` (gleiche Struktur wie die Summen), Lane 0 in den Shared Memory [Warp][Fläche][2], Threads s < S kombinieren die 4 Warps in fester Reihenfolge und schreiben `surface_max_partial[b][s][2]` (Höhe²). Zweite Stufe `extrema_finalize_kernel` (ein Thread pro (v, s)): Maximum/Minimum über die Blöcke in der Reihenfolge (f, l), dann √ der Höhe (√ ist monoton und korrekt gerundet, also gleich dem Maximum der Wurzeln). Max und Min sind exakt und reihenfolgeunabhängig; die feste Reihenfolge und der Verzicht auf einen `atomicMax`-Trick halten trotzdem dasselbe Schema wie die Summen. Beide Modi (`MERIT`, `RESIDUALS`) liefern bitgleiche Max-Reduktionen.
 
 **CPU-Referenz** `surface_extrema_cpu` (gleiche Bausteine über `batch_ray_opl`). GPU gegen CPU: max ist 1-Lipschitz, also gelten die Toleranzen pro Strahl: Höhe ≤ max(`kCpuGpuFp64`, `kCpuGpuFp64Relative`·h), gemessen ≤ 9,9·10⁻¹³ mm; cos I ≤ `kCpuGpuFp64`, gemessen ≤ 6·10⁻¹⁴. Geschlossene Formeln (Tests `SurfaceExtrema.CollimatedBeamMatchesClosedForm`, `CudaMerit.FailedRaysAndClosedForm`): achsparalleles Bündel der Einzellinse, h = a·ρ_N an Blende und erster Fläche, cos I = 1 bzw. √(1 − (c h)²); mit Feldwinkeln bis 2° cos I = cos 2° an der Blende.
+
+## Zahlentypen der Kernel (M7-T1)
+
+Die Kernel `RESIDUALS` und `MERIT` sind über den Rechentyp `R` templatisiert und für `double` und `df64` (Paar aus zwei float, [numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)) instanziiert. Gewählt wird pro Lauf:
+
+```cpp
+// include/mikroptim/cuda/precision.hpp (reines C++)
+enum class Precision { Fp64 = 0, Df64 = 1 };
+const char* to_string(Precision);          // "FP64", "DF64"
+void check_precision(Precision);           // std::invalid_argument bei unbekanntem Wert
+// TraceSettings::precision, ResidualRunOptions::precision, MeritRunOptions::precision,
+// merit_max_samples(extrema, G, K, precision); Standard überall Precision::Fp64
+```
+
+**Datenfluss.** Batch im Gerätespeicher, Kernelparameter (`SystemBatchView<double>`, Quadratur) und alle Ausgaben (Residuen, OPD, Status, Merit, Teilsummen, Max-Reduktionen) bleiben FP64; der Rechentyp ist ein reines Implementierungsdetail des Kernels. `load_block_table<R>` und `load_block_ghosts<R>` wandeln Flächentabelle, Quadraturknoten und Geisterdaten beim Laden in den Shared Memory in `R` um, `batch_source_ray` wandelt Pupillenradius und Feldwinkel des Strahls (`R(…)`), `residual_scale` liefert FP64 und wird einmal pro Block gewandelt. Trace, Referenzsphäre, Kolben (Baumreduktion in `R`), OPD, Residuen und die Quadratsumme laufen in `R`; geschrieben wird `static_cast<double>(…)`. Im Kernel `RESIDUALS` liegt die vorläufige OPL zwischen den Durchläufen im Rechentyp auf dem Residuenplatz (`sizeof(df64) == sizeof(double)`), ohne Rundung nach double. Die zweite Stufe von `MERIT` und der Max-Reduktionen summiert bzw. vergleicht die FP64-Teilergebnisse wie bisher. Für `R = double` sind alle Umwandlungen ohne Wirkung: der FP64-Pfad ist unverändert (gleiche Register, gleiche Ergebnisse, alle bisherigen Tests unverändert grün).
+
+**Reduktionen.** Warp-Summen und -Extrema rufen `shfl_down_sync`: für eingebaute Typen `__shfl_down_sync`, für df64 eine Überladung in `df64.hpp` aus zwei float-Shuffles (gefunden über ADL). Baumstruktur und Reihenfolge sind dieselben wie in FP64; zehn Läufe sind bitgleich (ADR-0007).
+
+**Speicher.** df64 belegt 8 Byte wie double; Shared Memory (statisch und dynamisch: Geisterdaten, OPL im Kernel `MERIT`), Local Memory (`RaySurfaceRecord`, `SurfaceExtrema`) und alle Gerätepuffer sind gleich groß. Die Speicherabschätzung der TraceEngine (`max_variants`, Tranchen) hängt deshalb nicht vom Zahlentyp ab, und `merit_max_samples` liefert für beide denselben Wert (Test `CudaDf64.SettingsAndLimits`, aus den Kernelattributen der jeweiligen Variante).
+
+**Register und Local Memory** (`cuobjdump --dump-resource-usage`, CUDA 12.9; FP64 zum Vergleich wie oben):
+
+| Kernel | sm_60 | sm_86 |
+|---|---|---|
+| `residuals_kernel<df64, false>` | 96 Register, Stack 40 B | 96 Register, Stack 48 B |
+| `residuals_kernel<df64, true>` | 96 Register, Stack 2.096 B | 96 Register, Stack 2.096 B |
+| `merit_kernel<df64, false>` | 93 Register, Stack 32 B | 104 Register, Stack 32 B |
+| `merit_kernel<df64, true>` | 96 Register, Stack 2.080 B | 104 Register, Stack 2.080 B |
+
+Mit 96 Registern passen auf sm_86 5 Blöcke à 128 Threads pro SM (20 von 48 Warps), mit 104 Registern 4 (wie FP64 mit 110 Registern). Durchsatz: [benchmarks.md, „df64“](benchmarks.md#df64-m7-t1); auf der RTX 3090 rechnet der Kernel in df64 etwa 4-mal so schnell wie in FP64. Einsatz: GeForce-Karten (RTX 3090) mit `Precision::Df64`, die Tesla P100 (FP64 mit halber FP32-Rate) bleibt bei FP64 ([hardware.md](hardware.md#zielhardware)).
 
 ## Kernel-Modi
 
@@ -604,7 +638,8 @@ struct EngineOptions { std::optional<size_t> memory_limit_bytes; MemoryReserve r
 struct TraceSettings { ResidualSettings quadrature;   // N × M
                        bool opd = false, status = true; int64_t extra_residuals = 0;   // nur RESIDUALS
                        bool extrema = false;                     // beide Modi (M2-T3)
-                       std::span<const double> extra_merit; };  // nur MERIT: leer oder [V]
+                       std::span<const double> extra_merit;     // nur MERIT: leer oder [V]
+                       Precision precision = Precision::Fp64; }; // beide Modi: Fp64 | Df64 (M7-T1)
 struct TraceRunInfo { int variants, tranches, tranche_variants; size_t budget_bytes, device_bytes; };
 struct DeviceTranche { int first, count; int64_t rays_per_variant, stride;   // M3-T2
                        const double* residuals; const uint8_t* status; const double *opd, *extrema; };

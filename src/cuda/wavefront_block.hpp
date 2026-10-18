@@ -6,11 +6,17 @@
 // Funktionen in derselben Reihenfolge auf; deshalb sind Kolben, OPD und Residuen in beiden
 // Modi bitgleich (Test CudaMerit.MatchesSumOfResiduals). docs/architektur.md, Abschnitte
 // "Kernel RESIDUALS" und "Kernel MERIT".
+//
+// Zahlentypen (M7-T1): Der Batch im Gerätespeicher und alle Ausgaben sind FP64. Die Kernel sind
+// über den Rechentyp R templatisiert (double oder df64); load_block_table und
+// load_block_ghosts wandeln die Daten des Blocks beim Laden in R um, die Ausgaben werden beim
+// Schreiben nach double gewandelt. Für R = double sind beide Umwandlungen ohne Wirkung.
 
 #include "mikroptim/batch/batch_memory.hpp"
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch_view.hpp"
 #include "mikroptim/cuda/residuals.hpp"
+#include "mikroptim/math/df64.hpp"
 #include "mikroptim/math/scalar.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
@@ -35,12 +41,23 @@ static_assert(kMaxPupilRings <= kBlockThreads, "Knoten werden von je einem Threa
 // Threads der zweiten Reduktionsstufe (ein Thread pro Variante bzw. pro Variante und Fläche).
 constexpr int kFinalizeThreads = 256;
 
+// Rechen- und Speichertyp teilen sich die Puffer im Shared und globalen Speicher (Geisterdaten,
+// OPL im Kernel MERIT, vorläufige OPL auf dem Residuenplatz im Kernel RESIDUALS).
+static_assert(sizeof(df64) == sizeof(double), "df64 und double müssen gleich groß sein");
+
+// Warp-Shuffle für eingebaute Zahlentypen; df64 hat eine eigene Überladung in df64.hpp (zwei
+// float-Shuffles), die über ADL gefunden wird.
+template <class T, std::enable_if_t<std::is_arithmetic_v<T>, int> = 0>
+__device__ inline T shfl_down_sync(unsigned mask, T x, unsigned delta) {
+    return __shfl_down_sync(mask, x, delta);
+}
+
 // Summe über die 32 Lanes eines Warps als feste Baumreduktion (Abstände 16, 8, 4, 2, 1);
 // das Ergebnis steht in Lane 0. Alle Lanes müssen teilnehmen.
 template <class T>
 __device__ inline T warp_sum(T x) {
-    for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
-        x += __shfl_down_sync(0xffffffffu, x, offset);
+    for (unsigned offset = kWarpSize / 2; offset > 0; offset /= 2) {
+        x += shfl_down_sync(0xffffffffu, x, offset);
     }
     return x;
 }
@@ -48,15 +65,15 @@ __device__ inline T warp_sum(T x) {
 // Maximum bzw. Minimum über die Lanes eines Warps (Ergebnis in Lane 0), gleiche Struktur.
 template <class R>
 __device__ inline R warp_max(R x) {
-    for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
-        x = extremum_max(x, __shfl_down_sync(0xffffffffu, x, offset));
+    for (unsigned offset = kWarpSize / 2; offset > 0; offset /= 2) {
+        x = extremum_max(x, shfl_down_sync(0xffffffffu, x, offset));
     }
     return x;
 }
 template <class R>
 __device__ inline R warp_min(R x) {
-    for (int offset = kWarpSize / 2; offset > 0; offset /= 2) {
-        x = extremum_min(x, __shfl_down_sync(0xffffffffu, x, offset));
+    for (unsigned offset = kWarpSize / 2; offset > 0; offset /= 2) {
+        x = extremum_min(x, shfl_down_sync(0xffffffffu, x, offset));
     }
     return x;
 }
@@ -92,21 +109,23 @@ struct BlockTable {
 };
 
 // Lädt Tabelle und Quadratur (koaleszierend über s; Quadratur wie
-// make_pupil_quadrature(N, M, plan.mode)). Der Aufrufer synchronisiert danach.
+// make_pupil_quadrature(N, M, plan.mode)) und wandelt sie in den Rechentyp R um. Der Aufrufer
+// synchronisiert danach.
 template <class R>
-__device__ inline void
-load_block_table(BlockTable<R>& t, const SystemBatchView<R>& b, const PupilQuadrature<R>& pupil,
-                 const ResidualFieldPlan& plan, const BlockTuple& tu, int tid) {
+__device__ inline void load_block_table(BlockTable<R>& t, const SystemBatchView<double>& b,
+                                        const PupilQuadrature<double>& pupil,
+                                        const ResidualFieldPlan& plan, const BlockTuple& tu,
+                                        int tid) {
     const int S = b.shape.surfaces;
     for (int s = tid; s < S; s += kBlockThreads) {
         t.type[s] = b.type[s];
-        t.curvature[s] = b.curvature[b.shape.surface_at(tu.v, s)];
-        t.thickness[s] = b.thickness[b.shape.surface_at(tu.v, s)];
-        t.index[s] = b.index[b.shape.index_at(tu.v, s, tu.l)];
+        t.curvature[s] = R(b.curvature[b.shape.surface_at(tu.v, s)]);
+        t.thickness[s] = R(b.thickness[b.shape.surface_at(tu.v, s)]);
+        t.index[s] = R(b.index[b.shape.index_at(tu.v, s, tu.l)]);
     }
     if (tid < pupil.rings) {
-        t.pupil.u[tid] = pupil.u[tid];
-        t.pupil.w[tid] = pupil.w[tid];
+        t.pupil.u[tid] = R(pupil.u[tid]);
+        t.pupil.w[tid] = R(pupil.w[tid]);
     }
     if (tid == 0) {
         t.pupil.rings = pupil.rings;
@@ -122,7 +141,8 @@ constexpr std::size_t kMaxGhostSharedBytes =
     (static_cast<std::size_t>(kMaxSurfaces) * kMaxGhostTerms + 2 * kMaxSurfaces) * sizeof(double);
 static_assert(kMaxGhostSharedBytes + 8192 <= 48 * 1024, "Shared Memory pro Block über 48 KB");
 
-// Bytes der Geisterdaten im dynamischen Shared Memory (R = double; Vielfaches von 8).
+// Bytes der Geisterdaten im dynamischen Shared Memory (R = double oder df64, beide 8 Byte;
+// Vielfaches von 8).
 inline std::size_t ghost_shared_bytes(const BatchShape& shape) {
     const auto G = static_cast<std::size_t>(shape.ghost_plates);
     const auto K = static_cast<std::size_t>(shape.ghost_terms);
@@ -138,11 +158,12 @@ struct BlockGhosts {
     R* radius; // [G]
 };
 
-// Lädt die Geisterdaten der Variante (Brechzahlen der Wellenlänge l) an den Anfang `dynamic`
-// des dynamischen Shared Memory; belegt ghost_shared_bytes. Der Aufrufer synchronisiert danach.
+// Lädt die Geisterdaten der Variante (Brechzahlen der Wellenlänge l) im Rechentyp R an den
+// Anfang `dynamic` des dynamischen Shared Memory; belegt ghost_shared_bytes. Der Aufrufer
+// synchronisiert danach.
 template <class R>
 __device__ inline BlockGhosts<R> load_block_ghosts(unsigned char* dynamic,
-                                                   const SystemBatchView<R>& b,
+                                                   const SystemBatchView<double>& b,
                                                    const BlockTuple& tu, int tid) {
     BlockGhosts<R> g{b.shape.ghost_plates, b.shape.ghost_terms, nullptr, nullptr, nullptr};
     const int G = g.plates;
@@ -151,13 +172,13 @@ __device__ inline BlockGhosts<R> load_block_ghosts(unsigned char* dynamic,
         g.coeff = reinterpret_cast<R*>(dynamic);
         g.index = g.coeff + G * K;
         g.radius = g.index + G;
-        const R* const coeff = b.ghost_coeff + b.shape.ghost_coeff_at(tu.v, 0, 0);
+        const double* const coeff = b.ghost_coeff + b.shape.ghost_coeff_at(tu.v, 0, 0);
         for (int i = tid; i < G * K; i += kBlockThreads) {
-            g.coeff[i] = coeff[i];
+            g.coeff[i] = R(coeff[i]);
         }
         for (int p = tid; p < G; p += kBlockThreads) {
-            g.index[p] = b.ghost_index[b.shape.ghost_index_at(tu.v, p, tu.l)];
-            g.radius[p] = b.ghost_norm_radius[p];
+            g.index[p] = R(b.ghost_index[b.shape.ghost_index_at(tu.v, p, tu.l)]);
+            g.radius[p] = R(b.ghost_norm_radius[p]);
         }
     }
     return g;
@@ -230,7 +251,7 @@ __device__ inline T block_sum(T* sh, T x, int tid) {
     return total;
 }
 
-// Shared Memory der Max-Reduktionen: [Warp][Fläche][2] (für R = double 4 KB).
+// Shared Memory der Max-Reduktionen: [Warp][Fläche][2] (für R = double und df64 4 KB).
 template <class R>
 struct ExtremaShared {
     R value[kBlockWarps * kMaxSurfaces * 2];
@@ -249,11 +270,11 @@ using RayRecordIf = std::conditional_t<kEnabled, RaySurfaceRecord<R>, NoExtrema>
 
 // Max-Reduktionen des Blocks aus den Akkumulatoren der Threads: pro Fläche Maximum der
 // Höhenquadrate und Minimum von cos I im Warp, dann über die Warps in fester Reihenfolge.
-// Schreibt out[2 s] = max x² + y², out[2 s + 1] = min cos I für s < S. Alle Threads müssen
-// eintreten (ein __syncthreads).
+// Schreibt out[2 s] = max x² + y², out[2 s + 1] = min cos I für s < S (nach double gewandelt).
+// Alle Threads müssen eintreten (ein __syncthreads).
 template <class R>
 __device__ inline void block_extrema(ExtremaShared<R>& sh, const SurfaceExtrema<R>& acc,
-                                     int surfaces, int tid, R* out) {
+                                     int surfaces, int tid, double* out) {
     const int lane = tid % kWarpSize;
     const int warp = tid / kWarpSize;
     for (int s = 0; s < surfaces; ++s) {
@@ -272,8 +293,8 @@ __device__ inline void block_extrema(ExtremaShared<R>& sh, const SurfaceExtrema<
             h = extremum_max(h, sh.value[(w * kMaxSurfaces + s) * 2]);
             c = extremum_min(c, sh.value[(w * kMaxSurfaces + s) * 2 + 1]);
         }
-        out[2 * s] = h;
-        out[2 * s + 1] = c;
+        out[2 * s] = static_cast<double>(h);
+        out[2 * s + 1] = static_cast<double>(c);
     }
 }
 

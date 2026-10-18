@@ -12,6 +12,7 @@
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
+#include "mikroptim/cuda/precision.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 
 #include <cstddef>
@@ -37,6 +38,7 @@ struct MeritRunOptions {
     // F_v = (Σ_(f, l) Teilsumme) + extra_merit[v]. Der Aufrufer berechnet ihn (z. B. Σ e² der
     // weiteren Residuen); die Daten werden bei run kopiert.
     std::span<const double> extra_merit{};
+    Precision precision = Precision::Fp64; // Rechentyp im Kernel (M7-T1); Ergebnisse immer FP64
 };
 
 // Ausgabepuffer des Kernels MERIT auf dem Gerät (RAII, nur verschiebbar): ein cudaMalloc im
@@ -57,8 +59,9 @@ public:
     // Startet den Kernel (ein Block pro (v, f, l)) und die zweite Reduktionsstufe für alle
     // Varianten von `batch` auf dessen Gerät und wartet auf das Ende. Wirft
     // std::invalid_argument, wenn `layout` nicht zur Topologie passt, V · F · L >
-    // kMaxGridBlocks, extra_merit weder leer noch V Werte lang ist oder die OPL der größten
-    // Stützstellenzahl eines Feldes nicht in das Shared Memory passt (merit_max_samples);
+    // kMaxGridBlocks, extra_merit weder leer noch V Werte lang ist, options.precision unbekannt
+    // ist oder die OPL der größten Stützstellenzahl eines Feldes nicht in das Shared Memory
+    // passt (merit_max_samples);
     // std::logic_error bei leerem Batch. Die Werte der Varianten prüft der Aufrufer auf dem Host
     // (SystemBatchHost::validate_values).
     void run(const DeviceSystemBatch& batch, const ResidualLayout& layout,
@@ -105,8 +108,10 @@ MeritResult run_merit(const DeviceSystemBatch& batch, const ResidualLayout& layo
 // Größte Stützstellenzahl n_f eines Feldes, deren OPL und Status der Kernel MERIT im Shared
 // Memory ablegen kann (n_f · 9 Byte zusätzlich zum statischen Shared Memory und den
 // Geisterdaten (G · K + 2 G) · 8 Byte, zusammen <= kMeritMaxSharedBytes); mit Max-Reduktionen
-// und Geisterplatten kleiner. Fragt die Kernelattribute auf dem aktuellen Gerät ab (CudaError);
-// std::invalid_argument bei negativen Zahlen.
-int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0);
+// und Geisterplatten kleiner. Fragt die Kernelattribute der Kernel-Variante für `precision` auf
+// dem aktuellen Gerät ab (CudaError); std::invalid_argument bei negativen Zahlen oder
+// unbekanntem Zahlentyp.
+int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0,
+                      Precision precision = Precision::Fp64);
 
 } // namespace mko::cuda
