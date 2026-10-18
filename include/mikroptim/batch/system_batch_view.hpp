@@ -55,6 +55,11 @@ struct BatchShape {
                    static_cast<std::size_t>(ghost_terms) +
                static_cast<std::size_t>(k);
     }
+    // paraxial_ghost_index[v][g]: v·G + g
+    MKO_HD std::size_t ghost_at(int v, int g) const {
+        return static_cast<std::size_t>(v) * static_cast<std::size_t>(ghost_plates) +
+               static_cast<std::size_t>(g);
+    }
     // ghost_index[v][g][l]: (v·G + g)·L + l
     MKO_HD std::size_t ghost_index_at(int v, int g, int l) const {
         return (static_cast<std::size_t>(v) * static_cast<std::size_t>(ghost_plates) +
@@ -75,6 +80,7 @@ struct BatchShape {
     MKO_HD std::size_t ghost_index_stride() const {
         return static_cast<std::size_t>(ghost_plates) * static_cast<std::size_t>(wavelengths);
     }
+    MKO_HD std::size_t ghost_stride() const { return static_cast<std::size_t>(ghost_plates); }
 };
 
 static_assert(std::is_trivially_copyable_v<BatchShape>);
@@ -114,6 +120,10 @@ struct SystemBatchView {
     const R* field_target; // [V][F], ideale Bildhöhe h_f [mm] (Referenzsphäre)
     const R* ghost_coeff;  // [V][G][K], Koeffizienten a_{g,k} des Dickenprofils
     const R* ghost_index;  // [V][G][L], Brechzahl des virtuellen Glases
+    // Brechzahlen bei λ_ref für die Paraxialrechnung (M3-T3), auch wenn λ_ref nicht unter den
+    // Wellenlängen ist; von den Trace-Kerneln nicht verwendet.
+    const R* paraxial_index;       // [V][S], Medium nach Fläche s bei λ_ref
+    const R* paraxial_ghost_index; // [V][G], virtuelles Glas der Geisterplatte g bei λ_ref
 
     // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K bzw. v·G·L
     // versetzt; type und ghost_norm_radius sind für alle Varianten dieselben.

@@ -197,6 +197,8 @@ Structure of Arrays, alle Werte FP64 (außer `type` und `ghost_surface`), Varian
 | `field_target[v][f]` | R | pro Variante | ideale Bildhöhe h_f = f_soll · tan θ_f [mm] (numerik.md, Abschnitt 7) |
 | `ghost_coeff[v][g][k]` | R | pro Variante | Koeffizienten a_{g,k} der Geisterplatte g |
 | `ghost_index[v][g][l]` | R | pro Variante | Brechzahl des virtuellen Glases der Geisterplatte |
+| `paraxial_index[v][s]` | R | pro Variante | Brechzahl nach Fläche s bei λ_ref (Paraxialrechnung, ab M3-T3) |
+| `paraxial_ghost_index[v][g]` | R | pro Variante | Brechzahl des Glases der Geisterplatte g bei λ_ref (ab M3-T3) |
 
 Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 
@@ -208,6 +210,8 @@ Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 | `field_angle`, `field_target` | v·F + f | F |
 | `ghost_coeff` | (v·G + g)·K + k | G·K |
 | `ghost_index` | (v·G + g)·L + l | G·L |
+| `paraxial_index` | v·S + s (wie `curvature`) | S |
+| `paraxial_ghost_index` | v·G + g (`ghost_at`) | G |
 
 Die Daten einer Variante liegen in jedem Feld zusammenhängend; Variante v der Flächentabelle ist daher eine `SurfaceTableView` mit um v·S bzw. v·S·L versetzten Zeigern (`SystemBatchView::surface_table(v)`), `type` ist für alle Varianten derselbe Zeiger. `index` hat für eine Variante dasselbe Layout wie `IndexTable::n`.
 
@@ -220,6 +224,7 @@ Festlegungen:
 - **Feldwinkel** werden mit demselben Ausdruck wie im CPU-Tracer umgerechnet (θ = Grad · (π/180)), damit CPU-Trace über Batch und Einzeltabelle bitgleich sind.
 - **Geisterplatten** (M4-T5): `type` enthält die eingefügten Flächen vom Typ GhostPlate, G = deren Zahl, K = größte Ordnung (kürzere Profile mit 0 ergänzt, K ≤ `kMaxGhostTerms`, geprüft in `validate_topology`); `make_system_batch` füllt `ghost_norm_radius`, `ghost_coeff` und `ghost_index` aus der Flächentabelle. `surface_table(v)` setzt die Geisterzeiger auf `ghost_coeff + ghost_coeff_at(v, 0, 0)` und `ghost_index + ghost_index_at(v, 0, 0)` (gleiches Layout wie `SurfaceTableView`).
 - Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
+- **Brechzahlen bei λ_ref** (M3-T3): Die Paraxial-Nebenbedingungen (Brennweite bei λ_ref, numerik.md §9) brauchen Brechzahlen bei λ_ref, die nicht unter den Wellenlängen des Batches sein muss (Spektrum-Homotopie: z. B. nur 480 und 644 nm bei λ_ref = 546 nm). Deshalb hat der Batch zwei Spalten pro Variante: `paraxial_index[v][s]` (Medium nach Tabellenfläche s; bei Geisterplatten das Medium des Spalts) und `paraxial_ghost_index[v][g]`. Sie sind immer vorhanden (eine Regel statt „Spalte von λ_ref, falls vorhanden“) und gehören zu `index`/`ghost_index`: Wer die Brechzahlen einer Variante ändert (Glasvariablen M6), ändert beide. `make_system_batch` füllt sie aus `IndexTable::reference_n`/`reference_ghost_n` (`make_system_index_table`), sonst aus der Spalte von λ_ref; fehlt beides, wirft es. Die Trace-Kernel lesen sie nicht; sie liegen trotzdem im Gerätepuffer (Upload/Download bleiben verlustfrei, Kosten (S + G)·8 Byte pro Variante). `validate_values` verlangt nur Endlichkeit (von Hand gebaute Batches für reine Traces dürfen sie auf 0 lassen); die Paraxialrechnung prüft n > 0 selbst.
 
 ### Host-Container (Bibliothek `Mikroptim::batch`, `src/batch/`)
 
@@ -229,12 +234,14 @@ Statische Bibliothek `mikroptim_batch`, linkt `model`, `glass`, `cpu` und privat
 // system_batch_view.hpp (header-only, MKO_HD, ohne std-Container)
 struct BatchShape { int variants, surfaces, wavelengths, fields, ghost_plates, ghost_terms;
                     size_t surface_at(v, s), index_at(v, s, l), field_at(v, f),
-                           ghost_coeff_at(v, g, k), ghost_index_at(v, g, l); /* + *_stride() */ };
+                           ghost_coeff_at(v, g, k), ghost_index_at(v, g, l), ghost_at(v, g);
+                    /* + *_stride() */ };
 template <class R> struct SystemBatchView {          // trivial kopierbar, per Wert an Kernel
     BatchShape shape; SourceKind source; R source_point[3], source_na, reference_wavelength_nm;
     const SurfaceKind* type; const int* ghost_surface; const R *ghost_norm_radius, *wavelength_nm,
         *wavelength_weight, *field_weight, *curvature, *thickness, *index, *pupil_radius,
-        *field_angle, *field_target, *ghost_coeff, *ghost_index;
+        *field_angle, *field_target, *ghost_coeff, *ghost_index, *paraxial_index,
+        *paraxial_ghost_index;
     SurfaceTableView<R> surface_table(int v) const;  // Eingabe für trace_ray
     R image_distance(int v) const;                   // = thickness[v][S−1]
 };
@@ -316,10 +323,15 @@ MaterialSpec to_buchdahl_material(const BuchdahlFit& fit);   // kind = Buchdahl
 ```
 
 ```cpp
-struct IndexTable { int surfaces; int wavelengths; std::vector<double> n; double at(int s, int l) const; };
+struct IndexTable { int surfaces; int wavelengths; std::vector<double> n; double at(int s, int l) const;
+                    int ghost_plates; std::vector<double> ghost_n;              // M4-T5
+                    double reference_nm; std::vector<double> reference_n,       // M3-T3: bei λ_ref
+                                                             reference_ghost_n; };
 IndexTable make_index_table(std::span<const MaterialSpec> media,
                             std::span<const double> wavelengths_nm, const GlassCatalog& catalog);
 ```
+
+`make_system_index_table(system, catalog)` (`include/mikroptim/cpu/host_surface_table.hpp`) füllt zusätzlich `ghost_n` und die Brechzahlen bei `spectrum.reference_nm` (`reference_n[s]`, `reference_ghost_n[g]`, mit `material_index`, also bitgleich zur Spalte, wenn λ_ref im Spektrum liegt); liegt λ_ref außerhalb des Gültigkeitsbereichs eines Glases, wirft es `GlassError`. `make_index_table` lässt sie leer.
 
 `media[s]` ist das Medium **nach** Fläche s (`mko::MaterialSpec` aus `include/mikroptim/model/material.hpp`), das Medium vor Fläche 0 ist Luft. Die Tabelle ist zeilenweise abgelegt: `n[s * wavelengths + l]`, also dasselbe Layout wie `index[v][s][l]` für eine Variante. Air → 1, `constant` → n, Katalogname → Sellmeier mit Prüfung von `range_nm`, `buchdahl` → Formel aus numerik.md, Abschnitt 10. Fehler (unbekanntes Glas, Wellenlänge außerhalb des Gültigkeitsbereichs) sind `GlassError` mit Fläche, Wellenlänge und Glasname.
 
@@ -327,7 +339,7 @@ IndexTable make_index_table(std::span<const MaterialSpec> media,
 
 Modul `include/mikroptim/paraxial/`, Bibliothek `mikroptim_paraxial` (Alias `Mikroptim::paraxial`, linkt `model` und `glass`). Definitionen und Vorzeichen: [numerik.md, Abschnitt 9](numerik.md#9-paraxialoptik).
 
-- `ynu_trace.hpp` – header-only, `MKO_HD`, templatisiert über `R`: `ParaxialRay<R>{y, u}`, `surface_power`, `paraxial_refract`, `paraxial_transfer`, `paraxial_trace(c, t, n, count, ray, at_surface)` und `petzval_sum(c, n, count)` über nackte Arrays (Layout wie eine Variante im SystemBatch). Für Paraxialdaten vieler Varianten (M3-T3, M4-T4) auf Host oder GPU.
+- `ynu_trace.hpp` – header-only, `MKO_HD`, templatisiert über `R`: `ParaxialRay<R>{y, u}`, `surface_power`, `paraxial_refract`, `paraxial_transfer`, `paraxial_trace(c, t, n, count, ray, at_surface)` und `petzval_sum(c, n, count)` über nackte Arrays (Layout wie eine Variante im SystemBatch). Für Paraxialdaten vieler Varianten (M3-T3: `batch_paraxial` mit `paraxial_index`, M4-T4) auf Host oder GPU.
 - `paraxial.hpp` – Host-API:
 
 ```cpp
@@ -571,7 +583,7 @@ Residuenmatrix für finite Differenzen: Läufe × (P+1) × Residuen × 8 Byte. B
 Jedes Feld wird auf A = `kBatchAlignment` = 256 Byte aufgerundet, ⌈x⌉_A = A·⌈x/A⌉. Mit B = F·L Blöcken pro Variante und R_v = Strahlen pro Variante:
 
 - **Batch** (`make_batch_layout(topology, V).total_bytes`):
-  ⌈S⌉ + ⌈4G⌉ + ⌈8G⌉ + 2·⌈8L⌉ + ⌈8F⌉ + 2·⌈8VS⌉ + ⌈8VSL⌉ + ⌈8V⌉ + 2·⌈8VF⌉ + ⌈8VGK⌉ + ⌈8VGL⌉ (jeweils ⌈·⌉_A, leere Felder 0).
+  ⌈S⌉ + ⌈4G⌉ + ⌈8G⌉ + 2·⌈8L⌉ + ⌈8F⌉ + 2·⌈8VS⌉ + ⌈8VSL⌉ + ⌈8V⌉ + 2·⌈8VF⌉ + ⌈8VGK⌉ + ⌈8VGL⌉ + ⌈8VS⌉ + ⌈8VG⌉ (jeweils ⌈·⌉_A, leere Felder 0; die letzten beiden sind die Brechzahlen bei λ_ref, ab M3-T3).
 - **Ausgaben** (`make_output_layout(topology, V, OutputRequest, extra)`), jede einzeln abschaltbar:
   Residuen ⌈8V(R_v + E)⌉, Status pro Strahl ⌈V·R_v⌉ (1 Byte), rohe OPD pro Strahl ⌈8V·R_v⌉ (nur auf Anforderung, `opd`, ab M2-T2), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉ + versagte Strahlen ⌈8V⌉ (int64) + pro Block ⌈4VB⌉ (int32, ab M2-T3, `failed_rays`, `failed_rays_partial`), Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
 - **Strahlen pro Variante:** `rays_per_variant(F, L, N·M, F_Achse, N)` = L·(F_Achse·N + (F − F_Achse)·N·M), wenn die F_Achse Achsfelder (an beliebiger Stelle) die Achsquadratur (M = 1) nutzen (`sample_count` in `include/mikroptim/pupil/quadrature.hpp`); gleich `ResidualLayout::rays_per_variant()`.
@@ -579,7 +591,7 @@ Jedes Feld wird auf A = `kBatchAlignment` = 256 Byte aufgerundet, ⌈x⌉_A = A�
 
 Größte Batchgröße: `max_variants(free, topology, outputs, reserve, extra)` sucht (Bisektion, die Abschätzung ist monoton in V) das größte V mit Abschätzung ≤ free − max(`min_bytes`, `fraction`·free); Standardreserve max(256 MiB, 5 %) für Kontext, Kernel-Stacks, Local Memory (`TraceRecord`) und Fragmentierung. Zusätzlich gilt V·F·L ≤ 2³¹ − 1 (größtes Grid). Auf dem Gerät: `max_variants_on_device` mit `device_memory_info().free_bytes`; nie fest verdrahten (AGENTS.md, Abschnitt 7). Die TraceEngine bestimmt daraus die Tranchengröße (zusätzlich eigene Puffer, künstliche Grenze und Feldablage, Abschnitt [Host-API TraceEngine](#host-api-traceengine-m2-t4)).
 
-Beispiel (Test `BatchMemory.MaxVariantsRespectsLimit`): Zielsystem-Topologie S = 30, L = 7, F = 5 (ein Achsfeld), G = 6, K = 8, N = 10, M = 8 ergibt 2.310 Strahlen und ca. 41,5 kB pro Variante mit allen Ausgaben, also ca. 395.000 Varianten bei 16 GiB und 592.000 bei 24 GiB freiem Speicher. Der Batch selbst ist klein (ca. 3 kB pro Variante); die Ausgaben dominieren.
+Beispiel (Test `BatchMemory.MaxVariantsRespectsLimit`): Zielsystem-Topologie S = 30, L = 7, F = 5 (ein Achsfeld), G = 6, K = 8, N = 10, M = 8 ergibt 2.310 Strahlen und ca. 42,0 kB pro Variante mit allen Ausgaben, also ca. 391.000 Varianten bei 16 GiB und 586.000 bei 24 GiB freiem Speicher. Der Batch selbst ist klein (ca. 3,3 kB pro Variante); die Ausgaben dominieren.
 
 ## Host-API TraceEngine (M2-T4)
 
@@ -668,6 +680,25 @@ FdBatch make_fd_batch(set, base, base_variant, x0, FdScheme = FdScheme::Central)
 ```
 
 Der Generator arbeitet nur auf dem Host-Batch (`SystemBatchHost`); die TraceEngine lädt ihn wie jeden anderen Batch hoch. Für den gebündelten LM (M3-T4) liegen die FD-Muster mehrerer Läufe hintereinander in einem Batch (`write_fd_variants` mit `first` = Lauf · (2P + 1)).
+
+## Optimierer: Zusatzresiduen und paraxiale Nebenbedingungen (M3-T3)
+
+Ebenfalls in `Mikroptim::optim` (linkt zusätzlich `paraxial` und privat `Threads::Threads`). Formeln und Festlegungen: [optimierung.md, Abschnitte 2.1 und 2.2](optimierung.md#21-zusatzresiduen-schnittstelle-ab-m3-t3); Schema: [dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3); Modell `mko::Constraints` in `Mikroptim::model` (`include/mikroptim/model/constraints.hpp`).
+
+```cpp
+// extra_residuals.hpp: Schnittstelle zu FD-Jacobi (M3-T2) und LM (M3-T4)
+using ExtraResidualFn = std::function<void(const SystemBatchHost&, int v, std::span<double> out)>;
+struct ExtraResiduals { int count = 0; ExtraResidualFn evaluate; };
+// paraxial_residuals.hpp
+ParaxialData batch_paraxial(const SystemBatchHost&, int v);              // bei λ_ref, Geisterplatten
+std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost&, int threads = 0);
+ParaxialConstraints make_paraxial_constraints(const SystemDescription&);
+ExtraResiduals make_paraxial_residuals(ParaxialConstraints);
+void evaluate_extra_residuals(const ExtraResiduals&, const SystemBatchHost&, std::span<double> out,
+                              int first = 0, int count = -1, int threads = 0);
+```
+
+Der Paraxialtrace läuft auf dem Host (pro Variante ein y-nu-Trace über höchstens 64 Flächen, Felder auf dem Stack, keine Allokation), verteilt auf `std::thread`s in fester Aufteilung (intern `src/optim/parallel_variants.hpp`); Ergebnisse sind für jede Threadzahl bitgleich. Ein Paraxialtrace auf der GPU lohnt erst, wenn er neben dem Strahltrace ins Gewicht fällt (der Kern `ynu_trace.hpp` ist dafür schon `MKO_HD`).
 
 ## Mehrere GPUs (M7)
 

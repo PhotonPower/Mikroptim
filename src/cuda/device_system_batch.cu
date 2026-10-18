@@ -152,6 +152,10 @@ void DeviceSystemBatch::upload(const SystemBatchHost& host, int first, int count
               host.ghost_coeff_data().data() + v0 * sh.ghost_coeff_stride());
     to_device(base, layout.ghost_index,
               host.ghost_index_data().data() + v0 * sh.ghost_index_stride());
+    to_device(base, layout.paraxial_index,
+              host.paraxial_index_data().data() + v0 * sh.surface_stride());
+    to_device(base, layout.paraxial_ghost_index,
+              host.paraxial_ghost_index_data().data() + v0 * sh.ghost_stride());
 
     topology_ = host.topology();
     variants_ = count;
@@ -204,6 +208,10 @@ void DeviceSystemBatch::download(SystemBatchHost& host, int first) const {
             host.ghost_coeff_data().data() + v0 * sh.ghost_coeff_stride());
     to_host(base, layout_.ghost_index,
             host.ghost_index_data().data() + v0 * sh.ghost_index_stride());
+    to_host(base, layout_.paraxial_index,
+            host.paraxial_index_data().data() + v0 * sh.surface_stride());
+    to_host(base, layout_.paraxial_ghost_index,
+            host.paraxial_ghost_index_data().data() + v0 * sh.ghost_stride());
     host.reference_wavelength_nm = reference_wavelength_nm_;
     host.source_point = source_point_;
     host.source_na = source_na_;
@@ -245,6 +253,8 @@ SystemBatchView<double> DeviceSystemBatch::view() const {
     b.field_target = region_ptr<double>(buffer_, layout_.field_target);
     b.ghost_coeff = region_ptr<double>(buffer_, layout_.ghost_coeff);
     b.ghost_index = region_ptr<double>(buffer_, layout_.ghost_index);
+    b.paraxial_index = region_ptr<double>(buffer_, layout_.paraxial_index);
+    b.paraxial_ghost_index = region_ptr<double>(buffer_, layout_.paraxial_ghost_index);
     return b;
 }
 

@@ -152,6 +152,8 @@ void SystemBatchHost::resize(int variants) {
     field_target_.resize(v * sh.field_stride(), 0.0);
     ghost_coeff_.resize(v * sh.ghost_coeff_stride(), 0.0);
     ghost_index_.resize(v * sh.ghost_index_stride(), 0.0);
+    paraxial_index_.resize(v * sh.surface_stride(), 0.0);
+    paraxial_ghost_index_.resize(v * sh.ghost_stride(), 0.0);
 }
 
 int SystemBatchHost::add_variant_copy(int from) {
@@ -181,6 +183,8 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.field_target_, from, field_target_, to, sh.field_stride());
     copy_slice(other.ghost_coeff_, from, ghost_coeff_, to, sh.ghost_coeff_stride());
     copy_slice(other.ghost_index_, from, ghost_index_, to, sh.ghost_index_stride());
+    copy_slice(other.paraxial_index_, from, paraxial_index_, to, sh.surface_stride());
+    copy_slice(other.paraxial_ghost_index_, from, paraxial_ghost_index_, to, sh.ghost_stride());
 }
 
 void SystemBatchHost::check(int i, int count, const char* what) {
@@ -318,6 +322,27 @@ double SystemBatchHost::ghost_index(int v, int g, int l) const {
     return ghost_index_[shape().ghost_index_at(v, g, l)];
 }
 
+double& SystemBatchHost::paraxial_index(int v, int s) {
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    return paraxial_index_[shape().surface_at(v, s)];
+}
+double SystemBatchHost::paraxial_index(int v, int s) const {
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    return paraxial_index_[shape().surface_at(v, s)];
+}
+double& SystemBatchHost::paraxial_ghost_index(int v, int g) {
+    check(v, variants_, "Variante");
+    check(g, topology_.ghost_plates, "Geisterplatte");
+    return paraxial_ghost_index_[shape().ghost_at(v, g)];
+}
+double SystemBatchHost::paraxial_ghost_index(int v, int g) const {
+    check(v, variants_, "Variante");
+    check(g, topology_.ghost_plates, "Geisterplatte");
+    return paraxial_ghost_index_[shape().ghost_at(v, g)];
+}
+
 SystemBatchView<double> SystemBatchHost::view() const {
     SystemBatchView<double> b{};
     b.shape = shape();
@@ -341,6 +366,8 @@ SystemBatchView<double> SystemBatchHost::view() const {
     b.field_target = field_target_.data();
     b.ghost_coeff = ghost_coeff_.data();
     b.ghost_index = ghost_index_.data();
+    b.paraxial_index = paraxial_index_.data();
+    b.paraxial_ghost_index = paraxial_ghost_index_.data();
     return b;
 }
 
@@ -372,6 +399,8 @@ void SystemBatchHost::validate_values() const {
     finite(field_target_, "field_target");
     finite(ghost_coeff_, "ghost_coeff");
     finite(ghost_index_, "ghost_index");
+    finite(paraxial_index_, "paraxial_index");
+    finite(paraxial_ghost_index_, "paraxial_ghost_index");
     if (!(reference_wavelength_nm > 0.0) || !std::isfinite(reference_wavelength_nm)) {
         fail("reference_wavelength_nm muss endlich und > 0 sein");
     }
@@ -481,7 +510,9 @@ bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
            same_bits(a.pupil_radius_, b.pupil_radius_) &&
            same_bits(a.field_angle_, b.field_angle_) &&
            same_bits(a.field_target_, b.field_target_) &&
-           same_bits(a.ghost_coeff_, b.ghost_coeff_) && same_bits(a.ghost_index_, b.ghost_index_);
+           same_bits(a.ghost_coeff_, b.ghost_coeff_) && same_bits(a.ghost_index_, b.ghost_index_) &&
+           same_bits(a.paraxial_index_, b.paraxial_index_) &&
+           same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_);
 }
 
 // ---- Aufbau aus einem System -------------------------------------------------------------
@@ -544,6 +575,51 @@ HostSurfaceTable checked_table(const SystemDescription& system, const IndexTable
     return table;
 }
 
+// Brechzahlen der Dateiflächen und Geisterplatten bei λ_ref.
+struct ReferenceIndices {
+    std::vector<double> n;       // [S_Datei]
+    std::vector<double> ghost_n; // [G]
+};
+
+// Aus index.reference_n (make_system_index_table), sonst aus der Spalte von λ_ref, wenn λ_ref
+// unter den Wellenlängen des Spektrums ist (Tabelle von Hand oder mit make_index_table gebaut).
+ReferenceIndices reference_indices(const SystemDescription& system, const IndexTable& index) {
+    const std::size_t count = system.surfaces.size();
+    const std::size_t ghosts = system.ghost_plates.size();
+    const double ref = system.spectrum.reference_nm;
+    ReferenceIndices r;
+    if (!index.reference_n.empty() || !index.reference_ghost_n.empty()) {
+        if (index.reference_n.size() != count || index.reference_ghost_n.size() != ghosts) {
+            throw std::invalid_argument("SystemBatch: Brechzahlen bei λ_ref in der "
+                                        "Brechzahltabelle passen nicht zum System");
+        }
+        if (!same_bits(index.reference_nm, ref)) {
+            throw std::invalid_argument(
+                "SystemBatch: Brechzahltabelle wurde für eine andere Referenzwellenlänge (" +
+                std::to_string(index.reference_nm) + " nm) berechnet als spectrum.reference_nm (" +
+                std::to_string(ref) + " nm)");
+        }
+        r.n = index.reference_n;
+        r.ghost_n = index.reference_ghost_n;
+        return r;
+    }
+    const auto& wl = system.spectrum.wavelengths_nm;
+    const auto it = std::find(wl.begin(), wl.end(), ref);
+    if (it == wl.end()) {
+        throw std::invalid_argument(
+            "SystemBatch: Brechzahlen bei λ_ref = " + std::to_string(ref) +
+            " nm fehlen (Brechzahltabelle mit make_system_index_table bauen)");
+    }
+    const int l = static_cast<int>(it - wl.begin());
+    for (std::size_t s = 0; s < count; ++s) {
+        r.n.push_back(index.at(static_cast<int>(s), l));
+    }
+    for (std::size_t g = 0; g < ghosts; ++g) {
+        r.ghost_n.push_back(index.ghost_at(static_cast<int>(g), l));
+    }
+    return r;
+}
+
 // Baut den Batch; `focal_length` ist bereits aufgelöst (leer: Feldziel unbestimmt → 0).
 SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& index, int variants,
                             std::optional<double> focal_length) {
@@ -588,6 +664,20 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
             b.ghost_index(0, g, l) = table.ghost_index[to_size(g) * to_size(L) + to_size(l)];
         }
     }
+    // Brechzahlen bei λ_ref für die Paraxialrechnung (pro Tabellenfläche das Medium danach;
+    // Geisterplatten liegen im Luftspalt ihrer Dateifläche).
+    const ReferenceIndices ref = reference_indices(system, index);
+    const SurfaceMap map = make_surface_map(system);
+    for (int s = 0; s < S; ++s) {
+        const int file = map.file_of_table[to_size(s)];
+        const int gap =
+            file >= 0 ? file
+                      : system.ghost_plates[to_size(map.ghost_of_table[to_size(s)])].after_surface;
+        b.paraxial_index(0, s) = ref.n[to_size(gap)];
+    }
+    for (int g = 0; g < G; ++g) {
+        b.paraxial_ghost_index(0, g) = ref.ghost_n[to_size(g)];
+    }
     for (int f = 0; f < F; ++f) {
         if (!collimated) {
             b.field_weight(f) = 1.0; // Punktquelle: ein Feld auf der Achse, h = 0
@@ -621,12 +711,16 @@ SystemBatchHost make_system_batch(const SystemDescription& system, const IndexTa
         focal_length = system.target->focal_length;
     }
     if (!focal_length && has_off_axis_field(system)) {
-        const auto& wl = system.spectrum.wavelengths_nm;
-        const auto ref = std::find(wl.begin(), wl.end(), system.spectrum.reference_nm);
-        if (ref != wl.end()) {
-            focal_length = focal_length_of(
-                compute_paraxial(system, index, static_cast<int>(ref - wl.begin())));
-        }
+        // Paraxiale Brennweite bei λ_ref mit denselben Brechzahlen wie paraxial_index
+        // (index.reference_n oder die Spalte von λ_ref; wirft, wenn beide fehlen).
+        ReferenceIndices ref = reference_indices(system, index);
+        IndexTable column;
+        column.surfaces = static_cast<int>(ref.n.size());
+        column.wavelengths = 1;
+        column.n = std::move(ref.n);
+        column.ghost_plates = static_cast<int>(ref.ghost_n.size());
+        column.ghost_n = std::move(ref.ghost_n);
+        focal_length = focal_length_of(compute_paraxial(system, column, 0));
     }
     return build_batch(system, index, variants, focal_length);
 }

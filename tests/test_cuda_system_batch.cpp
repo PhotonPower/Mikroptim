@@ -84,6 +84,8 @@ void fill_random_bits(SystemBatchHost& b, std::uint64_t seed) {
     fill(b.field_target_data());
     fill(b.ghost_coeff_data());
     fill(b.ghost_index_data());
+    fill(b.paraxial_index_data());
+    fill(b.paraxial_ghost_index_data());
     b.reference_wavelength_nm = std::bit_cast<double>(rng());
     b.source_point = {std::bit_cast<double>(rng()), -0.0, std::bit_cast<double>(rng())};
     b.source_na = std::bit_cast<double>(rng());
@@ -220,10 +222,22 @@ TEST(CudaSystemBatch, ViewHasDevicePointers) {
     EXPECT_EQ(v.shape.variants, 3);
     EXPECT_EQ(v.shape.surfaces, 6);
     EXPECT_EQ(v.shape.ghost_terms, 5);
-    const void* ptrs[] = {
-        v.type,         v.ghost_surface, v.ghost_norm_radius, v.wavelength_nm, v.wavelength_weight,
-        v.field_weight, v.curvature,     v.thickness,         v.index,         v.pupil_radius,
-        v.field_angle,  v.field_target,  v.ghost_coeff,       v.ghost_index};
+    const void* ptrs[] = {v.type,
+                          v.ghost_surface,
+                          v.ghost_norm_radius,
+                          v.wavelength_nm,
+                          v.wavelength_weight,
+                          v.field_weight,
+                          v.curvature,
+                          v.thickness,
+                          v.index,
+                          v.pupil_radius,
+                          v.field_angle,
+                          v.field_target,
+                          v.ghost_coeff,
+                          v.ghost_index,
+                          v.paraxial_index,
+                          v.paraxial_ghost_index};
     for (const void* p : ptrs) {
         EXPECT_NE(p, nullptr);
         EXPECT_EQ(reinterpret_cast<std::uintptr_t>(p) % mko::kBatchAlignment, 0u);

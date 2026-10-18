@@ -23,6 +23,14 @@ struct IndexTable {
     int ghost_plates = 0;        // G
     std::vector<double> ghost_n; // ghost_n[g * wavelengths + l], Glas der Geisterplatte g
 
+    // Brechzahlen bei der Referenzwellenlänge reference_nm für die Paraxialrechnung (M3-T3,
+    // Paraxial-Nebenbedingungen): reference_n[s] (Medium nach Fläche s), reference_ghost_n[g].
+    // λ_ref muss nicht unter den Wellenlängen der Tabelle sein. Leer, wenn nicht berechnet
+    // (make_index_table); make_system_index_table füllt sie bei spectrum.reference_nm.
+    double reference_nm = 0.0;
+    std::vector<double> reference_n;       // [surfaces]
+    std::vector<double> reference_ghost_n; // [ghost_plates]
+
     double at(int s, int l) const {
         return n[static_cast<std::size_t>(s) * static_cast<std::size_t>(wavelengths) +
                  static_cast<std::size_t>(l)];
