@@ -13,6 +13,7 @@
 
 #include <cuda_runtime.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -26,6 +27,20 @@ constexpr int kWarpSize = 32;
 constexpr int kResidualWarps = kResidualThreads / kWarpSize;
 static_assert(kResidualThreads % kWarpSize == 0, "Blockgröße muss ein Vielfaches von 32 sein");
 static_assert(kMaxPupilRings <= kResidualThreads, "Knoten werden von je einem Thread geladen");
+
+// Dynamischer Shared Memory für die Geisterplatten der Variante: Koeffizienten [G·K],
+// Brechzahlen der Gläser bei der Wellenlänge des Blocks [G] und Normierungsradien [G].
+// Höchstens (kMaxSurfaces · kMaxGhostTerms + 2 · kMaxSurfaces) · 8 B = 17 KiB; zusammen mit
+// dem statischen Teil (ca. 1,9 KB) unter 48 KB auf beiden Karten (kein Opt-in nötig).
+constexpr std::size_t kMaxGhostSharedBytes =
+    (static_cast<std::size_t>(kMaxSurfaces) * kMaxGhostTerms + 2 * kMaxSurfaces) * sizeof(double);
+static_assert(kMaxGhostSharedBytes + 4096 <= 48 * 1024, "Shared Memory pro Block über 48 KB");
+
+std::size_t ghost_shared_bytes(const BatchShape& shape) {
+    const std::size_t G = static_cast<std::size_t>(shape.ghost_plates);
+    const std::size_t K = static_cast<std::size_t>(shape.ghost_terms);
+    return (G * K + 2 * G) * sizeof(double);
+}
 
 // Parameter des Kernels (per Wert, < 1 KB Parameterraum).
 template <class R>
@@ -57,7 +72,7 @@ __global__ void __launch_bounds__(kResidualThreads)
     residuals_kernel(const ResidualKernelArgs<R> a) {
     // Shared Memory (statisch, für S = kMaxSurfaces und R = double ca. 1,9 KB):
     // Flächentabelle der Variante mit den Brechzahlen der Wellenlänge l, Quadratur des Feldes,
-    // Teilsummen pro Warp, Kolben.
+    // Teilsummen pro Warp, Kolben; dazu dynamisch die Geisterplatten (höchstens 17 KiB).
     __shared__ SurfaceKind sh_type[kMaxSurfaces];
     __shared__ R sh_curvature[kMaxSurfaces];
     __shared__ R sh_thickness[kMaxSurfaces];
@@ -67,6 +82,8 @@ __global__ void __launch_bounds__(kResidualThreads)
     __shared__ R sh_weighted_opl[kResidualWarps];
     __shared__ R sh_piston;
     __shared__ int sh_valid;
+    // Geisterplatten (dynamisch, ghost_shared_bytes): Koeffizienten, Brechzahlen, Radien
+    extern __shared__ __align__(16) unsigned char sh_dynamic[];
 
     const int S = a.batch.shape.surfaces;
     const int L = a.batch.shape.wavelengths;
@@ -86,6 +103,22 @@ __global__ void __launch_bounds__(kResidualThreads)
         sh_thickness[s] = a.batch.thickness[a.batch.shape.surface_at(v, s)];
         sh_index[s] = a.batch.index[a.batch.shape.index_at(v, s, l)];
     }
+    // Geisterplatten der Variante v mit den Brechzahlen der Wellenlänge l
+    const int G = a.batch.shape.ghost_plates;
+    const int K = a.batch.shape.ghost_terms;
+    R* const sh_ghost_coeff = reinterpret_cast<R*>(sh_dynamic);
+    R* const sh_ghost_index = sh_ghost_coeff + G * K;
+    R* const sh_ghost_radius = sh_ghost_index + G;
+    if (G > 0) {
+        const R* const coeff = a.batch.ghost_coeff + a.batch.shape.ghost_coeff_at(v, 0, 0);
+        for (int i = tid; i < G * K; i += kResidualThreads) {
+            sh_ghost_coeff[i] = coeff[i];
+        }
+        for (int g = tid; g < G; g += kResidualThreads) {
+            sh_ghost_index[g] = a.batch.ghost_index[a.batch.shape.ghost_index_at(v, g, l)];
+            sh_ghost_radius[g] = a.batch.ghost_norm_radius[g];
+        }
+    }
     // Quadratur des Feldes: wie make_pupil_quadrature(N, M, mode)
     if (tid < a.pupil.rings) {
         sh_pupil.u[tid] = a.pupil.u[tid];
@@ -99,7 +132,17 @@ __global__ void __launch_bounds__(kResidualThreads)
     __syncthreads();
 
     // Sicht mit nur einer Wellenlänge (table_l = 0); dieselben Zahlen wie surface_table(v).
-    const SurfaceTableView<R> table{S, 1, sh_type, sh_curvature, sh_thickness, sh_index};
+    const SurfaceTableView<R> table{S,
+                                    1,
+                                    sh_type,
+                                    sh_curvature,
+                                    sh_thickness,
+                                    sh_index,
+                                    G,
+                                    K,
+                                    G > 0 ? sh_ghost_coeff : nullptr,
+                                    G > 0 ? sh_ghost_index : nullptr,
+                                    G > 0 ? sh_ghost_radius : nullptr};
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const int n = plan.samples;
     const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n; // Tupel (f, l)
@@ -287,7 +330,14 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
         args.residuals = region_ptr<double>(buffer_, out.residuals);
         args.opd = region_ptr<double>(buffer_, out.opd);
         args.status = region_ptr<std::uint8_t>(buffer_, out.ray_status);
-        residuals_kernel<double><<<static_cast<unsigned>(blocks), kResidualThreads>>>(args);
+        const std::size_t ghost_bytes = ghost_shared_bytes(view.shape);
+        if (ghost_bytes > kMaxGhostSharedBytes) {
+            throw std::invalid_argument("DeviceResiduals::run: Geisterdaten (" +
+                                        std::to_string(ghost_bytes) +
+                                        " Byte) passen nicht in den Shared Memory");
+        }
+        residuals_kernel<double>
+            <<<static_cast<unsigned>(blocks), kResidualThreads, ghost_bytes>>>(args);
         MKO_CUDA_CHECK(cudaGetLastError());
         MKO_CUDA_CHECK(cudaDeviceSynchronize());
     }

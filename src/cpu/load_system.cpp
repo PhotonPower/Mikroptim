@@ -26,12 +26,7 @@ LoadedSystem prepare(SystemDescription system, const std::filesystem::path& base
     validate_materials(system,
                        [&out](std::string_view name) { return out.catalog.contains(name); });
 
-    std::vector<MaterialSpec> media;
-    media.reserve(system.surfaces.size());
-    for (const Surface& s : system.surfaces) {
-        media.push_back(s.material);
-    }
-    out.index = make_index_table(media, system.spectrum.wavelengths_nm, out.catalog);
+    out.index = make_system_index_table(system, out.catalog);
     out.table = make_surface_table(system, out.index);
     out.system = std::move(system);
     return out;

@@ -14,9 +14,10 @@ namespace mko {
 enum class TraceStatus : unsigned {
     Ok = 0,
     Missed = 1,      // Fläche wird nicht getroffen (Diskriminante < 0)
-    TIR = 2,         // Totalreflexion
+    TIR = 2,         // Totalreflexion; an einer Geisterplatte: Radikand 1 − |d'_⊥|² < 0
     Backward = 3,    // d_z <= 0 vor dem Transfer: Strahl läuft rückwärts (oder ist NaN)
-    Unsupported = 4, // Flächentyp wird vom Tracer (noch) nicht unterstützt
+    Unsupported = 4, // Flächentyp wird vom Tracer nicht unterstützt (z. B. Geisterplatte ohne
+                     // Daten in der Tabelle)
 };
 
 // Kurzname für Meldungen und Tests.

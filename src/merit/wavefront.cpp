@@ -17,7 +17,7 @@ namespace mko {
 namespace {
 
 void check_table(const SystemDescription& system, const HostSurfaceTable& table) {
-    if (table.surfaces != static_cast<int>(system.surfaces.size()) ||
+    if (table.surfaces != table_surface_count(system) ||
         table.wavelengths != static_cast<int>(system.spectrum.wavelengths_nm.size()) ||
         table.thickness.size() != static_cast<std::size_t>(table.surfaces) || table.surfaces < 2) {
         throw std::invalid_argument(

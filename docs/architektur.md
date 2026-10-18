@@ -72,16 +72,21 @@ Ablauf, Start- und Endzustand und Statuscodes: [numerik.md](numerik.md#sequenzie
 `include/mikroptim/trace/surface_table.hpp`:
 
 ```cpp
-inline constexpr int kMaxSurfaces = 64;                     // inkl. Blende; Host prüft beim Aufbau
-enum class SurfaceKind : std::uint8_t { Stop = 0, Plane = 1, Sphere = 2, GhostPlate = 3 /* M4-T5 */ };
+inline constexpr int kMaxSurfaces = 64;                     // inkl. Blende und Geisterplatten
+inline constexpr int kMaxGhostTerms = 32;                   // größte Ordnung K einer Geisterplatte
+enum class SurfaceKind : std::uint8_t { Stop = 0, Plane = 1, Sphere = 2, GhostPlate = 3 };
 template <class R> struct SurfaceTableView {                // trivial kopierbar
     int surfaces, wavelengths;                              // S, L
     const SurfaceKind* type; const R* curvature; const R* thickness;  // [S]
     const R* index;                                         // [S·L], index[s·L + l] = Medium nach Fläche s
+    int ghost_plates = 0, ghost_terms = 0;                  // G, K (M4-T5)
+    const R* ghost_coeff = nullptr;                         // [G·K], a_k der Geisterplatte g bei g·K + k − 1
+    const R* ghost_index = nullptr;                         // [G·L], n_G bei g·L + l
+    const R* ghost_norm_radius = nullptr;                   // [G], r_g
 };
 ```
 
-`trace_ray` greift nur über die Namen `surfaces`, `wavelengths`, `type[s]`, `curvature[s]`, `thickness[s]` und `index[s * wavelengths + l]` auf die Tabelle zu. Jeder Typ mit diesen Namen ist eine gültige Tabelle, z. B. feste Felder im Shared Memory oder (M2) eine Batch-Sicht, deren Zeiger um v·S bzw. v·S·L versetzt sind. Der CUDA-Prüfkernel `src/cuda/trace_check.cu` lädt die Tabelle pro Block in den Shared Memory (dynamisch, (2S + S·L)·8 + S Byte) und baut die Sicht darauf.
+`trace_ray` greift nur über die Namen `surfaces`, `wavelengths`, `type[s]`, `curvature[s]`, `thickness[s]`, `index[s * wavelengths + l]` und die Geisterfelder (Abschnitt [Geisterplatten](#geisterplatten-m4-t5)) auf die Tabelle zu. Jeder Typ mit diesen Namen ist eine gültige Tabelle, z. B. feste Felder im Shared Memory oder (M2) eine Batch-Sicht, deren Zeiger um v·S bzw. v·S·L versetzt sind. Der CUDA-Prüfkernel `src/cuda/trace_check.cu` lädt die Tabelle pro Block in den Shared Memory (dynamisch, (2S + S·L)·8 + S Byte) und baut die Sicht darauf.
 
 `include/mikroptim/trace/trace.hpp`:
 
@@ -93,18 +98,19 @@ template <class R> struct TraceRecord {          // optional, z. B. Local Memory
 };
 template <class R> MKO_HD Ray<R> collimated_ray(R a, R theta, R rho, R phi);        // OPL₀ = p₀·d₀
 template <class R> MKO_HD Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi); // OPL₀ = 0
-template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after);
+template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after,
+                                                        const GhostPlateParams<R>* ghost = nullptr);
 template <class R, class T> MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr);
 template <class R, class T> MKO_HD TraceStatus transfer_to_image_plane(const T& sys, int l, Ray<R>&);
 ```
 
-Erweiterungspunkte: Ein neuer Flächentyp (Geisterplatte, M4-T5) bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle. Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) folgen aus `p[s]`, `d[s − 1]` und der Flächennormale.
+Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5). Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) folgen aus `p[s]`, `d[s − 1]` und der Flächennormale.
 
 ### Host-Schicht (Bibliothek `Mikroptim::cpu`, `src/cpu/`)
 
 Statische Bibliothek `mikroptim_cpu`, linkt `Mikroptim::model` und `Mikroptim::glass`.
 
-- `include/mikroptim/cpu/host_surface_table.hpp`: `HostSurfaceTable` (FP64-Vektoren `type`, `curvature`, `thickness`, `index`, zusätzlich `semi_diameter`; `view()` liefert die `SurfaceTableView<double>`) und `make_surface_table(SystemDescription, IndexTable)`. Krümmungen von Stop und Plane werden 0; mehr als `kMaxSurfaces` Flächen oder unpassende Tabellen werfen `std::invalid_argument`.
+- `include/mikroptim/cpu/host_surface_table.hpp`: `HostSurfaceTable` (FP64-Vektoren `type`, `curvature`, `thickness`, `index`, Geisterfelder `ghost_coeff`, `ghost_index`, `ghost_norm_radius` mit G, K, zusätzlich `semi_diameter`; `view()` liefert die `SurfaceTableView<double>`), `make_system_index_table(SystemDescription, GlassCatalog)` (Brechzahlen der Dateiflächen und der Gläser der Geisterplatten) und `make_surface_table(SystemDescription, IndexTable)`, die die Geisterplatten als Flächen einfügt ([dateiformat.md](dateiformat.md#abbildung-dateiflächen--tabellenflächen)). Krümmungen von Stop, Plane und GhostPlate werden 0; mehr als `kMaxSurfaces` Tabellenflächen oder unpassende Tabellen werfen `std::invalid_argument`.
 - `include/mikroptim/cpu/load_system.hpp`: `load_system(path)` verbindet `read_system_file`, `resolve_glass_catalogs` (relativ zum Verzeichnis der Datei), `GlassCatalog::from_file` + `merge`, `validate_materials`, `make_index_table` und `make_surface_table` zu einem `LoadedSystem { system, catalog_files, catalog, index, table, warnings }`. `prepare_system(description, base_dir)` macht dasselbe für eine bereits eingelesene Beschreibung.
 - `include/mikroptim/cpu/cpu_trace.hpp`: `trace_system_cpu(system, table, quadrature)` traced alle Felder × Wellenlängen × Pupillenstützstellen (eine Quadratur für alle Felder) und liefert `CpuTraceResult` mit Endzustand (Schnittpunkt der letzten Fläche), Status und versagender Fläche pro Strahl, abgelegt unter `(f · L + l) · N + k` wie die Blöcke und Threads im Kernel. `source_ray(system, table, f, l, sample)` erzeugt den Startstrahl (kollimiert mit a = Halbdurchmesser der Blende, Punktquelle mit sin ϑ_max = NA / index[0][l]); `source_field_count` liefert die Zahl der Felder (1 bei der Punktquelle).
 
@@ -208,7 +214,7 @@ Festlegungen:
 - **Gemeinsam** liegt, was die Meritfunktion definiert und für alle Varianten gleich sein muss, damit Merits vergleichbar sind: Gewichte, Wellenlängen, λ_ref, Quellenart und Punktquelle, Normierungsradien. Eine Spektrum-Homotopie verschiebt die Wellenlängen aller Varianten eines Batches gemeinsam (neue `index`-Zeilen pro Variante).
 - **Feldziel** beim Aufbau aus einem System: f_soll = `target.focal_length`, sonst die paraxiale Brennweite bei λ_ref; afokale Systeme (z. B. `planplatte_bk7.json`), θ_f = 0 und die Punktquelle haben h_f = 0.
 - **Feldwinkel** werden mit demselben Ausdruck wie im CPU-Tracer umgerechnet (θ = Grad · (π/180)), damit CPU-Trace über Batch und Einzeltabelle bitgleich sind.
-- **Geisterplatten:** Die Felder sind vorhanden (G = 0 erlaubt); Physik und Dateiformat folgen in M4. Der Tracer meldet für `GhostPlate` bis M4-T5 `Unsupported`.
+- **Geisterplatten** (M4-T5): `type` enthält die eingefügten Flächen vom Typ GhostPlate, G = deren Zahl, K = größte Ordnung (kürzere Profile mit 0 ergänzt, K ≤ `kMaxGhostTerms`, geprüft in `validate_topology`); `make_system_batch` füllt `ghost_norm_radius`, `ghost_coeff` und `ghost_index` aus der Flächentabelle. `surface_table(v)` setzt die Geisterzeiger auf `ghost_coeff + ghost_coeff_at(v, 0, 0)` und `ghost_index + ghost_index_at(v, 0, 0)` (gleiches Layout wie `SurfaceTableView`).
 - Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
 
 ### Host-Container (Bibliothek `Mikroptim::batch`, `src/batch/`)
@@ -337,7 +343,33 @@ ParaxialData compute_paraxial(const SystemDescription&, const GlassCatalog&, dou
 ParaxialData compute_paraxial(const SystemDescription&, const GlassCatalog&);   // reference_nm
 ```
 
-Fehler: `std::invalid_argument` (leere oder ungleich lange Arrays, nicht endliche Werte, n ≤ 0, Blendenradius ≤ 0, Brechzahltabelle passt nicht zum System), `std::out_of_range` (Wellenlängenindex), `GlassError` (Brechzahl nicht bestimmbar). Geisterplatten kommen in M4 als zusätzliche dünne Elemente hinzu (eigene Überladung); `ParaxialData` bleibt dabei unverändert.
+Fehler: `std::invalid_argument` (leere oder ungleich lange Arrays, nicht endliche Werte, n ≤ 0, Blendenradius ≤ 0, Brechzahltabelle passt nicht zum System), `std::out_of_range` (Wellenlängenindex), `GlassError` (Brechzahl nicht bestimmbar). Geisterplatten (M4-T5) gehen als dünne Elemente ein: Überladung mit den Spannen `power` (φ_G pro Fläche) und `petzval` (φ_G/(n_m n_G)); die Überladungen für Systembeschreibungen rechnen über die Tabellenflächen und berücksichtigen Geisterplatten automatisch ([numerik.md, Abschnitt 9](numerik.md#9-paraxialoptik)). `ParaxialData` bleibt unverändert.
+
+## Geisterplatten (M4-T5)
+
+Physik und Formeln: [numerik.md, Abschnitt 6](numerik.md#6-geisterplatte); Dateiformat und Abbildung Dateiflächen ↔ Tabellenflächen: [dateiformat.md](dateiformat.md#geisterplatten).
+
+```cpp
+// include/mikroptim/trace/ghost_plate.hpp (header-only, MKO_HD)
+template <class R> struct GhostPlateParams { const R* coeff; int terms; R norm_radius; R n_glass; };
+template <class R> void legendre(int k, R xi, R& p, R& dp);                     // P_k, P'_k (Rekursionen)
+template <class R> struct GhostProfile { R t, dt_du; };
+template <class R> GhostProfile<R> ghost_profile(const R* coeff, int K, R u);   // u = (r/r_g)²
+template <class R> R ghost_profile_t2(const R* coeff, int K, R r_g);            // paraxial t₂
+template <class R> R ghost_plate_power(const R* coeff, int K, R r_g, R n_G, R n_m);   // φ_G
+template <class R> R ghost_plate_petzval(const R* coeff, int K, R r_g, R n_G, R n_m); // φ_G/(n_m n_G)
+template <class R> TraceStatus phase_surface_step(Ray<R>&, R phase, R grad_x, R grad_y, R n, R n_prime);
+template <class R> TraceStatus ghost_plate_step(Ray<R>&, const GhostPlateParams<R>&, R n, R n_prime);
+// include/mikroptim/model/system.hpp
+struct GhostPlate { int after_surface; double distance; MaterialSpec glass; double norm_radius;
+                    std::vector<double> coefficients; };            // SystemDescription::ghost_plates
+struct SurfaceMap { std::vector<int> table_of_file, file_of_table, ghost_of_table, table_of_ghost;
+                    int file_surface(int table_surface) const; int table_surface(int file_surface) const; };
+SurfaceMap make_surface_map(const SystemDescription&); int table_surface_count(const SystemDescription&);
+// include/mikroptim/glass/index_table.hpp: IndexTable::ghost_plates, ghost_n[g·L + l], ghost_at(g, l)
+```
+
+`trace_ray` zählt die Flächen vom Typ GhostPlate in Tracerichtung mit; die g-te erhält `GhostPlateParams{ghost_coeff + g·K, K, ghost_norm_radius[g], ghost_index[g·L + l]}`, Flächen vom Typ GhostPlate ohne Daten (g ≥ G) melden `Unsupported`. Tabellen ohne Geisterplatten (G = 0, Nullzeiger als Standardwerte) funktionieren unverändert.
 
 ## Kernel-Abbildung
 
@@ -397,7 +429,7 @@ template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       
 
 **Tupel ohne gültigen Strahl** (W_ok = 0, Kolben undefiniert): alle OPD und Residuen des Tupels sind 0, der Status bleibt gesetzt (gleiche Regel wie `opd_statistics`).
 
-**Shared Memory** (statisch, unabhängig von S bis `kMaxSurfaces` = 64), für R = double: Typ 64 B + Krümmung, Dicke, Brechzahl 3 · 64 · 8 B = 1.536 B + Quadratur 272 B + Teilsummen 2 · 4 · 8 B + Kolben und Flag 12 B, zusammen ca. 1,9 KB (≤ 48 KB auf beiden Karten).
+**Shared Memory** (statisch, unabhängig von S bis `kMaxSurfaces` = 64), für R = double: Typ 64 B + Krümmung, Dicke, Brechzahl 3 · 64 · 8 B = 1.536 B + Quadratur 272 B + Teilsummen 2 · 4 · 8 B + Kolben und Flag 12 B, zusammen ca. 1,9 KB. Dazu **dynamisch** die Geisterplatten der Variante (M4-T5): Koeffizienten G·K, Brechzahlen der Gläser bei der Wellenlänge des Blocks G und Normierungsradien G, also (G·K + 2G)·8 B, höchstens (64·32 + 128)·8 B = 17 KiB; ohne Geisterplatten 0 B. Zusammen ≤ 19 KB < 48 KB auf beiden Karten (kein Opt-in; `static_assert` und Prüfung beim Start). Geladen werden sie in Schritt 1 zusammen mit der Flächentabelle; die Sicht im Shared Memory hat dieselben Geisterfelder wie `surface_table(v)` mit `wavelengths = 1`.
 
 **Abweichung CPU/GPU:** Die Pro-Strahl-Rechnung ist dieselbe Funktion; Unterschiede kommen aus FMA-Kontraktion, `sin`/`cos` der CUDA-Bibliothek und der Summationsreihenfolge des Kolbens (≈ 10⁻¹⁶·OPL). Für je 1.000 gestörte Varianten der Testsysteme liegen alle Strahlen innerhalb `kCpuGpuFp64` = 10⁻¹² mm, außer einzelnen schlecht konditionierten Strahlen (nahe Totalreflexion oder streifend, |OPD| von mm), die relativ ≤ 1,3·10⁻¹² abweichen (`kCpuGpuFp64Relative`, Test `CudaResiduals.MatchCpuForPerturbedVariants`).
 

@@ -51,7 +51,7 @@ Ray<double> source_ray(const SystemDescription& system, const HostSurfaceTable& 
 
 CpuTraceResult trace_system_cpu(const SystemDescription& system, const HostSurfaceTable& table,
                                 const PupilQuadrature<double>& pupil) {
-    if (table.surfaces != static_cast<int>(system.surfaces.size()) ||
+    if (table.surfaces != table_surface_count(system) ||
         table.wavelengths != static_cast<int>(system.spectrum.wavelengths_nm.size())) {
         throw std::invalid_argument(
             "CPU-Tracer: Flächentabelle passt nicht zur Systembeschreibung");

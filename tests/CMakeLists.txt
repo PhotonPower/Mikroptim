@@ -15,6 +15,7 @@ add_executable(mikroptim_tests
     test_buchdahl_fit.cpp
     test_cli_trace.cpp
     test_dispersion.cpp
+    test_ghost_plate.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
     test_load_system.cpp

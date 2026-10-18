@@ -48,6 +48,11 @@ const std::string kBase = R"({
 }
 )";
 
+// Gültige Geisterplatte im Luftspalt nach der Blende (Dicke 5 mm) als Baustein für die
+// Negativtests (Feld "ghost_plates" mit abschließendem Komma).
+const std::string kGhost =
+    R"("ghost_plates": [ { "after_surface": 0, "distance": 2.0, "glass": "CAF2", "norm_radius": 4.0, "order": 2, "coefficients": [0.001, 0.0] } ],)";
+
 // Ersetzt das erste Vorkommen von `from` in `text` (Test schlägt fehl, wenn es fehlt).
 std::string replaced(const std::string& text, const std::string& from, const std::string& to) {
     const auto pos = text.find(from);
@@ -153,7 +158,7 @@ TEST(SystemIo, ReadsEinzellinseValues) {
     EXPECT_EQ(s.surfaces[1].material.name, "N-BK7");
     EXPECT_EQ(s.surfaces[2].curvature, -0.00967);
     EXPECT_EQ(s.surfaces[2].thickness, 99.05);
-    EXPECT_FALSE(s.ghost_plates_json.has_value());
+    EXPECT_TRUE(s.ghost_plates.empty());
 }
 
 // Alle optionalen Felder und Materialvarianten überstehen den Roundtrip.
@@ -172,7 +177,10 @@ TEST(SystemIo, RoundtripAllFeatures) {
     { "type": "plane", "thickness": 1.0, "material": { "model": "buchdahl", "n0": 1.6, "nu": [-0.1, 0.02] }, "semi_diameter": 4.0 },
     { "type": "sphere", "curvature": -0.05, "thickness": 0.5, "material": { "model": "buchdahl", "n0": 1.45, "nu": [-0.08, 0.01, -0.003] }, "semi_diameter": 4.0, "comment": "" }
   ],
-  "ghost_plates": [ { "after_surface": 7, "distance": 0.5, "glass": "CAF2", "norm_radius": 4.0, "order": 8, "coefficients": [0, 0, 0, 0, 0, 0, 0, 0] } ],
+  "ghost_plates": [
+    { "after_surface": 0, "distance": 0.5, "glass": "CAF2", "norm_radius": 4.0, "order": 8, "coefficients": [0, 0, 0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 1, "glass": { "model": "constant", "n": 1.6 }, "norm_radius": 3.5, "order": 2, "coefficients": [1e-3, -2.5e-4] }
+  ],
   "variables": { "z": 1, "a": [1, 2] },
   "constraints": {}
 }
@@ -196,7 +204,17 @@ TEST(SystemIo, RoundtripAllFeatures) {
     EXPECT_EQ(a.surfaces[2].material.nu, (std::array<double, 3>{-0.1, 0.02, 0.0}));
     EXPECT_EQ(a.surfaces[3].material.nu, (std::array<double, 3>{-0.08, 0.01, -0.003}));
     EXPECT_EQ(a.surfaces[3].comment, "");
-    ASSERT_TRUE(a.ghost_plates_json.has_value());
+    ASSERT_EQ(a.ghost_plates.size(), 2u);
+    EXPECT_EQ(a.ghost_plates[0].after_surface, 0);
+    EXPECT_EQ(a.ghost_plates[0].distance, 0.5);
+    EXPECT_EQ(a.ghost_plates[0].glass.kind, MaterialKind::Catalog);
+    EXPECT_EQ(a.ghost_plates[0].glass.name, "CAF2");
+    EXPECT_EQ(a.ghost_plates[0].norm_radius, 4.0);
+    EXPECT_EQ(a.ghost_plates[0].coefficients, std::vector<double>(8, 0.0));
+    EXPECT_EQ(a.ghost_plates[1].distance, 1.0);
+    EXPECT_EQ(a.ghost_plates[1].glass.kind, MaterialKind::Constant);
+    EXPECT_EQ(a.ghost_plates[1].glass.n, 1.6);
+    EXPECT_EQ(a.ghost_plates[1].coefficients, (std::vector<double>{1e-3, -2.5e-4}));
     ASSERT_TRUE(a.variables_json.has_value());
     EXPECT_EQ(*a.variables_json, R"({"z":1,"a":[1,2]})"); // Feldreihenfolge bleibt erhalten
     EXPECT_EQ(a.constraints_json, "{}");
@@ -205,7 +223,11 @@ TEST(SystemIo, RoundtripAllFeatures) {
     const SystemDescription b = mko::read_system_json(text1);
     EXPECT_TRUE(a == b);
     EXPECT_EQ(text1, mko::write_system_json(b));
-    EXPECT_NE(text1.find(R"("after_surface": 7)"), std::string::npos) << text1;
+    for (const char* expected : {R"("after_surface": 0,)", R"("glass": "CAF2",)", R"("order": 8,)",
+                                 R"("glass": { "model": "constant", "n": 1.6 },)",
+                                 R"("coefficients": [0.001, -0.00025])"}) {
+        EXPECT_NE(text1.find(expected), std::string::npos) << expected << '\n' << text1;
+    }
     EXPECT_NE(text1.find(R"("nu": [-0.1, 0.02])"), std::string::npos) << text1;
     EXPECT_NE(text1.find(R"("variables": { "z": 1, "a": [1, 2] })"), std::string::npos) << text1;
 }
@@ -400,6 +422,72 @@ std::vector<NegativeCase> negative_cases() {
          replaced(b, R"("material": "N-BK7")",
                   R"("material": { "model": "buchdahl", "n0": 1.5, "nu": [0.1] })"),
          "surfaces[1].material.nu", "2 oder 3"},
+        {"GeisterplatteFehlendesFeld",
+         replaced(
+             b, R"("units": "mm",)",
+             R"("units": "mm", "ghost_plates": [ { "after_surface": 0, "distance": 1.0, "glass": "CAF2", "order": 1, "coefficients": [0.0] } ],)"),
+         "ghost_plates[0].norm_radius", "Pflichtfeld fehlt"},
+        {"GeisterplatteKeinLuftspalt",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("after_surface": 0)", R"("after_surface": 1)")),
+         "ghost_plates[0].after_surface", "Luftspalt"},
+        {"GeisterplatteNachLetzterFlaeche",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("after_surface": 0)", R"("after_surface": 2)")),
+         "ghost_plates[0].after_surface", "Arbeitsabstand"},
+        {"GeisterplatteFlaecheFehlt",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("after_surface": 0)", R"("after_surface": 5)")),
+         "ghost_plates[0].after_surface", "existiert nicht"},
+        {"GeisterplatteFlaecheNichtGanzzahlig",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("after_surface": 0)", R"("after_surface": 0.5)")),
+         "ghost_plates[0].after_surface", "ganze Zahl"},
+        {"GeisterplatteAbstandZuGross",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("distance": 2.0)", R"("distance": 5.5)")),
+         "ghost_plates[0].distance", "Dicke des Luftspalts"},
+        {"GeisterplatteAbstandNegativ",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("distance": 2.0)", R"("distance": -0.1)")),
+         "ghost_plates[0].distance", "zwischen 0"},
+        {"GeisterplatteOrdnungFalsch",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("order": 2)", R"("order": 3)")),
+         "ghost_plates[0].order", "passt nicht zur Länge von coefficients"},
+        {"GeisterplatteOhneKoeffizienten",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(replaced(kGhost, R"("order": 2)", R"("order": 0)"),
+                               R"([0.001, 0.0])", "[]")),
+         "ghost_plates[0].coefficients", "zwischen 1 und 32"},
+        {"GeisterplatteNormierungsradiusNull",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("norm_radius": 4.0)", R"("norm_radius": 0)")),
+         "ghost_plates[0].norm_radius", "größer als 0"},
+        {"GeisterplatteGlasLuft",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"("glass": "CAF2")", R"("glass": "AIR")")),
+         "ghost_plates[0].glass", "braucht ein Glas"},
+        {"GeisterplatteKoeffizientAlsText",
+         replaced(b, R"("units": "mm",)",
+                  std::string(R"("units": "mm", )") +
+                      replaced(kGhost, R"([0.001, 0.0])", R"([0.001, "0"])")),
+         "ghost_plates[0].coefficients[1]", "falscher Typ"},
+        {"GeisterplattenUnsortiert",
+         replaced(
+             b, R"("units": "mm",)",
+             R"("units": "mm", "ghost_plates": [ { "after_surface": 0, "distance": 2.0, "glass": "CAF2", "norm_radius": 4.0, "order": 1, "coefficients": [0.0] }, { "after_surface": 0, "distance": 1.0, "glass": "CAF2", "norm_radius": 4.0, "order": 1, "coefficients": [0.0] } ],)"),
+         "ghost_plates[1]", "sortiert"},
         {"GeisterplattenKeineListe",
          replaced(b, R"("units": "mm",)", R"("units": "mm", "ghost_plates": {},)"), "ghost_plates",
          "falscher Typ"},
@@ -426,6 +514,33 @@ TEST(SystemIo, UnknownGlassReportsSurfacePath) {
                   std::string::npos)
             << e.what();
     }
+}
+
+TEST(SystemIo, UnknownGhostGlassReportsGhostPath) {
+    const SystemDescription s = mko::read_system_json(
+        replaced(kBase, R"("units": "mm",)",
+                 std::string(R"("units": "mm", )") + replaced(kGhost, R"("CAF2")", R"("CAF3")")));
+    try {
+        mko::validate_materials(s, basis_glass);
+        FAIL() << "keine Ausnahme";
+    } catch (const FormatError& e) {
+        EXPECT_EQ(e.json_path(), "ghost_plates[0].glass");
+        EXPECT_NE(std::string(e.what()).find("unbekanntes Glas \"CAF3\""), std::string::npos)
+            << e.what();
+    }
+}
+
+// Unbekannte Felder einer Geisterplatte werden mit Pfad gemeldet und ignoriert.
+TEST(SystemIo, UnknownGhostFieldProducesWarning) {
+    std::vector<std::string> warnings;
+    const SystemDescription s = mko::read_system_json(
+        replaced(kBase, R"("units": "mm",)",
+                 std::string(R"("units": "mm", )") +
+                     replaced(kGhost, R"("order": 2,)", R"("order": 2, "farbe": "rot",)")),
+        &warnings);
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_EQ(warnings[0], "ghost_plates[0].farbe: unbekanntes Feld wird ignoriert");
+    EXPECT_EQ(s.ghost_plates.size(), 1u);
 }
 
 TEST(SystemIo, SyntaxErrorIsReported) {
@@ -484,12 +599,28 @@ TEST(SystemIo, WriterRejectsInvalidModel) {
     }
     {
         SystemDescription t = s;
-        t.ghost_plates_json = "[{oops";
+        t.variables_json = "{oops";
         try {
             (void)mko::write_system_json(t);
             FAIL() << "keine Ausnahme";
         } catch (const FormatError& e) {
-            EXPECT_EQ(e.json_path(), "ghost_plates");
+            EXPECT_EQ(e.json_path(), "variables");
+        }
+    }
+    {
+        SystemDescription t = s;
+        mko::GhostPlate g;
+        g.after_surface = 0;
+        g.distance = 1.0;
+        g.glass.kind = MaterialKind::Catalog;
+        g.glass.name = "CAF2";
+        g.norm_radius = 4.0; // Koeffizienten fehlen (Ordnung 0)
+        t.ghost_plates.push_back(g);
+        try {
+            (void)mko::write_system_json(t);
+            FAIL() << "keine Ausnahme";
+        } catch (const FormatError& e) {
+            EXPECT_EQ(e.json_path(), "ghost_plates[0].coefficients");
         }
     }
 }

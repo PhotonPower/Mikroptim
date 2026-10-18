@@ -571,6 +571,56 @@ TEST(BatchTrace, VariantMatchesSingleTableBitwise) {
     EXPECT_THROW(mko::trace_variant_cpu(batch, kVariants, q), std::out_of_range);
 }
 
+// Geisterplatten (M4-T5): eingefügte Flächen in der Topologie, Geisterdaten im Batch (auf K
+// ergänzt), Flächentabelle der Variante mit versetzten Geisterzeigern, Trace bitgleich zur
+// Einzeltabelle des Systems.
+TEST(BatchTrace, GhostPlatesMatchSingleTableBitwise) {
+    const mko::LoadedSystem ls = mko::load_system(kSystems + "einzellinse_geisterplatte.json");
+    SystemBatchHost b = mko::make_system_batch(ls, 3);
+    ASSERT_EQ(b.surfaces(), 5);
+    EXPECT_EQ(b.ghost_plates(), 2);
+    EXPECT_EQ(b.ghost_terms(), 6);
+    EXPECT_EQ(b.type(1), SurfaceKind::GhostPlate);
+    EXPECT_EQ(b.type(2), SurfaceKind::GhostPlate);
+    EXPECT_EQ(b.ghost_surface(0), 1);
+    EXPECT_EQ(b.ghost_surface(1), 2);
+    EXPECT_EQ(b.ghost_norm_radius(1), 10.0);
+    EXPECT_EQ(b.ghost_coeff(2, 0, 3), 2e-05);
+    EXPECT_EQ(b.ghost_coeff(2, 0, 4), 0.0); // aufgefüllt
+    EXPECT_EQ(b.ghost_coeff(1, 1, 5), 1e-05);
+    EXPECT_EQ(b.thickness(0, 1), 2.5);
+    for (int l = 0; l < b.wavelengths(); ++l) {
+        EXPECT_EQ(b.ghost_index(2, 1, l),
+                  ls.table.ghost_index[static_cast<std::size_t>(b.wavelengths() + l)]);
+        EXPECT_EQ(b.index(0, 2, l), 1.0);
+    }
+    EXPECT_NO_THROW(b.validate_values());
+
+    // Variante 1 mit anderen Koeffizienten: Sicht zeigt auf ihre Daten
+    b.ghost_coeff(1, 1, 1) = 7e-4;
+    b.ghost_index(1, 0, 2) = 1.5;
+    const mko::SurfaceTableView<double> t1 = b.surface_table(1);
+    EXPECT_EQ(t1.ghost_plates, 2);
+    EXPECT_EQ(t1.ghost_terms, 6);
+    EXPECT_EQ(t1.ghost_coeff[6 + 1], 7e-4);
+    EXPECT_EQ(t1.ghost_index[0 * b.wavelengths() + 2], 1.5);
+    EXPECT_EQ(t1.ghost_norm_radius[0], 10.0);
+    EXPECT_EQ(b.surface_table(2).ghost_coeff[6 + 1], 0.0002);
+
+    const auto q = mko::make_pupil_quadrature(8, 6, mko::PupilMode::Half);
+    expect_identical(mko::trace_system_cpu(ls.system, ls.table, q),
+                     mko::trace_variant_cpu(b, 2, q));
+    // Die geänderte Variante weicht ab
+    const mko::CpuTraceResult changed = mko::trace_variant_cpu(b, 1, q);
+    const mko::CpuTraceResult same = mko::trace_variant_cpu(b, 0, q);
+    EXPECT_NE(changed.rays[5].opl, same.rays[5].opl);
+
+    // Topologie: zu viele Koeffizienten pro Geisterplatte
+    BatchTopology too_many = b.topology();
+    too_many.ghost_terms = mko::kMaxGhostTerms + 1;
+    EXPECT_THROW(mko::validate_topology(too_many), std::invalid_argument);
+}
+
 TEST(BatchTrace, PlateMatchesSingleTableBitwise) {
     const mko::LoadedSystem ls = mko::load_system(kSystems + "planplatte_bk7.json");
     const auto q = mko::make_pupil_quadrature(6, 6, mko::PupilMode::Half);

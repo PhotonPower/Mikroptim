@@ -67,6 +67,26 @@ struct Surface {
     }
 };
 
+// Geisterplatte (docs/dateiformat.md, „Geisterplatten“; Physik: docs/numerik.md, Abschnitt 6):
+// virtuelle dünne Glasplatte im Luftspalt nach Fläche `after_surface`, im Abstand `distance`
+// von deren Scheitel. Dickenprofil t(r) = Σ_{k=1}^{K} a_k P_k(2 (r/r_g)² − 1) mit
+// K = coefficients.size() (in der Datei `order`).
+struct GhostPlate {
+    int after_surface = 0;            // Dateifläche, nach der der Luftspalt liegt
+    double distance = 0.0;            // Abstand vom Scheitel von after_surface [mm]
+    MaterialSpec glass;               // virtuelles Glas (Katalogname oder Modell, nicht Luft)
+    double norm_radius = 0.0;         // Normierungsradius r_g [mm]
+    std::vector<double> coefficients; // a_1 … a_K [mm]
+
+    // Vergleicht alle Felder, auch die des Glases (MaterialSpec selbst hat kein operator==).
+    friend bool operator==(const GhostPlate& a, const GhostPlate& b) {
+        return a.after_surface == b.after_surface && a.distance == b.distance &&
+               a.glass.kind == b.glass.kind && a.glass.name == b.glass.name &&
+               a.glass.n == b.glass.n && a.glass.n0 == b.glass.n0 && a.glass.nu == b.glass.nu &&
+               a.norm_radius == b.norm_radius && a.coefficients == b.coefficients;
+    }
+};
+
 struct SystemDescription {
     std::string format{kSystemFormat};
     std::string name;
@@ -77,10 +97,11 @@ struct SystemDescription {
     Source source;
     std::optional<Target> target;
     std::vector<Surface> surfaces; // in Tracerichtung, surfaces[0] ist die Blende
+    // Geisterplatten, sortiert nach (after_surface, distance); leer: keine
+    std::vector<GhostPlate> ghost_plates;
 
-    // Abschnitte späterer Meilensteine (M3/M4), deren Schema noch nicht festgelegt ist:
+    // Abschnitte späterer Meilensteine (M3), deren Schema noch nicht festgelegt ist:
     // kompakter JSON-Text, wird beim Schreiben unverändert wieder ausgegeben.
-    std::optional<std::string> ghost_plates_json;
     std::optional<std::string> variables_json;
     std::optional<std::string> constraints_json;
 
@@ -91,10 +112,40 @@ struct SystemDescription {
 // FormatError mit dem JSON-Pfad der ersten verletzten Regel. Glasnamen werden nicht geprüft.
 void validate_system(const SystemDescription& system);
 
-// Prüft für jede Fläche mit Katalogmaterial, ob das Glas existiert; wirft sonst FormatError
-// mit Pfad `surfaces[i].material`.
+// Prüft für jede Fläche und Geisterplatte mit Katalogmaterial, ob das Glas existiert; wirft
+// sonst FormatError mit Pfad `surfaces[i].material` bzw. `ghost_plates[g].glass`.
 void validate_materials(const SystemDescription& system,
                         const std::function<bool(std::string_view)>& glass_exists);
+
+// Abbildung zwischen den Flächen der Datei (`surfaces`) und den Flächen der Flächentabelle
+// (Tracer, Batch), in die die Geisterplatten als zusätzliche Flächen vom Typ GhostPlate
+// eingefügt werden (docs/dateiformat.md, „Abbildung Dateiflächen ↔ Tabellenflächen“):
+// Tabellenfläche j folgt in Tracerichtung; nach Dateifläche i stehen die Geisterplatten mit
+// after_surface = i in der Reihenfolge der Datei (nach distance sortiert). Geisterplatte g
+// ist die g-te Tabellenfläche vom Typ GhostPlate (wie `ghost_surface[g]` im Batch).
+struct SurfaceMap {
+    std::vector<int> table_of_file;  // [S_Datei] → Tabellenfläche
+    std::vector<int> file_of_table;  // [S_Tabelle] → Dateifläche, −1 bei Geisterplatten
+    std::vector<int> ghost_of_table; // [S_Tabelle] → Geisterplatte g, −1 bei Dateiflächen
+    std::vector<int> table_of_ghost; // [G] → Tabellenfläche
+
+    int file_surfaces() const { return static_cast<int>(table_of_file.size()); }
+    int table_surfaces() const { return static_cast<int>(file_of_table.size()); }
+
+    // Dateifläche einer Tabellenfläche j (z. B. versagende Fläche eines Strahls): −1 bei einer
+    // Geisterplatte; j = S_Tabelle (Referenzsphäre nach der letzten Fläche) → S_Datei.
+    // Wirft std::out_of_range außerhalb von [0, S_Tabelle].
+    int file_surface(int table_surface) const;
+    // Tabellenfläche einer Dateifläche i; i = S_Datei → S_Tabelle. Wirft std::out_of_range.
+    int table_surface(int file_surface) const;
+};
+
+// Baut die Abbildung. Verlangt after_surface in [0, S_Datei − 2] und die Sortierung nach
+// (after_surface, distance) wie validate_system; wirft sonst std::invalid_argument.
+SurfaceMap make_surface_map(const SystemDescription& system);
+
+// Zahl der Tabellenflächen: surfaces.size() + ghost_plates.size().
+int table_surface_count(const SystemDescription& system);
 
 // Namen für Meldungen und Dateiformat
 std::string_view to_string(SurfaceType type);

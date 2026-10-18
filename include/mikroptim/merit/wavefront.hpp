@@ -42,6 +42,7 @@ struct WavefrontMap {
     std::vector<double> opd_waves;          // OPD in Wellen bei λ_ref; NaN bei Versagen
     std::vector<TraceStatus> status;
     // Fläche des Versagens: −1 ohne Versagen, S (= Flächenzahl) für die Referenzsphäre.
+    // Nummern der Flächentabelle (mit Geisterplatten); Dateifläche: SurfaceMap::file_surface.
     std::vector<int> failed_surface;
     double piston = kNaN;    // Σ W OPL / Σ W über gültige Strahlen [mm]
     double rms = kNaN;       // RMS der OPD [mm]; NaN ohne gültigen Strahl

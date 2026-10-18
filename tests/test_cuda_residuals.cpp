@@ -262,6 +262,80 @@ TEST(CudaResiduals, MatchCpuForPerturbedVariants) {
     }
 }
 
+// Geisterplatten (M4-T5): Geisterdaten im Shared Memory des Kernels gegen die CPU-Referenz für
+// gestörte Varianten, auch mit gestörten Koeffizienten und Brechzahlen der virtuellen Gläser.
+// Systeme: einzellinse_geisterplatte.json (zwei Platten in einem Spalt) und der Mehrlinser mit
+// drei Platten in drei Luftspalten (verschiedene Ordnungen und Glasmodelle).
+TEST(CudaResiduals, MatchCpuWithGhostPlates) {
+    MKO_REQUIRE_GPU();
+    std::vector<mko::LoadedSystem> systems;
+    systems.push_back(mko::test::load_residual_system("einzellinse_geisterplatte.json"));
+    {
+        mko::SystemDescription sys =
+            mko::test::load_residual_system("testsystem_mehrlinser.json").system;
+        mko::GhostPlate g;
+        g.after_surface = 0;
+        g.distance = 1.0;
+        g.glass.kind = mko::MaterialKind::Catalog;
+        g.glass.name = "CAF2";
+        g.norm_radius = 4.0;
+        g.coefficients = {-1e-3, 3e-4, -5e-5};
+        sys.ghost_plates.push_back(g);
+        g.after_surface = 3;
+        g.distance = 0.5;
+        g.glass = mko::MaterialSpec{};
+        g.glass.kind = mko::MaterialKind::Buchdahl;
+        g.glass.n0 = 1.7;
+        g.glass.nu = {-0.1, 0.02, 0.0};
+        g.norm_radius = 5.0;
+        g.coefficients = {2e-4, -1e-4, 5e-5, -2e-5, 1e-5, -5e-6, 2e-6, -1e-6};
+        sys.ghost_plates.push_back(g);
+        g.after_surface = 5;
+        g.distance = 1.5;
+        g.glass = mko::MaterialSpec{};
+        g.glass.kind = mko::MaterialKind::Catalog;
+        g.glass.name = "F_SILICA";
+        g.norm_radius = 4.5;
+        g.coefficients = {5e-4, 0.0, -1e-4, 0.0, 2e-5};
+        sys.ghost_plates.push_back(g);
+        systems.push_back(
+            mko::prepare_system(sys, std::filesystem::path(mko::test::kResidualSystems)));
+    }
+    std::uint64_t seed = 8008;
+    for (const mko::LoadedSystem& ls : systems) {
+        SCOPED_TRACE(ls.system.name);
+        SystemBatchHost batch = mko::test::perturbed_batch(ls, 500, seed++);
+        ASSERT_GT(batch.ghost_plates(), 0);
+        std::mt19937_64 rng(seed++);
+        std::uniform_real_distribution<double> u(-1.0, 1.0);
+        for (int v = 1; v < batch.variants(); ++v) {
+            for (int g = 0; g < batch.ghost_plates(); ++g) {
+                for (int k = 0; k < batch.ghost_terms(); ++k) {
+                    batch.ghost_coeff(v, g, k) =
+                        batch.ghost_coeff(v, g, k) * (1.0 + 0.5 * u(rng)) + 2e-4 * u(rng) / (k + 1);
+                }
+                const double dn = 0.05 * u(rng);
+                for (int l = 0; l < batch.wavelengths(); ++l) {
+                    batch.ghost_index(v, g, l) += dn;
+                }
+            }
+        }
+        ASSERT_NO_THROW(batch.validate_values());
+        const ResidualLayout layout(batch.topology());
+        const ResidualResult gpu = gpu_residuals(batch);
+        const ResidualResult cpu = mko::residuals_cpu(batch, layout);
+        const Comparison c = compare(gpu, cpu, layout);
+        EXPECT_EQ(c.rays, 500u * static_cast<std::size_t>(layout.rays_per_variant()));
+        EXPECT_LT(c.failed, c.rays / 2);
+        std::printf("[ Info     ] %s (G = %d, K = %d): %zu Strahlen, %zu versagt (%d Varianten), "
+                    "max |dr| = %.3e mm, max |dOPD| = %.3e mm, %zu Strahlen über kCpuGpuFp64 "
+                    "(max. relativ %.2e)\n",
+                    ls.system.name.c_str(), batch.ghost_plates(), batch.ghost_terms(), c.rays,
+                    c.failed, c.variants_with_failures, c.max_residual, c.max_opd, c.above_absolute,
+                    c.max_relative);
+    }
+}
+
 // Punktquelle neben der Achse (volle Pupille), gestörte Varianten.
 TEST(CudaResiduals, MatchCpuForPointSource) {
     MKO_REQUIRE_GPU();

@@ -8,6 +8,7 @@
 #include "mikroptim/config.hpp"
 #include "mikroptim/math/scalar.hpp"
 #include "mikroptim/math/vec3.hpp"
+#include "mikroptim/trace/ghost_plate.hpp"
 #include "mikroptim/trace/ray.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/surface_table.hpp"
@@ -72,12 +73,18 @@ MKO_HD inline Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi) {
 // OPL += n_before · (s₀ + s), Brechung mit μ = n_before / n_after. Danach steht der Strahl im
 // Schnittpunkt, in lokalen Koordinaten der neuen Fläche.
 //
+// Geisterplatte (kind = GhostPlate, Daten in `ghost`, docs/numerik.md, Abschnitt 6): Transfer
+// in die Ebene z = 0 (c wird ignoriert), OPL += n_before · s₀, dann ghost_plate_step (OPL += Φ,
+// Ablenkung um ∇Φ). Ohne Daten (ghost = nullptr) ist der Typ nicht unterstützt.
+//
 // Status: Backward, wenn d_z <= 0 (oder NaN) vor dem Transfer; Missed, TIR aus den
-// Flächenoperationen; Unsupported für unbekannte Flächentypen. Bei Versagen ist der
-// Strahlzustand teilweise fortgeschrieben und nicht weiter zu verwenden.
+// Flächenoperationen (an der Geisterplatte TIR bei negativem Radikanden); Unsupported für
+// unbekannte Flächentypen. Bei Versagen ist der Strahlzustand teilweise fortgeschrieben und
+// nicht weiter zu verwenden.
 template <class R>
-MKO_HD inline TraceStatus propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before,
-                                            R n_after) {
+MKO_HD inline TraceStatus
+propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after,
+                  const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost = nullptr) {
     R curv;
     switch (kind) {
     case SurfaceKind::Stop:
@@ -87,6 +94,12 @@ MKO_HD inline TraceStatus propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, 
     case SurfaceKind::Sphere:
         curv = c;
         break;
+    case SurfaceKind::GhostPlate:
+        if (ghost == nullptr) {
+            return TraceStatus::Unsupported;
+        }
+        curv = R(0);
+        break;
     default:
         return TraceStatus::Unsupported;
     }
@@ -94,6 +107,10 @@ MKO_HD inline TraceStatus propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, 
         return TraceStatus::Backward;
     }
     const R s0 = transfer_to_tangent_plane(ray, t);
+    if (kind == SurfaceKind::GhostPlate) {
+        ray.opl += n_before * s0; // Schnitt mit der Ebene: s = 0
+        return ghost_plate_step(ray, *ghost, n_before, n_after);
+    }
     R s = R(0);
     const TraceStatus hit = intersect_sphere(ray, curv, s);
     if (hit != TraceStatus::Ok) {
@@ -104,7 +121,9 @@ MKO_HD inline TraceStatus propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, 
 }
 
 // Sequenzieller Trace durch die Flächen 1 … S−1 der Tabelle `sys` bei Wellenlänge
-// `wavelength_index` (Anforderungen an den Tabellentyp: SurfaceTableView).
+// `wavelength_index` (Anforderungen an den Tabellentyp: SurfaceTableView). Geisterplatten
+// werden in Tracerichtung durchgezählt; die g-te Fläche vom Typ GhostPlate erhält die Daten
+// der Geisterplatte g der Tabelle.
 //
 // Start: `ray` in lokalen Koordinaten von Fläche 0, im Medium nach Fläche 0
 // (index[0·L + l]); an Fläche 0 selbst wird nicht gebrochen. Bei Systemen aus Dateien ist
@@ -130,10 +149,24 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
         record->opl[0] = ray.opl;
     }
     R n_before = R(sys.index[wavelength_index]);
+    int ghost = 0; // Nummer der nächsten Geisterplatte (g-te Fläche vom Typ GhostPlate)
     for (int s = 1; s < S; ++s) {
         const R n_after = R(sys.index[s * L + wavelength_index]);
-        const TraceStatus st = propagate_surface(ray, R(sys.thickness[s - 1]), sys.type[s],
-                                                 R(sys.curvature[s]), n_before, n_after);
+        const SurfaceKind kind = sys.type[s];
+        GhostPlateParams<R> plate{};
+        const GhostPlateParams<R>* plate_ptr = nullptr;
+        if (kind == SurfaceKind::GhostPlate) {
+            if (ghost < sys.ghost_plates) {
+                plate.coeff = sys.ghost_coeff + ghost * sys.ghost_terms;
+                plate.terms = sys.ghost_terms;
+                plate.norm_radius = R(sys.ghost_norm_radius[ghost]);
+                plate.n_glass = R(sys.ghost_index[ghost * L + wavelength_index]);
+                plate_ptr = &plate;
+            }
+            ++ghost;
+        }
+        const TraceStatus st = propagate_surface(ray, R(sys.thickness[s - 1]), kind,
+                                                 R(sys.curvature[s]), n_before, n_after, plate_ptr);
         if (st != TraceStatus::Ok) {
             if (failed_surface != nullptr) {
                 *failed_surface = s;

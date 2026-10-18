@@ -115,15 +115,21 @@ struct SystemBatchView {
     const R* ghost_coeff;  // [V][G][K], Koeffizienten a_{g,k} des Dickenprofils
     const R* ghost_index;  // [V][G][L], Brechzahl des virtuellen Glases
 
-    // Flächentabelle der Variante v für trace_ray: Zeiger um v·S bzw. v·S·L versetzt,
-    // type ist für alle Varianten derselbe.
+    // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K bzw. v·G·L
+    // versetzt; type und ghost_norm_radius sind für alle Varianten dieselben.
     MKO_HD SurfaceTableView<R> surface_table(int v) const {
-        return SurfaceTableView<R>{shape.surfaces,
-                                   shape.wavelengths,
-                                   type,
-                                   curvature + shape.surface_at(v, 0),
-                                   thickness + shape.surface_at(v, 0),
-                                   index + shape.index_at(v, 0, 0)};
+        return SurfaceTableView<R>{
+            shape.surfaces,
+            shape.wavelengths,
+            type,
+            curvature + shape.surface_at(v, 0),
+            thickness + shape.surface_at(v, 0),
+            index + shape.index_at(v, 0, 0),
+            shape.ghost_plates,
+            shape.ghost_terms,
+            shape.ghost_plates > 0 ? ghost_coeff + shape.ghost_coeff_at(v, 0, 0) : nullptr,
+            shape.ghost_plates > 0 ? ghost_index + shape.ghost_index_at(v, 0, 0) : nullptr,
+            ghost_norm_radius};
     }
 
     // Arbeitsabstand (Abstand letzte Fläche – Bildebene) der Variante v. Einzige Quelle ist

@@ -95,10 +95,7 @@ public:
         sys.surfaces = read_surfaces(required(root, "", "surfaces"), "surfaces");
 
         if (const Json* g = member(root, "ghost_plates")) {
-            if (!g->is_array()) {
-                fail_type("ghost_plates", "Liste", *g);
-            }
-            sys.ghost_plates_json = g->dump();
+            sys.ghost_plates = read_ghost_plates(*g, "ghost_plates");
         }
         if (const Json* v = member(root, "variables")) {
             expect_object(*v, "variables");
@@ -335,6 +332,50 @@ private:
         return s;
     }
 
+    // Nichtnegative ganze Zahl (als JSON-Zahl; 7 und 7.0 sind erlaubt).
+    static int as_count(const Json& j, const std::string& path) {
+        const double v = as_number(j, path);
+        if (v < 0.0 || v != std::floor(v) || v > 1e9) {
+            fail(path, "nichtnegative ganze Zahl erwartet, ist " + j.dump());
+        }
+        return static_cast<int>(v);
+    }
+
+    std::vector<GhostPlate> read_ghost_plates(const Json& j, const std::string& path) {
+        if (!j.is_array()) {
+            fail_type(path, "Liste", j);
+        }
+        std::vector<GhostPlate> v;
+        v.reserve(j.size());
+        for (std::size_t i = 0; i < j.size(); ++i) {
+            v.push_back(read_ghost_plate(j[i], at(path, i)));
+        }
+        return v;
+    }
+
+    GhostPlate read_ghost_plate(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        GhostPlate g;
+        g.after_surface = as_count(required(j, path, "after_surface"), join(path, "after_surface"));
+        g.distance = as_number(required(j, path, "distance"), join(path, "distance"));
+        const std::string glass_path = join(path, "glass");
+        g.glass = read_material(required(j, path, "glass"), glass_path);
+        g.norm_radius = as_number(required(j, path, "norm_radius"), join(path, "norm_radius"));
+        const std::string order_path = join(path, "order");
+        const int order = as_count(required(j, path, "order"), order_path);
+        g.coefficients =
+            as_number_list(required(j, path, "coefficients"), join(path, "coefficients"));
+        if (static_cast<std::size_t>(order) != g.coefficients.size()) {
+            fail(order_path, "Ordnung " + std::to_string(order) +
+                                 " passt nicht zur Länge von coefficients (" +
+                                 std::to_string(g.coefficients.size()) + ")");
+        }
+        warn_unknown(
+            j, path,
+            {"after_surface", "distance", "glass", "norm_radius", "order", "coefficients"});
+        return g;
+    }
+
     MaterialSpec read_material(const Json& j, const std::string& path) {
         MaterialSpec m;
         if (j.is_string()) {
@@ -476,8 +517,19 @@ Json to_json(const SystemDescription& sys) {
     }
     root["surfaces"] = std::move(surfaces);
 
-    if (sys.ghost_plates_json) {
-        root["ghost_plates"] = raw_to_json(*sys.ghost_plates_json, "ghost_plates");
+    if (!sys.ghost_plates.empty()) {
+        Json plates = Json::array();
+        for (const GhostPlate& g : sys.ghost_plates) {
+            Json jg;
+            jg["after_surface"] = g.after_surface;
+            jg["distance"] = g.distance;
+            jg["glass"] = material_to_json(g.glass);
+            jg["norm_radius"] = g.norm_radius;
+            jg["order"] = g.coefficients.size();
+            jg["coefficients"] = g.coefficients;
+            plates.push_back(std::move(jg));
+        }
+        root["ghost_plates"] = std::move(plates);
     }
     if (sys.variables_json) {
         root["variables"] = raw_to_json(*sys.variables_json, "variables");

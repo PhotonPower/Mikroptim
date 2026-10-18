@@ -4,10 +4,12 @@
 #include "mikroptim/model/system.hpp"
 
 #include "mikroptim/model/format_error.hpp"
+#include "mikroptim/trace/surface_table.hpp"
 
 #include <cmath>
 #include <cstddef>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace mko {
@@ -176,6 +178,64 @@ void check_surfaces(const std::vector<Surface>& surfaces) {
     }
 }
 
+// Geisterplatten (docs/dateiformat.md, „Geisterplatten“): Luftspalt nach after_surface (nicht
+// nach der letzten Fläche), 0 <= distance <= Dicke des Spalts, Glas (nicht Luft),
+// norm_radius > 0, 1 <= K <= kMaxGhostTerms endliche Koeffizienten, sortiert nach
+// (after_surface, distance).
+void check_ghost_plates(const std::vector<GhostPlate>& plates,
+                        const std::vector<Surface>& surfaces) {
+    for (std::size_t g = 0; g < plates.size(); ++g) {
+        const GhostPlate& gp = plates[g];
+        const std::string p = at("ghost_plates", g);
+        const int last = static_cast<int>(surfaces.size()) - 1;
+        if (gp.after_surface < 0 || gp.after_surface > last) {
+            fail(p + ".after_surface", "Fläche " + std::to_string(gp.after_surface) +
+                                           " existiert nicht (erlaubt: 0 bis " +
+                                           std::to_string(last - 1) + ")");
+        }
+        if (gp.after_surface == last) {
+            fail(p + ".after_surface",
+                 "nach der letzten Fläche liegt der Arbeitsabstand; Geisterplatten sind dort "
+                 "nicht erlaubt (erlaubt: 0 bis " +
+                     std::to_string(last - 1) + ")");
+        }
+        const Surface& gap = surfaces[static_cast<std::size_t>(gp.after_surface)];
+        if (gap.material.kind != MaterialKind::Air) {
+            fail(p + ".after_surface", "Geisterplatten liegen in einem Luftspalt; das Medium nach "
+                                       "Fläche " +
+                                           std::to_string(gp.after_surface) + " ist nicht \"AIR\"");
+        }
+        require_finite(p + ".distance", gp.distance);
+        if (gp.distance < 0.0 || gp.distance > gap.thickness) {
+            fail(p + ".distance", "muss zwischen 0 und der Dicke des Luftspalts (" +
+                                      num(gap.thickness) + ") liegen, ist " + num(gp.distance));
+        }
+        check_material(p + ".glass", gp.glass);
+        if (gp.glass.kind == MaterialKind::Air) {
+            fail(p + ".glass", "Geisterplatte braucht ein Glas, \"AIR\" ist nicht erlaubt");
+        }
+        require_positive(p + ".norm_radius", gp.norm_radius);
+        const std::string cp = p + ".coefficients";
+        if (gp.coefficients.empty() ||
+            gp.coefficients.size() > static_cast<std::size_t>(kMaxGhostTerms)) {
+            fail(cp, "Ordnung (Zahl der Koeffizienten) muss zwischen 1 und " +
+                         std::to_string(kMaxGhostTerms) + " liegen, ist " +
+                         std::to_string(gp.coefficients.size()));
+        }
+        for (std::size_t k = 0; k < gp.coefficients.size(); ++k) {
+            require_finite(at(cp, k), gp.coefficients[k]);
+        }
+        if (g > 0) {
+            const GhostPlate& prev = plates[g - 1];
+            if (gp.after_surface < prev.after_surface ||
+                (gp.after_surface == prev.after_surface && gp.distance < prev.distance)) {
+                fail(p, "Geisterplatten müssen nach after_surface und distance aufsteigend "
+                        "sortiert sein");
+            }
+        }
+    }
+}
+
 } // namespace
 
 std::string_view to_string(SurfaceType type) {
@@ -222,6 +282,7 @@ void validate_system(const SystemDescription& system) {
         check_target(*system.target);
     }
     check_surfaces(system.surfaces);
+    check_ghost_plates(system.ghost_plates, system.surfaces);
 }
 
 void validate_materials(const SystemDescription& system,
@@ -233,6 +294,69 @@ void validate_materials(const SystemDescription& system,
                  "unbekanntes Glas \"" + m.name + "\" (in keinem der Glaskataloge enthalten)");
         }
     }
+    for (std::size_t g = 0; g < system.ghost_plates.size(); ++g) {
+        const MaterialSpec& m = system.ghost_plates[g].glass;
+        if (m.kind == MaterialKind::Catalog && !glass_exists(m.name)) {
+            fail(at("ghost_plates", g) + ".glass",
+                 "unbekanntes Glas \"" + m.name + "\" (in keinem der Glaskataloge enthalten)");
+        }
+    }
+}
+
+int table_surface_count(const SystemDescription& system) {
+    return static_cast<int>(system.surfaces.size() + system.ghost_plates.size());
+}
+
+SurfaceMap make_surface_map(const SystemDescription& system) {
+    const int files = static_cast<int>(system.surfaces.size());
+    SurfaceMap m;
+    m.table_of_file.reserve(system.surfaces.size());
+    m.table_of_ghost.reserve(system.ghost_plates.size());
+    std::size_t g = 0;
+    for (int i = 0; i < files; ++i) {
+        m.table_of_file.push_back(static_cast<int>(m.file_of_table.size()));
+        m.file_of_table.push_back(i);
+        m.ghost_of_table.push_back(-1);
+        for (; g < system.ghost_plates.size() && system.ghost_plates[g].after_surface == i; ++g) {
+            const GhostPlate& gp = system.ghost_plates[g];
+            if (i == files - 1 || (g > 0 && system.ghost_plates[g - 1].after_surface == i &&
+                                   gp.distance < system.ghost_plates[g - 1].distance)) {
+                throw std::invalid_argument("Flächenabbildung: Geisterplatte " + std::to_string(g) +
+                                            " liegt nach der letzten Fläche oder ist nicht "
+                                            "nach distance sortiert");
+            }
+            m.table_of_ghost.push_back(static_cast<int>(m.file_of_table.size()));
+            m.file_of_table.push_back(-1);
+            m.ghost_of_table.push_back(static_cast<int>(g));
+        }
+    }
+    if (g != system.ghost_plates.size()) {
+        throw std::invalid_argument("Flächenabbildung: Geisterplatte " + std::to_string(g) +
+                                    " hat eine ungültige Fläche after_surface oder ist nicht "
+                                    "nach after_surface sortiert");
+    }
+    return m;
+}
+
+int SurfaceMap::file_surface(int table_surface) const {
+    const int n = table_surfaces();
+    if (table_surface < 0 || table_surface > n) {
+        throw std::out_of_range("Flächenabbildung: Tabellenfläche " +
+                                std::to_string(table_surface) + " außerhalb von [0, " +
+                                std::to_string(n) + "]");
+    }
+    return table_surface == n ? file_surfaces()
+                              : file_of_table[static_cast<std::size_t>(table_surface)];
+}
+
+int SurfaceMap::table_surface(int file_surface) const {
+    const int n = file_surfaces();
+    if (file_surface < 0 || file_surface > n) {
+        throw std::out_of_range("Flächenabbildung: Dateifläche " + std::to_string(file_surface) +
+                                " außerhalb von [0, " + std::to_string(n) + "]");
+    }
+    return file_surface == n ? table_surfaces()
+                             : table_of_file[static_cast<std::size_t>(file_surface)];
 }
 
 } // namespace mko

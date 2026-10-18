@@ -68,6 +68,14 @@ inline constexpr double kAplanaticRms = 1e-10;
 // relativ (Abnahmekriterium M1-T7). Modellfehler (Terme höherer Ordnung), kein Maß für die
 // Rechengenauigkeit.
 inline constexpr double kSeidelRelative = 1e-2;
+// Gradient des Dickenprofils einer Geisterplatte gegen zentrale finite Differenzen mit
+// Richardson-Extrapolation (5 Stufen, Abbruchfehler O(h¹⁰)), relativ zu |∇t| (Abnahmekriterium
+// M4-T5), K bis 16. Rest vor allem aus Rundung (ε |t| / h), am größten nahe Extrema des Profils
+// (kleines |∇t|); beobachtet ca. 1e-11.
+inline constexpr double kGhostGradientFd = 1e-10;
+// RMS-OPD einer Geisterplatte mit gefitteter idealer Fokussierphase bei NA 0,3 [mm]
+// (Abnahmekriterium M4-T5). Fit- und Rundungsfehler liegen um Größenordnungen darunter.
+inline constexpr double kGhostFocusRms = 1e-6;
 // df64 gegen FP64 (ab M7)
 inline constexpr double kDf64VsFp64 = 1e-9;
 
