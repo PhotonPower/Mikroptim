@@ -151,7 +151,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/quadrature_check.cu
         src/cuda/residuals.cu
         src/cuda/smoke_trace.cu
-        src/cuda/trace_check.cu)
+        src/cuda/trace_check.cu
+        src/cuda/trace_engine.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda
         PUBLIC mikroptim_core mikroptim_batch

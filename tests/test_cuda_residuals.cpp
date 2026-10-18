@@ -1,5 +1,7 @@
 // Kernel RESIDUALS (M2-T2, nur mit MIKROPTIM_ENABLE_CUDA): GPU gegen CPU-Referenz
-// (residuals_cpu) für zufällig gestörte Varianten, Determinismus, Grenzfälle.
+// (residuals_cpu) für zufällig gestörte Varianten, Determinismus, Grenzfälle. Die Läufe gehen
+// über die öffentliche API TraceEngine (M2-T4); nur DeviceBufferReuse und InvalidUseThrows
+// prüfen den Baustein DeviceResiduals direkt (Pufferverwaltung und eigene Fehlerfälle).
 
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
@@ -7,6 +9,7 @@
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/residuals.hpp"
+#include "mikroptim/cuda/trace_engine.hpp"
 #include "residual_test_systems.hpp"
 #include "tolerances.hpp"
 
@@ -35,6 +38,10 @@ using mko::TraceStatus;
 using mko::cuda::DeviceResiduals;
 using mko::cuda::DeviceSystemBatch;
 using mko::cuda::ResidualRunOptions;
+using mko::cuda::TraceEngine;
+using mko::cuda::TraceMode;
+using mko::cuda::TraceOutput;
+using mko::cuda::TraceSettings;
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
 
@@ -154,6 +161,19 @@ bool identical(const ResidualResult& a, const ResidualResult& b) {
            same(a.opd, b.opd) && same(a.status, b.status);
 }
 
+// Lauf über die TraceEngine auf Gerät 0 (OPD angefordert).
+ResidualResult gpu_residuals(const SystemBatchHost& batch, const ResidualSettings& settings = {},
+                             std::int64_t extra = 0) {
+    TraceEngine engine(0);
+    TraceSettings s;
+    s.quadrature = settings;
+    s.opd = true;
+    s.extra_residuals = extra;
+    const TraceOutput out = engine.run(batch, TraceMode::Residuals, s);
+    EXPECT_EQ(out.info.tranches, 1);
+    return out.residuals;
+}
+
 // Stapel aus S = kMaxSurfaces Flächen: Blende, 31 schwach gekrümmte Linsen (Gläser n = 1,5
 // und 1,7 abwechselnd), letzte Fläche (Luft auf beiden Seiten) mit Arbeitsabstand; zwei
 // Felder (Achse, Feldpunkt).
@@ -220,11 +240,7 @@ TEST(CudaResiduals, MatchCpuForPerturbedVariants) {
         const SystemBatchHost batch = mko::test::perturbed_batch(ls, 1000, cs.seed);
         ASSERT_NO_THROW(batch.validate_values());
         const ResidualLayout layout(batch.topology(), cs.settings);
-        const DeviceSystemBatch device(batch);
-        ResidualRunOptions opt;
-        opt.opd = true;
-        opt.extra_residuals = cs.extra;
-        const ResidualResult gpu = mko::cuda::run_residuals(device, layout, opt);
+        const ResidualResult gpu = gpu_residuals(batch, cs.settings, cs.extra);
         EXPECT_EQ(gpu.stride, layout.rays_per_variant() + cs.extra);
         const ResidualResult cpu = mko::residuals_cpu(batch, layout);
         const Comparison c = compare(gpu, cpu, layout);
@@ -262,20 +278,44 @@ TEST(CudaResiduals, MatchCpuForPointSource) {
     const SystemBatchHost batch = mko::test::perturbed_batch(ls, 200, 4004);
     const ResidualLayout layout(batch.topology());
     ASSERT_EQ(layout.pupil_mode(0), PupilMode::Full);
-    ResidualRunOptions opt;
-    opt.opd = true;
-    const ResidualResult gpu = mko::cuda::run_residuals(DeviceSystemBatch(batch), layout, opt);
+    const ResidualResult gpu = gpu_residuals(batch);
     const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
     std::printf("[ Info     ] Punktquelle: %zu Strahlen, %zu versagt, max |dr| = %.3e mm\n", c.rays,
                 c.failed, c.max_residual);
 }
 
-// ADR-0007: zehn Läufe mit gleichen Eingaben sind bitgleich (auch mit wiederverwendetem
-// Puffer nach einem Lauf anderer Größe).
+// ADR-0007: zehn Läufe mit gleichen Eingaben sind bitgleich (auch mit wiederverwendeten
+// Puffern nach einem Lauf anderer Größe und ohne OPD).
 TEST(CudaResiduals, RepeatedRunsAreBitIdentical) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
     const SystemBatchHost batch = mko::test::perturbed_batch(ls, 1000, 5005);
+    TraceEngine engine(0);
+    TraceSettings s;
+    s.opd = true;
+    TraceOutput out;
+    engine.run(batch, TraceMode::Residuals, s, out);
+    const ResidualResult first = out.residuals;
+    EXPECT_EQ(first.variants, 1000);
+    for (int run = 1; run < 10; ++run) {
+        if (run == 5) {
+            // Zwischendurch ein kleinerer Lauf ohne OPD in dieselben Puffer und dieselbe Ausgabe
+            engine.run(mko::test::perturbed_batch(ls, 10, 1), TraceMode::Residuals, {}, out);
+            EXPECT_TRUE(out.residuals.opd.empty());
+        }
+        engine.run(batch, TraceMode::Residuals, s, out);
+        EXPECT_TRUE(identical(out.residuals, first)) << "Lauf " << run;
+    }
+    // Eine frische Engine liefert dasselbe
+    EXPECT_TRUE(identical(gpu_residuals(batch), first));
+}
+
+// Baustein DeviceResiduals: Puffer wird über Läufe verschiedener Größe wiederverwendet,
+// Gerätezeiger für Folgekernel, Ergebnis wie über die TraceEngine.
+TEST(CudaResiduals, DeviceBufferReuse) {
+    MKO_REQUIRE_GPU();
+    const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
+    const SystemBatchHost batch = mko::test::perturbed_batch(ls, 300, 5005);
     const ResidualLayout layout(batch.topology());
     const DeviceSystemBatch device(batch);
     ResidualRunOptions opt;
@@ -283,21 +323,19 @@ TEST(CudaResiduals, RepeatedRunsAreBitIdentical) {
     DeviceResiduals out;
     out.run(device, layout, opt);
     const ResidualResult first = out.download();
-    EXPECT_EQ(out.variants(), 1000);
+    EXPECT_TRUE(identical(first, gpu_residuals(batch)));
+    EXPECT_EQ(out.variants(), 300);
     EXPECT_NE(out.device_residuals(), nullptr);
     EXPECT_NE(out.device_status(), nullptr);
     EXPECT_NE(out.device_opd(), nullptr);
-    for (int run = 1; run < 10; ++run) {
-        if (run == 5) {
-            // Zwischendurch ein kleinerer Lauf in denselben Puffer
-            const DeviceSystemBatch small(mko::test::perturbed_batch(ls, 10, 1));
-            out.run(small, layout);
-            EXPECT_EQ(out.device_opd(), nullptr);
-        }
-        out.run(device, layout, opt);
-        EXPECT_TRUE(identical(out.download(), first)) << "Lauf " << run;
-    }
-    // Ein frischer Puffer liefert dasselbe
+    const std::size_t capacity = out.capacity_bytes();
+    const DeviceSystemBatch small(mko::test::perturbed_batch(ls, 10, 1));
+    out.run(small, layout);
+    EXPECT_EQ(out.device_opd(), nullptr);
+    EXPECT_EQ(out.capacity_bytes(), capacity);
+    out.run(device, layout, opt);
+    EXPECT_EQ(out.capacity_bytes(), capacity);
+    EXPECT_TRUE(identical(out.download(), first));
     EXPECT_TRUE(identical(mko::cuda::run_residuals(device, layout, opt), first));
 }
 
@@ -312,9 +350,7 @@ TEST(CudaResiduals, FailedBlocksAreMasked) {
     batch.pupil_radius(2) = 110.0; // äußere Ringe verfehlen
     batch.curvature(3, 1) = 0.2;   // R = 5 mm: fast alle Strahlen verfehlen oder reflektieren
     const ResidualLayout layout(batch.topology());
-    ResidualRunOptions opt;
-    opt.opd = true;
-    const ResidualResult gpu = mko::cuda::run_residuals(DeviceSystemBatch(batch), layout, opt);
+    const ResidualResult gpu = gpu_residuals(batch);
     const ResidualResult cpu = mko::residuals_cpu(batch, layout);
     const Comparison c = compare(gpu, cpu, layout);
     for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
@@ -335,9 +371,7 @@ TEST(CudaResiduals, MaxSurfaces) {
     MKO_REQUIRE_GPU();
     const SystemBatchHost batch = many_surface_batch(200, 6006);
     const ResidualLayout layout(batch.topology());
-    ResidualRunOptions opt;
-    opt.opd = true;
-    const ResidualResult gpu = mko::cuda::run_residuals(DeviceSystemBatch(batch), layout, opt);
+    const ResidualResult gpu = gpu_residuals(batch);
     const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
     EXPECT_LT(c.failed, c.rays);
     std::printf("[ Info     ] S = %d: %zu Strahlen, %zu versagt, max |dr| = %.3e mm, max |dOPD| "
@@ -346,34 +380,38 @@ TEST(CudaResiduals, MaxSurfaces) {
 }
 
 // Großer Batch (10.000 Varianten) läuft durch und stimmt mit der CPU überein; grobe
-// Durchsatzzahl (der eigentliche Benchmark ist M2-T6).
+// Durchsatzzahl über die TraceEngine einschließlich Upload und Download (der eigentliche
+// Benchmark ist M2-T6).
 TEST(CudaResiduals, LargeBatch) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
     const SystemBatchHost batch = mko::test::perturbed_batch(ls, 10000, 7007);
     const ResidualLayout layout(batch.topology());
-    const DeviceSystemBatch device(batch);
-    DeviceResiduals out;
-    out.run(device, layout); // Aufwärmen, Puffer anlegen
+    TraceEngine engine(0);
+    TraceOutput out;
+    engine.run(batch, TraceMode::Residuals, {}, out); // Aufwärmen, Puffer anlegen
     constexpr int kRuns = 5;
     const auto t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < kRuns; ++i) {
-        out.run(device, layout);
+        engine.run(batch, TraceMode::Residuals, {}, out);
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() / kRuns;
-    const ResidualResult gpu = out.download();
+    const ResidualResult& gpu = out.residuals;
     EXPECT_TRUE(gpu.opd.empty());
+    EXPECT_EQ(out.info.tranches, 1);
     ASSERT_EQ(gpu.variants, 10000);
     const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
     const double rays = 10000.0 * static_cast<double>(layout.rays_per_variant());
-    std::printf("[ Info     ] 10.000 Varianten x %lld Strahlen (S = %d): %.3f ms pro Lauf, "
-                "%.3e Strahlen/s, max |dr| = %.3e mm\n",
+    std::printf("[ Info     ] 10.000 Varianten x %lld Strahlen (S = %d): %.3f ms pro Lauf "
+                "(TraceEngine mit Upload und Download), %.3e Strahlen/s, max |dr| = %.3e mm\n",
                 static_cast<long long>(layout.rays_per_variant()), batch.surfaces(), seconds * 1e3,
                 rays / seconds, c.max_residual);
     RecordProperty("rays_per_second", std::to_string(rays / seconds));
 }
 
+// Baustein DeviceResiduals: eigene Fehlerfälle (die der TraceEngine prüft
+// test_cuda_trace_engine.cpp).
 TEST(CudaResiduals, InvalidUseThrows) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");

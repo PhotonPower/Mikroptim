@@ -5,6 +5,7 @@
 #include "mikroptim/merit/ray_residual.hpp"
 
 #include <climits>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -100,6 +101,57 @@ std::size_t ResidualResult::failed_count() const {
         n += s != static_cast<std::uint8_t>(TraceStatus::Ok) ? 1 : 0;
     }
     return n;
+}
+
+std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
+                                             const ResidualLayout& layout, int v) {
+    if (v < 0 || v >= result.variants) {
+        throw std::out_of_range("tuple_wavefronts: Variante " + std::to_string(v) +
+                                " existiert nicht");
+    }
+    const std::size_t total =
+        static_cast<std::size_t>(result.variants) * to_size(result.rays_per_variant);
+    if (result.rays_per_variant != layout.rays_per_variant()) {
+        throw std::invalid_argument("tuple_wavefronts: Ergebnis passt nicht zum ResidualLayout");
+    }
+    if (result.opd.size() != total || result.status.size() != total) {
+        throw std::invalid_argument("tuple_wavefronts: OPD und Status pro Strahl werden "
+                                    "gebraucht (im Lauf anfordern)");
+    }
+    std::vector<TupleWavefront> out;
+    out.reserve(static_cast<std::size_t>(layout.fields()) *
+                static_cast<std::size_t>(layout.wavelengths()));
+    for (int f = 0; f < layout.fields(); ++f) {
+        const PupilQuadrature<double>& q = layout.quadrature(f);
+        const int n = layout.samples(f);
+        for (int l = 0; l < layout.wavelengths(); ++l) {
+            const std::int64_t o = layout.offset(f, l);
+            TupleWavefront t;
+            t.field = f;
+            t.wavelength = l;
+            t.samples = n;
+            double sum_sq = 0.0;
+            for (int k = 0; k < n; ++k) {
+                const std::size_t i = result.ray_index(v, o + k);
+                if (static_cast<TraceStatus>(result.status[i]) == TraceStatus::Ok) {
+                    const double w = sample(q, k).weight;
+                    const double e = result.opd[i];
+                    t.valid_weight += w;
+                    sum_sq += w * e * e; // wie opd_statistics
+                } else {
+                    ++t.failed;
+                }
+            }
+            if (t.valid_weight > 0.0) {
+                t.rms = msqrt(sum_sq / t.valid_weight);
+            } else {
+                t.valid_weight = 0.0;
+                t.rms = std::numeric_limits<double>::quiet_NaN();
+            }
+            out.push_back(t);
+        }
+    }
+    return out;
 }
 
 // ---- CPU-Referenz ------------------------------------------------------------------------
