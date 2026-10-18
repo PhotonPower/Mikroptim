@@ -109,15 +109,16 @@ TEST(CliTrace, EinzellinseJsonMatchesLibrary) {
     EXPECT_TRUE(r.err.empty()) << r.err;
     const json j = json::parse(r.out);
 
-    for (const char* key :
-         {"format", "mikroptim_version", "system", "file", "reference_nm", "wavelengths_nm",
-          "source", "paraxial", "quadrature", "backend", "device", "target_focal_length",
-          "wavefront", "wavefront_error", "rays", "failed_rays", "warnings"}) {
+    for (const char* key : {"format", "mikroptim_version", "system", "file", "reference_nm",
+                            "wavelengths_nm", "source", "paraxial", "quadrature", "backend",
+                            "device", "precision", "target_focal_length", "wavefront",
+                            "wavefront_error", "rays", "failed_rays", "warnings"}) {
         EXPECT_TRUE(j.contains(key)) << key;
     }
     EXPECT_EQ(j["format"], "mikroptim.trace/1");
     EXPECT_EQ(j["backend"], "cpu");
     EXPECT_TRUE(j["device"].is_null());
+    EXPECT_EQ(j["precision"], "fp64");
     EXPECT_EQ(j["system"], "Einzellinse N-BK7");
     EXPECT_EQ(j["file"], kEinzellinse);
     EXPECT_EQ(j["reference_nm"].get<double>(), 587.56);
@@ -299,6 +300,9 @@ TEST(CliTrace, UsageErrors) {
              {kEinzellinse, "--rings", "17"},
              {kEinzellinse, "--rings", "4x"},
              {kEinzellinse, "--spokes", "0"},
+             {kEinzellinse, "--precision", "df64"}, // df64 nur mit --gpu
+             {kEinzellinse, "--gpu", "--precision"},
+             {kEinzellinse, "--gpu", "--precision", "fp32"},
          }) {
         std::ostringstream out;
         std::ostringstream err;
@@ -367,6 +371,8 @@ namespace {
 
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
+using mko::test::kDf64VsFp64;
+using mko::test::kDf64VsFp64Relative;
 
 const std::string kMehrlinser =
     std::string(MKO_SOURCE_DIR) + "/data/systems/testsystem_mehrlinser.json";
@@ -648,6 +654,41 @@ TEST(CliTraceGpu, AfocalSameAsCpu) {
     const RunResult t = run({kPlanplatte, "--gpu"});
     ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
     EXPECT_NE(t.out.find("Wellenfront nicht auswertbar"), std::string::npos) << t.out;
+}
+
+// `--gpu --precision df64`: Wellenfront in df64, gegen die CPU (FP64) innerhalb der
+// df64-Toleranz (tests/tolerances.hpp); Strahlzahlen und versagte Strahlen identisch.
+TEST(CliTraceGpu, Df64MatchesCpuWithinDf64Tolerance) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    for (const std::string& file : {kEinzellinse, kMehrlinser}) {
+        SCOPED_TRACE(file);
+        const json cpu = run_json({file, "--json"});
+        const json gpu = run_json({file, "--json", "--gpu", "--precision", "df64"});
+        EXPECT_EQ(cpu["precision"], "fp64");
+        EXPECT_EQ(gpu["precision"], "df64");
+        EXPECT_EQ(gpu["backend"], "gpu");
+        EXPECT_EQ(gpu["rays"], cpu["rays"]);
+        EXPECT_EQ(gpu["failed_rays"], cpu["failed_rays"]);
+        ASSERT_TRUE(gpu["wavefront"].is_array());
+        ASSERT_EQ(gpu["wavefront"].size(), cpu["wavefront"].size());
+        double max_dev = 0.0;
+        for (std::size_t i = 0; i < cpu["wavefront"].size(); ++i) {
+            const json& c = cpu["wavefront"][i];
+            const json& g = gpu["wavefront"][i];
+            EXPECT_EQ(g["failed_rays"], c["failed_rays"]) << i;
+            const double cr = c["rms_mm"].get<double>();
+            const double gr = g["rms_mm"].get<double>();
+            const double d = std::abs(gr - cr);
+            EXPECT_LE(d, std::max(kDf64VsFp64, kDf64VsFp64Relative * std::abs(cr))) << i;
+            max_dev = std::max(max_dev, d);
+        }
+        std::cout << "[          ] " << file << ": df64, max |GPU - CPU| = " << max_dev << " mm\n";
+    }
+    const RunResult t = run({kEinzellinse, "--gpu", "--precision", "df64"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("), df64"), std::string::npos) << t.out;
 }
 
 TEST(CliTraceGpu, InvalidDeviceFails) {
