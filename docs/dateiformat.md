@@ -54,6 +54,40 @@ Krümmungen statt Radien, damit Planflächen ohne Sonderwert `inf` auskommen.
 
 Die Platte liegt im Luftspalt nach `after_surface`, im Abstand `distance` von deren Scheitel. Dickenprofil nach numerik.md, Abschnitt 6.
 
+### Einlesen und Validierung
+
+API in `include/mikroptim/io/system_json.hpp` (Bibliothek `Mikroptim::model`), Datenmodell `mko::SystemDescription` in `include/mikroptim/model/system.hpp`:
+
+```cpp
+SystemDescription read_system_json(std::string_view text, std::vector<std::string>* warnings = nullptr);
+SystemDescription read_system_file(const std::filesystem::path& file, std::vector<std::string>* warnings = nullptr);
+std::string write_system_json(const SystemDescription& system);
+void write_system_file(const SystemDescription& system, const std::filesystem::path& file);
+void validate_system(const SystemDescription& system);
+void validate_materials(const SystemDescription& system, const std::function<bool(std::string_view)>& glass_exists);
+std::vector<std::filesystem::path> resolve_glass_catalogs(const SystemDescription& system, const std::filesystem::path& base_dir);
+```
+
+Fehler im Inhalt werfen `mko::FormatError`. `json_path()` liefert den JSON-Pfad der beanstandeten Stelle (`surfaces[1].material`, `spectrum.weights[2]`), `what()` die Meldung in der Form `<datei>: <pfad>: <meldung>`. Syntaxfehler tragen keinen Pfad, aber Zeile und Spalte. Nicht lesbare Dateien werfen `std::runtime_error`.
+
+Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
+
+- `format` wird zuerst geprüft: fremde Formatnamen und andere Hauptversionen als 1 werden abgelehnt.
+- Pflichtfelder laut Tabelle; Typen werden streng geprüft (eine Zahl als Zeichenkette ist ein Fehler, ganze Zahlen sind als Zahlen erlaubt).
+- `units` ist `"mm"`, `name` nicht leer, Einträge von `glass_catalogs` nicht leer.
+- `spectrum`: mindestens eine Wellenlänge, alle > 0; `weights` gleich lang, jedes ≥ 0, Summe > 0; `reference_nm` > 0.
+- `source`: bei `collimated` mindestens ein Feldwinkel mit |θ| < 90°, `field_weights` gleich lang (Regeln wie bei Gewichten); bei `point` genau drei Koordinaten und `numerical_aperture` > 0. Felder des jeweils anderen Typs werden mit Warnung ignoriert.
+- `target` (optional): `focal_length` ≠ 0, `parfocal_length` und `working_distance` > 0.
+- `surfaces`: mindestens zwei Flächen; `stop` genau an Position 0 und nur dort; die Blende liegt in Luft (Material `"AIR"`, ADR-0006); `curvature` bei `sphere` Pflicht, bei anderen Typen verboten; `thickness`, `material`, `semi_diameter` Pflicht, `semi_diameter` > 0. Dicken dürfen negativ sein (keine Plausibilitätsprüfung).
+- `material`: `"AIR"`, sonst Glasname (nicht leer); Objekte mit `model` `constant` (`n` > 0) oder `buchdahl` (`n0` > 0, `nu` mit 2 oder 3 Koeffizienten, fehlende = 0).
+- Ob Glasnamen in den Katalogen existieren, prüft `validate_materials` mit einer vom Aufrufer gelieferten Abfrage (Fehler unter `surfaces[i].material`), weil der Leser den Glaskatalog nicht kennt.
+- `ghost_plates` (Liste), `variables` und `constraints` (Objekte) werden bis zur Festlegung ihres Schemas (M3/M4) als kompakter JSON-Text im Modell aufbewahrt und unverändert wieder geschrieben.
+- Unbekannte Felder werden ignoriert; als Warnung `"<pfad>: unbekanntes Feld wird ignoriert"` an `warnings` angehängt (die Bibliothek schreibt nichts auf stderr).
+
+Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
+
+Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
+
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 
 Beispiel: [data/glass/basis.json](../data/glass/basis.json).

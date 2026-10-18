@@ -13,9 +13,11 @@ add_executable(mikroptim_tests
     test_dispersion.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
-    test_surface_ops.cpp)
+    test_surface_ops.cpp
+    test_system_io.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
-    mikroptim_core mikroptim_glass mikroptim_warnings GTest::gtest_main)
+    mikroptim_core mikroptim_model mikroptim_glass mikroptim_warnings GTest::gtest_main)
+# Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 if(MIKROPTIM_ENABLE_CUDA)

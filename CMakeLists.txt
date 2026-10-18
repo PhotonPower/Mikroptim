@@ -71,6 +71,17 @@ target_include_directories(mikroptim_core INTERFACE ${PROJECT_SOURCE_DIR}/includ
 target_compile_features(mikroptim_core INTERFACE cxx_std_20)
 
 # --------------------------------------------------------------------------
+# Datenmodell und IO (nur Host; nlohmann/json bleibt privat, siehe docs/architektur.md)
+# --------------------------------------------------------------------------
+add_library(mikroptim_model STATIC
+    src/model/system.cpp
+    src/io/system_json.cpp)
+add_library(Mikroptim::model ALIAS mikroptim_model)
+target_link_libraries(mikroptim_model
+    PUBLIC mikroptim_core
+    PRIVATE nlohmann_json::nlohmann_json mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # Glasmodell (Host): Glaskataloge, Brechzahltabellen
 # --------------------------------------------------------------------------
 add_library(mikroptim_glass STATIC
@@ -100,7 +111,7 @@ endif()
 # Kommandozeilenprogramm
 # --------------------------------------------------------------------------
 add_executable(mikroptim src/cli/main.cpp)
-target_link_libraries(mikroptim PRIVATE mikroptim_core mikroptim_warnings)
+target_link_libraries(mikroptim PRIVATE mikroptim_core mikroptim_model mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     target_link_libraries(mikroptim PRIVATE mikroptim_cuda)
 endif()
