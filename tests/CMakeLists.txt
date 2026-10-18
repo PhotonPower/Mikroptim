@@ -27,10 +27,13 @@ add_executable(mikroptim_tests
     test_system_io.cpp
     test_trace.cpp
     test_trace_engine_header.cpp
+    test_variable_set.cpp
+    test_variables_schema.cpp
+    test_variant_generator.cpp
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-    mikroptim_batch mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
+    mikroptim_batch mikroptim_optim mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 

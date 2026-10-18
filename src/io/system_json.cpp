@@ -7,9 +7,11 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -98,8 +100,7 @@ public:
             sys.ghost_plates = read_ghost_plates(*g, "ghost_plates");
         }
         if (const Json* v = member(root, "variables")) {
-            expect_object(*v, "variables");
-            sys.variables_json = v->dump();
+            sys.variables = read_variables(*v, "variables");
         }
         if (const Json* c = member(root, "constraints")) {
             expect_object(*c, "constraints");
@@ -417,6 +418,75 @@ private:
         return m;
     }
 
+    // ---- Abschnitt `variables` (M3-T1) -------------------------------------------------
+
+    Variables read_variables(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        Variables vars;
+        const std::string items_path = join(path, "items");
+        const Json& items = required(j, path, "items");
+        if (!items.is_array()) {
+            fail_type(items_path, "Liste von Objekten", items);
+        }
+        vars.items.reserve(items.size());
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            vars.items.push_back(read_variable(items[i], at(items_path, i)));
+        }
+        warn_unknown(j, path, {"items"});
+        return vars;
+    }
+
+    VariableSpec read_variable(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        VariableSpec v;
+        const std::string type_path = join(path, "type");
+        const std::string type = as_string(required(j, path, "type"), type_path);
+        const std::optional<VariableType> t = variable_type_from_string(type);
+        if (!t) {
+            fail(type_path, "unbekannter Variablentyp \"" + type +
+                                "\" (erlaubt: curvature, thickness, working_distance)");
+        }
+        v.type = *t;
+
+        const Json* one = member(j, "surface");
+        const Json* many = member(j, "surfaces");
+        if (one != nullptr && many != nullptr) {
+            fail(join(path, "surfaces"), "nur eines der Felder \"surface\" und \"surfaces\" "
+                                         "angeben");
+        }
+        v.selection = SurfaceSelection::None;
+        if (one != nullptr) {
+            v.selection = SurfaceSelection::One;
+            v.surfaces.push_back(as_count(*one, join(path, "surface")));
+        } else if (many != nullptr) {
+            const std::string many_path = join(path, "surfaces");
+            if (many->is_string() && many->get<std::string>() == "all") {
+                v.selection = SurfaceSelection::All;
+            } else if (many->is_array()) {
+                v.selection = SurfaceSelection::List;
+                for (std::size_t k = 0; k < many->size(); ++k) {
+                    v.surfaces.push_back(as_count((*many)[k], at(many_path, k)));
+                }
+            } else {
+                fail_type(many_path, "Liste von Flächenindizes oder \"all\"", *many);
+            }
+        }
+        if (const Json* m = member(j, "min")) {
+            v.min = as_number(*m, join(path, "min"));
+        }
+        if (const Json* m = member(j, "max")) {
+            v.max = as_number(*m, join(path, "max"));
+        }
+        if (const Json* m = member(j, "typical")) {
+            v.typical = as_number(*m, join(path, "typical"));
+        }
+        if (const Json* c = member(j, "comment")) {
+            v.comment = as_string(*c, join(path, "comment"));
+        }
+        warn_unknown(j, path, {"type", "surface", "surfaces", "min", "max", "typical", "comment"});
+        return v;
+    }
+
     std::vector<std::string>* warnings_;
 };
 
@@ -449,6 +519,43 @@ Json material_to_json(const MaterialSpec& m) {
     }
     }
     return "AIR";
+}
+
+Json variables_to_json(const Variables& vars) {
+    Json items = Json::array();
+    for (const VariableSpec& v : vars.items) {
+        Json j;
+        j["type"] = std::string(to_string(v.type));
+        switch (v.selection) {
+        case SurfaceSelection::None:
+            break;
+        case SurfaceSelection::One:
+            j["surface"] = v.surfaces.at(0);
+            break;
+        case SurfaceSelection::List:
+            j["surfaces"] = v.surfaces;
+            break;
+        case SurfaceSelection::All:
+            j["surfaces"] = "all";
+            break;
+        }
+        if (v.min) {
+            j["min"] = *v.min;
+        }
+        if (v.max) {
+            j["max"] = *v.max;
+        }
+        if (v.typical) {
+            j["typical"] = *v.typical;
+        }
+        if (v.comment) {
+            j["comment"] = *v.comment;
+        }
+        items.push_back(std::move(j));
+    }
+    Json root;
+    root["items"] = std::move(items);
+    return root;
 }
 
 Json raw_to_json(const std::string& raw, const char* path) {
@@ -531,8 +638,8 @@ Json to_json(const SystemDescription& sys) {
         }
         root["ghost_plates"] = std::move(plates);
     }
-    if (sys.variables_json) {
-        root["variables"] = raw_to_json(*sys.variables_json, "variables");
+    if (sys.variables) {
+        root["variables"] = variables_to_json(*sys.variables);
     }
     if (sys.constraints_json) {
         root["constraints"] = raw_to_json(*sys.constraints_json, "constraints");

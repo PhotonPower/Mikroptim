@@ -181,7 +181,7 @@ TEST(SystemIo, RoundtripAllFeatures) {
     { "after_surface": 0, "distance": 0.5, "glass": "CAF2", "norm_radius": 4.0, "order": 8, "coefficients": [0, 0, 0, 0, 0, 0, 0, 0] },
     { "after_surface": 0, "distance": 1, "glass": { "model": "constant", "n": 1.6 }, "norm_radius": 3.5, "order": 2, "coefficients": [1e-3, -2.5e-4] }
   ],
-  "variables": { "z": 1, "a": [1, 2] },
+  "variables": { "items": [{ "type": "working_distance", "min": 0.1 }] },
   "constraints": {}
 }
 )";
@@ -215,8 +215,10 @@ TEST(SystemIo, RoundtripAllFeatures) {
     EXPECT_EQ(a.ghost_plates[1].glass.kind, MaterialKind::Constant);
     EXPECT_EQ(a.ghost_plates[1].glass.n, 1.6);
     EXPECT_EQ(a.ghost_plates[1].coefficients, (std::vector<double>{1e-3, -2.5e-4}));
-    ASSERT_TRUE(a.variables_json.has_value());
-    EXPECT_EQ(*a.variables_json, R"({"z":1,"a":[1,2]})"); // Feldreihenfolge bleibt erhalten
+    ASSERT_TRUE(a.variables.has_value());
+    ASSERT_EQ(a.variables->items.size(), 1u);
+    EXPECT_EQ(a.variables->items[0].type, mko::VariableType::WorkingDistance);
+    EXPECT_EQ(a.variables->items[0].min, 0.1);
     EXPECT_EQ(a.constraints_json, "{}");
 
     const std::string text1 = mko::write_system_json(a);
@@ -229,7 +231,10 @@ TEST(SystemIo, RoundtripAllFeatures) {
         EXPECT_NE(text1.find(expected), std::string::npos) << expected << '\n' << text1;
     }
     EXPECT_NE(text1.find(R"("nu": [-0.1, 0.02])"), std::string::npos) << text1;
-    EXPECT_NE(text1.find(R"("variables": { "z": 1, "a": [1, 2] })"), std::string::npos) << text1;
+    EXPECT_NE(
+        text1.find(R"("variables": { "items": [{ "type": "working_distance", "min": 0.1 }] })"),
+        std::string::npos)
+        << text1;
 }
 
 TEST(SystemIo, WriterFormatMatchesDocumentation) {
@@ -599,12 +604,12 @@ TEST(SystemIo, WriterRejectsInvalidModel) {
     }
     {
         SystemDescription t = s;
-        t.variables_json = "{oops";
+        t.constraints_json = "{oops";
         try {
             (void)mko::write_system_json(t);
             FAIL() << "keine Ausnahme";
         } catch (const FormatError& e) {
-            EXPECT_EQ(e.json_path(), "variables");
+            EXPECT_EQ(e.json_path(), "constraints");
         }
     }
     {

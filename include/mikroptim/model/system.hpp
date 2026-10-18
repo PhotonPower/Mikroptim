@@ -4,6 +4,7 @@
 // Das Modell ist frei von JSON-Typen; Einlesen und Schreiben: mikroptim/io/system_json.hpp.
 
 #include "mikroptim/model/material.hpp"
+#include "mikroptim/model/variables.hpp"
 
 #include <array>
 #include <functional>
@@ -100,16 +101,19 @@ struct SystemDescription {
     // Geisterplatten, sortiert nach (after_surface, distance); leer: keine
     std::vector<GhostPlate> ghost_plates;
 
-    // Abschnitte späterer Meilensteine (M3), deren Schema noch nicht festgelegt ist:
+    // Abschnitt späterer Meilensteine (M3-T3/M4-T3), dessen Schema noch nicht festgelegt ist:
     // kompakter JSON-Text, wird beim Schreiben unverändert wieder ausgegeben.
-    std::optional<std::string> variables_json;
     std::optional<std::string> constraints_json;
+
+    // Optimierungsvariablen (ab M3-T1, mikroptim/model/variables.hpp)
+    std::optional<Variables> variables;
 
     friend bool operator==(const SystemDescription&, const SystemDescription&) = default;
 };
 
 // Prüft die inhaltlichen Regeln (docs/dateiformat.md, „Einlesen und Validierung“) und wirft
 // FormatError mit dem JSON-Pfad der ersten verletzten Regel. Glasnamen werden nicht geprüft.
+// Der Abschnitt `variables` wird mit resolve_variables geprüft.
 void validate_system(const SystemDescription& system);
 
 // Prüft für jede Fläche und Geisterplatte mit Katalogmaterial, ob das Glas existiert; wirft
