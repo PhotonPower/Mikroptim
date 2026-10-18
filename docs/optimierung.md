@@ -120,11 +120,103 @@ Mit einer quadratischen Strafe wäre der Grenznutzen bei a = 0 null; der Optimie
 
 - Viele unabhängige Läufe (Multistart, Homotopie-Zweige, beide Abstiegsrichtungen an Sattelpunkten) werden **gleichzeitig** iteriert; jeder Lauf hat eigenen Zustand (x, Dämpfung, Status).
 - Jacobi-Matrix in Version 1 per **zentralen finiten Differenzen**: Für P Variablen werden 2P (oder P vorwärts) gestörte Varianten und x₀ selbst in denselben Batch gepackt. Schrittweite h_k = ε_m^{1/3} · max(|x_k|, x_typ,k), ε_m^{1/3} ≈ 6·10⁻⁶. Schablonen an Schranken, Ablage und Genauigkeit: [Finite-Differenzen-Jacobi](#finite-differenzen-jacobi-ab-m3-t2).
-- JᵀJ und Jᵀr per `cublasDgemmStridedBatched`, Lösung per `cusolverDnDpotrfBatched` / `potrsBatched`.
+- JᵀJ und Jᵀr auf dem Gerät mit einem eigenen deterministischen Kernel, Lösung per Cholesky auf dem Host (Plan: `cublasDgemmStridedBatched` und `cusolverDnDpotrfBatched`/`potrsBatched`; Abweichung begründet in [ADR-0010](adr/0010-normalgleichungen-ohne-cublas.md), Status „vorgeschlagen“).
 - Marquardt-Skalierung mit diag(JᵀJ), Dämpfungssteuerung nach Nielsen (Gewinnverhältnis).
 - Schranken per Projektion auf den zulässigen Bereich mit aktiver Menge.
-- Abbruch: relative Änderung von F < 10⁻¹⁰ oder Schrittnorm < Toleranz oder Iterationslimit.
+- Abbruch: relative Abnahme von F < 10⁻¹⁰ (vom ungedämpften Modell vorhergesagt) oder Schrittnorm < Toleranz oder Gradient < Toleranz oder Iterationslimit.
 - Version 2 (M5): Jacobi-Zeilen aus dem adjungierten Kernel; die finite-Differenzen-Variante bleibt als Test-Orakel erhalten.
+
+### Verfahren (ab M3-T4)
+
+Host-API `include/mikroptim/optim/levenberg_marquardt.hpp` (`Mikroptim::optim`), GPU-Backend `include/mikroptim/cuda/levenberg_marquardt.hpp` und Normalgleichungen `include/mikroptim/cuda/normal_equations.hpp` (`Mikroptim::cuda`).
+
+**Zustand pro Lauf:** x, F = ‖r(x)‖² (Strahlresiduen und Zusatzresiduen, Abschnitt 2), Zahl versagter Strahlen, Dämpfung μ (Start `initial_damping` = 10⁻³) und ν (Start 2), Status, Zähler. Die Steuerlogik `levenberg_marquardt(backend, P, bounds, x0, options)` ist einmal implementiert; ein **Backend** (`LmBackend`) liefert für eine Liste von Läufen A = JᵀJ und g = Jᵀr an ihren Punkten (`normal_equations`) sowie F und versagte Strahlen (`merit`). Backends: `CpuLmBackend` (CPU, CI), `cuda::GpuLmBackend` (GPU) und in den Tests analytische Residuenfunktionen.
+
+**Zyklus** (alle aktiven Läufe gemeinsam):
+
+1. Für Läufe nach einem angenommenen Schritt (und am Anfang): J und r an x per finiten Differenzen (alle diese Läufe in einem FD-Batch), A = JᵀJ, g = Jᵀr. Danach Skalierung, Gradientenmaß und Modell-Kriterien (unten).
+2. Für jeden aktiven Lauf der Schritt mit aktiver Menge (unten), unabhängig pro Lauf auf Host-Threads.
+3. Alle Versuchspunkte gemeinsam bewerten: Modus MERIT der Engine bzw. `merit_cpu`, Zusatzresiduen als `extra_merit` = Σ e² (aufsteigend), sodass F genau die Quadratsumme des Residuenvektors ist (bis auf die Summationsreihenfolge).
+4. Gewinnverhältnis ρ = (F − F_neu)/(L(0) − L(Δx)) mit L(0) − L(Δx) = −(2Δxᵀg + ΔxᵀAΔx) für den tatsächlichen (projizierten) Schritt Δx. Angenommen, wenn F_neu endlich ist, F_neu < F, die Vorhersage positiv ist und (Standard `reject_new_failures`) am Versuchspunkt nicht mehr Strahlen versagen als bei x – hart versagte Strahlen haben r = 0 und würden F sonst scheinbar senken (weiches Versagen: M4-T2).
+5. Nielsen: angenommen μ ← μ·max(1/3, 1 − (2ρ − 1)³), ν ← 2; verworfen (auch bei gescheiterter Cholesky-Zerlegung) μ ← μ·ν, ν ← 2ν.
+
+Fertige Läufe werden eingefroren und gehen in keinen weiteren Batch ein.
+
+**Marquardt-Skalierung:** (A + μD)δ = −g mit D_kk = max(A_kk, `diag_floor`·max_j(A_jj s_j²)/s_k²), s_k = max(|x_k|, x_typ,k), `diag_floor` = 10⁻¹². Die Untergrenze hält das System regulär, wenn eine Spalte von J verschwindet (Variable ohne Einfluss, alle Strahlen versagt); sie ist in Einheiten der Variablen formuliert (A_jj s_j² ist die Empfindlichkeit pro relativer Änderung) und damit unabhängig von deren Einheiten. Sind alle A_jj = 0, ist D_kk = 1/s_k².
+
+**Schranken mit aktiver Menge:** Variablen auf einer Schranke, deren Abstiegsrichtung −g_k nach außen zeigt (sowie Variablen mit lower = upper), werden für den Schritt festgehalten; das reduzierte System über die freien Variablen wird per Cholesky gelöst. Zeigt danach der Schritt einer freien Variable auf ihrer Schranke nach außen, kommt sie in die aktive Menge und das System wird neu gelöst (höchstens P Runden). Der Versuchspunkt ist clamp(x + δ) (`clamp_to_bounds`), also immer zulässig.
+
+**Abbruch** (Status `LmStatus`):
+
+| Status | Kriterium |
+|---|---|
+| `ConvergedGradient` | nach neuer Jacobi-Matrix: max_k |g_k|/√(A_kk·F) ≤ `gtol` = 10⁻¹⁰ über die nicht festgehaltenen Variablen (Kosinus zwischen r und Spalte k) |
+| `ConvergedMerit` | nach neuer Jacobi-Matrix: das ungedämpfte Modell (Gauß-Newton-Schritt mit aktiver Menge, μ = 10⁻¹² relativ zu D) sagt eine relative Abnahme 0 ≤ (L(0) − L(Δx_GN))/F ≤ `ftol` = 10⁻¹⁰ voraus; oder F = 0 |
+| `ConvergedStep` | max_k |Δx_k|/s_k ≤ `xtol` = 10⁻¹⁰ für Δx_GN, oder für den gedämpften Schritt nach mindestens einer Ablehnung seit dem letzten angenommenen Schritt |
+| `MaxIterations` | `max_iterations` Zyklen (Versuchsschritte einschließlich verworfener) |
+| `DampingLimit` | μ > `max_damping` = 10¹⁶ |
+| `NumericalError` | F am Startpunkt oder A, g nicht endlich |
+
+Die Kriterien prüfen bewusst das *ungedämpfte* Modell: Ein schwer gewichteter Residuenanteil (z. B. eine Nebenbedingung) dominiert diag(JᵀJ); in Richtungen, die er nicht sieht, ist der gedämpfte Schritt dann um Größenordnungen kleiner als der Gauß-Newton-Schritt, solange μ nicht klein ist. Ein Kriterium „gedämpfter Schritt klein“ oder „Abnahme des angenommenen Schritts klein“ würde dort vorzeitig abbrechen (beobachtet an der Einzellinse: Abbruch nach 3 Zyklen bei q = 0). Eine negative Modellvorhersage (Rundung bei sehr schlecht konditioniertem JᵀJ) zählt nicht als Konvergenz. Am Optimum endet ein Lauf meist über `ConvergedMerit` oder – wenn die Merit-Änderungen in ihrem Rundungsrauschen liegen (≈ 10⁻⁹ relativ bei OPD-Residuen um 10⁻⁶ mm) – über verworfene Schritte und `ConvergedStep`.
+
+**Kondition und Gewichte.** Die Normalgleichungen quadrieren die Kondition von J. Werden Nebenbedingungen so hoch gewichtet, dass ihre Spalten die Wellenfrontspalten um mehr als etwa 10⁶ übertreffen, verschwinden die Richtungen, die nur die Wellenfront sieht, in der Rundung von JᵀJ (Einzellinse mit Brennweiten-Gewicht 100/mm² gegen OPD-Residuen von 10⁻⁶ mm: Verhältnis der Diagonalen ~10¹⁸, die Biegung bleibt bei q = 0). Mit Gewicht 10⁻⁸/mm² hält die Bedingung f trotzdem auf 1,6·10⁻⁶ mm; die Konvergenz wird mit wachsendem Gewicht langsamer (10⁻⁸: 54 Zyklen, 10⁻⁶: 132, 10⁻⁴: > 400). Die Wahl der Gewichte gehört zu M4-T1 (Residuen in Wellen).
+
+**Ergebnis** `LmRunResult`: x, F, versagte Strahlen, Status, Zyklen (`iterations`), angenommene Schritte, Jacobi-Auswertungen, μ am Ende, Gradientenmaß und Modellabnahme der letzten Jacobi-Matrix, Verlauf `history` (F(x₀) und F nach jedem Zyklus). Der Rückruf `on_iteration` erhält nach jedem Zyklus pro Lauf (in Laufreihenfolge) Zyklus, Annahme, F, F am Versuchspunkt, ρ, μ, Schrittnorm, versagte Strahlen und x (Iterationsprotokoll für M3-T5).
+
+**Vorlagen:** `base` hat eine Variante für alle Läufe oder eine pro Lauf (z. B. Homotopie-Zweige mit verschiedener Apertur); `lm_template_batch` und `lm_point_batch` wählen die Vorlagen der Läufe eines Aufrufs.
+
+**Determinismus und Bitgleichheit** (ADR-0007, Abnahme 3). Das Ergebnis eines Laufs hängt nur von seinem Startpunkt und seiner Vorlage ab, nicht von den anderen Läufen, ihrer Zahl, Reihenfolge oder der Aufteilung in Tranchen und Teilstücke:
+
+- FD-Jacobi: Varianten unabhängig, Differenzkernel ohne Reduktion (M3-T2); Merit-Kernel pro Variante unabhängig von der Tranche (M2-T3); Zusatzresiduen pro Variante.
+- Normalgleichungen: jedes Element von G = [J r]ᵀ[J r] ist eine FMA-Kette acc ← fma(u_r, v_r, acc) über die Zeilen in aufsteigender Reihenfolge ab acc = 0, auf dem Gerät (`gram_kernel`) wie auf dem Host (`normal_equations_host`, `std::fma`) – beide bitgleich (Test `CudaNormalEquations.BitwiseEqualToHost`).
+- Schritt, Nielsen-Update und Kriterien: pro Lauf auf dem Host in fester Reihenfolge; Host-Threads arbeiten nur auf verschiedenen Läufen bzw. Varianten.
+
+`cublasDgemmStridedBatched` erfüllt das nicht: Auf der RTX 3090 (CUDA 12.9, `CUBLAS_ATOMICS_NOT_ALLOWED`) unterscheidet sich JᵀJ einer Matrix im Aufruf mit batchCount = 1 von derselben Matrix im Aufruf mit batchCount ≥ 2 in fast allen Elementen (R = 5.000, P = 14: 194 von 196; R = 20.000, P = 101: 10.069 von 10.201; nur R = 683, P = 14 zufällig gleich); bei batchCount 2 … 1.000 war das Ergebnis untereinander gleich. Da die Zahl der aktiven Läufe sich während der Optimierung ändert (bis hinunter zu einem), wäre ein Lauf dann nicht bitgleich zum Einzellauf. Details: ADR-0010.
+
+**GPU-Backend.** `normal_equations` teilt die Läufe in Teilstücke, deren Jacobi-Matrizen gemeinsam höchstens die Hälfte des nutzbaren Gerätespeichers belegen (`cudaMemGetInfo` plus vorhandener J-Puffer, höchstens `EngineOptions::memory_limit_bytes`, abzüglich der Reserve der Engine); pro Teilstück `DeviceFdJacobian::compute`, `DeviceNormalEquations::compute` (Kernel: ein Block mit 16 × 16 Threads pro Lauf und Kachelpaar tp ≤ tq der (P + 1) × (P + 1)-Gram-Matrix, Zeilen in Kacheln von 16 im Shared Memory, 2 · 16 · 17 · 8 Byte) und Download von A und g ((P + 1)² Werte pro Lauf). Die Cholesky-Zerlegung (≈ P³/6 FMA pro Lauf und Runde) läuft auf dem Host, gemeinsam mit dem CPU-Pfad. `merit` baut einen Batch mit einer Variante pro Lauf und ruft die Engine im Modus MERIT. Statistik in `cuda::LmGpuStats`. Host-Threads (`threads`, `extra_threads` ≤ 0) werden nach der Arbeit des Aufrufs gewählt (`lm_host_threads`): Ein Thread kostet unter Windows beim Start bis zu einige Millisekunden, kleine Aufrufe laufen daher im aufrufenden Thread (für die Einzellinse sank die Zeit pro Zyklus dadurch von ≈ 30–200 ms auf ≈ 0,6 ms).
+
+**Gemessen** (RTX 3090, FP64; Tests in `tests/test_levenberg_marquardt.cpp` und `tests/test_cuda_levenberg_marquardt.cpp`):
+
+| Aufgabe | Ergebnis |
+|---|---|
+| Einzellinse N-BK7, f = 100 mm, NA ≈ 0,025, Variablen c₁, c₂, w, Brennweite als Gleichung (Gewicht 10⁻⁸) | q = 0,7208 (CPU 0,720803, GPU 0,720821; Dünnlinse 2(n² − 1)/(n + 2) = 0,7397; der Unterschied ist der Dickeneffekt der 6 mm dicken Linse), 54 bzw. 53 Zyklen |
+| Mehrlinser (13 Variablen, 7 am Ende auf Schranken), Rückkehr aus 1 % Störung (4 Vorzeichenmuster) | F_end/F_opt − 1 = −4,1·10⁻¹¹ … −2,0·10⁻¹¹ (CPU und GPU), 41–73 Zyklen |
+| 1.000 Läufe Einzellinse (±5 %) gemeinsam gegen einzeln | bitgleich (x, F, Verlauf, Zähler, Status), auch mit 64 KiB Speichergrenze (5.898 Teilstücke, Merit in Tranchen); gemeinsam 0,3–0,5 s, einzeln 37–57 s |
+| Durchsatz 1.000 Läufe Mehrlinser (27 FD-Varianten pro Lauf, 681 Zeilen) | ≈ 18 Zyklen der Schleife/s, ≈ 1,8·10⁴ Lauf-Zyklen/s |
+
+Die Einzellinse ist für Gauß-Newton schwierig: Der Residuenvektor ist nahezu W₀₄₀(q)·φ(ρ) mit einem festen Pupillenprofil φ, sein Minimum über q ist nicht null, und am Optimum verschwindet ∂r/∂q – die Gauß-Newton-Krümmung in Biegerichtung geht gegen null (großer Restfehler). LM läuft dort mit ρ ≈ 0,7 und kleinen Schritten, konvergiert aber verlässlich.
+
+API (Auszug):
+
+```cpp
+enum class LmStatus { Running, ConvergedMerit, ConvergedStep, ConvergedGradient, MaxIterations,
+                      DampingLimit, NumericalError };
+struct LmOptions { int max_iterations = 100; double ftol = 1e-10, xtol = 1e-10, gtol = 1e-10;
+                   double initial_damping = 1e-3, max_damping = 1e16, diag_floor = 1e-12;
+                   bool reject_new_failures = true; int threads = 0;
+                   FdJacobianOptions jacobian;          // Quadratur, Schema, Zusatzresiduen
+                   LmIterationFn on_iteration; };
+struct LmRunResult { std::vector<double> x; double merit; int64_t failed_rays; LmStatus status;
+                     int iterations, accepted, jacobians; double damping, gradient_norm,
+                     model_decrease; std::vector<double> history; };
+struct LmResult { std::vector<LmRunResult> runs; int cycles; };
+class LmBackend { virtual void normal_equations(span<const int> runs, span<const double> x,
+                                                span<double> a, span<double> g) = 0;
+                  virtual void merit(span<const int> runs, span<const double> x,
+                                     span<double> merit, span<int64_t> failed) = 0; };
+LmResult levenberg_marquardt(LmBackend&, int P, const LmBounds&, span<const double> x0, const LmOptions&);
+LmResult optimize_lm_cpu(const VariableSet&, const SystemBatchHost& base, span<const double> x0,
+                         const LmOptions& = {});
+// cuda/levenberg_marquardt.hpp
+LmResult cuda::optimize_lm_gpu(TraceEngine&, const VariableSet&, const SystemBatchHost& base,
+                               span<const double> x0, const LmOptions& = {}, LmGpuStats* = nullptr);
+// optim/normal_equations.hpp, cuda/normal_equations.hpp
+void normal_equations_host(span<const double> J, span<const double> r, int P, span<double> a, span<double> g);
+class cuda::DeviceNormalEquations { void compute(const DeviceFdJacobian&);
+                                    void download(std::vector<double>& a, std::vector<double>& g) const; };
+```
+
+Rechentyp: FP64 (die Abnahme). df64 für Jacobi und Merit ist nicht angebunden (`FdJacobianOptions` hat keinen Rechentyp).
 
 ### Variantengenerator (ab M3-T1)
 

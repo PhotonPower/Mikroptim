@@ -22,6 +22,7 @@ add_executable(mikroptim_tests
     test_ghost_plate.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
+    test_levenberg_marquardt.cpp
     test_load_system.cpp
     test_paraxial.cpp
     test_paraxial_residuals.cpp
@@ -47,6 +48,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
         test_cuda_fd_jacobian.cpp
+        test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
         test_cuda_prefilter.cpp
         test_cuda_quadrature.cpp

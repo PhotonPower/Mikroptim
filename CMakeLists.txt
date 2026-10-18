@@ -153,6 +153,7 @@ target_link_libraries(mikroptim_batch
 find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
     src/optim/fd_jacobian.cpp
+    src/optim/levenberg_marquardt.cpp
     src/optim/paraxial_residuals.cpp
     src/optim/variable_set.cpp
     src/optim/variant_generator.cpp)
@@ -172,7 +173,9 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
         src/cuda/fd_jacobian.cu
+        src/cuda/levenberg_marquardt.cpp
         src/cuda/merit.cu
+        src/cuda/normal_equations.cu
         src/cuda/prefilter.cu
         src/cuda/quadrature_check.cu
         src/cuda/residuals.cu
