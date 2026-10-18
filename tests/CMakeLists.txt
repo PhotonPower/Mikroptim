@@ -13,6 +13,7 @@ add_executable(mikroptim_tests
     test_dispersion.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
+    test_pupil_quadrature.cpp
     test_surface_ops.cpp
     test_system_io.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
@@ -23,6 +24,7 @@ target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOU
 if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_dispersion.cpp
+        test_cuda_quadrature.cpp
         test_cuda_smoke.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()

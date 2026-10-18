@@ -99,6 +99,7 @@ if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
         src/cuda/device_info.cu
         src/cuda/dispersion_eval.cu
+        src/cuda/quadrature_check.cu
         src/cuda/smoke_trace.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda PUBLIC mikroptim_core PRIVATE CUDA::cudart mikroptim_warnings)
