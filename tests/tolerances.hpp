@@ -49,6 +49,17 @@ inline constexpr double kRayPointFp64 = 1e-12;
 // Strahlumkehr: Vorwärts- und Rückwärtstrace durch ein mehrlinsiges System kehren zum Start
 // zurück [mm], auch für die OPL (Abnahmekriterium M1-T5).
 inline constexpr double kRayReversalFp64 = 1e-10;
+// Referenzsphäre gegen exakte Kugelwellen [mm] (Abnahmekriterium M1-T7): OPL bis zur
+// verschobenen Referenzsphäre und OPD nach Kolbenabzug gegen den Kosinussatz. OPL bis ca.
+// 100 mm, also einige ulp (ca. 1e-14) pro Rechenschritt.
+inline constexpr double kReferenceSphereFp64 = 1e-12;
+// RMS-OPD im aplanatischen Fall (Punktquelle im aplanatischen Punkt, Referenz im exakten
+// virtuellen Bildpunkt) [mm], Abnahmekriterium M1-T7, bis sin θ = 0,95.
+inline constexpr double kAplanaticRms = 1e-10;
+// Sphärische Aberration der Einzellinse bei NA <= 0,05 gegen die Seidel-Näherung W040,
+// relativ (Abnahmekriterium M1-T7). Modellfehler (Terme höherer Ordnung), kein Maß für die
+// Rechengenauigkeit.
+inline constexpr double kSeidelRelative = 1e-2;
 // df64 gegen FP64 (ab M7)
 inline constexpr double kDf64VsFp64 = 1e-9;
 

@@ -19,9 +19,10 @@ add_executable(mikroptim_tests
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
     test_system_io.cpp
-    test_trace.cpp)
+    test_trace.cpp
+    test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
-    mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
+    mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
     mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

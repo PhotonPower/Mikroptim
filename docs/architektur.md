@@ -33,7 +33,7 @@ flowchart TD
 | SystemBatch | `include/mikroptim/batch/` | `src/batch/` | M2 |
 | CPU-Tracer, Lader | `include/mikroptim/cpu/` | `src/cpu/` | M1 |
 | CUDA-Backend | `include/mikroptim/cuda/` (reines C++) | `src/cuda/` | M2–M8 |
-| Merit | `include/mikroptim/merit/` | `src/merit/` | M3, M4 |
+| Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
 | Optimierer | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
@@ -107,6 +107,55 @@ Statische Bibliothek `mikroptim_cpu`, linkt `Mikroptim::model` und `Mikroptim::g
 - `include/mikroptim/cpu/host_surface_table.hpp`: `HostSurfaceTable` (FP64-Vektoren `type`, `curvature`, `thickness`, `index`, zusätzlich `semi_diameter`; `view()` liefert die `SurfaceTableView<double>`) und `make_surface_table(SystemDescription, IndexTable)`. Krümmungen von Stop und Plane werden 0; mehr als `kMaxSurfaces` Flächen oder unpassende Tabellen werfen `std::invalid_argument`.
 - `include/mikroptim/cpu/load_system.hpp`: `load_system(path)` verbindet `read_system_file`, `resolve_glass_catalogs` (relativ zum Verzeichnis der Datei), `GlassCatalog::from_file` + `merge`, `validate_materials`, `make_index_table` und `make_surface_table` zu einem `LoadedSystem { system, catalog_files, catalog, index, table, warnings }`. `prepare_system(description, base_dir)` macht dasselbe für eine bereits eingelesene Beschreibung.
 - `include/mikroptim/cpu/cpu_trace.hpp`: `trace_system_cpu(system, table, quadrature)` traced alle Felder × Wellenlängen × Pupillenstützstellen (eine Quadratur für alle Felder) und liefert `CpuTraceResult` mit Endzustand (Schnittpunkt der letzten Fläche), Status und versagender Fläche pro Strahl, abgelegt unter `(f · L + l) · N + k` wie die Blöcke und Threads im Kernel. `source_ray(system, table, f, l, sample)` erzeugt den Startstrahl (kollimiert mit a = Halbdurchmesser der Blende, Punktquelle mit sin ϑ_max = NA / index[0][l]); `source_field_count` liefert die Zahl der Felder (1 bei der Punktquelle).
+
+## Wellenfront (M1-T7)
+
+Referenzsphäre, Kolbenabzug und RMS-Wellenfront pro Feld und Wellenlänge. Formeln, Wahl des Schnittpunkts, Versagensbehandlung, f_soll-Regel, Summationsreihenfolge und Einheiten: [numerik.md, Abschnitt 7](numerik.md#7-referenzsphäre-und-opd).
+
+### Mathe-Kern (header-only, `MKO_HD`)
+
+```cpp
+// include/mikroptim/trace/reference_sphere.hpp
+template <class R> MKO_HD TraceStatus reference_sphere_step(Ray<R>&, Vec3<R> center, R n_image,
+                                                            R* s_ref = nullptr);   // Missed bei Versagen
+template <class R, class T> MKO_HD TraceStatus trace_to_reference_sphere(const T& sys, int l, Ray<R>&,
+                                                            Vec3<R> center, int* failed_surface = nullptr);
+// include/mikroptim/merit/opd.hpp
+template <class R> struct OpdStatistics { R valid_weight, piston, rms; int failed; };
+template <class R> MKO_HD OpdStatistics<R> opd_statistics(const R* opl, const R* weight,
+                                const TraceStatus* status, int count, R* opd /* oder nullptr */);
+```
+
+`trace_to_reference_sphere` ist der Pro-Strahl-Teil (Thread im Kernel): `trace_ray`, dann der Schritt auf die Sphäre um **M**_f im Medium index[S−1][l]; versagt die Referenzsphäre, ist `*failed_surface = S`. `opd_statistics` ist die sequenzielle Referenz der Block-Reduktion (Kolben, OPD, RMS über die Stützstellen eines Blocks); M2-T2 baut sie als Baumreduktion nach.
+
+### Host-API (Bibliothek `Mikroptim::merit`, `src/merit/`)
+
+Statische Bibliothek `mikroptim_merit`, linkt `Mikroptim::cpu` und `Mikroptim::paraxial`. Die Wellenfrontauswertung gehört zum Modul Merit, weil M3/M4 aus denselben OPD-Werten die Residuen bilden; der CPU-Tracer bleibt reiner Strahltransport.
+
+```cpp
+struct WavefrontOptions { int rings = 10, spokes = 8; std::optional<PupilMode> pupil_mode; };
+struct WavefrontMap {                        // ein Tupel (Feld f, Wellenlänge l)
+    int field, wavelength; double wavelength_nm; Vec3<double> image_point;   // M_f
+    PupilQuadrature<double> quadrature; std::vector<PupilSample<double>> pupil;
+    std::vector<double> opl, opd, opd_waves; // [k]; NaN bei versagten Strahlen
+    std::vector<TraceStatus> status; std::vector<int> failed_surface;       // S = Referenzsphäre
+    double piston, rms, rms_waves, valid_weight; int failed;
+    int samples() const; bool valid() const; // valid: mindestens ein gültiger Strahl
+};
+struct WavefrontResult { int fields, wavelengths; double reference_nm, focal_length;
+                         std::vector<WavefrontMap> maps;          // maps[f · L + l]
+                         const WavefrontMap& at(int f, int l) const; std::size_t failed_count() const; };
+
+double target_focal_length(const SystemDescription&, const GlassCatalog&);   // f_soll
+std::vector<Vec3<double>> ideal_image_points(const SystemDescription&, const HostSurfaceTable&,
+                                             double focal_length);           // (0, f tan θ_f, w)
+PupilMode wavefront_pupil_mode(const SystemDescription&, int field, const WavefrontOptions& = {});
+WavefrontResult evaluate_wavefront(const SystemDescription&, const HostSurfaceTable&,
+                                   std::span<const Vec3<double>> image_points, const WavefrontOptions& = {});
+WavefrontResult evaluate_wavefront(const LoadedSystem&, const WavefrontOptions& = {});
+```
+
+Jedes Feld hat eine eigene Quadratur (Achsfächer auf der Achse, sonst halbe Pupille), daher die Ablage pro Tupel statt eines gemeinsamen Arrays wie in `CpuTraceResult`. Fehler: `std::invalid_argument` (Tabelle passt nicht, falsche Zahl von Bildpunkten, afokales System ohne `target.focal_length`, ungültige Quadratur), `std::out_of_range` (Feld), `GlassError` (Brechzahl bei `reference_nm`). Die Ausgabe in der CLI folgt mit M1-T8.
 
 ## SystemBatch und Datenlayout
 
