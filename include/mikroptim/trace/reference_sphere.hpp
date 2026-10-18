@@ -67,12 +67,14 @@ MKO_HD inline TraceStatus reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n
 // numerik.md §11), oder Missed von reference_sphere_step. In beiden letzten Fällen ist
 // *failed_surface = S: der Schritt in den Bildraum zählt als Fläche nach der letzten. Ohne
 // Versagen *failed_surface = −1. Ende (Ok): Strahl auf der Referenzsphäre in lokalen
-// Koordinaten der letzten Fläche, OPL bis dorthin.
-template <class R, class SurfaceTable>
+// Koordinaten der letzten Fläche, OPL bis dorthin. `observer` wie bei trace_ray (die
+// Referenzsphäre sieht er nicht).
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
 MKO_HD inline TraceStatus trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index,
                                                     Ray<R>& ray, Vec3<R> center,
-                                                    int* failed_surface = nullptr) {
-    const TraceStatus st = trace_ray(sys, wavelength_index, ray, nullptr, failed_surface);
+                                                    int* failed_surface = nullptr,
+                                                    Observer* observer = nullptr) {
+    const TraceStatus st = trace_ray(sys, wavelength_index, ray, nullptr, failed_surface, observer);
     if (st != TraceStatus::Ok) {
         return st;
     }

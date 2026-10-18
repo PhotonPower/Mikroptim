@@ -130,7 +130,9 @@ target_link_libraries(mikroptim_merit
 # CPU-Referenz der Residuen pro Variante
 # --------------------------------------------------------------------------
 add_library(mikroptim_batch STATIC
+    src/batch/batch_extrema.cpp
     src/batch/batch_memory.cpp
+    src/batch/batch_merit.cpp
     src/batch/batch_residuals.cpp
     src/batch/batch_trace_cpu.cpp
     src/batch/system_batch.cpp)
@@ -148,6 +150,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_info.cu
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
+        src/cuda/merit.cu
         src/cuda/quadrature_check.cu
         src/cuda/residuals.cu
         src/cuda/smoke_trace.cu

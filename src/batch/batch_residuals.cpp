@@ -197,7 +197,9 @@ void variant_residuals(const SystemBatchHost& batch, int v, const ResidualLayout
     }
 }
 
-void check_variant(const SystemBatchHost& batch, int v, const ResidualLayout& layout) {
+} // namespace
+
+void check_residual_variant(const SystemBatchHost& batch, int v, const ResidualLayout& layout) {
     if (v < 0 || v >= batch.variants()) {
         throw std::out_of_range("residuals_cpu: Variante " + std::to_string(v) +
                                 " existiert nicht");
@@ -216,6 +218,8 @@ void check_variant(const SystemBatchHost& batch, int v, const ResidualLayout& la
     }
 }
 
+namespace {
+
 ResidualResult make_result(int variants, const ResidualLayout& layout) {
     ResidualResult r;
     r.variants = variants;
@@ -231,7 +235,7 @@ ResidualResult make_result(int variants, const ResidualLayout& layout) {
 } // namespace
 
 ResidualResult residuals_cpu(const SystemBatchHost& batch, int v, const ResidualLayout& layout) {
-    check_variant(batch, v, layout);
+    check_residual_variant(batch, v, layout);
     ResidualResult r = make_result(1, layout);
     variant_residuals(batch, v, layout, r.residuals.data(), r.opd.data(), r.status.data());
     return r;
@@ -239,7 +243,7 @@ ResidualResult residuals_cpu(const SystemBatchHost& batch, int v, const Residual
 
 ResidualResult residuals_cpu(const SystemBatchHost& batch, const ResidualLayout& layout) {
     for (int v = 0; v < batch.variants(); ++v) {
-        check_variant(batch, v, layout);
+        check_residual_variant(batch, v, layout);
     }
     ResidualResult r = make_result(batch.variants(), layout);
     for (int v = 0; v < batch.variants(); ++v) {

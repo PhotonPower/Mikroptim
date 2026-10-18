@@ -26,6 +26,8 @@ TEST(TraceEngineHeader, DefaultsWithoutCuda) {
     EXPECT_FALSE(s.opd);
     EXPECT_TRUE(s.status);
     EXPECT_EQ(s.extra_residuals, 0);
+    EXPECT_FALSE(s.extrema);
+    EXPECT_TRUE(s.extra_merit.empty());
     const EngineOptions o;
     EXPECT_FALSE(o.memory_limit_bytes.has_value());
     EXPECT_EQ(o.reserve.min_bytes, std::size_t{256} << 20);
@@ -34,4 +36,6 @@ TEST(TraceEngineHeader, DefaultsWithoutCuda) {
     EXPECT_EQ(out.mode, TraceMode::Residuals);
     EXPECT_EQ(out.info.tranches, 0);
     EXPECT_EQ(out.residuals.variants, 0);
+    EXPECT_EQ(out.merit.variants, 0);
+    EXPECT_TRUE(out.merit.extrema.empty());
 }

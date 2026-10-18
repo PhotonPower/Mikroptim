@@ -174,50 +174,6 @@ ResidualResult gpu_residuals(const SystemBatchHost& batch, const ResidualSetting
     return out.residuals;
 }
 
-// Stapel aus S = kMaxSurfaces Flächen: Blende, 31 schwach gekrümmte Linsen (Gläser n = 1,5
-// und 1,7 abwechselnd), letzte Fläche (Luft auf beiden Seiten) mit Arbeitsabstand; zwei
-// Felder (Achse, Feldpunkt).
-SystemBatchHost many_surface_batch(int variants, std::uint64_t seed) {
-    BatchTopology t;
-    t.surfaces = mko::kMaxSurfaces;
-    t.wavelengths = 2;
-    t.fields = 2;
-    t.type.assign(static_cast<std::size_t>(t.surfaces), SurfaceKind::Sphere);
-    t.type[0] = SurfaceKind::Stop;
-    t.pupil_mode = {PupilMode::Axis, PupilMode::Half};
-    SystemBatchHost b(t, variants);
-    b.wavelength_nm(0) = 486.13;
-    b.wavelength_nm(1) = 656.27;
-    b.wavelength_weight(0) = b.wavelength_weight(1) = 1.0;
-    b.field_weight(0) = b.field_weight(1) = 1.0;
-    b.reference_wavelength_nm = 587.56;
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> u(-1.0, 1.0);
-    const int S = t.surfaces;
-    for (int v = 0; v < variants; ++v) {
-        const double p = v == 0 ? 0.0 : 1.0; // Variante 0 ungestört
-        for (int s = 1; s < S; ++s) {
-            const bool glass = s % 2 == 1 && s < S - 1; // Medium nach Fläche s
-            b.curvature(v, s) = (glass ? 0.0008 : -0.0006) * (1.0 + 0.2 * p * u(rng));
-            b.thickness(v, s) = (glass ? 0.8 : 0.4) * (1.0 + 0.2 * p * u(rng));
-            const double n = glass ? (s % 4 == 1 ? 1.5 : 1.7) : 1.0;
-            for (int l = 0; l < 2; ++l) {
-                b.index(v, s, l) = glass ? n + 0.01 * (1 - l) : 1.0;
-            }
-        }
-        for (int l = 0; l < 2; ++l) {
-            b.index(v, 0, l) = 1.0;
-        }
-        b.thickness(v, 0) = 2.0;
-        b.thickness(v, S - 1) = 40.0 * (1.0 + 0.1 * p * u(rng));
-        b.pupil_radius(v) = 3.0 * (1.0 + 0.3 * p * u(rng));
-        b.field_angle(v, 1) = 0.02 * (1.0 + 0.3 * p * u(rng));
-        b.field_target(v, 1) = 0.8 * (1.0 + 0.1 * p * u(rng));
-    }
-    b.validate_values();
-    return b;
-}
-
 } // namespace
 
 // Abnahme M2-T2: |GPU − CPU| <= kCpuGpuFp64 für alle Strahlen von je 1.000 zufällig gestörten
@@ -443,7 +399,7 @@ TEST(CudaResiduals, FailedBlocksAreMasked) {
 // S = kMaxSurfaces (größte Flächentabelle im Shared Memory).
 TEST(CudaResiduals, MaxSurfaces) {
     MKO_REQUIRE_GPU();
-    const SystemBatchHost batch = many_surface_batch(200, 6006);
+    const SystemBatchHost batch = mko::test::many_surface_batch(200, 6006);
     const ResidualLayout layout(batch.topology());
     const ResidualResult gpu = gpu_residuals(batch);
     const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);

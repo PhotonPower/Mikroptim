@@ -62,7 +62,8 @@ struct OutputRequest {
     bool ray_status = true;            // Status pro Strahl (1 Byte, TraceStatus)
     bool opd = false;                  // rohe OPD pro Strahl nach Kolbenabzug (FP64), z. B.
                                        // für Tests und Auswertung (Kernel RESIDUALS, M2-T2)
-    bool merit = true;                 // Merit (FP64) + Teilsumme pro Block (v, f, l)
+    bool merit = true;                 // Merit (FP64) + Teilsumme pro Block (v, f, l), dazu
+                                       // versagte Strahlen pro Variante (int64) und Block (int32)
     bool surface_max = true;           // max. Strahlhöhe und Einfallswinkel pro Fläche (2 · S FP64)
                                        // + dasselbe pro Block (v, f, l)
 };
@@ -84,6 +85,8 @@ struct OutputLayout {
     BufferRegion opd;                 // V · rays · 8
     BufferRegion merit;               // V · 8
     BufferRegion merit_partial;       // V · F · L · 8
+    BufferRegion failed_rays;         // V · 8 (int64, mit merit)
+    BufferRegion failed_rays_partial; // V · F · L · 4 (int32, mit merit)
     BufferRegion surface_max;         // V · 2 · S · 8
     BufferRegion surface_max_partial; // V · F · L · 2 · S · 8
     BufferRegion extra;               // V · extra_bytes_per_variant

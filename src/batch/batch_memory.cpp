@@ -109,6 +109,9 @@ OutputLayout make_output_layout(const BatchTopology& t, int variants, const Outp
     o.opd = place(end, out.opd ? mul_sat(mul_sat(V, rays), d) : 0);
     o.merit = place(end, out.merit ? mul_sat(V, d) : 0);
     o.merit_partial = place(end, out.merit ? mul_sat(mul_sat(V, blocks), d) : 0);
+    o.failed_rays = place(end, out.merit ? mul_sat(V, sizeof(std::int64_t)) : 0);
+    o.failed_rays_partial =
+        place(end, out.merit ? mul_sat(mul_sat(V, blocks), sizeof(std::int32_t)) : 0);
     o.surface_max = place(end, out.surface_max ? mul_sat(V, 2 * S * d) : 0);
     o.surface_max_partial =
         place(end, out.surface_max ? mul_sat(mul_sat(V, blocks), 2 * S * d) : 0);

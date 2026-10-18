@@ -25,6 +25,8 @@ struct ResidualRunOptions {
     bool opd = false;                 // rohe OPD pro Strahl zusätzlich ablegen
     std::int64_t extra_residuals = 0; // weitere Residuen pro Variante nach den Strahlresiduen
                                       // (Paraxial, Strafen ab M3); run setzt sie auf 0
+    bool extrema = false;             // Max-Reduktionen pro Variante und Fläche (M2-T3,
+                                      // ResidualResult::extrema; Definition batch_extrema.hpp)
 };
 
 // Ausgabepuffer des Kernels RESIDUALS auf dem Gerät (RAII, nur verschiebbar): ein
@@ -51,8 +53,8 @@ public:
     void run(const DeviceSystemBatch& batch, const ResidualLayout& layout,
              const ResidualRunOptions& options = {});
 
-    // Lädt alle Ergebnisse des letzten Laufs herunter (OPD nur, wenn angefordert; Status
-    // immer). Wirft std::logic_error ohne vorherigen Lauf.
+    // Lädt alle Ergebnisse des letzten Laufs herunter (OPD und Max-Reduktionen nur, wenn
+    // angefordert; Status immer). Wirft std::logic_error ohne vorherigen Lauf.
     ResidualResult download() const;
     void download(ResidualResult& result) const;
 
@@ -64,14 +66,17 @@ public:
     std::int64_t rays_per_variant() const { return rays_; }
     std::int64_t stride() const { return stride_; }
     bool has_opd() const { return opd_; }
+    bool has_extrema() const { return extrema_; }
     const OutputLayout& layout() const { return layout_; }
     std::size_t capacity_bytes() const { return capacity_; }
 
     // Gerätezeiger auf die Ausgaben des letzten Laufs (für Folgekernel, z. B. JᵀJ in M3);
-    // gültig bis zum nächsten run oder release. nullptr ohne Lauf (OPD: ohne Anforderung).
+    // gültig bis zum nächsten run oder release. nullptr ohne Lauf (OPD, Max-Reduktionen: ohne
+    // Anforderung). device_extrema: [V][S][2] wie SurfaceExtremaResult::values.
     const double* device_residuals() const;
     const std::uint8_t* device_status() const;
     const double* device_opd() const;
+    const double* device_extrema() const;
 
 private:
     int device_ = -1;
@@ -79,7 +84,9 @@ private:
     std::size_t capacity_ = 0;
     bool ran_ = false;
     bool opd_ = false;
+    bool extrema_ = false;
     int variants_ = 0;
+    int surfaces_ = 0;
     std::int64_t rays_ = 0;
     std::int64_t stride_ = 0;
     OutputLayout layout_{};

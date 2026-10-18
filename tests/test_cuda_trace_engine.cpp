@@ -78,6 +78,21 @@ std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout
            mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan));
 }
 
+// Dasselbe im Modus MERIT: Merit, Teilsummen, versagte Strahlen, optional Max-Reduktionen
+// und extra_merit (8 Byte pro Variante) + Feldablage.
+std::size_t merit_run_bytes(const BatchTopology& t, int variants, const ResidualLayout& layout,
+                            const TraceSettings& s) {
+    OutputRequest r;
+    r.rays_per_variant = layout.rays_per_variant();
+    r.residuals = false;
+    r.ray_status = false;
+    r.opd = false;
+    r.merit = true;
+    r.surface_max = s.extrema;
+    return mko::estimate_device_bytes(t, variants, r, s.extra_merit.empty() ? 0 : sizeof(double)) +
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan));
+}
+
 // Engine, deren Speicher genau für `tranche` Varianten reicht (ohne Reserve).
 EngineOptions limited_to(std::size_t bytes) {
     EngineOptions o;
@@ -196,6 +211,87 @@ TEST(TraceEngine, TranchesMatchSingleRun) {
                 limit, lean_capacity, out.info.tranches);
 }
 
+// MERIT (M2-T3) über mehrere Tranchen ist bitgleich zum Lauf in einer Tranche: Merit,
+// versagte Strahlen, Max-Reduktionen und der Anteil weiterer Residuen (extra_merit wird pro
+// Tranche an der Stelle `first` gelesen). Dasselbe für die Max-Reduktionen im Modus
+// RESIDUALS; Wechsel der Modi mit derselben Engine.
+TEST(TraceEngine, MeritTranchesMatchSingleRun) {
+    MKO_REQUIRE_GPU();
+    const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
+    const SystemBatchHost batch = mko::test::perturbed_batch(ls, 700, 8008);
+    const BatchTopology& t = batch.topology();
+    std::vector<double> extra(700);
+    for (std::size_t v = 0; v < extra.size(); ++v) {
+        extra[v] = 1e-6 * static_cast<double>(v % 17);
+    }
+    TraceSettings s;
+    s.extrema = true;
+    s.extra_merit = extra;
+    const ResidualLayout layout(t, s.quadrature);
+
+    TraceEngine full(0);
+    const TraceOutput reference = full.run(batch, TraceMode::Merit, s);
+    ASSERT_EQ(reference.info.tranches, 1);
+    EXPECT_EQ(reference.mode, TraceMode::Merit);
+    EXPECT_EQ(reference.merit.variants, 700);
+    EXPECT_EQ(reference.merit.extrema.surfaces, t.surfaces);
+    EXPECT_EQ(reference.residuals.variants, 0); // Ergebnis des anderen Modus leer
+    EXPECT_TRUE(reference.residuals.residuals.empty());
+    std::int64_t failed = 0;
+    for (const std::int64_t f : reference.merit.failed) {
+        failed += f;
+    }
+    EXPECT_GT(failed, 0);
+
+    // Grenze für genau 200 Varianten: 4 Kernelstarts (200, 200, 200, 100)
+    const std::size_t limit = merit_run_bytes(t, 200, layout, s);
+    TraceEngine limited(0, limited_to(limit));
+    EXPECT_EQ(limited.max_variants(t, TraceMode::Merit, s), 200);
+    EXPECT_EQ(TraceEngine(0, limited_to(limit - 1)).max_variants(t, TraceMode::Merit, s), 199);
+    TraceOutput out;
+    limited.run(batch, TraceMode::Merit, s, out);
+    EXPECT_EQ(out.info.tranches, 4);
+    EXPECT_EQ(out.info.tranche_variants, 200);
+    EXPECT_EQ(limited.device_bytes(), limit);
+    EXPECT_TRUE(same_bytes(out.merit.merit, reference.merit.merit));
+    EXPECT_TRUE(same_bytes(out.merit.failed, reference.merit.failed));
+    EXPECT_TRUE(same_bytes(out.merit.extrema.values, reference.merit.extrema.values));
+    // Der Anteil weiterer Residuen wird zuletzt addiert
+    TraceSettings plain = s;
+    plain.extra_merit = {};
+    const TraceOutput without = full.run(batch, TraceMode::Merit, plain);
+    for (std::size_t v = 0; v < extra.size(); ++v) {
+        const double expected = without.merit.merit[v] + extra[v];
+        EXPECT_EQ(std::memcmp(&out.merit.merit[v], &expected, sizeof(double)), 0) << v;
+    }
+
+    // RESIDUALS mit Max-Reduktionen in derselben Grenze (mehr Speicher pro Variante, also mehr
+    // Tranchen); bitgleich zum Lauf in einer Tranche und zu den Extrema aus MERIT.
+    TraceSettings rs;
+    rs.extrema = true;
+    const TraceOutput r_full = full.run(batch, TraceMode::Residuals, rs);
+    limited.run(batch, TraceMode::Residuals, rs, out);
+    EXPECT_GT(out.info.tranches, 4);
+    EXPECT_LE(limited.device_bytes(), limit);
+    EXPECT_TRUE(out.merit.merit.empty());
+    EXPECT_TRUE(identical(out.residuals, r_full.residuals));
+    EXPECT_TRUE(same_bytes(out.residuals.extrema.values, r_full.residuals.extrema.values));
+    EXPECT_TRUE(same_bytes(out.residuals.extrema.values, reference.merit.extrema.values));
+
+    // Wechsel der Modi ohne Grenze: beide Ausgabepuffer bleiben erhalten, Ergebnisse gleich
+    const std::size_t both = full.device_bytes();
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_TRUE(
+            same_bytes(full.run(batch, TraceMode::Merit, s).merit.merit, reference.merit.merit));
+        EXPECT_TRUE(
+            identical(full.run(batch, TraceMode::Residuals, rs).residuals, r_full.residuals));
+        EXPECT_EQ(full.device_bytes(), both);
+    }
+    std::printf("[ Info     ] MERIT mit Extrema und extra_merit: Grenze %zu Byte = 200 Varianten "
+                "pro Tranche; RESIDUALS mit Extrema in derselben Grenze: %d Tranchen\n",
+                limit, out.info.tranches);
+}
+
 // Eine Tranche pro Variante (kleinste Grenze) ist ebenfalls bitgleich.
 TEST(TraceEngine, OneVariantPerTranche) {
     MKO_REQUIRE_GPU();
@@ -258,16 +354,21 @@ TEST(TraceEngine, MaxVariantsFromFreeMemory) {
 }
 
 // Ungültige Eingaben: std::invalid_argument vor jeder Gerätearbeit; die Engine bleibt
-// benutzbar. MERIT ist bis M2-T3 nicht verfügbar.
+// benutzbar.
 TEST(TraceEngine, InvalidInputThrows) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");
     const SystemBatchHost batch = mko::make_system_batch(ls, 2);
     TraceEngine engine(0);
     TraceOutput out;
-    EXPECT_THROW(engine.run(batch, TraceMode::Merit, {}, out), std::invalid_argument);
-    EXPECT_THROW((void)engine.max_variants(batch.topology(), TraceMode::Merit),
-                 std::invalid_argument);
+    // MERIT: extra_merit mit falscher Länge, zu viele Stützstellen für das Shared Memory
+    const std::vector<double> extra(3, 0.0);
+    TraceSettings merit_bad;
+    merit_bad.extra_merit = extra;
+    EXPECT_THROW(engine.run(batch, TraceMode::Merit, merit_bad, out), std::invalid_argument);
+    merit_bad = TraceSettings{};
+    merit_bad.quadrature = ResidualSettings{16, mko::cuda::merit_max_samples(false) / 16 + 1};
+    EXPECT_THROW(engine.run(batch, TraceMode::Merit, merit_bad, out), std::invalid_argument);
     EXPECT_STREQ(mko::cuda::to_string(TraceMode::Merit), "MERIT");
     EXPECT_STREQ(mko::cuda::to_string(TraceMode::Residuals), "RESIDUALS");
     TraceSettings bad;

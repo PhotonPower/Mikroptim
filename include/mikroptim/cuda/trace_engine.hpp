@@ -13,11 +13,13 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
+#include "mikroptim/cuda/merit.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 
 namespace mko::cuda {
@@ -25,7 +27,8 @@ namespace mko::cuda {
 // Kernel-Modus eines Laufs (docs/architektur.md, Abschnitt "Kernel-Modi").
 enum class TraceMode {
     Residuals, // Residuenvektor pro Variante, optional OPD und Status pro Strahl (M2-T2)
-    Merit,     // gewichtete Quadratsumme pro Variante (M2-T3); noch nicht verfügbar
+    Merit,     // Quadratsumme der Residuen und versagte Strahlen pro Variante, ohne den
+               // Residuenvektor im Gerätespeicher (M2-T3)
 };
 
 // Name des Modus für Meldungen ("RESIDUALS", "MERIT").
@@ -47,6 +50,13 @@ struct TraceSettings {
     bool status = true;               // Status pro Strahl ausgeben (TraceStatus, 1 Byte)
     std::int64_t extra_residuals = 0; // weitere Residuen pro Variante (Paraxial, Strafen ab
                                       // M3); der Lauf setzt sie auf 0
+    // opd, status und extra_residuals gelten nur im Modus Residuals.
+    bool extrema = false; // beide Modi: Max-Reduktionen pro Variante und Fläche (M2-T3,
+                          // batch_extrema.hpp), in residuals.extrema bzw. merit.extrema
+    // Nur Modus Merit: leer oder ein Wert pro Variante des Batches, den der Kernel zur
+    // Quadratsumme addiert (Anteil weiterer Residuen, MeritRunOptions::extra_merit). Die
+    // Daten müssen bis zur Rückkehr von run gültig bleiben.
+    std::span<const double> extra_merit{};
 };
 
 // Statistik des letzten Laufs.
@@ -63,8 +73,12 @@ struct TraceRunInfo {
 struct TraceOutput {
     TraceMode mode = TraceMode::Residuals;
     ResidualLayout layout;    // Ablage der Residuen (aus Topologie und Quadratur)
-    ResidualResult residuals; // Modus Residuals: Ablage wie DeviceResiduals::download, OPD
-                              // bzw. Status leer, wenn nicht angefordert
+    ResidualResult residuals; // Modus Residuals: Ablage wie DeviceResiduals::download, OPD,
+                              // Status bzw. Extrema leer, wenn nicht angefordert; im Modus
+                              // Merit leer
+    MeritResult merit;        // Modus Merit: Merit und versagte Strahlen pro Variante, Extrema
+                              // auf Anforderung (wie DeviceMerit::download); im Modus
+                              // Residuals leer
     TraceRunInfo info;
 };
 
@@ -128,6 +142,7 @@ private:
     EngineOptions options_{};
     DeviceSystemBatch batch_;
     DeviceResiduals residuals_;
+    DeviceMerit merit_;
 };
 
 } // namespace mko::cuda

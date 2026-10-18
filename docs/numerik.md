@@ -212,6 +212,8 @@ $$r_k = s_{f,l}\,\sqrt{W_i V_j}\;\mathrm{OPD}_k \quad [\mathrm{mm}],\qquad s_{f,
 
 mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne gültigen Strahl im Tupel alle OPD und Residuen 0) und √(W_i V_j) = `residual_weight(sample)`. Der Faktor s_{f,l} (`residual_scale`) ist der Erweiterungspunkt für M4-T1: √(w_f w_λ)/λ_ref nach [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor); danach ist r dimensionslos (Wellen). Ohne Versagen gilt Σ_k r_k² = RMS² des Tupels (Gewichte mit Summe 1). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches.
 
+**Merit (M2-T3):** F_v = Σ_k r_k² über alle Strahlresiduen der Variante (plus einem vom Aufrufer gelieferten Anteil weiterer Residuen); ohne gültigen Strahl ist F_v = 0 und nur an der Zahl versagter Strahlen erkennbar. Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
+
 Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern und ist für df64 (M7) vorgemerkt, muss dann aber in CPU und Kernel gleich definiert werden.
 
 ## 8. Pupillenquadratur

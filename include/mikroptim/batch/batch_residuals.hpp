@@ -5,6 +5,7 @@
 // Reines C++ ohne CUDA-Typen. Ablage und Definition: docs/architektur.md, Abschnitt
 // "Kernel RESIDUALS"; docs/numerik.md, Abschnitt 7.
 
+#include "mikroptim/batch/batch_extrema.hpp"
 #include "mikroptim/batch/batch_memory.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
@@ -93,6 +94,9 @@ struct ResidualResult {
     std::vector<double> opd;          // [V · rays] OPD nach Kolbenabzug [mm] (0 bei Versagen);
                                       // leer, wenn nicht angefordert
     std::vector<std::uint8_t> status; // [V · rays] TraceStatus; leer, wenn nicht angefordert
+    SurfaceExtremaResult extrema;     // Max-Reduktionen pro Variante und Fläche (M2-T3); nur
+                                      // vom Gerät mit ResidualRunOptions::extrema, sonst leer
+                                      // (CPU: surface_extrema_cpu)
 
     double residual(int v, std::int64_t i) const {
         return residuals[static_cast<std::size_t>(v) * static_cast<std::size_t>(stride) +
@@ -154,5 +158,10 @@ struct TupleWavefront {
 // std::out_of_range (v).
 std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
                                              const ResidualLayout& layout, int v);
+
+// Eingangsprüfung der CPU-Referenzen für Variante v (residuals_cpu, merit_cpu,
+// surface_extrema_cpu): v existiert (sonst std::out_of_range), check_residual_layout,
+// check_pupil_modes und bei der Punktquelle NA in (0, index[v][0][l]) (std::invalid_argument).
+void check_residual_variant(const SystemBatchHost& batch, int v, const ResidualLayout& layout);
 
 } // namespace mko

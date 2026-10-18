@@ -134,18 +134,21 @@ TEST(BatchMemory, OutputLayoutAndEstimate) {
     out.extra_residuals = 5;
     const mko::OutputLayout o = mko::make_output_layout(lens_topology(), 10, out, 100);
     // residuals 10·515·8 = 41200 -> 41216, status 5100 -> 5120, merit 80 -> 256,
-    // merit_partial 10·9·8 = 720 -> 768, surface_max 10·2·3·8 = 480 -> 512,
+    // merit_partial 10·9·8 = 720 -> 768, failed_rays 10·8 = 80 -> 256,
+    // failed_rays_partial 10·9·4 = 360 -> 512, surface_max 10·2·3·8 = 480 -> 512,
     // surface_max_partial 10·9·2·3·8 = 4320 -> 4352, extra 1000 -> 1024
     EXPECT_EQ(o.residuals.bytes, 41200u);
     EXPECT_EQ(o.ray_status.offset, 41216u);
     EXPECT_EQ(o.ray_status.bytes, 5100u);
     EXPECT_EQ(o.merit.bytes, 80u);
     EXPECT_EQ(o.merit_partial.bytes, 720u);
+    EXPECT_EQ(o.failed_rays.bytes, 80u);
+    EXPECT_EQ(o.failed_rays_partial.bytes, 360u);
     EXPECT_EQ(o.surface_max.bytes, 480u);
     EXPECT_EQ(o.surface_max_partial.bytes, 4320u);
     EXPECT_EQ(o.extra.bytes, 1000u);
-    EXPECT_EQ(o.total_bytes, 53248u);
-    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3072u + 53248u);
+    EXPECT_EQ(o.total_bytes, 54016u);
+    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3072u + 54016u);
 
     // Nicht angeforderte Ausgaben kosten nichts
     OutputRequest none;
