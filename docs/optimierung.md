@@ -236,6 +236,16 @@ Schrittweitensteuerung: Konvergiert LM nach einem Schritt Δ schnell und bleibt 
 
 Die Synthese ist eine Strahlsuche (beam search) über Zweige: Jede Einfügung und jeder Sattelpunkt-Abstieg erzeugt neue Kandidaten. Behalten werden die besten B Kandidaten nach Merit, Elementzahl und (ab M8) Empfindlichkeit. Alle Kandidaten einer Topologie laufen gemeinsam in einem Batch.
 
+### FP32-Vorfilterung im Multistart (ab M7-T2)
+
+Vor der Bewertung eines großen Multistart-Batches in FP64 (oder df64) sortiert `TraceEngine::prefilter_variants` hoffnungslose Varianten aus: auf der RTX 3090 im Kernel rund 19-mal so schnell wie MERIT in FP64 und 4,5-mal so schnell wie df64 ([benchmarks.md](benchmarks.md#fp32-vorfilterung-m7-t2)). Die Entscheidung ist konservativ: Eine Variante wird nur aussortiert, wenn sie das Kriterium auch in FP64 sicher erfüllt ([numerik.md, „FP32-Vorfilterung“](numerik.md#fp32-vorfilterung-m7-t2)); im Zweifel bleibt sie im Batch. Ablauf:
+
+1. Startvarianten erzeugen (`make_perturbed_batch` o. ä.), weitere Residuen E_v (paraxiale Nebenbedingungen, `evaluate_extra_residuals`) in FP64 auf dem Host, Σ e² als `PrefilterSettings::extra_merit`.
+2. `prefilter_variants` mit den Kriterien (`PrefilterCriteria`): (a) Anteil versagter Strahlen > `max_failed_fraction` (Standard 0,5), (b) Merit > `max_merit`, (c) Merit > `max_merit_factor` × beste Merit des Batches (b und c Standard aus). Die Margen (`PrefilterMargins`) bleiben auf den Standardwerten.
+3. Nur die Varianten mit `keep(v)` in einen neuen Batch kopieren und in FP64/df64 bewerten bzw. optimieren. `merit_lower`/`merit_upper` dürfen für eine Rangfolge der Vorauswahl benutzt werden, **nie** als Merit, Startwert der Dämpfung, Abbruchkriterium oder in der Jacobi-Matrix.
+
+Die Kandidatenverwaltung selbst (Auswahl der besten B, Zweige) ist M6-T4. Ein rangbasiertes Kriterium („nur die schlechtesten p % aussortieren“) lässt sich aus `merit_lower` und `merit_upper` bauen (aussortieren, wenn L_v über dem p-Quantil der U_u liegt), ist aber nicht umgesetzt.
+
 ## 9. Glas-Einrasten
 
 Am Ende: für jedes Glaselement die k nächsten Katalog-Gläser im normierten (n₀, ν₁, ν₂)-Raum; Kombinationen werden als Varianten im Batch reoptimiert, das beste Ergebnis gewinnt. Weiche Nebenbedingung auf Transmission bei 420–450 nm (Farbstich), Kennzeichnung spannungsarmer Gläser für DIC.

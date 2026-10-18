@@ -10,6 +10,7 @@ Eine Zeile pro Messreihe: S = 30 Flächen, V = 10.000 Varianten, Standardquadrat
 |---|---|---|---|---|---|---|---|
 | 2026-10-18 | 33356d9 + M2-T6 | RTX 3090 | 610.88 / 12.9 | FP64 | 30 | 10.000 × 510 | 7,7·10⁷ (Kernel 8,4·10⁷) |
 | 2026-10-18 | a210b89 + M7-T1 | RTX 3090 | 610.88 / 12.9 | df64 | 30 | 10.000 × 510 | 2,5·10⁸ (Kernel 3,5·10⁸) |
+| 2026-10-18 | 2297b58 + M7-T2 | RTX 3090 | 610.88 / 12.9 | FP32-Vorfilterung (kein Merit-Pfad) | 30 | 10.000 × 510 | 4,7·10⁸ (Kernel 1,7·10⁹) |
 | ausstehend | | Tesla P100 | | FP64 | 30 | 10.000 × 510 | ausstehend (Befehl unten) |
 
 ## Messprogramm in Kürze
@@ -165,6 +166,38 @@ Jacobi und LM-Iteration (S = 30, Median aus 5 Läufen):
 - **Warum nicht mehr als Faktor 4:** Eine df64-Operation kostet 9–20 FP32-Befehle (Addition 20, Multiplikation 9, Division und Wurzel je eine IEEE-Division bzw. -Wurzel als Unterprogramm plus ca. 15), und die Abhängigkeitsketten sind lang. Mit 96–104 Registern laufen 16–20 Warps pro SM (architektur.md, „Zahlentypen der Kernel“), zu wenig, um diese Latenzen ganz zu verstecken; dazu kommen die leeren Lanes der Blöcke (siehe oben, 76 % Lane-Ausnutzung). Hardwarezähler waren nicht verfügbar; Profil und Tuning (Blockgröße, `__launch_bounds__`, Registerdruck) sind M7-T4.
 
 Register und Stack der df64-Kernel: [architektur.md, „Zahlentypen der Kernel“](architektur.md#zahlentypen-der-kernel-m7-t1) (sm_86: `residuals_kernel<df64, false>` 96 Register, Stack 48 B → 5 Blöcke/SM = 20 von 48 Warps; `merit_kernel<df64, false>` 104 Register, Stack 32 B → 4 Blöcke/SM; mit Max-Reduktionen Stack 2.080–2.096 B). Genauigkeit gegen FP64 (Abnahme M7-T1): [numerik.md](numerik.md#zahlentyp-df64-m7-t1). Ergänzend misst der abgeschaltete GPU-Test `CudaDf64.DISABLED_Throughput` (`--gtest_also_run_disabled_tests`) gestörte Varianten der Testsysteme mit versagten Strahlen: `einzellinse_bk7.json` und `testsystem_mehrlinser.json`, je 10.000 Varianten, MERIT über die Engine 2,8–3,2-mal so schnell wie FP64.
+
+## FP32-Vorfilterung (M7-T2)
+
+Kernel der FP32-Vorfilterung (`TraceEngine::prefilter_variants`, [numerik.md, „FP32-Vorfilterung“](numerik.md#fp32-vorfilterung-m7-t2)) gegen MERIT in FP64 und df64, Messprogramm und Systeme wie oben (`--type fp32prefilter`: ein Fall pro S und V, Modus-Spalte `prefilter`; Engine = `prefilter_variants` mit Prüfung, Upload, Kernel, Download der Rohdaten und Entscheidung auf dem Host, Kernel = `DevicePrefilter::run`). Messumgebung wie in „Messumgebung RTX 3090“, Stand main 2297b58 mit M7-T2 (Branch `m7/t2-fp32-vorfilter`), Datum 2026-10-18. Befehle:
+
+```text
+trace_throughput --type fp64,df64,fp32prefilter --surfaces 10,30,40 --variants 10000 --mode merit --repeat 20 --warmup 3
+trace_throughput --type fp64,df64,fp32prefilter --surfaces 30 --variants 100000,392157 --mode merit --repeat 5 --warmup 1
+```
+
+Kein Strahl versagt. V = 10.000, 510 Strahlen pro Variante, Median aus 20 Läufen:
+
+| S | Engine FP64 [ms] | Engine df64 [ms] | Engine FP32-Vorfilter [ms] | Kernel FP64 [ms] | Kernel df64 [ms] | Kernel FP32-Vorfilter [ms] | Faktor gegen FP64 / df64 (Kernel) | Kernel FP32 [Strahl-Flächen/s] |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 10 | 28,62 | 8,09 | 4,53 | 25,74 | 5,68 | 1,36 | 19 / 4,2 | 3,8·10¹⁰ |
+| 30 | 74,93 | 20,71 | 10,88 | 68,88 | 15,29 | 3,01 | 23 / 5,1 | 5,1·10¹⁰ |
+| 40 | 103,52 | 36,71 | 14,24 | 94,64 | 19,23 | 4,03 | 23 / 4,8 | 5,1·10¹⁰ |
+
+(S = 40, FP64: zweite Messung mit 20 Läufen; die erste ergab für den Kernel 130,6 ms, offenbar gestört.) Große Batches (S = 30, Median aus 5 Läufen):
+
+| V | Strahlen | FP64 Engine / Kernel | df64 Engine / Kernel | FP32-Vorfilter Engine / Kernel |
+|---:|---:|---:|---:|---:|
+| 100.000 | 5,1·10⁷ | 773 / 694 ms | 247 / 169 ms | 120 / 36,8 ms |
+| 392.157 | 2,0·10⁸ | 3,04 / 2,76 s | 0,98 / 0,68 s | 0,45 / 0,15 s |
+
+**Auswertung.**
+
+- **Kernel:** 1,3–1,7·10⁹ Strahlen/s bei S = 30 (5,1·10¹⁰ Strahl-Flächen/s), 18–23-mal so schnell wie FP64 und 4,5–5-mal so schnell wie df64. Das Verhältnis 64:1 der Spitzenleistung wird nicht erreicht: Der Kernel ist nicht mehr durch die Rechenwerke begrenzt, sondern durch Latenzen, Shared-Memory-Zugriffe, die drei zusätzlichen Grenzabstände pro Fläche und die leeren Lanes der Blöcke (76 % Lane-Ausnutzung bei 80 Stützstellen, siehe oben). 72 Register, also 7 Blöcke pro SM (architektur.md, „FP32-Vorfilterung“).
+- **Engine:** nur 6,7–6,9-mal so schnell wie FP64 und 1,9–2,2-mal so schnell wie df64, weil Prüfung der Werte (`validate_values`) und Upload des FP64-Batches auf dem Host gleich bleiben und jetzt rund zwei Drittel der Zeit ausmachen (V = 392.157: 0,30 von 0,45 s). Ein Multistart, der den Batch ohnehin auf dem Host erzeugt, profitiert von gepinnten Puffern und überlappten Uploads (M7-T4) entsprechend mehr.
+- **Einsatz:** Bei 10⁵–4·10⁵ Startvarianten sortiert die Vorfilterung in 0,12–0,45 s aus; die FP64-Bewertung nur der übrigen spart bei 50–98 % Ablehnungen (je nach Kriterium, vgl. die Abnahme in numerik.md) 0,4–3 s pro Durchgang.
+
+Durchsatz mit versagten Strahlen (Multistart-Varianten des Mehrlinsers, 10.000 Varianten, 8,5 % versagte Strahlen, GPU-Test `CudaPrefilter.Throughput`, über die Engine): Vorfilterung 4,9–5,2 ms, MERIT FP64 26–29 ms, df64 8,2–8,9 ms.
 
 ## P100-Messung nachholen
 

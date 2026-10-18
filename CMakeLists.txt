@@ -137,6 +137,7 @@ add_library(mikroptim_batch STATIC
     src/batch/batch_extrema.cpp
     src/batch/batch_memory.cpp
     src/batch/batch_merit.cpp
+    src/batch/batch_prefilter.cpp
     src/batch/batch_residuals.cpp
     src/batch/batch_trace_cpu.cpp
     src/batch/system_batch.cpp)
@@ -172,6 +173,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/dispersion_eval.cu
         src/cuda/fd_jacobian.cu
         src/cuda/merit.cu
+        src/cuda/prefilter.cu
         src/cuda/quadrature_check.cu
         src/cuda/residuals.cu
         src/cuda/smoke_trace.cu

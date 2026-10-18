@@ -17,6 +17,7 @@
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/merit.hpp"
 #include "mikroptim/cuda/precision.hpp"
+#include "mikroptim/cuda/prefilter.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #include "mikroptim/model/system.hpp"
@@ -57,9 +58,13 @@ constexpr int kExitNoGpu = 3; // wie `mikroptim trace --gpu` (SKIP_RETURN_CODE d
 constexpr const char* kJsonFormat = "mikroptim.bench.trace_throughput/1";
 
 // Rechentyp der Kernel (TraceSettings::precision, M7-T1). Alle Ausgaben führen ihn als Spalte.
+// fp32prefilter ist die FP32-Vorfilterung (M7-T2, TraceEngine::prefilter_variants): kein Modus
+// der Engine, sondern ein eigener Kernel wie MERIT in float mit konservativer Entscheidung; er
+// wird einmal pro (S, V) gemessen (Modus-Spalte "prefilter").
 enum class NumberType {
     Fp64,
     Df64,
+    Fp32Prefilter,
 };
 
 const char* to_string(NumberType type) {
@@ -68,6 +73,8 @@ const char* to_string(NumberType type) {
         return "fp64";
     case NumberType::Df64:
         return "df64";
+    case NumberType::Fp32Prefilter:
+        return "fp32prefilter";
     }
     return "?";
 }
@@ -133,7 +140,9 @@ void print_usage() {
         "  --variants LISTE    Variantenzahlen V >= 1 (Standard 1,10,100,1000,10000)\n"
         "  --mode LISTE        residuals, merit, residuals+extrema, merit+extrema, all\n"
         "                      (Standard residuals,merit; all = alle vier)\n"
-        "  --type LISTE        Zahlentyp: fp64 (Standard), df64\n"
+        "  --type LISTE        Zahlentyp: fp64 (Standard), df64, fp32prefilter "
+        "(FP32-Vorfilterung,\n"
+        "                      einmal pro S und V, unabhängig von --mode)\n"
         "  --fields F          Felder, Feldwinkel 0 ... 3 Grad (Standard 3)\n"
         "  --wavelengths L     Wellenlängen 486,13 ... 656,27 nm (Standard 3)\n"
         "  --rings N           Ringe der Pupillenquadratur (Standard 10)\n"
@@ -223,9 +232,11 @@ std::vector<NumberType> parse_types(std::string_view text) {
             types.push_back(NumberType::Fp64);
         } else if (item == "df64") {
             types.push_back(NumberType::Df64);
+        } else if (item == "fp32prefilter") {
+            types.push_back(NumberType::Fp32Prefilter);
         } else {
             throw UsageError("--type: unbekannter Zahlentyp \"" + std::string(item) +
-                             "\" (verfügbar: fp64, df64)");
+                             "\" (verfügbar: fp64, df64, fp32prefilter)");
         }
     }
     return types;
@@ -463,6 +474,11 @@ struct Result {
     std::optional<Timing> kernel; // leer: nicht gemessen (--no-kernel) oder kein Speicher
 };
 
+// Modus-Spalte: bei der Vorfilterung "prefilter".
+std::string mode_label(const Result& r) {
+    return r.type == NumberType::Fp32Prefilter ? std::string("prefilter") : mode_name(r.mode);
+}
+
 double rays_per_s(const Result& r, double seconds) {
     return static_cast<double>(r.rays) / seconds;
 }
@@ -525,6 +541,49 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType typ
     return r;
 }
 
+// FP32-Vorfilterung (M7-T2): Engine = TraceEngine::prefilter_variants (Prüfung, Upload,
+// Kernel, Download der Rohdaten, Entscheidung auf dem Host), Kernel = DevicePrefilter::run auf
+// dem hochgeladenen Batch. Versagte Strahlen: sicher und unsicher versagte.
+Result run_prefilter_case(mko::cuda::TraceEngine& engine, const Options& o,
+                          const mko::SystemBatchHost& batch) {
+    mko::cuda::PrefilterSettings settings;
+    settings.quadrature = mko::ResidualSettings{o.rings, o.spokes};
+
+    Result r;
+    r.type = NumberType::Fp32Prefilter;
+    r.mode = {TraceMode::Merit, false};
+    r.surfaces = batch.surfaces();
+    r.variants = batch.variants();
+
+    mko::PrefilterResult out;
+    mko::cuda::TraceRunInfo info;
+    r.engine = measure(o.warmup, o.repeat,
+                       [&] { info = engine.prefilter_variants(batch, settings, out); });
+    r.rays_per_variant = out.stats.rays_per_variant;
+    r.rays = static_cast<std::int64_t>(r.variants) * r.rays_per_variant;
+    r.tranches = info.tranches;
+    for (int v = 0; v < out.stats.variants; ++v) {
+        const auto i = static_cast<std::size_t>(v);
+        r.failed += out.stats.failed[i] + out.stats.uncertain_failed[i];
+    }
+
+    if (o.kernel) {
+        try {
+            engine.release();
+            const mko::cuda::DeviceSystemBatch device_batch(batch, engine.device());
+            const mko::ResidualLayout layout(batch.topology(), settings.quadrature);
+            mko::cuda::DevicePrefilter prefilter;
+            const double eta = settings.options.margins.boundary;
+            r.kernel =
+                measure(o.warmup, o.repeat, [&] { prefilter.run(device_batch, layout, eta); });
+        } catch (const mko::cuda::CudaError& e) {
+            std::fprintf(stderr, "Hinweis: Kernelzeit für S = %d, V = %d nicht gemessen: %s\n",
+                         r.surfaces, r.variants, e.what());
+        }
+    }
+    return r;
+}
+
 // ---- Geräteinformation --------------------------------------------------------------------
 
 struct DeviceReport {
@@ -578,7 +637,7 @@ constexpr const char* kBuildType = "Debug";
 // ---- Ausgabe ------------------------------------------------------------------------------
 
 void print_table_header() {
-    std::printf("%-5s %-17s %3s %6s %6s %10s %10s %10s %10s %10s %10s %10s %8s %3s\n", "Typ",
+    std::printf("%-13s %-17s %3s %6s %6s %10s %10s %10s %10s %10s %10s %10s %8s %3s\n", "Typ",
                 "Modus", "S", "V", "Str/V", "Engine ms", "Str/s", "StrFl/s", "Kernel ms", "Str/s",
                 "StrFl/s", "Engine min", "versagt", "Tr");
 }
@@ -595,9 +654,9 @@ void print_table_rows(const std::vector<Result>& results) {
             std::snprintf(kernel_r, sizeof kernel_r, "%.3e", kr);
             std::snprintf(kernel_rs, sizeof kernel_rs, "%.3e", kr * r.surfaces);
         }
-        std::printf("%-5s %-17s %3d %6d %6lld %10.4f %10.3e %10.3e %10s %10s %10s %10.4f %7.3f%% "
+        std::printf("%-13s %-17s %3d %6d %6lld %10.4f %10.3e %10.3e %10s %10s %10s %10.4f %7.3f%% "
                     "%3d\n",
-                    to_string(r.type), mode_name(r.mode).c_str(), r.surfaces, r.variants,
+                    to_string(r.type), mode_label(r).c_str(), r.surfaces, r.variants,
                     static_cast<long long>(r.rays_per_variant), 1e3 * r.engine.median_s, er,
                     er * r.surfaces, kernel_ms, kernel_r, kernel_rs, 1e3 * r.engine.min_s,
                     100.0 * static_cast<double>(r.failed) / static_cast<double>(r.rays),
@@ -616,7 +675,7 @@ void write_csv(std::ostream& os, const DeviceReport& d, const std::vector<Result
     };
     for (const Result& r : results) {
         const double er = rays_per_s(r, r.engine.median_s);
-        os << '"' << d.name << "\"," << to_string(r.type) << ',' << mode_name(r.mode) << ','
+        os << '"' << d.name << "\"," << to_string(r.type) << ',' << mode_label(r) << ','
            << r.surfaces << ',' << r.variants << ',' << r.rays_per_variant << ',' << r.rays << ','
            << num(r.engine.median_s) << ',' << num(r.engine.min_s) << ',' << num(er) << ','
            << num(er * r.surfaces) << ',';
@@ -653,7 +712,7 @@ nlohmann::json to_json(const Options& o, const DeviceReport& d,
     for (const Result& r : results) {
         const double er = rays_per_s(r, r.engine.median_s);
         nlohmann::json e = {{"type", to_string(r.type)},
-                            {"mode", mode_name(r.mode)},
+                            {"mode", mode_label(r)},
                             {"surfaces", r.surfaces},
                             {"variants", r.variants},
                             {"rays_per_variant", r.rays_per_variant},
@@ -733,6 +792,14 @@ int run(const Options& o) {
             const mko::SystemBatchHost batch =
                 make_bench_batch(system, V, o.seed + static_cast<std::uint64_t>(S));
             for (const NumberType type : o.types) {
+                if (type == NumberType::Fp32Prefilter) {
+                    results.push_back(run_prefilter_case(engine, o, batch));
+                    if (table) {
+                        print_table_rows({results.back()});
+                        std::fflush(stdout);
+                    }
+                    continue;
+                }
                 for (const ModeSpec& mode : o.modes) {
                     results.push_back(run_case(engine, o, type, mode, batch));
                     if (table) {

@@ -25,6 +25,7 @@ add_executable(mikroptim_tests
     test_load_system.cpp
     test_paraxial.cpp
     test_paraxial_residuals.cpp
+    test_prefilter.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
@@ -47,6 +48,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_dispersion.cpp
         test_cuda_fd_jacobian.cpp
         test_cuda_merit.cpp
+        test_cuda_prefilter.cpp
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp
         test_cuda_smoke.cpp

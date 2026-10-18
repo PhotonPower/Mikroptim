@@ -593,6 +593,41 @@ void check_precision(Precision);           // std::invalid_argument bei unbekann
 
 Mit 96 Registern passen auf sm_86 5 Blöcke à 128 Threads pro SM (20 von 48 Warps), mit 104 Registern 4 (wie FP64 mit 110 Registern). Durchsatz: [benchmarks.md, „df64“](benchmarks.md#df64-m7-t1); auf der RTX 3090 rechnet der Kernel in df64 etwa 4-mal so schnell wie in FP64. Einsatz: GeForce-Karten (RTX 3090) mit `Precision::Df64`, die Tesla P100 (FP64 mit halber FP32-Rate) bleibt bei FP64 ([hardware.md](hardware.md#zielhardware)).
 
+## FP32-Vorfilterung (M7-T2)
+
+Schneller Pfad zum Aussortieren hoffnungsloser Multistart-Varianten; Fehlerabschätzung, Margen und Entscheidungsregel: [numerik.md, „FP32-Vorfilterung“](numerik.md#fp32-vorfilterung-m7-t2), Einsatz: [optimierung.md, Abschnitt 8](optimierung.md#8-kandidatenverwaltung). **Einziger Pfad mit R = float** (AGENTS.md §6.1); er ist kein Modus der Engine und kein Wert von `Precision`, damit seine Ergebnisse nicht versehentlich als Merit verwendet werden. Die Namen aller Bausteine enthalten „Prefilter“.
+
+| Baustein | Ort | Inhalt |
+|---|---|---|
+| Pro Strahl | `include/mikroptim/merit/prefilter_ray.hpp` (header-only, `MKO_HD`) | `prefilter_ray` (Trace, Referenzsphäre, Grenzabstand), `PrefilterMarginObserver`, `prefilter_opl_offset` |
+| Entscheidung, CPU-Referenz | `include/mikroptim/batch/batch_prefilter.hpp`, `src/batch/batch_prefilter.cpp` (`Mikroptim::batch`) | `PrefilterCriteria`, `PrefilterMargins`, `PrefilterStats`, `PrefilterResult`, `prefilter_decide`, `prefilter_decide_exact`, `prefilter_stats_cpu`, `prefilter_cpu`, `prefilter_rays_cpu` |
+| Kernel | `src/cuda/prefilter.cu`, Header `include/mikroptim/cuda/prefilter.hpp` (reines C++) | `prefilter_kernel`, `prefilter_finalize_kernel`, `DevicePrefilter`, `prefilter_max_samples`, `make_prefilter_output_layout` |
+| Engine | `TraceEngine::prefilter_variants` (Implementierung in `src/cuda/prefilter.cu`) | Prüfung, Tranchen, Upload, Kernel, Download der Rohdaten, Entscheidung auf dem Host |
+
+```cpp
+// include/mikroptim/cuda/trace_engine.hpp
+struct PrefilterSettings { ResidualSettings quadrature; PrefilterOptions options;   // Kriterien, Margen
+                           std::span<const double> extra_merit; };                 // leer oder [V], FP64
+TraceRunInfo TraceEngine::prefilter_variants(const SystemBatchHost&, const PrefilterSettings&,
+                                             PrefilterResult& out);
+PrefilterResult TraceEngine::prefilter_variants(const SystemBatchHost&, const PrefilterSettings& = {});
+
+// include/mikroptim/batch/batch_prefilter.hpp (Host, auch ohne CUDA)
+struct PrefilterCriteria { double max_failed_fraction = 0.5, max_merit = inf, max_merit_factor = inf; };
+struct PrefilterMargins  { double boundary = 0.15, opl_error_factor = 32, merit_relative = 0.01; };
+struct PrefilterStats    { int variants; int64_t rays_per_variant; vector<double> merit, optical_length;
+                           vector<int64_t> failed, uncertain_ok, uncertain_failed; };
+struct PrefilterResult   { PrefilterStats stats; vector<double> merit_lower, merit_upper;
+                           vector<uint8_t> reject;            // Bitmaske PrefilterReason, 0 = behalten
+                           double reference_merit; int reference_variant, kept; bool keep(int v) const; };
+```
+
+**Ablauf im Block** (b = (v·F + f)·L + l, 128 Threads, wie MERIT): Flächentabelle, Quadratur und Geisterdaten in float in den Shared Memory (`load_block_table<float>`, `load_block_ghosts<float>`); `opl_offset` = axiale optische Länge des Tupels (jeder Thread rechnet sie aus dem Shared Memory, keine weitere Synchronisation). Durchlauf 1: `prefilter_ray` pro Stützstelle, Klasse (sicher gültig, sicher versagt, unsicher gültig, unsicher versagt) und OPL in den dynamischen Shared Memory, Teilsummen (W, W·OPL) und größte optische Länge der sicher gültigen Strahlen, Zähler der Klassen. Kolben `block_piston<float>` über die sicher gültigen Strahlen; Durchlauf 2: Σ r² der sicher gültigen Strahlen. Reduktionen wie MERIT: `block_sum` (float bzw. int32), `block_max` für die optische Länge; Thread 0 schreibt pro Block Σ r², Länge (als double) und drei int32-Zähler. Zweite Stufe `prefilter_finalize_kernel` (ein Thread pro Variante, Blöcke in der Reihenfolge f, l): Summe in double, Maximum, Zähler als int64. Keine Gleitkomma-Atomics; Ergebnisse bitgleich über Läufe und Tranchen.
+
+**Speicher.** Ausgaben pro Variante 5 × 8 Byte, pro Block 2 × 8 + 3 × 4 Byte, dazu die Feldablage (`make_prefilter_output_layout`, Bereiche auf 256 Byte ausgerichtet); die Engine bestimmt die Tranche per Bisektion über `prefilter_device_bytes` (Batch + Ausgaben) gegen den nutzbaren Speicher. Die Puffer von RESIDUALS und MERIT bleiben erhalten, solange sie die Tranche nicht unter V drücken; der Puffer der Vorfilterung wird beim nächsten `run` freigegeben (er zählt in `available_bytes` als verfügbar). Shared Memory: statisch 1.104 Byte, dynamisch Geisterdaten (G·K + 2G)·4 Byte (auf 8 aufgerundet) und 5 Byte pro Stützstelle; höchstens 48 KB, also bis 9.609 Stützstellen pro Feld ohne und 7.868 im ungünstigsten Fall mit Geisterplatten (G = 64, K = 32, `prefilter_max_samples`).
+
+**Register** (`cuobjdump --dump-resource-usage`, CUDA 12.9): `prefilter_kernel` 72 Register, Stack 32 B auf sm_60 und sm_86 (sm_86: 7 Blöcke à 128 Threads pro SM, 28 von 48 Warps). Durchsatz: [benchmarks.md, „FP32-Vorfilterung“](benchmarks.md#fp32-vorfilterung-m7-t2).
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
@@ -602,7 +637,7 @@ Mit 96 Registern passen auf sm_86 5 Blöcke à 128 Threads pro SM (20 von 48 War
 | `ADJOINT` | Residuen plus Gradientenzeilen | analytische Jacobi-Matrix | M5 |
 | `EVAL` | OPD-Karten auf dichtem Raster, Spotdaten | PSF, MTF, Tolerierung | M8 |
 
-Zusätzlich liefern alle Modi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen.
+Zusätzlich liefern alle Modi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2, oben) ist bewusst kein Modus, sondern eine eigene Funktion der Engine.
 
 ## Reduktionen
 
@@ -658,6 +693,8 @@ public:
     // Tranchen als Vielfache von granularity
     TraceRunInfo run_on_device(const SystemBatchHost&, const TraceSettings&, int granularity,
                                const DeviceTrancheFn& consume);
+    // FP32-Vorfilterung (M7-T2), Abschnitt "FP32-Vorfilterung"
+    TraceRunInfo prefilter_variants(const SystemBatchHost&, const PrefilterSettings&, PrefilterResult&);
     void release() noexcept;
     int device() const; const std::string& device_name() const; size_t device_bytes() const;
 };
