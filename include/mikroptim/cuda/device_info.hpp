@@ -3,11 +3,16 @@
 // Reiner C++-Header (keine CUDA-Typen), nutzbar aus Host-Code.
 
 #include <cstddef>
+#include <vector>
 
 namespace mko::cuda {
 
 // Anzahl verfügbarer CUDA-Geräte, 0 bei Fehlern oder ohne Treiber.
 int device_count();
+
+// Alle sichtbaren Geräte ab sm_60 (für die die Kernel übersetzt sind), Indizes aufsteigend;
+// leer ohne Gerät (Standardliste der Mehrgeräte-Engine, M7-T3).
+std::vector<int> usable_devices();
 
 // Gibt Name, Architektur, Speicher und FP32/FP64-Verhältnis aller Geräte aus.
 // Rückgabe: Anzahl der Geräte.

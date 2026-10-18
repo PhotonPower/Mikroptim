@@ -36,6 +36,18 @@ int print_devices() {
     return n;
 }
 
+std::vector<int> usable_devices() {
+    std::vector<int> devices;
+    const int n = device_count();
+    for (int i = 0; i < n; ++i) {
+        cudaDeviceProp p{};
+        if (cudaGetDeviceProperties(&p, i) == cudaSuccess && p.major >= 6) {
+            devices.push_back(i);
+        }
+    }
+    return devices;
+}
+
 DeviceMemoryInfo device_memory_info(int device) {
     const detail::DeviceGuard guard(device);
     DeviceMemoryInfo info;

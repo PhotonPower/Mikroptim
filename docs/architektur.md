@@ -254,6 +254,7 @@ class SystemBatchHost {                              // besitzt alle Felder (std
     explicit SystemBatchHost(BatchTopology, int variants = 0);   // alle Werte 0
     void resize(int); int add_variant_copy(int from); void copy_variant(int from, int to);
     void copy_variant_from(const SystemBatchHost& other, int from, int to); // gleiche Topologie
+    void assign_variants(const SystemBatchHost& other, int first, int count); // Teil-Batch (M7-T3)
     double& curvature(int v, int s); /* … jedes Feld, jeder Index geprüft (std::out_of_range) */
     std::span<double> curvature_data(); /* … Rohfelder für Upload und schnelle Schleifen */
     SystemBatchView<double> view() const; SurfaceTableView<double> surface_table(int v) const;
@@ -713,7 +714,7 @@ Gegenüber der ursprünglichen Skizze (`upload(batch)`, dann `run(mode, settings
 4. **Puffer:** Reichen die vorhandenen Puffer (`DeviceSystemBatch` und `DeviceResiduals` bzw. `DeviceMerit`) nicht für T Varianten, werden beide vorher freigegeben, damit alter und neuer Puffer nie gleichzeitig belegt sind. Danach werden sie über alle Tranchen und folgende Läufe wiederverwendet (die letzte, kleinere Tranche nutzt denselben Puffer).
 5. **Tranchen** [first, first + T): `DeviceSystemBatch::upload(host, first, count)`, `DeviceResiduals::run` bzw. `DeviceMerit::run` (mit `extra_merit.subspan(first, count)`), dann je ein `cudaMemcpy` pro Ausgabe (Residuen, Status, OPD bzw. Merit, versagte Strahlen; Max-Reduktionen) von den Gerätezeigern an die Stelle `first` der Host-Vektoren. Synchron; bei der Rückkehr liegen alle Daten auf dem Host.
 
-**Bitgleichheit:** Der Kernel rechnet jede Variante unabhängig von ihrer Lage im Batch (Summationsreihenfolge nur abhängig von `kResidualThreads`), daher sind die Ergebnisse jeder Variante unabhängig von der Aufteilung in Tranchen bitgleich (Test `TraceEngine.TranchesMatchSingleRun`: 700 Varianten mit einer Grenze für genau 200, also 4 Tranchen, bitgleich zum Lauf in einer Tranche; `TraceEngine.OneVariantPerTranche`; für MERIT mit Max-Reduktionen und `extra_merit` sowie RESIDUALS mit Max-Reduktionen `TraceEngine.MeritTranchesMatchSingleRun`). Dasselbe gilt später für die Verteilung auf mehrere GPUs gleicher Architektur (M7).
+**Bitgleichheit:** Der Kernel rechnet jede Variante unabhängig von ihrer Lage im Batch (Summationsreihenfolge nur abhängig von `kResidualThreads`), daher sind die Ergebnisse jeder Variante unabhängig von der Aufteilung in Tranchen bitgleich (Test `TraceEngine.TranchesMatchSingleRun`: 700 Varianten mit einer Grenze für genau 200, also 4 Tranchen, bitgleich zum Lauf in einer Tranche; `TraceEngine.OneVariantPerTranche`; für MERIT mit Max-Reduktionen und `extra_merit` sowie RESIDUALS mit Max-Reduktionen `TraceEngine.MeritTranchesMatchSingleRun`). Dasselbe gilt für die Verteilung auf mehrere GPUs ([Mehrere GPUs (M7-T3)](#mehrere-gpus-m7-t3)).
 
 **Künstliche Grenze** (`EngineOptions::memory_limit_bytes`): begrenzt den Speicher, den die Engine als verfügbar ansieht (Tests der Tranchen; Teilen einer GPU mit anderen Programmen). Die Reserve gilt zusätzlich; für exakte Tests `MemoryReserve{0, 0.0}`. Mit Grenze G und Reserve 0 belegt eine volle Tranche höchstens G Byte (`device_bytes()`), im Test genau G.
 
@@ -721,7 +722,7 @@ Gegenüber der ursprünglichen Skizze (`upload(batch)`, dann `run(mode, settings
 
 **Fehler:** CUDA-Fehler und Speichermangel `CudaError`, ungültige Argumente (Index, Einstellungen, Werte im Batch, im Modus MERIT Länge von `extra_merit` und zu viele Stützstellen pro Feld) `std::invalid_argument`, bevor das Gerät angefasst wird. Nach einer Ausnahme bleibt die Engine benutzbar, der Inhalt von `out` ist unbestimmt. Ein leerer Batch (V = 0) liefert leere Vektoren und `tranches = 0` ohne Gerätearbeit.
 
-**Thread-Sicherheit:** Kein globaler Zustand; mehrere Engines (auch auf demselben Gerät, Test `TraceEngine.EnginesAreIndependent`) sind unabhängig. Eine Engine darf nicht gleichzeitig aus mehreren Threads benutzt werden. Für mehrere GPUs (M7-T3) bekommt jede GPU eine eigene Engine, sinnvollerweise in einem eigenen Host-Thread (`cudaSetDevice` gilt pro Thread; der Default-Stream und `cudaDeviceSynchronize` blockieren nur das eigene Gerät).
+**Thread-Sicherheit:** Kein globaler Zustand; mehrere Engines (auch auf demselben Gerät, Test `TraceEngine.EnginesAreIndependent`) sind unabhängig. Eine Engine darf nicht gleichzeitig aus mehreren Threads benutzt werden. Für mehrere GPUs bekommt jede GPU eine eigene Engine in einem eigenen Host-Thread (`cudaSetDevice` gilt pro Thread; der Default-Stream und `cudaDeviceSynchronize` blockieren nur das eigene Gerät); das übernimmt `MultiTraceEngine` ([Mehrere GPUs (M7-T3)](#mehrere-gpus-m7-t3)).
 
 **Ohne Download (`run_on_device`, M3-T2):** Für Folgekernel, deren Eingabe der Residuenpuffer ist (Differenzen der FD-Jacobi), läuft der Modus RESIDUALS wie oben, aber nach dem Kernel jeder Tranche ruft die Engine einen Rückruf mit den Gerätezeigern der Tranche (`DeviceTranche`: erste Variante, Anzahl, Residuen mit Stride R_v + E, Status, optional OPD und Max-Reduktionen) auf, statt herunterzuladen. Der Rückruf läuft mit dem Gerät der Engine als aktuellem Gerät; Arbeit, die er im Default-Stream startet, ist vor dem Upload der nächsten Tranche beendet. Die Tranchengröße wird auf ein Vielfaches von `granularity` abgerundet (zusammengehörige Varianten, z. B. die 2P + 1 eines FD-Laufs, liegen in derselben Tranche; nur die letzte Tranche ist kleiner, wenn V kein Vielfaches ist); passt nicht einmal `granularity` Varianten, `CudaError`. Tranchenrechnung und Puffer teilen sich `run` und `run_on_device` (`plan_tranches`). Speicher, den der Aufrufer vorher selbst belegt (z. B. J), sieht die Engine über `cudaMemGetInfo` als belegt. Test `TraceEngineOnDevice.TranchesAreMultiplesOfGranularity`.
 
@@ -832,9 +833,86 @@ Verfahren, Kriterien und Messungen: [optimierung.md](optimierung.md#verfahren-ab
 - **Kernel `gram_kernel`** (`src/cuda/normal_equations.cu`): G = [J r₀]ᵀ[J r₀] pro Lauf, (P + 1) × (P + 1) spaltenweise, Abstand (P + 1)². Grid: Läufe · T(T + 1)/2 Blöcke (T = ⌈(P + 1)/16⌉ Kacheln, nur Kachelpaare tp ≤ tq), Block 16 × 16 Threads, Shared Memory 2 · 16 · 17 · 8 = 4.352 Byte. Thread (ty, tx) lädt Zeile r₀ + tx der Spalten 16·tp + ty und 16·tq + ty (zusammenhängend über tx) und führt die FMA-Kette für G(16·tp + ty, 16·tq + tx) über die Zeilen in aufsteigender Reihenfolge fort; die letzte Kachel endet bei R − 1 (kein Polster in der Summe). Keine Reduktion über Threads, keine Atomics; bitgleich zu `normal_equations_host`. Puffer in `DeviceNormalEquations` (8·Läufe·(P + 1)² Byte), wiederverwendet.
 - **Host-Threads** (`lm_host_threads`): nur, wenn die Arbeit eines Aufrufs es lohnt (Zusatzresiduen ab 4.096 Varianten pro Thread, CPU-Strahlen ab 2·10⁵ Strahl-Flächen, Schritte ab 2·10⁶ Gleitkommaoperationen); sonst im aufrufenden Thread.
 
-## Mehrere GPUs (M7)
+## Mehrere GPUs (M7-T3)
 
-Varianten werden nach gemessenem Durchsatz auf die Geräte verteilt (P100 und RTX 3090 im selben Rechner oder getrennt). Ergebnisse pro Variante müssen unabhängig von der Verteilung bitgleich sein.
+Varianten werden nach gemessenem Durchsatz auf die Geräte verteilt (P100 und RTX 3090 im selben Rechner). Ergebnisse pro Variante sind unabhängig von der Verteilung bitgleich, solange alle Geräte denselben Code bitgleich rechnen (gemischte Architekturen: unten). Getrennte Rechner sind nicht Teil von M7-T3; dafür gibt es den Fingerabdruck-Test (unten).
+
+Header `include/mikroptim/cuda/multi_trace_engine.hpp` (reines C++, der CPU-Build kompiliert ihn im Test `MultiGpuSplit.*`), Implementierung `src/cuda/multi_trace_engine.cpp` (Host-C++ in `Mikroptim::cuda`, linkt privat `Threads::Threads`); LM auf mehreren GPUs in `multi_levenberg_marquardt.hpp`/`.cpp`.
+
+```cpp
+namespace mko::cuda {
+std::vector<int> usable_devices();                         // device_info.hpp: alle Geräte ab sm_60
+struct DeviceRange { int first, count; };
+enum class WorkKind { Residuals, Merit, Prefilter, Jacobian };
+std::vector<DeviceRange> split_variants(int variants, int granularity, std::span<const double> shares);
+bool update_shares(std::vector<double>& shares, std::span<const DeviceRange>, std::span<const double> seconds,
+                   double smoothing, double min_seconds);  // beide inline, ohne CUDA testbar
+struct MultiEngineOptions {
+    std::vector<int> devices;               // leer: usable_devices(); Mehrfachnennung = logische Geräte
+    EngineOptions engine; std::vector<EngineOptions> slot_engines;   // pro Slot optional
+    std::vector<double> weights;            // leer: gemessen; sonst feste Anteile (Tests)
+    int calibration_variants = 256; double calibration_seconds = 0.02;
+    double smoothing = 0.3; double min_measure_seconds = 0.005;
+};
+struct DeviceRunInfo { int device; DeviceRange range; double seconds, throughput; TraceRunInfo info; };
+struct MultiRunInfo { WorkKind kind; Precision precision; int variants; double seconds;
+                      bool calibrated, shares_updated; std::vector<double> shares;
+                      std::vector<DeviceRunInfo> devices; };
+using MultiDeviceTrancheFn = std::function<void(int slot, const DeviceTranche&)>;
+class MultiTraceEngine {                    // nur verschiebbar
+public:
+    explicit MultiTraceEngine(const MultiEngineOptions& = {});
+    void run(const SystemBatchHost&, TraceMode, const TraceSettings&, TraceOutput& out);  // wie TraceEngine
+    TraceRunInfo run_on_device(const SystemBatchHost&, const TraceSettings&, int granularity,
+                               const MultiDeviceTrancheFn&);
+    TraceRunInfo prefilter_variants(const SystemBatchHost&, const PrefilterSettings&, PrefilterResult&);
+    void calibrate(const SystemBatchHost& sample, TraceMode, const TraceSettings& = {});
+    int size() const; TraceEngine& engine(int slot);
+    std::vector<double> shares(WorkKind, Precision = Fp64) const; bool has_estimate(WorkKind, Precision) const;
+    void set_shares(WorkKind, Precision, std::span<const double>);
+    // Bausteine für weitere Verfahren (MultiGpuLmBackend)
+    std::vector<DeviceRange> plan(int units, WorkKind, Precision) const;
+    std::vector<double> run_parallel(std::span<const DeviceRange>, const SlotWorkFn&);   // Zeiten [s]
+    bool record(WorkKind, Precision, std::span<const DeviceRange>, std::span<const double> seconds);
+    const MultiRunInfo& last_run() const; void release() noexcept;
+};
+// multi_levenberg_marquardt.hpp
+class MultiGpuLmBackend final : public LmBackend { /* ein GpuLmBackend pro Slot */ };
+LmResult optimize_lm_multi_gpu(MultiTraceEngine&, const VariableSet&, const SystemBatchHost& base,
+                               std::span<const double> x0, const LmOptions& = {},
+                               std::vector<LmGpuStats>* stats = nullptr);
+}
+```
+
+**Slots:** Jeder Eintrag in `devices` ist ein Slot mit eigener `TraceEngine` (Puffer, Tranchen, Reserve wie bisher) und eigenem Teil-Batch auf dem Host. Ein Gerät darf mehrfach vorkommen („logische Geräte“): So lassen sich Aufteilung, Nebenläufigkeit und Bitgleichheit mit einer GPU testen. Ohne `memory_limit_bytes` begrenzt die Engine dann jeden der k Slots eines Geräts auf 1/k des beim Erzeugen freien Speichers, damit sich die Slots nicht gegenseitig den Speicher wegnehmen. Logische Geräte teilen sich die GPU (gemeinsamer Default-Stream des Kontexts, `cudaDeviceSynchronize` wartet auf alle Slots des Geräts) und sind nur zum Testen gedacht, nicht schneller. Mit `slot_engines` erhält ein Slot eigene Engine-Einstellungen (z. B. eine Grenze nur für die GPU, an der der Bildschirm hängt).
+
+**Ablauf von `run`** (ebenso `run_on_device` und `prefilter_variants`):
+
+1. **Prüfen** im aufrufenden Thread wie `TraceEngine::run` (Modus, Einstellungen, `ResidualLayout`, `validate_values`, Länge von `extra_merit`), damit Meldungen die Variantennummer des ganzen Batches tragen.
+2. **Kalibrieren**, wenn für die Art (`WorkKind`, `Precision`) noch keine Schätzung vorliegt, keine festen Gewichte gelten, es mehr als einen Slot gibt und der Batch mindestens c = `calibration_variants` Varianten hat (kleinere Batches laufen mit gleichen Anteilen; ihre Aufteilung ist unwichtig und eine Messung vom Startaufwand bestimmt): Jeder Slot rechnet die ersten c Varianten (bei `run_on_device` auf ein Vielfaches der Granularität aufgerundet) gleichzeitig mit den anderen, einmal zum Aufwärmen (Kontext, Puffer, Laden der Kernel), dann wiederholt, bis `calibration_seconds` vergangen sind (höchstens 64-mal). Die Anteile werden proportional zum Durchsatz n·c/t gesetzt; die Ergebnisse der Kalibrierung werden verworfen. Für `run_on_device` kalibriert `run` im Modus RESIDUALS.
+3. **Aufteilen** mit `split_variants`: U = ⌈V/g⌉ Blöcke aus g Varianten (g = `granularity` bei `run_on_device`, sonst 1), Grenzen b_k = round(U · Σ_{i<k} w_i / Σ w_i), Slot k bearbeitet [b_k·g, min(b_{k+1}·g, V)). Zusammengehörige Varianten (z. B. die 2P + 1 eines FD-Laufs) liegen so immer auf demselben Gerät; innerhalb des Slots sorgt die Engine dafür, dass sie in derselben Tranche liegen.
+4. **Rechnen:** ein Host-Thread pro Slot mit Arbeit (der erste davon ist der aufrufende Thread; `std::thread` pro Lauf). Jeder Slot kopiert seinen Bereich mit `SystemBatchHost::assign_variants` in seinen Teil-Batch (keine Kopie, wenn der Bereich der ganze Batch ist), ruft seine Engine auf und kopiert die Ergebnisse an die Stelle `first` der vorher im aufrufenden Thread angelegten Ausgabe (disjunkte Bereiche, keine Sperren). Bei `run_on_device` ruft er den Rückruf mit seinem Slot und `first` bezogen auf den ganzen Batch auf (gleichzeitig aus mehreren Threads, der Rückruf muss thread-sicher sein). Bei der Vorfilterung sammelt er die Rohdaten (`PrefilterStats`); die Entscheidung `prefilter_decide` fällt danach einmal über den ganzen Batch, weil Kriterium (c) die beste Variante aller Geräte braucht. Hat nur ein Slot Arbeit, rechnet seine Engine direkt in `out`.
+5. **Statistik und Schätzung:** `out.info` fasst die Slots zusammen (Tranchen, Budget und belegter Speicher summiert, `tranche_variants` als Maximum), `last_run()` enthält pro Slot Bereich, Wandzeit, Durchsatz und die Statistik seiner Engine. Danach geht der Lauf in den gleitenden Mittelwert ein (`update_shares`): Mit dem Durchsatz r_i = n_i/t_i der beteiligten Slots P und ihrem bisherigen Gesamtanteil S_P gilt s_i ← (1 − α)·s_i + α·S_P·r_i/Σ_{j∈P} r_j (α = `smoothing`); nicht beteiligte Slots behalten ihren Anteil, die Summe bleibt 1. Läufe mit weniger als zwei beteiligten Slots oder mit einem Slot unter `min_measure_seconds` ändern nichts (dort bestimmt der Startaufwand die Zeit).
+
+**Schätzungen pro Art:** Das Verhältnis der Geräte hängt von Modus und Zahlentyp ab (RTX 3090 in df64 etwa 4-mal so schnell wie in FP64, die P100 in FP64 schneller als in df64, [hardware.md](hardware.md)), deshalb gibt es eine Schätzung pro (`WorkKind`, `Precision`). Ohne Schätzung gelten gleiche Anteile (gespeichert wird eine Schätzung erst nach einer Kalibrierung oder einem Lauf, der sie tatsächlich aktualisiert); `Jacobian` (Jacobi-Matrizen und Normalgleichungen im LM, ohne eigene Kalibrierung) übernimmt dann die Schätzung von `Residuals`. Die Schätzungen leben so lange wie die Engine; `set_shares` setzt sie z. B. aus einer früheren Sitzung.
+
+**LM auf mehreren GPUs:** `MultiGpuLmBackend` besitzt ein `GpuLmBackend` pro Slot. `normal_equations` und `merit` teilen die Läufe des Aufrufs nach `plan(·, Jacobian bzw. Merit, Fp64)` in zusammenhängende Bereiche, rechnen sie mit `run_parallel` und melden die Zeiten an `record`. Da die Ergebnisse eines Laufs nur von seinem Index und seinem Punkt abhängen (Vertrag von `LmBackend`), ist `optimize_lm_multi_gpu` bitgleich zu `optimize_lm_gpu` (Test `MultiTraceEngine.LmBitIdenticalToSingleGpu`). Die Zusatzresiduen werden dabei aus mehreren Threads gleichzeitig ausgewertet (`make_paraxial_residuals` ist dafür geeignet). Eine eigenständige mehrgerätige FD-Jacobi (`fd_jacobian_gpu` mit Download) gibt es nicht; der LM ist ihr einziger Verbraucher.
+
+**Fehler:** Ungültige Argumente werfen vor jeder Gerätearbeit wie bei `TraceEngine`. Scheitert ein Slot, rechnen die anderen ihren Bereich zu Ende (bei `run_on_device` ohne weitere Rückrufe: Der nächste Rückruf bricht den Slot ab), alle Threads werden zusammengeführt, dann wirft die Engine die Ausnahme des kleinsten fehlerhaften Slots mit gleichem Typ (`CudaError`, `std::invalid_argument`, …) und vorangestelltem „Gerät d (Name, Slot k): “. Ausnahmen aus Rückrufen des Aufrufers werden unverändert weitergereicht. Danach bleibt die Engine benutzbar.
+
+**Bitgleichheit:** Jede Variante läuft vollständig auf einem Gerät, der Kernel rechnet sie unabhängig von ihrer Lage im Batch, und Tranchen ändern nichts ([Host-API TraceEngine](#host-api-traceengine-m2-t4)). Daher sind die Ergebnisse jeder Variante unabhängig von der Verteilung bitgleich zum Lauf auf einer Engine, sofern alle Geräte denselben Zahlentyp verwenden und denselben Code bitgleich rechnen. Tests mit logischen Geräten ({0, 0} und {0, 0, 0}, gemessene, gleiche, ungleiche Anteile und ein Anteil 0, V = 1, 2, 7, 700, 701): `MultiTraceEngine.ResidualsBitIdenticalOnLogicalDevices`, `MeritAndDf64BitIdenticalOnLogicalDevices` (MERIT mit `extra_merit` und Max-Reduktionen, beide Modi in df64), `TranchesInsideSlots`, `RunOnDeviceKeepsBlocksTogether`, `PrefilterBitIdenticalOnLogicalDevices`, `DistributionFollowsMeasuredThroughput`, `LmBitIdenticalToSingleGpu`.
+
+### Gemischte Architekturen (sm_60 und sm_86)
+
+Die P100 führt SASS für sm_60 aus, die RTX 3090 SASS für sm_86; beide erzeugt ptxas aus dem PTX derselben Quelle. „Bitgleich unabhängig von der Verteilung“ gilt auf 3090 + P100 nur, wenn beide Architekturen bitgleich rechnen. Untersucht mit nvcc 12.9 (Oktober 2026, ohne P100):
+
+1. **PTX:** Das PTX von `residuals.cu` und `merit.cu` für `compute_60` und `compute_86` enthält dieselben Gleitkommabefehle; es unterscheidet sich nur in 92 Zeilen ganzzahliger Bitoperationen in `__internal_trig_reduction_slowpathd` (`bfe.u32` gegen `shr` + `and`, gleichwertig). In `prefilter.cu` ist nur die Reihenfolge einiger Lade- und Umwandlungsbefehle anders.
+2. **Keine Näherungsbefehle:** Kein `.approx`/`.full` im PTX. Division, Wurzel und Kehrwert sind `div.rn`, `sqrt.rn`, `rcp.rn` (auf jeder Architektur korrekt gerundet nach IEEE 754); die `MUFU.RCP64H`/`MUFU.RSQ64H` im SASS sind nur Startwerte dieser korrekt gerundeten Folgen. Sinus und Kosinus (Feldwinkel) kommen aus libdevice und stehen damit vollständig im PTX.
+3. **Einziger Spielraum ist die FMA-Kontraktion durch ptxas:** NVVM kontrahiert mit `-fmad=true` (Standard) selbst zu `fma.rn.f64`; übrig bleiben im PTX von `residuals.cu` 190 `mul.f64`, 102 `add.f64` und 228 `sub.f64` *ohne* Rundungsmodifikator, die ptxas laut PTX-ISA zu FMA zusammenfassen darf – grundsätzlich architekturabhängig. Die float-Arithmetik des df64-Pfads verwendet ausschließlich `__fadd_rn`/`__fmul_rn`/`__fmaf_rn` (`.rn`, nicht kontrahierbar); seine wenigen FP64-Befehle (u. a. `residual_scale`) fallen unter Punkt 4.
+4. **SASS (cuobjdump des Builds):** In allen Kerneln (`residuals_kernel` und `merit_kernel` für double und df64, je mit und ohne Max-Reduktionen, `extrema_finalize_kernel`, `merit_finalize_kernel`, `fd_difference_kernel`, `gram_kernel`) sind die Mengen der rundenden FP64-Befehle einschließlich Modifikatoren für sm_60 und sm_86 gleich (z. B. `residuals_kernel<double, false>`: je 464 DFMA, 176 DMUL, 100 DADD), nur ihre Reihenfolge (Planung) unterscheidet sich; ptxas hat also auf beiden Architekturen gleich viele Paare kontrahiert. In den df64-Kerneln sind die FFMA gleich (832 bzw. 880), sm_86 hat 235 FADD und 44 FMUL mehr – alle aus `.rn`-Befehlen, also zusätzliche Kopien (z. B. entrollte Schleifen), keine andere Rundung.
+5. **JIT auf der RTX 3090:** Ein lokaler Prüfbau nur mit `60-virtual` (PTX für `compute_60`, auf der 3090 mit `CUDA_CACHE_DISABLE=1` per JIT zu sm_86-SASS übersetzt, ca. 8 s) liefert dieselben Fingerabdrücke (FP64, df64, Vorfilterung) wie der native sm_86-Build (Test `MultiTraceEngine.ResultFingerprint`), und die Tests mit logischen Geräten sind dort ebenfalls grün. Das zeigt, dass das `compute_60`-PTX auf sm_86 dieselben Bits ergibt; das sm_60-Backend von ptxas prüft es nicht.
+
+**Ergebnis:** Nach Bau und Analyse sind bitgleiche Ergebnisse auf sm_60 und sm_86 zu erwarten (gleiches PTX, korrekt gerundete Grundoperationen, gleiche Zahl kontrahierter FMA), bewiesen ist es ohne P100 nicht. Die Prüfung auf dem Rechner mit beiden Karten: `MultiTraceEngine.RealDevicesBitIdenticalToSingle` (jedes Gerät einzeln gegen Gerät 0 und die Verteilung auf alle Geräte, FP64 und df64, beide Modi, Vorfilterung) und `MultiTraceEngine.ResultFingerprint` (gleiche Zahlen auf getrennten Rechnern = gleiche Bits). Sollte sich ein Unterschied zeigen, wären Gegenmaßnahmen Änderungen an Numerik- bzw. Toolchain-Regeln und brauchen eine Entscheidung des Maintainers (z. B. `-fmad=false` für die Kernel-Übersetzungseinheiten, explizite `__fma_rn`/`__dmul_rn`/`__dadd_rn` im Mathe-Kern, nur gleichartige Geräte in einer Verteilung oder eine Toleranz statt Bitgleichheit in ADR-0007).
 
 ## Verhältnis zu Raytatouille
 

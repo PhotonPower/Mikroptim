@@ -74,6 +74,12 @@ public:
     // Kopiert Variante `from` aus `other` nach Variante `to` dieses Batches. Verlangt gleiche
     // Topologie (sonst std::invalid_argument); gemeinsame Felder werden nicht kopiert.
     void copy_variant_from(const SystemBatchHost& other, int from, int to);
+    // Macht diesen Batch zum Teil-Batch [first, first + count) von `other`: Topologie und
+    // gemeinsame Felder von `other`, Variante j = Variante first + j (bitgleich). Die Kapazität
+    // der Vektoren bleibt erhalten (wiederholte Aufteilung, z. B. auf mehrere GPUs, M7-T3).
+    // `other` darf nicht dieser Batch sein. Wirft std::out_of_range bei ungültigem Bereich,
+    // std::invalid_argument, wenn `other` dieser Batch ist.
+    void assign_variants(const SystemBatchHost& other, int first, int count);
 
     // ---- Gemeinsame Felder ----------------------------------------------------------------
     // Alle Zugriffsfunktionen prüfen jeden Index einzeln und werfen std::out_of_range.

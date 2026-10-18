@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -368,6 +369,60 @@ TEST(SystemBatchHost, VariantOperations) {
     EXPECT_THROW(b.add_variant_copy(1), std::out_of_range);
     EXPECT_THROW(b.copy_variant(0, 1), std::out_of_range);
     EXPECT_THROW(b.resize(-1), std::invalid_argument);
+}
+
+// Teil-Batch (M7-T3): assign_variants ist bitgleich zur Kopie aller Felder mit copy_variant und
+// resize (operator== vergleicht alle Felder), auch wenn das Ziel vorher eine andere Topologie
+// hatte; ungültige Bereiche werfen.
+TEST(SystemBatchHost, AssignVariants) {
+    SystemBatchHost b(ghost_topology(), 7);
+    double value = 0.5;
+    const auto fill = [&value](std::span<double> data) {
+        for (double& x : data) {
+            x = value;
+            value += 1.0;
+        }
+    };
+    fill(b.wavelength_nm_data());
+    fill(b.wavelength_weight_data());
+    fill(b.field_weight_data());
+    fill(b.ghost_norm_radius_data());
+    fill(b.curvature_data());
+    fill(b.thickness_data());
+    fill(b.index_data());
+    fill(b.pupil_radius_data());
+    fill(b.field_angle_data());
+    fill(b.field_target_data());
+    fill(b.ghost_coeff_data());
+    fill(b.ghost_index_data());
+    fill(b.paraxial_index_data());
+    fill(b.paraxial_ghost_index_data());
+    b.reference_wavelength_nm = 587.5;
+    b.source_point = {0.25, -0.5, -100.0};
+    b.source_na = 0.125;
+
+    BatchTopology other = ghost_topology();
+    other.ghost_plates = 0;
+    other.ghost_terms = 0;
+    other.type = {SurfaceKind::Stop, SurfaceKind::Sphere, SurfaceKind::Plane};
+    other.surfaces = 3;
+    SystemBatchHost part(other, 2); // wird ersetzt
+    const int ranges[][2] = {{0, 7}, {2, 3}, {6, 1}, {7, 0}, {0, 0}, {1, 6}};
+    for (const auto& r : ranges) {
+        part.assign_variants(b, r[0], r[1]);
+        SystemBatchHost ref = b;
+        for (int j = 0; j < r[1]; ++j) {
+            ref.copy_variant(r[0] + j, j);
+        }
+        ref.resize(r[1]);
+        EXPECT_TRUE(part == ref) << "Bereich " << r[0] << " + " << r[1];
+        EXPECT_EQ(part.variants(), r[1]);
+    }
+    EXPECT_THROW(part.assign_variants(b, 5, 3), std::out_of_range);
+    EXPECT_THROW(part.assign_variants(b, -1, 1), std::out_of_range);
+    EXPECT_THROW(part.assign_variants(b, 0, -1), std::out_of_range);
+    EXPECT_THROW(part.assign_variants(b, 8, 0), std::out_of_range);
+    EXPECT_THROW(b.assign_variants(b, 0, 1), std::invalid_argument);
 }
 
 TEST(SystemBatchHost, EqualityIsBitwise) {

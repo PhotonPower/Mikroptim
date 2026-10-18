@@ -187,6 +187,45 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.paraxial_ghost_index_, from, paraxial_ghost_index_, to, sh.ghost_stride());
 }
 
+void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, int count) {
+    if (&other == this) {
+        throw std::invalid_argument("SystemBatch: assign_variants aus demselben Batch");
+    }
+    if (first < 0 || count < 0 || first > other.variants_ - count) {
+        throw std::out_of_range("SystemBatch: Variantenbereich [" + std::to_string(first) + ", " +
+                                std::to_string(first) + " + " + std::to_string(count) +
+                                ") außerhalb von [0, " + std::to_string(other.variants_) + ")");
+    }
+    // Gemeinsame Felder (bei neuen Feldern hier, in copy_variant_from und operator== ergänzen)
+    topology_ = other.topology_;
+    ghost_surface_ = other.ghost_surface_;
+    ghost_norm_radius_ = other.ghost_norm_radius_;
+    wavelength_nm_ = other.wavelength_nm_;
+    wavelength_weight_ = other.wavelength_weight_;
+    field_weight_ = other.field_weight_;
+    reference_wavelength_nm = other.reference_wavelength_nm;
+    source_point = other.source_point;
+    source_na = other.source_na;
+    // Felder pro Variante: zusammenhängende Bereiche [first · stride, (first + count) · stride)
+    variants_ = count;
+    const BatchShape sh = shape();
+    const auto range = [first, count](const std::vector<double>& src, std::vector<double>& dst,
+                                      std::size_t stride) {
+        const auto begin = src.begin() + static_cast<std::ptrdiff_t>(to_size(first) * stride);
+        dst.assign(begin, begin + static_cast<std::ptrdiff_t>(to_size(count) * stride));
+    };
+    range(other.curvature_, curvature_, sh.surface_stride());
+    range(other.thickness_, thickness_, sh.surface_stride());
+    range(other.index_, index_, sh.index_stride());
+    range(other.pupil_radius_, pupil_radius_, 1);
+    range(other.field_angle_, field_angle_, sh.field_stride());
+    range(other.field_target_, field_target_, sh.field_stride());
+    range(other.ghost_coeff_, ghost_coeff_, sh.ghost_coeff_stride());
+    range(other.ghost_index_, ghost_index_, sh.ghost_index_stride());
+    range(other.paraxial_index_, paraxial_index_, sh.surface_stride());
+    range(other.paraxial_ghost_index_, paraxial_ghost_index_, sh.ghost_stride());
+}
+
 void SystemBatchHost::check(int i, int count, const char* what) {
     if (i < 0 || i >= count) {
         throw std::out_of_range(std::string("SystemBatch: ") + what + " " + std::to_string(i) +

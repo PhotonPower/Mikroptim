@@ -175,6 +175,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/fd_jacobian.cu
         src/cuda/levenberg_marquardt.cpp
         src/cuda/merit.cu
+        src/cuda/multi_levenberg_marquardt.cpp
+        src/cuda/multi_trace_engine.cpp
         src/cuda/normal_equations.cu
         src/cuda/prefilter.cu
         src/cuda/quadrature_check.cu
@@ -185,7 +187,7 @@ if(MIKROPTIM_ENABLE_CUDA)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda
         PUBLIC mikroptim_core mikroptim_batch mikroptim_optim
-        PRIVATE CUDA::cudart mikroptim_warnings)
+        PRIVATE CUDA::cudart Threads::Threads mikroptim_warnings)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)
     target_compile_options(mikroptim_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--Werror=cross-execution-space-call>)
