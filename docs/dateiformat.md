@@ -14,11 +14,11 @@ Beispiel: [data/systems/einzellinse_bk7.json](../data/systems/einzellinse_bk7.js
 | `units` | string | ja | nur `"mm"` |
 | `glass_catalogs` | string[] | ja | Pfade relativ zum Repository-Wurzelverzeichnis oder zur Datei |
 | `spectrum.wavelengths_nm` | number[] | ja | Wellenlängen |
-| `spectrum.weights` | number[] | ja | Gewichte, gleiche Länge |
+| `spectrum.weights` | number[] | ja | Gewichte w_λ, gleiche Länge; in der Merit auf Summe 1 normiert (nur Verhältnisse zählen), 0 schaltet eine Wellenlänge in der Merit ab ([numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)) |
 | `spectrum.reference_nm` | number | ja | Referenzwellenlänge (OPD in Wellen, Paraxialdaten) |
 | `source.type` | string | ja | `"collimated"` (Standard) oder `"point"` (Tests) |
 | `source.field_angles_deg` | number[] | bei collimated | Feldwinkel θ in der y-z-Ebene |
-| `source.field_weights` | number[] | bei collimated | Gewichte, gleiche Länge |
+| `source.field_weights` | number[] | bei collimated | Gewichte w_f, gleiche Länge; normiert wie `spectrum.weights` |
 | `source.point` | number[3] | bei point | Quellpunkt in lokalen Koordinaten der ersten Fläche |
 | `source.numerical_aperture` | number | bei point | NA im Medium der Quelle |
 | `target` | object | nein | Sollwerte `focal_length` (Brennweite f bei λ_ref), `parfocal_length` (Abgleichlänge), `working_distance` (Arbeitsabstand) [mm]; einzige Quelle der Sollwerte für Feldziele und [Nebenbedingungen](#nebenbedingungen-ab-m3-t3) |
@@ -143,7 +143,7 @@ Beispiel: [data/systems/einzellinse_bk7_nebenbedingungen.json](../data/systems/e
 |---|---|---|
 | `type` | string | `"focal_length"` (Brennweite bei λ_ref), `"parfocal_length"` (Abgleichlänge), `"working_distance"` (Arbeitsabstand = Dicke der letzten Fläche), `"paraxial_focus"` (Bildebene im paraxialen Brennpunkt F′ bei λ_ref) |
 | `mode` | string | `"equal"` (Standard): Ist = Soll; `"min"`: Ist ≥ Soll (Soll ist Untergrenze); `"max"`: Ist ≤ Soll (Obergrenze). Einseitig nur bei `parfocal_length` und `working_distance` |
-| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil alle q Längen in mm sind |
+| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil alle q Längen in mm sind; √w·q ist dann dimensionslos wie die Wellenfrontresiduen (Wellen bei λ_ref), Wahl nach der Faustregel in [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3) |
 | `reference_surface` | integer | nur `parfocal_length`: Fläche (Index in `surfaces`), ab deren Scheitel die Abgleichlänge zählt (Standard 0 = Blende) |
 | `offset` | number | nur `parfocal_length`: Abstand [mm] der Anlagefläche vor dem Scheitel der Referenzfläche (in Gegenrichtung von +z; Standard 0) |
 | `comment` | string | optional |

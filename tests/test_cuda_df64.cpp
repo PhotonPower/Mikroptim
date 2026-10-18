@@ -89,18 +89,24 @@ double df64_bound(double reference) {
     return std::max(kDf64VsFp64, kDf64VsFp64Relative * std::abs(reference));
 }
 
+// Dieselbe Schranke für ein Strahlresiduum in Wellen (M4-T1): r = u · OPD mit
+// u = s_{f,l} · √W (residual_units), also max(u · kDf64VsFp64, kDf64VsFp64Relative · |r|).
+double df64_residual_bound(double unit, double reference) {
+    return mko::test::residual_bound(unit, reference, kDf64VsFp64, kDf64VsFp64Relative);
+}
+
 // Vergleich df64 gegen FP64 über alle Strahlen und Varianten eines Batches.
 struct Df64Comparison {
     std::size_t rays = 0;
     std::size_t failed = 0;          // Strahlen mit Status ≠ Ok in FP64
     std::size_t status_flips = 0;    // Status in df64 ≠ FP64
-    double max_residual = 0.0;       // max |r_df64 − r_FP64| [mm], Strahlen mit Status Ok
+    double max_residual = 0.0;       // max |r_df64 − r_FP64| / u [mm], Strahlen mit Status Ok
     double max_opd = 0.0;            // max |OPD_df64 − OPD_FP64| [mm]
     double max_opd_cpu = 0.0;        // max |OPD_df64 − OPD_CPU(FP64)| [mm]
     double max_relative = 0.0;       // max |ΔOPD| / |OPD| der Strahlen mit |ΔOPD| > 1e-10 mm
     double max_height = 0.0;         // max |Δ Strahlhöhe| der Max-Reduktionen [mm]
     double max_cos = 0.0;            // max |Δ cos I|
-    double max_sqrt_merit = 0.0;     // max |√F_df64 − √F_FP64| [mm]
+    double max_sqrt_merit = 0.0;     // max |√F_df64 − √F_FP64| [Wellen]
     double max_merit_relative = 0.0; // max |F_df64 − F_FP64| / F_FP64 (F > 0)
     std::size_t violations = 0;      // Werte außerhalb von df64_bound
     std::size_t above_absolute = 0;  // Strahlen mit |ΔOPD| oder |Δr| > kDf64VsFp64
@@ -118,6 +124,7 @@ Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings
     const TraceOutput fpm = engine.run(batch, TraceMode::Merit, settings_for(Precision::Fp64, q));
     const TraceOutput dfm = engine.run(batch, TraceMode::Merit, settings_for(Precision::Df64, q));
     const ResidualResult cpu = mko::residuals_cpu(batch, layout);
+    const std::vector<double> units = mko::test::residual_units(batch, layout);
     const ResidualResult& a = fp.residuals;
     const ResidualResult& b = df.residuals;
     const auto check = [&c](double got, double ref) {
@@ -131,7 +138,9 @@ Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings
         double merit_bound_sq = 0.0; // Σ_k Schranke_k² über die Residuen der Variante
         for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
             ++c.rays;
-            merit_bound_sq += df64_bound(a.residual(v, i)) * df64_bound(a.residual(v, i));
+            const double u = units[static_cast<std::size_t>(i)];
+            const double rb = df64_residual_bound(u, a.residual(v, i));
+            merit_bound_sq += rb * rb;
             const TraceStatus sa = a.status_at(v, i);
             if (sa != b.status_at(v, i)) {
                 ++c.status_flips;
@@ -142,7 +151,11 @@ Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings
                 EXPECT_EQ(b.residual(v, i), 0.0);
                 continue;
             }
-            const double dr = check(b.residual(v, i), a.residual(v, i));
+            const double dr_waves = std::abs(b.residual(v, i) - a.residual(v, i));
+            if (!(dr_waves <= df64_residual_bound(u, a.residual(v, i)))) {
+                ++c.violations;
+            }
+            const double dr = u > 0.0 ? dr_waves / u : dr_waves; // in mm OPD
             const double dopd = check(b.opd_at(v, i), a.opd_at(v, i));
             const double dcpu = check(b.opd_at(v, i), cpu.opd_at(v, i));
             c.max_residual = std::max(c.max_residual, dr);
@@ -189,7 +202,7 @@ Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings
 void report(const std::string& name, const Df64Comparison& c) {
     std::printf("[ Info     ] %-26s %7zu Strahlen, %6zu versagt, %zu Statuswechsel: max |dr| = "
                 "%.2e, |dOPD| = %.2e (CPU %.2e) mm, %zu Strahlen über kDf64VsFp64 (rel. %.1e), "
-                "|dh| = %.2e mm, |dcosI| = %.2e, |d sqrt F| = %.2e mm, max |dF|/F = %.2e\n",
+                "|dh| = %.2e mm, |dcosI| = %.2e, |d sqrt F| = %.2e Wellen, max |dF|/F = %.2e\n",
                 name.c_str(), c.rays, c.failed, c.status_flips, c.max_residual, c.max_opd,
                 c.max_opd_cpu, c.above_absolute, c.max_relative, c.max_height, c.max_cos,
                 c.max_sqrt_merit, c.max_merit_relative);

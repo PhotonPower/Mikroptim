@@ -8,6 +8,7 @@ Dieses Dokument ist verbindlich für alle Implementierungen im Mathe-Kern, im CP
 - Wellenlängen in Dateien und APIs in **nm**; in Dispersionsformeln (Sellmeier, Buchdahl) in **µm**.
 - Winkel in Dateien in **Grad**, intern im Bogenmaß.
 - OPD intern in mm; Ausgabe zusätzlich in Wellen bei der Referenzwellenlänge.
+- Strahlresiduen dimensionslos in Wellen bei der Referenzwellenlänge, die Merit in Wellen² (ab M4-T1, Abschnitt 7).
 
 ## 2. Koordinaten und Vorzeichen
 
@@ -204,15 +205,37 @@ Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug 
 
 Die Abweichung des RMS von der Seidel-Näherung ist der Anteil höherer Ordnung (W₀₆₀ ρ⁶ usw., relativ ∝ NA²: Faktor 4 zwischen NA 0,049 und 0,025); der Fit A ρ⁴ + B ρ⁶ + K trennt ihn ab. Die Lage der Referenzsphäre durch den Scheitel statt durch die Austrittspupille ändert auf der Achse nur Terme zweiter Ordnung in der Queraberration und ist darin enthalten.
 
-### Residuen pro Strahl (M2)
+### Residuen pro Strahl (M2, Gewichte M4-T1)
 
 Festlegung für den Kernel `RESIDUALS` und seine CPU-Referenz (M2-T2, `include/mikroptim/merit/ray_residual.hpp`, Ablage: [architektur.md, „Kernel RESIDUALS“](architektur.md#kernel-residuals-m2-t2)). Pro Variante, Feld f, Wellenlänge l und Stützstelle k:
 
-$$r_k = s_{f,l}\,\sqrt{W_i V_j}\;\mathrm{OPD}_k \quad [\mathrm{mm}],\qquad s_{f,l} = 1\ \text{in M2}$$
+$$r_k = s_{f,l}\,\sqrt{W_i V_j}\;\mathrm{OPD}_k \quad [\text{Wellen bei } \lambda_{\mathrm{ref}}],\qquad s_{f,l} = \frac{\sqrt{\hat w_f\,\hat w_\lambda}}{\lambda_{\mathrm{ref}}},\qquad \hat w_f = \frac{w_f}{\sum_{f'} w_{f'}},\quad \hat w_\lambda = \frac{w_\lambda}{\sum_{l'} w_{\lambda'}}$$
 
-mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne gültigen Strahl im Tupel alle OPD und Residuen 0) und √(W_i V_j) = `residual_weight(sample)`. Der Faktor s_{f,l} (`residual_scale`) ist der Erweiterungspunkt für M4-T1: √(w_f w_λ)/λ_ref nach [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor); danach ist r dimensionslos (Wellen). Ohne Versagen gilt Σ_k r_k² = RMS² des Tupels (Gewichte mit Summe 1). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches.
+mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne gültigen Strahl im Tupel alle OPD und Residuen 0) und √(W_i V_j) = `residual_weight(sample)`. w_f = `field_weight[f]` (`source.field_weights`, Punktquelle: ein Feld mit Gewicht 1), w_λ = `wavelength_weight[l]` (`spectrum.weights`), λ_ref = `reference_wavelength_nm`·10⁻⁶ mm (`spectrum.reference_nm`, wie die Ausgabe in Wellen in M1-T7). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches. Die OPD in den Ausgaben (`ResidualResult::opd`, `tuple_wavefronts`, `mikroptim trace --gpu`) bleibt in mm und ungewichtet.
 
-**Merit (M2-T3):** F_v = Σ_k r_k² über alle Strahlresiduen der Variante (plus einem vom Aufrufer gelieferten Anteil weiterer Residuen); ohne gültigen Strahl ist F_v = 0 und nur an der Zahl versagter Strahlen erkennbar. Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
+**Merit:** F_v = Σ_k r_k² über alle Strahlresiduen der Variante (plus einem vom Aufrufer gelieferten Anteil weiterer Residuen); ohne gültigen Strahl ist F_v = 0 und nur an der Zahl versagter Strahlen erkennbar. Ohne Versagen ist Σ_k W_k OPD_k² = RMS² des Tupels (Quadraturgewichte mit Summe 1), also
+
+$$F_v = \sum_f \sum_\lambda \hat w_f\,\hat w_\lambda \Big(\frac{\mathrm{RMS}_{f\lambda}}{\lambda_{\mathrm{ref}}}\Big)^2 \quad [\text{Wellen}^2],$$
+
+der gewichtete mittlere quadratische RMS-Wellenfrontfehler in Wellen bei λ_ref (Maréchal-Kriterium RMS ≤ λ/14 ⇔ F ≤ 5,1·10⁻³ bei gleichem RMS in allen Tupeln). Mit Versagen ist der Beitrag eines Tupels W_ok·RMS² (die Gewichte der Residuen werden nicht renormiert). Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
+
+**Normierung der Gewichte (M4-T1).** w_f und w_λ werden jeweils auf Summe 1 normiert, nicht in der Datei, sondern in `residual_scale`. Gründe: (1) Die Wellenfrontmerit hat damit eine feste Bedeutung (mittlerer RMS² in Wellen²), unabhängig von der Zahl der Felder und Wellenlängen und vom Maßstab der Gewichte in der Datei (Gewichte 1, 1, 1 und 2, 2, 2 sind gleich). (2) Die Homotopie über Feld und Spektrum (optimierung.md, Abschnitt 7) fügt Felder und Wellenlängen hinzu; ohne Normierung würde dabei der Wellenfrontanteil gegenüber den Nebenbedingungen wachsen (bei F·L Tupeln um den Faktor F·L) und deren Gewichte müssten mitgeführt werden. (3) Die Gewichte der Nebenbedingungen lassen sich einmal gegen einen RMS in Wellen wählen (Faustregel in optimierung.md, Abschnitt 2.2). λ_ref statt der Wellenlänge des Tupels, damit alle Tupel dieselbe Längeneinheit haben (wie die Ausgabe in Wellen, Abschnitt 1).
+
+**Gewicht 0.** Ist w_f = 0 oder w_λ = 0, ist s_{f,l} = 0 ohne Division (die Summen dürfen dann 0 sein; in der Datei verlangt die Validierung Summe > 0, im Batch nicht): Das Tupel wird weiter verfolgt (OPD, Status, versagte Strahlen und Max-Reduktionen bleiben, auch für die Vorfilterung), seine Residuen sind exakt 0. Negative Gewichte lehnen Datei- und Batch-Validierung ab.
+
+**Rechnung.** `residual_scale(view, f, l)` (header-only, `MKO_HD`) summiert die Gewichte in aufsteigender Reihenfolge und rechnet √((w_f/Σw_f)·(w_λ/Σw_λ)) / (λ_ref,nm · 10⁻⁶): kein Ausdruck a·b + c (keine FMA-Kontraktion), Division und Wurzel in FP64 auf dem Gerät korrekt gerundet. CPU-Referenz, Kernel `RESIDUALS`, `MERIT` (Rechentyp FP64 und df64; s wird einmal pro Block in den Rechentyp gewandelt) und die FP32-Vorfilterung (s in float) erhalten so denselben Faktor; für FP64 ist er auf CPU und GPU bitgleich. Ein Tupel allein ergibt exakt 1/λ_ref.
+
+**Abnahme M4-T1** (Tests `MeritCpu.EqualsWeightedSumOfWavefrontRms`, `CudaMerit.EqualsWeightedSumOfWavefrontRms`; Mehrlinser mit gleichen, ungleichen und ausgeschalteten Gewichten, Einzellinse mit ungleichen Gewichten, Einzellinse mit Geisterplatten, Punktquelle neben der Achse): F gegen Σ ŵ_f ŵ_λ (RMS_fλ/λ_ref)² mit dem RMS aus `evaluate_wavefront` (M1-T7), Toleranz `kWeightedMerit` = 10⁻¹² relativ. Ergebnisse (RTX 3090):
+
+| Vergleich | größte relative Abweichung von F |
+|---|---|
+| CPU (`merit_cpu`) gegen Σ ŵ ŵ (RMS/λ_ref)² aus `evaluate_wavefront` (M1-T7) | 4,0·10⁻¹⁶ (OPD bitgleich, nur Rundung von s, r und Summen) |
+| GPU FP64 gegen Σ ŵ ŵ (RMS/λ_ref)² aus der OPD desselben Laufs | 2,5·10⁻¹⁶ |
+| GPU df64 gegen dasselbe aus der df64-OPD | 5,0·10⁻¹⁵ |
+| GPU FP64 gegen M1-T7 (CPU) | 1,3·10⁻¹² (Mehrlinser mit ausgeschalteten Tupeln; übrige ≤ 3,7·10⁻¹³) |
+| GPU df64 gegen M1-T7 (CPU) | 4,6·10⁻¹¹ |
+
+Die Gewichtung selbst ist damit auf CPU und GPU auf Rundungsgenauigkeit (< 10⁻¹⁴) belegt. Der Vergleich GPU gegen CPU enthält zusätzlich die Abweichung der OPD (FMA-Kontraktion, `kCpuGpuFp64` = 10⁻¹² mm pro Strahl bzw. `kDf64VsFp64` = 10⁻⁹ mm): Relativ ist δF/F ≈ 2 δOPD/RMS, bei RMS um 10⁻⁴ … 10⁻³ mm also bis ≈ 10⁻¹¹ in FP64. Geprüft wird er deshalb in der Wurzel mit der daraus abgeleiteten Schranke |√F_GPU − √F_M1| ≤ δ·√(Σ_(f,l) s²) + 10⁻¹²·√F (Test `CudaMerit.EqualsWeightedSumOfWavefrontRms`), nicht mit 10⁻¹² relativ.
 
 Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern, müsste dann aber in CPU und Kernel gleich definiert werden. Für df64 ist sie nicht nötig: Der Rundungsfehler der OPL in df64 liegt bei einigen u²·OPL ≈ 10⁻¹² mm, die gemessene Abweichung der OPD von FP64 bei einigen 10⁻¹¹ mm (Abschnitt 12, „Zahlentyp df64“).
 
@@ -452,7 +475,7 @@ $$|\mathrm{OPD}_{32} - \mathrm{OPD}_{64}| \le \kappa\,u\,\Lambda_v + m\,|\mathrm
 
 Der erste Term ist die Rundung der akkumulierten OPL (einige Rundungen der Größe u·Λ pro Fläche), der zweite die relative Rundung großer OPD extremer Varianten (mm bis einige 10 mm, dort schlecht konditionierte Strahlen). Gemessen (je 600 Varianten, Test `Prefilter.RayClassesAndErrorModel`): nötiges κ bei m = 0 20 / 19 / 162 (Einzellinse / Mehrlinser / Geisterplatte), bei m = 0,01 4,7 / 3,9 / 2,8. Standard κ = 32, m = 0,01 (`PrefilterMargins`); bei Λ = 25 mm ist κuΛ = 4,8·10⁻⁵ mm ≈ 0,09 λ.
 
-**Schranken der Merit.** F32_v = Σ r_k² über die Menge C der sicher gültigen Strahlen. (1) Weglassen von Strahlen verkleinert F: Für A ⊆ B ist F_A = min_x Σ_A W_k (OPL_k − x)² ≤ Σ_A W_k (OPL_k − x_B)² ≤ F_B (Gewichte nicht renormiert, wie in r_k). Nach (A) ist C in der Menge der FP64-gültigen Strahlen enthalten, also F_FP64 ≥ F_FP64(C), mit Gleichheit ohne unsichere Strahlen. (2) Dreiecksungleichung in der gewichteten 2-Norm: |√F32(C) − √F64(C)| ≤ ‖s√W·δOPD‖₂ ≤ Δ_v + m√F64(C) mit Δ_v = κuΛ_v√(Σ_(f,l) s_(f,l)²) (s = `residual_scale`, ab M4-T1 die Gewichte; Σ_k W_k ≤ 1 pro Tupel). Daraus
+**Schranken der Merit.** F32_v = Σ r_k² über die Menge C der sicher gültigen Strahlen. (1) Weglassen von Strahlen verkleinert F: Für A ⊆ B ist F_A = min_x Σ_A W_k (OPL_k − x)² ≤ Σ_A W_k (OPL_k − x_B)² ≤ F_B (Gewichte nicht renormiert, wie in r_k). Nach (A) ist C in der Menge der FP64-gültigen Strahlen enthalten, also F_FP64 ≥ F_FP64(C), mit Gleichheit ohne unsichere Strahlen. (2) Dreiecksungleichung in der gewichteten 2-Norm: |√F32(C) − √F64(C)| ≤ ‖s√W·δOPD‖₂ ≤ Δ_v + m√F64(C) mit Δ_v = κuΛ_v√(Σ_(f,l) s_(f,l)²) (s = `residual_scale` = √(ŵ_f ŵ_λ)/λ_ref seit M4-T1; Σ_k W_k ≤ 1 pro Tupel). Daraus
 
 $$L_v = \Big(\frac{\max(0,\ \sqrt{F_{32}} - \Delta_v)}{1 + m}\Big)^2 + E_v \;\le\; F_{\mathrm{FP64}} \;\le\; U_v = \Big(\frac{\sqrt{F_{32}} + \Delta_v}{1 - m}\Big)^2 + E_v,$$
 
@@ -476,7 +499,7 @@ F_best der Wahrheit ist die kleinste Merit der Varianten ohne (a) mit mindestens
 | Mehrlinser | 64.944 | 0 | 727 | 16.995 von 6,8·10⁶ |
 | Geisterplatte | 67.781 | 0 | 478 | 7.401 von 5,1·10⁶ |
 
-Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (1 ± m)² und Δ_v) und beim Kriterium 10⁴-mal die beste (U der besten Variante enthält Δ_v ≈ 10⁻⁴ mm gegen √F_best ≈ 5·10⁻⁴ mm). Stresstest mit 10 weiteren Seeds (3·10⁵ Varianten, 390 Entscheidungsläufe): 0 falsch aussortiert, 16.834 von 1.978.009 FP64-Ablehnungen zusätzlich behalten (0,85 %), 0,22 % unsichere Strahlen; L_v ≤ F_FP64 ≤ U_v und die Klammer der versagten Strahlen für alle Varianten. CPU in der CI (`Prefilter.CpuAcceptanceNoFalseRejections`, je 1.000 Varianten gegen `merit_cpu`): 0 falsch aussortiert, 137 von 18.139 zusätzlich behalten. GPU gegen CPU-Referenz (`CudaPrefilter.MatchesCpuReference`): Klassen in allen 900 Varianten gleich, |F_GPU/F_CPU − 1| ≤ 9·10⁻⁵ (FMA-Kontraktion und Summationsreihenfolge). Determinismus: zehn Läufe und vier Tranchen bitgleich (`CudaPrefilter.RepeatedRunsAndTranchesAreBitIdentical`, Baumreduktionen wie MERIT, ADR-0007).
+Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (1 ± m)² und Δ_v) und beim Kriterium 10⁴-mal die beste (U der besten Variante enthält Δ_v ≈ 10⁻⁴ mm gegen √F_best ≈ 5·10⁻⁴ mm, gemessen mit den Residuen in mm vor M4-T1; beide skalieren mit s). Stresstest mit 10 weiteren Seeds (3·10⁵ Varianten, 390 Entscheidungsläufe): 0 falsch aussortiert, 16.834 von 1.978.009 FP64-Ablehnungen zusätzlich behalten (0,85 %), 0,22 % unsichere Strahlen; L_v ≤ F_FP64 ≤ U_v und die Klammer der versagten Strahlen für alle Varianten. CPU in der CI (`Prefilter.CpuAcceptanceNoFalseRejections`, je 1.000 Varianten gegen `merit_cpu`): 0 falsch aussortiert, 137 von 18.139 zusätzlich behalten. GPU gegen CPU-Referenz (`CudaPrefilter.MatchesCpuReference`): Klassen in allen 900 Varianten gleich, |F_GPU/F_CPU − 1| ≤ 9·10⁻⁵ (FMA-Kontraktion und Summationsreihenfolge). Determinismus: zehn Läufe und vier Tranchen bitgleich (`CudaPrefilter.RepeatedRunsAndTranchesAreBitIdentical`, Baumreduktionen wie MERIT, ADR-0007).
 
 **Grenzen.** Annahme (A) und die Konstanten κ, m sind empirisch belegt, nicht bewiesen; wer η, κ oder m verkleinert, verlässt den getesteten Bereich. float läuft bei |x| > 3,4·10³⁸ über (Geisterplatten weit außerhalb von r_g, wie df64); das ergibt NaN, also unsicher. Hartes Versagen wie in M2: Mit dem weichen Versagen (M4-T2, Strafresiduen) muss die Vorfilterung die Strafen in L_v aufnehmen. Kriterium (c) wird nur angewandt, wenn mindestens eine Variante ohne unsichere Strahlen in die Referenzmenge fällt.
 

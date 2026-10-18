@@ -6,10 +6,12 @@
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/model/system.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "residual_test_systems.hpp"
+#include "tolerances.hpp"
 
 #include <gtest/gtest.h>
 
@@ -52,8 +54,9 @@ BatchTopology lens_topology(std::vector<PupilMode> modes) {
 }
 
 // Vergleicht residuals_cpu (Variante v von `batch`) mit evaluate_wavefront für `system`:
-// Status gleich, OPD gültiger Strahlen bitgleich, Residuum = √(W) · OPD bitgleich, versagte
-// Strahlen OPD = Residuum = 0. Liefert die Zahl versagter Strahlen.
+// Status gleich, OPD gültiger Strahlen bitgleich, Residuum = s_{f,l} · √(W) · OPD bitgleich
+// (s = residual_scale, M4-T1; gegen die Formel geprüft in ResidualScale.*), versagte Strahlen
+// OPD = Residuum = 0. Liefert die Zahl versagter Strahlen.
 std::size_t expect_matches_wavefront(const mko::LoadedSystem& system, const SystemBatchHost& batch,
                                      int v, const ResidualSettings& settings) {
     WavefrontOptions opt;
@@ -74,6 +77,7 @@ std::size_t expect_matches_wavefront(const mko::LoadedSystem& system, const Syst
             EXPECT_EQ(m.samples(), layout.samples(f));
             EXPECT_EQ(m.quadrature.mode, layout.pupil_mode(f));
             const std::int64_t o = layout.offset(f, l);
+            const double scale = mko::residual_scale(batch.view(), f, l);
             for (int k = 0; k < m.samples(); ++k) {
                 const auto ku = static_cast<std::size_t>(k);
                 const std::int64_t i = o + k;
@@ -85,8 +89,8 @@ std::size_t expect_matches_wavefront(const mko::LoadedSystem& system, const Syst
                     EXPECT_TRUE(same_bits(r.opd_at(0, i), m.opd[ku]))
                         << f << " " << l << " " << k << ": " << r.opd_at(0, i) << " vs "
                         << m.opd[ku];
-                    EXPECT_TRUE(
-                        same_bits(r.residual(0, i), mko::residual_weight(m.pupil[ku]) * m.opd[ku]));
+                    EXPECT_TRUE(same_bits(r.residual(0, i),
+                                          scale * mko::residual_weight(m.pupil[ku]) * m.opd[ku]));
                 } else {
                     ++failed;
                     EXPECT_EQ(r.opd_at(0, i), 0.0);
@@ -347,6 +351,118 @@ TEST(ResidualsCpu, AllVariantsMatchSingleCalls) {
         }
     }
     EXPECT_EQ(failed, all.failed_count());
+}
+
+// ---- Gewichte (M4-T1) ----------------------------------------------------------------------
+
+// s_{f,l} = √(ŵ_f ŵ_λ) / λ_ref mit auf Summe 1 normierten Gewichten (λ_ref in mm): gegen die
+// Formel aus den Gewichten der Beschreibung, Σ s² λ_ref² = 1, unabhängig vom Maßstab der
+// Gewichte; ein Tupel ergibt exakt 1/λ_ref.
+TEST(ResidualScale, NormalizedWeightsOverReferenceWavelength) {
+    const std::vector<double> wf = {1.0, 0.7, 0.3};
+    const std::vector<double> wl = {0.5, 1.0, 0.8, 0.3};
+    const mko::LoadedSystem ls = mko::test::weighted_system("testsystem_mehrlinser.json", wf, wl);
+    const SystemBatchHost b = mko::make_system_batch(ls, 1);
+    const double lambda_mm = ls.system.spectrum.reference_nm * 1e-6;
+    std::vector<double> wf3 = wf;
+    std::vector<double> wl3 = wl;
+    for (double& w : wf3) {
+        w *= 3.0;
+    }
+    for (double& w : wl3) {
+        w *= 0.25;
+    }
+    const SystemBatchHost b3 = mko::make_system_batch(
+        mko::test::weighted_system("testsystem_mehrlinser.json", wf3, wl3), 1);
+    double sum = 0.0;
+    for (int f = 0; f < 3; ++f) {
+        for (int l = 0; l < 4; ++l) {
+            const double s = mko::residual_scale(b.view(), f, l);
+            const double expected = std::sqrt(wf[static_cast<std::size_t>(f)] / 2.0 *
+                                              wl[static_cast<std::size_t>(l)] / 2.6) /
+                                    lambda_mm;
+            EXPECT_NEAR(s / expected, 1.0, mko::test::kUnitFp64) << f << " " << l;
+            EXPECT_NEAR(mko::residual_scale(b3.view(), f, l) / s, 1.0, mko::test::kUnitFp64);
+            sum += s * s * lambda_mm * lambda_mm;
+        }
+    }
+    EXPECT_NEAR(sum, 1.0, mko::test::kUnitFp64);
+
+    const mko::LoadedSystem one = mko::test::load_residual_system("einzellinse_bk7_variablen.json");
+    const SystemBatchHost b1 = mko::make_system_batch(one, 1);
+    EXPECT_TRUE(same_bits(mko::residual_scale(b1.view(), 0, 0), 1.0 / (587.56 * 1e-6)));
+}
+
+// Gewicht 0 schaltet ein Feld bzw. eine Wellenlänge ab: Faktor exakt 0 ohne Division, auch wenn
+// alle Gewichte einer Art 0 sind (im Batch erlaubt, in der Datei nicht).
+TEST(ResidualScale, ZeroWeightsGiveZero) {
+    const mko::LoadedSystem ls = mko::test::weighted_system("testsystem_mehrlinser.json",
+                                                            {2.0, 0.0, 1.0}, {0.0, 1.0, 1.0, 0.0});
+    SystemBatchHost b = mko::make_system_batch(ls, 1);
+    for (int f = 0; f < 3; ++f) {
+        for (int l = 0; l < 4; ++l) {
+            const double s = mko::residual_scale(b.view(), f, l);
+            if (f == 1 || l == 0 || l == 3) {
+                EXPECT_TRUE(same_bits(s, 0.0)) << f << " " << l;
+            } else {
+                EXPECT_GT(s, 0.0);
+                EXPECT_TRUE(std::isfinite(s));
+            }
+        }
+    }
+    for (int f = 0; f < 3; ++f) {
+        b.field_weight(f) = 0.0;
+    }
+    EXPECT_NO_THROW(b.validate_values());
+    for (int f = 0; f < 3; ++f) {
+        for (int l = 0; l < 4; ++l) {
+            EXPECT_TRUE(same_bits(mko::residual_scale(b.view(), f, l), 0.0));
+        }
+    }
+}
+
+// residuals_cpu mit ausgeschalteten Tupeln: OPD und Status unabhängig von den Gewichten
+// (bitgleich zum ungewichteten System), Residuen der Tupel mit Gewicht 0 exakt 0, die übrigen
+// s_{f,l} · √(W) · OPD.
+TEST(ResidualsCpu, ZeroWeightSwitchesTupleOff) {
+    const mko::LoadedSystem plain = mko::test::load_residual_system("testsystem_mehrlinser.json");
+    const mko::LoadedSystem ls = mko::test::weighted_system("testsystem_mehrlinser.json",
+                                                            {2.0, 0.0, 1.0}, {0.0, 1.0, 1.0, 0.0});
+    const SystemBatchHost b0 = mko::test::perturbed_batch(plain, 20, 99);
+    SystemBatchHost b = b0;
+    for (int f = 0; f < 3; ++f) {
+        b.field_weight(f) = ls.system.source.field_weights[static_cast<std::size_t>(f)];
+    }
+    for (int l = 0; l < 4; ++l) {
+        b.wavelength_weight(l) = ls.system.spectrum.weights[static_cast<std::size_t>(l)];
+    }
+    const ResidualLayout layout(b.topology());
+    const ResidualResult r0 = mko::residuals_cpu(b0, layout);
+    const ResidualResult r = mko::residuals_cpu(b, layout);
+    EXPECT_GT(r.failed_count(), 0u) << "Versagenspfad nicht geprüft";
+    std::size_t nonzero = 0;
+    for (int v = 0; v < b.variants(); ++v) {
+        for (int f = 0; f < 3; ++f) {
+            const mko::PupilQuadrature<double>& q = layout.quadrature(f);
+            for (int l = 0; l < 4; ++l) {
+                const double s = mko::residual_scale(b.view(), f, l);
+                for (int k = 0; k < layout.samples(f); ++k) {
+                    const std::int64_t i = layout.offset(f, l) + k;
+                    ASSERT_EQ(r.status_at(v, i), r0.status_at(v, i));
+                    ASSERT_TRUE(same_bits(r.opd_at(v, i), r0.opd_at(v, i)));
+                    if (f == 1 || l == 0 || l == 3) {
+                        ASSERT_EQ(r.residual(v, i), 0.0) << v << " " << i; // auch −0
+                    } else {
+                        ASSERT_TRUE(same_bits(r.residual(v, i),
+                                              s * mko::residual_weight(mko::sample(q, k)) *
+                                                  r.opd_at(v, i)));
+                        nonzero += r.residual(v, i) != 0.0 ? 1 : 0;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_GT(nonzero, 0u);
 }
 
 // RMS pro Tupel aus OPD und Status (Grundlage für `mikroptim trace --gpu`, M2-T5): für das

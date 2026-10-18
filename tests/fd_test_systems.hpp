@@ -308,11 +308,12 @@ inline std::vector<double> scale_columns(std::span<const double> j, const FdProb
 }
 
 // Schätzung des Rundungsanteils im relativen Spaltenfehler einer FD-Spalte (nur
-// Strahlresiduen): Jedes Residuum r = √W·OPD trägt einen Rundungsfehler ≈ √S·ε·L·√W mit der
-// optischen Länge L des Systems (die OPL vor dem Kolbenabzug, nicht |OPD|, bestimmt die
-// Rundung; jede der S Flächen trägt etwa ε·L bei). Über die Zeilen ergibt das
-// ‖δJ_p‖₂ ≈ √S·ε·L·√(Σ W)·Σ|c_x| mit den Gewichten c_x der Formel (zentral 2/|d_a − d_b| ≈ 1/h,
-// einseitig ≈ 4/h, vorwärts 2/|d_a|), Σ W = Zahl der Tupel (f, l). Relativ zu ‖D_p‖₂.
+// Strahlresiduen): Jedes Residuum r = s_{f,l}·√W·OPD (M4-T1, Wellen bei λ_ref) trägt einen
+// Rundungsfehler ≈ √S·ε·L·s_{f,l}·√W mit der optischen Länge L des Systems (die OPL vor dem
+// Kolbenabzug, nicht |OPD|, bestimmt die Rundung; jede der S Flächen trägt etwa ε·L bei). Über
+// die Zeilen ergibt das ‖δJ_p‖₂ ≈ √S·ε·L·√(Σ_(f,l) s²)·Σ|c_x| mit den Gewichten c_x der Formel
+// (zentral 2/|d_a − d_b| ≈ 1/h, einseitig ≈ 4/h, vorwärts 2/|d_a|), weil Σ_k W_k = 1 pro Tupel
+// (residual_scale_norm; bis M3 mit s = 1: √(Zahl der Tupel)). Relativ zu ‖D_p‖₂.
 inline double column_rounding_estimate(const FdProblem& p, const ResidualLayout& layout,
                                        const FdPattern& pattern, int k, double column_norm) {
     double length = 0.0; // optische Länge auf der Achse, größte Brechzahl über λ
@@ -341,10 +342,9 @@ inline double column_rounding_estimate(const FdProblem& p, const ResidualLayout&
         coef = 2.0 / std::abs(da - pattern.step_minus[kk]);
         break;
     }
-    const double tuples = static_cast<double>(layout.fields() * layout.wavelengths());
     const double surfaces = static_cast<double>(p.base.surfaces());
     return std::sqrt(surfaces) * std::numeric_limits<double>::epsilon() * length *
-           std::sqrt(tuples) * coef / column_norm;
+           residual_scale_norm(p.base, layout) * coef / column_norm;
 }
 
 // Euklidische Norm der Spalte k einer Matrix [P][R].

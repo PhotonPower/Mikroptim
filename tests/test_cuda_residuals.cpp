@@ -55,7 +55,7 @@ namespace {
     } while (0)
 
 struct Comparison {
-    double max_residual = 0.0;      // max |r_GPU − r_CPU| über alle Strahlen [mm]
+    double max_residual = 0.0;      // max |r_GPU − r_CPU| / u_k über alle Strahlen [mm]
     double max_opd = 0.0;           // max |OPD_GPU − OPD_CPU| über alle Strahlen [mm]
     double max_relative = 0.0;      // max |Δ| / |x| der Strahlen mit |Δ| > kCpuGpuFp64
     std::size_t above_absolute = 0; // Strahlen mit |Δr| oder |ΔOPD| > kCpuGpuFp64
@@ -85,8 +85,14 @@ double check_value(double gpu, double cpu, Comparison& c, bool& above) {
 
 // Vergleicht GPU- und CPU-Ergebnis Strahl für Strahl: Status gleich, Residuen und OPD
 // innerhalb der Schranke von check_value, weitere Residuen (stride > rays) auf dem Gerät 0.
+// Die Residuen sind dimensionslos (Wellen bei λ_ref, M4-T1): r_k = u_k · OPD_k mit
+// u_k = s_{f,l} √(W_i V_j) (residual_units). Verglichen wird r_k / u_k, also das Residuum in
+// mm OPD, mit derselben Toleranz wie die OPD; das ist genau die Schranke
+// max(u_k · kCpuGpuFp64, kCpuGpuFp64Relative · |r_k|) für r_k. Tupel mit Gewicht 0 (u_k = 0)
+// haben auf beiden Seiten das Residuum 0.
 Comparison compare(const ResidualResult& gpu, const ResidualResult& cpu,
-                   const ResidualLayout& layout) {
+                   const SystemBatchHost& batch, const ResidualLayout& layout) {
+    const std::vector<double> units = mko::test::residual_units(batch, layout);
     Comparison c;
     EXPECT_EQ(gpu.variants, cpu.variants);
     EXPECT_EQ(gpu.rays_per_variant, cpu.rays_per_variant);
@@ -120,9 +126,15 @@ Comparison compare(const ResidualResult& gpu, const ResidualResult& cpu,
                         }
                     }
                     bool above = false;
-                    c.max_residual =
-                        std::max(c.max_residual,
-                                 check_value(gpu.residual(v, i), cpu.residual(v, i), c, above));
+                    const double u = units[static_cast<std::size_t>(i)];
+                    if (u > 0.0) {
+                        c.max_residual =
+                            std::max(c.max_residual, check_value(gpu.residual(v, i) / u,
+                                                                 cpu.residual(v, i) / u, c, above));
+                    } else {
+                        EXPECT_EQ(gpu.residual(v, i), 0.0);
+                        EXPECT_EQ(cpu.residual(v, i), 0.0);
+                    }
                     if (with_opd) {
                         c.max_opd = std::max(
                             c.max_opd, check_value(gpu.opd_at(v, i), cpu.opd_at(v, i), c, above));
@@ -199,7 +211,7 @@ TEST(CudaResiduals, MatchCpuForPerturbedVariants) {
         const ResidualResult gpu = gpu_residuals(batch, cs.settings, cs.extra);
         EXPECT_EQ(gpu.stride, layout.rays_per_variant() + cs.extra);
         const ResidualResult cpu = mko::residuals_cpu(batch, layout);
-        const Comparison c = compare(gpu, cpu, layout);
+        const Comparison c = compare(gpu, cpu, batch, layout);
         EXPECT_EQ(c.rays, 1000u * static_cast<std::size_t>(layout.rays_per_variant()));
         EXPECT_GT(c.failed, 0u) << "Versagenspfad nicht geprüft";
         EXPECT_GT(c.variants_with_failures, 10);
@@ -280,7 +292,7 @@ TEST(CudaResiduals, MatchCpuWithGhostPlates) {
         const ResidualLayout layout(batch.topology());
         const ResidualResult gpu = gpu_residuals(batch);
         const ResidualResult cpu = mko::residuals_cpu(batch, layout);
-        const Comparison c = compare(gpu, cpu, layout);
+        const Comparison c = compare(gpu, cpu, batch, layout);
         EXPECT_EQ(c.rays, 500u * static_cast<std::size_t>(layout.rays_per_variant()));
         EXPECT_LT(c.failed, c.rays / 2);
         std::printf("[ Info     ] %s (G = %d, K = %d): %zu Strahlen, %zu versagt (%d Varianten), "
@@ -309,7 +321,7 @@ TEST(CudaResiduals, MatchCpuForPointSource) {
     const ResidualLayout layout(batch.topology());
     ASSERT_EQ(layout.pupil_mode(0), PupilMode::Full);
     const ResidualResult gpu = gpu_residuals(batch);
-    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
+    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), batch, layout);
     std::printf("[ Info     ] Punktquelle: %zu Strahlen, %zu versagt, max |dr| = %.3e mm\n", c.rays,
                 c.failed, c.max_residual);
 }
@@ -382,7 +394,7 @@ TEST(CudaResiduals, FailedBlocksAreMasked) {
     const ResidualLayout layout(batch.topology());
     const ResidualResult gpu = gpu_residuals(batch);
     const ResidualResult cpu = mko::residuals_cpu(batch, layout);
-    const Comparison c = compare(gpu, cpu, layout);
+    const Comparison c = compare(gpu, cpu, batch, layout);
     for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
         EXPECT_NE(gpu.status_at(1, i), TraceStatus::Ok);
         EXPECT_EQ(gpu.residual(1, i), 0.0);
@@ -402,7 +414,7 @@ TEST(CudaResiduals, MaxSurfaces) {
     const SystemBatchHost batch = mko::test::many_surface_batch(200, 6006);
     const ResidualLayout layout(batch.topology());
     const ResidualResult gpu = gpu_residuals(batch);
-    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
+    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), batch, layout);
     EXPECT_LT(c.failed, c.rays);
     std::printf("[ Info     ] S = %d: %zu Strahlen, %zu versagt, max |dr| = %.3e mm, max |dOPD| "
                 "= %.3e mm\n",
@@ -431,7 +443,7 @@ TEST(CudaResiduals, LargeBatch) {
     EXPECT_TRUE(gpu.opd.empty());
     EXPECT_EQ(out.info.tranches, 1);
     ASSERT_EQ(gpu.variants, 10000);
-    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), layout);
+    const Comparison c = compare(gpu, mko::residuals_cpu(batch, layout), batch, layout);
     const double rays = 10000.0 * static_cast<double>(layout.rays_per_variant());
     std::printf("[ Info     ] 10.000 Varianten x %lld Strahlen (S = %d): %.3f ms pro Lauf "
                 "(TraceEngine mit Upload und Download), %.3e Strahlen/s, max |dr| = %.3e mm\n",

@@ -16,8 +16,9 @@ namespace mko {
 // Merit, versagte Strahlen und optional Max-Reduktionen für `variants` Varianten (CPU-Referenz
 // und Download vom Gerät).
 //
-// - merit[v] = Σ r_k² über alle Strahlresiduen der Variante (Ablage von ResidualLayout;
-//   versagte Strahlen haben r_k = 0, hartes Versagen wie im Kernel RESIDUALS), auf dem Gerät
+// - merit[v] = Σ r_k² über alle Strahlresiduen der Variante [Wellen² bei λ_ref, M4-T1]
+//   (Ablage von ResidualLayout; versagte Strahlen haben r_k = 0, hartes Versagen wie im Kernel
+//   RESIDUALS), auf dem Gerät
 //   plus einem vom Aufrufer gelieferten Anteil weiterer Residuen
 //   (mko::cuda::MeritRunOptions::extra_merit). Eine Variante ohne gültigen Strahl hat die
 //   Merit 0 (plus Anteil); sie ist nur an failed[v] erkennbar, das der Aufrufer deshalb immer

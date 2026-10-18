@@ -154,13 +154,20 @@ inline bool same_run(const LmRunResult& a, const LmRunResult& b) {
     return true;
 }
 
-// Gewicht der Brennweitenbedingung [1/mm²] in den Abnahmetests. Die Strahlresiduen sind in M3
-// OPD in mm (≈ 1e-6 mm bei der Einzellinse); ein viel höheres Gewicht macht JᵀJ schlecht
-// konditioniert (die Biegung, die die Brennweite kaum ändert, verschwindet in der Rundung der
-// Normalgleichungen) und LM langsam (docs/optimierung.md, Abschnitt 4). Mit 1e-8 hält die
-// Bedingung f auf ~1e-6 mm.
-inline constexpr double kLensFocalWeight = 1e-8;
-inline constexpr double kMehrlinserFocalWeight = 1e-6;
+// Gewicht der Brennweitenbedingung [1/mm²] in den Abnahmetests. Die Strahlresiduen sind seit
+// M4-T1 in Wellen bei λ_ref mit auf Summe 1 normierten Feld- und Spektralgewichten
+// (r = √(ŵ_f ŵ_λ W_i V_j) · OPD/λ_ref, bei der Einzellinse ≈ 1e-3 Wellen). M3-T4 hat die
+// Gewichte für Residuen in mm ohne Gewichte gewählt (1e-8 bzw. 1e-6 /mm²). Hier sind sie exakt
+// umgerechnet: Bei gleichen Gewichten ist jedes Strahlresiduum mit 1/(λ_ref √(F·L)) skaliert,
+// die Wellenfrontmerit also mit 1/(F·L·λ_ref²) (λ_ref in mm); dasselbe Gewicht der Bedingung
+// ist w_M3 / (F·L·λ_ref²), und das Problem ist bis auf einen gemeinsamen Faktor von F dasselbe
+// (LM ist dagegen invariant). Einzellinse (ein Tupel, λ_ref = 587,56 nm): ≈ 0,029 /mm²;
+// Mehrlinser (3 Felder, 4 Wellenlängen, λ_ref = 546,07 nm): ≈ 0,28 /mm². Ein viel höheres
+// Gewicht macht JᵀJ schlecht konditioniert (die Biegung, die die Brennweite kaum ändert,
+// verschwindet in der Rundung der Normalgleichungen) und LM langsam (docs/optimierung.md,
+// Abschnitt 2.2). Mit 0,029 /mm² hält die Bedingung f bei der Einzellinse auf ~1e-6 mm.
+inline constexpr double kLensFocalWeight = 1e-8 / (587.56e-6 * 587.56e-6);
+inline constexpr double kMehrlinserFocalWeight = 1e-6 / (12.0 * 546.07e-6 * 546.07e-6);
 
 // Einzellinse N-BK7 (einzellinse_bk7_variablen.json: f ≈ 100 mm, Blende mit Radius 2,5 mm, also
 // NA ≈ 0,025, eine Wellenlänge 587,56 nm, nur Achsfeld) für die Abnahme „minimale sphärische
