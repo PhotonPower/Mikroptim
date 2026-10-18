@@ -1,5 +1,5 @@
-// Unterbefehl `mikroptim trace`: Laden, Paraxialdaten, Wellenfront, Ausgabe als Text oder JSON.
-// Ausgabeformate und JSON-Schema: docs/cli.md.
+// Unterbefehl `mikroptim trace`: Laden, Paraxialdaten, Wellenfront (CPU oder mit --gpu über
+// die TraceEngine), Ausgabe als Text oder JSON. Ausgabeformate und JSON-Schema: docs/cli.md.
 
 #include "cli/trace_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
@@ -7,6 +7,13 @@
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/version.hpp"
+
+#ifdef MIKROPTIM_HAS_CUDA
+#include "mikroptim/batch/batch_residuals.hpp"
+#include "mikroptim/batch/system_batch.hpp"
+#include "mikroptim/cuda/device_info.hpp"
+#include "mikroptim/cuda/trace_engine.hpp"
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -40,6 +47,9 @@ struct TraceArgs {
     std::string file;
     bool json = false;
     bool help = false;
+    bool gpu = false;
+    bool have_device = false; // --device angegeben
+    int device = 0;
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
 };
@@ -65,6 +75,17 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == "--gpu") {
+            a.gpu = true;
+        } else if (arg == "--device") {
+            if (i + 1 >= args.size()) {
+                throw UsageError("--device erwartet einen Wert");
+            }
+            a.device = parse_int(arg, args[++i]);
+            if (a.device < 0) {
+                throw UsageError("--device muss >= 0 sein");
+            }
+            a.have_device = true;
         } else if (arg == "--rings" || arg == "--spokes") {
             if (i + 1 >= args.size()) {
                 throw UsageError(std::string(arg) + " erwartet einen Wert");
@@ -94,8 +115,40 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
     if (!have_file && !a.help) {
         throw UsageError("keine Systemdatei angegeben");
     }
+    if (a.have_device && !a.gpu) {
+        throw UsageError("--device verlangt --gpu");
+    }
     return a;
 }
+
+// Wellenfront eines Tupels (Feld f, Wellenlänge l), unabhängig vom Backend.
+struct TupleReport {
+    int field = 0;
+    int wavelength = 0;
+    double wavelength_nm = 0.0;
+    Vec3<double> image_point{0.0, 0.0, 0.0};
+    PupilMode pupil_mode = PupilMode::Axis;
+    int rays = 0;
+    int failed = 0;
+    double rms_waves = WavefrontMap::kNaN;
+    double rms = WavefrontMap::kNaN;
+    double piston = WavefrontMap::kNaN; // nur CPU; die Engine liefert keinen Kolben
+};
+
+// Wellenfront aller Tupel, Ablage [f · L + l] wie WavefrontResult::maps.
+struct WavefrontReport {
+    double focal_length = WavefrontMap::kNaN; // f_soll; NaN bei der Punktquelle
+    std::vector<TupleReport> tuples;
+    std::size_t rays = 0;
+    std::size_t failed = 0;
+};
+
+// Rechenwerk der Wellenfront (die Paraxialdaten entstehen immer auf dem Host).
+struct BackendInfo {
+    bool gpu = false;
+    int device = -1;         // nur GPU
+    std::string device_name; // nur GPU
+};
 
 // Alles, was ausgegeben wird.
 struct TraceReport {
@@ -103,9 +156,83 @@ struct TraceReport {
     LoadedSystem loaded;
     ParaxialData paraxial;
     WavefrontOptions options;
-    std::optional<WavefrontResult> wavefront; // leer: nicht auswertbar (wavefront_error)
+    BackendInfo backend;
+    std::optional<WavefrontReport> wavefront; // leer: nicht auswertbar (wavefront_error)
     std::string wavefront_error;
 };
+
+// CPU-Ergebnis (evaluate_wavefront) in die Ausgabestruktur.
+WavefrontReport report_from(const WavefrontResult& w) {
+    WavefrontReport r;
+    r.focal_length = w.focal_length;
+    r.tuples.reserve(w.maps.size());
+    for (const WavefrontMap& m : w.maps) {
+        TupleReport t;
+        t.field = m.field;
+        t.wavelength = m.wavelength;
+        t.wavelength_nm = m.wavelength_nm;
+        t.image_point = m.image_point;
+        t.pupil_mode = m.quadrature.mode;
+        t.rays = m.samples();
+        t.failed = m.failed;
+        t.rms_waves = m.rms_waves;
+        t.rms = m.rms;
+        t.piston = m.piston;
+        r.tuples.push_back(t);
+        r.rays += static_cast<std::size_t>(m.samples());
+    }
+    r.failed = w.failed_count();
+    return r;
+}
+
+#ifdef MIKROPTIM_HAS_CUDA
+
+// Wellenfront über die TraceEngine (Kernel RESIDUALS mit OPD und Status pro Strahl) mit
+// denselben idealen Bildpunkten wie evaluate_wavefront(LoadedSystem): f_soll nach
+// target_focal_length (nur kollimiert; afokal ohne target.focal_length wirft wie im CPU-Pfad
+// std::invalid_argument), h_f = f_soll · tan θ_f, w = Dicke der letzten Fläche. Die Engine
+// liefert keinen Kolben (piston bleibt NaN).
+WavefrontReport evaluate_wavefront_gpu(const LoadedSystem& loaded, const WavefrontOptions& options,
+                                       cuda::TraceEngine& engine) {
+    const SystemDescription& sys = loaded.system;
+    std::optional<double> focal_length;
+    if (sys.source.type == SourceType::Collimated) {
+        focal_length = target_focal_length(sys, loaded.catalog);
+    }
+    const SystemBatchHost batch = make_system_batch(sys, loaded.index, 1, focal_length);
+
+    cuda::TraceSettings settings;
+    settings.quadrature.rings = options.rings;
+    settings.quadrature.spokes = options.spokes;
+    settings.opd = true;
+    settings.status = true;
+    const cuda::TraceOutput out = engine.run(batch, cuda::TraceMode::Residuals, settings);
+    const std::vector<TupleWavefront> tuples = tuple_wavefronts(out.residuals, out.layout, 0);
+
+    WavefrontReport r;
+    r.focal_length = focal_length ? *focal_length : WavefrontMap::kNaN;
+    const double lambda_ref_mm = sys.spectrum.reference_nm * 1e-6; // wie evaluate_wavefront
+    const double w = batch.image_distance(0);
+    r.tuples.reserve(tuples.size());
+    for (const TupleWavefront& tw : tuples) {
+        TupleReport t;
+        t.field = tw.field;
+        t.wavelength = tw.wavelength;
+        t.wavelength_nm = batch.wavelength_nm(tw.wavelength);
+        t.image_point = {0.0, batch.field_target(0, tw.field), w};
+        t.pupil_mode = out.layout.pupil_mode(tw.field);
+        t.rays = tw.samples;
+        t.failed = tw.failed;
+        t.rms = tw.rms;
+        t.rms_waves = tw.valid() ? tw.rms / lambda_ref_mm : WavefrontMap::kNaN;
+        r.tuples.push_back(t);
+        r.rays += static_cast<std::size_t>(tw.samples);
+        r.failed += static_cast<std::size_t>(tw.failed);
+    }
+    return r;
+}
+
+#endif
 
 const char* pupil_mode_name(PupilMode mode) {
     switch (mode) {
@@ -193,12 +320,17 @@ void write_json(const TraceReport& r, std::ostream& out) {
     j["source"] = source_json(sys.source);
     j["paraxial"] = paraxial_json(r.paraxial, sys.spectrum.reference_nm);
     j["quadrature"] = Json{{"rings", r.options.rings}, {"spokes", r.options.spokes}};
+    j["backend"] = r.backend.gpu ? "gpu" : "cpu";
+    if (r.backend.gpu) {
+        j["device"] = Json{{"index", r.backend.device}, {"name", r.backend.device_name}};
+    } else {
+        j["device"] = nullptr;
+    }
     if (r.wavefront) {
-        const WavefrontResult& w = *r.wavefront;
+        const WavefrontReport& w = *r.wavefront;
         j["target_focal_length"] = number(w.focal_length);
         Json entries = Json::array();
-        std::size_t rays = 0;
-        for (const WavefrontMap& m : w.maps) {
+        for (const TupleReport& m : w.tuples) {
             Json e;
             e["field"] = m.field;
             if (sys.source.type == SourceType::Collimated) {
@@ -210,19 +342,18 @@ void write_json(const TraceReport& r, std::ostream& out) {
             e["wavelength"] = m.wavelength;
             e["wavelength_nm"] = number(m.wavelength_nm);
             e["image_point"] = vec3(m.image_point);
-            e["pupil_mode"] = pupil_mode_name(m.quadrature.mode);
-            e["rays"] = m.samples();
+            e["pupil_mode"] = pupil_mode_name(m.pupil_mode);
+            e["rays"] = m.rays;
             e["failed_rays"] = m.failed;
             e["rms_waves"] = number(m.rms_waves);
             e["rms_mm"] = number(m.rms);
             e["piston_mm"] = number(m.piston);
             entries.push_back(std::move(e));
-            rays += static_cast<std::size_t>(m.samples());
         }
         j["wavefront"] = std::move(entries);
         j["wavefront_error"] = nullptr;
-        j["rays"] = rays;
-        j["failed_rays"] = w.failed_count();
+        j["rays"] = w.rays;
+        j["failed_rays"] = w.failed;
     } else {
         j["target_focal_length"] = nullptr;
         j["wavefront"] = nullptr;
@@ -385,36 +516,41 @@ void write_text(const TraceReport& r, std::ostream& out) {
         out << "Wellenfront nicht auswertbar\n  " << r.wavefront_error << '\n';
         return;
     }
-    const WavefrontResult& w = *r.wavefront;
+    const WavefrontReport& w = *r.wavefront;
     out << "Wellenfront (Quadratur " << r.options.rings << " Ringe x " << r.options.spokes
         << " Speichen, RMS in Wellen bei " << fixed(ref, 3) << " nm)\n";
+    if (r.backend.gpu) {
+        kv(out, "Backend",
+           "GPU " + std::to_string(r.backend.device) + " (" + r.backend.device_name + "), FP64");
+    } else {
+        kv(out, "Backend", "CPU, FP64");
+    }
     if (std::isfinite(w.focal_length)) {
         kv(out, "Sollbrennweite für die Bildpunkte", fixed(w.focal_length) + " mm");
     }
     out << "  " << pad_left("Feld", 4) << pad_left("Winkel [deg]", 14)
         << pad_left("Wellenlänge [nm]", 18) << pad_left("Strahlen", 10) << pad_left("versagt", 9)
         << pad_left("RMS [Wellen]", 14) << pad_left("RMS [mm]", 15) << '\n';
-    std::size_t rays = 0;
-    for (const WavefrontMap& m : w.maps) {
+    for (const TupleReport& m : w.tuples) {
         const std::string angle =
             sys.source.type == SourceType::Collimated
                 ? fixed(sys.source.field_angles_deg[static_cast<std::size_t>(m.field)], 3)
                 : std::string("-");
         out << "  " << pad_left(std::to_string(m.field), 4) << pad_left(angle, 14)
-            << pad_left(fixed(m.wavelength_nm, 3), 18) << pad_left(std::to_string(m.samples()), 10)
+            << pad_left(fixed(m.wavelength_nm, 3), 18) << pad_left(std::to_string(m.rays), 10)
             << pad_left(std::to_string(m.failed), 9) << pad_left(fixed(m.rms_waves), 14)
             << pad_left(sci(m.rms, 6), 15) << '\n';
-        rays += static_cast<std::size_t>(m.samples());
     }
-    out << "  Versagte Strahlen: " << w.failed_count() << " von " << rays << '\n';
+    out << "  Versagte Strahlen: " << w.failed << " von " << w.rays << '\n';
 }
 
 } // namespace
 
 void print_trace_usage(std::ostream& out) {
     out << "Aufruf: mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
+           "                       [--gpu [--device N]]\n"
            "  Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge und versagte Strahlen\n"
-           "  (CPU, FP64; Beschreibung: docs/cli.md).\n"
+           "  (FP64; Beschreibung: docs/cli.md).\n"
            "  --json       maschinenlesbare Ausgabe (Format mikroptim.trace/1)\n"
            "  --rings N    radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
@@ -422,9 +558,12 @@ void print_trace_usage(std::ostream& out) {
            "  --spokes M   Speichen der Pupillenquadratur, >= 1 (Standard "
         << kDefaultSpokes
         << ")\n"
+           "  --gpu        Wellenfront auf der GPU rechnen (Kernel RESIDUALS) statt auf der CPU\n"
+           "  --device N   CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help       diese Hilfe\n"
            "Exit-Code: 0 Erfolg, 1 Fehler beim Laden oder Auswerten, 2 ungültige "
-           "Kommandozeile.\n";
+           "Kommandozeile,\n"
+           "           3 GPU-Backend nicht verfügbar (ohne CUDA gebaut oder kein CUDA-Gerät).\n";
 }
 
 int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
@@ -442,6 +581,38 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
         return kExitOk;
     }
 
+    // GPU-Backend vor dem Laden prüfen, damit "nicht verfügbar" (kExitNoGpu) nicht von
+    // Fehlern der Systemdatei abhängt.
+#ifdef MIKROPTIM_HAS_CUDA
+    std::optional<cuda::TraceEngine> engine;
+    if (a.gpu) {
+        const int count = cuda::device_count();
+        if (count == 0) {
+            err << "mikroptim trace: --gpu: kein CUDA-Gerät gefunden (GPU-Backend nicht "
+                   "verfügbar)\n";
+            return kExitNoGpu;
+        }
+        if (a.device >= count) {
+            err << "mikroptim trace: Fehler: --device " << a.device << ": Gerät existiert nicht ("
+                << count << (count == 1 ? " CUDA-Gerät" : " CUDA-Geräte")
+                << ", siehe mikroptim --devices)\n";
+            return kExitError;
+        }
+        try {
+            engine.emplace(a.device);
+        } catch (const std::exception& e) {
+            err << "mikroptim trace: Fehler: GPU " << a.device << ": " << e.what() << '\n';
+            return kExitError;
+        }
+    }
+#else
+    if (a.gpu) {
+        err << "mikroptim trace: --gpu: ohne CUDA gebaut (MIKROPTIM_ENABLE_CUDA=OFF), "
+               "GPU-Backend nicht verfügbar\n";
+        return kExitNoGpu;
+    }
+#endif
+
     try {
         TraceReport r;
         r.file = a.file;
@@ -453,10 +624,22 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
         r.options.rings = a.rings;
         r.options.spokes = a.spokes;
         try {
-            r.wavefront = evaluate_wavefront(r.loaded, r.options);
+#ifdef MIKROPTIM_HAS_CUDA
+            if (engine) {
+                r.backend.gpu = true;
+                r.backend.device = engine->device();
+                r.backend.device_name = engine->device_name();
+                r.wavefront = evaluate_wavefront_gpu(r.loaded, r.options, *engine);
+            } else {
+                r.wavefront = report_from(evaluate_wavefront(r.loaded, r.options));
+            }
+#else
+            r.wavefront = report_from(evaluate_wavefront(r.loaded, r.options));
+#endif
         } catch (const std::invalid_argument& e) {
             // Quadratur und Tabelle sind hier gültig; übrig bleibt die fehlende Sollbrennweite
-            // eines afokalen Systems ohne target.focal_length (docs/cli.md).
+            // eines afokalen Systems ohne target.focal_length (docs/cli.md). Der GPU-Pfad
+            // meldet sie ebenso (target_focal_length vor dem Lauf).
             r.wavefront_error = e.what();
         }
         if (a.json) {

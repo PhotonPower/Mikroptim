@@ -15,6 +15,7 @@ namespace {
 void print_usage() {
     std::puts("Aufruf: mikroptim [--version] [--devices]\n"
               "        mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
+              "                        [--gpu [--device N]]\n"
               "  --version   Version ausgeben\n"
               "  --devices   CUDA-Geräte auflisten\n"
               "  trace       System auswerten (Hilfe: mikroptim trace --help)");

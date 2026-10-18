@@ -60,6 +60,27 @@ add_test(NAME cli_trace_missing_file
     COMMAND $<TARGET_FILE:mikroptim> trace ${PROJECT_SOURCE_DIR}/data/systems/gibt_es_nicht.json)
 set_tests_properties(cli_trace_missing_file PROPERTIES WILL_FAIL TRUE)
 
+# `mikroptim trace --gpu` (M2-T5). Exit-Code 3 = GPU-Backend nicht verfügbar (kExitNoGpu).
+if(MIKROPTIM_ENABLE_CUDA)
+    # Ohne CUDA-Gerät übersprungen (SKIP_RETURN_CODE); lokal auf der GPU ausführen.
+    add_test(NAME cli_trace_gpu_json
+        COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_EINZELLINSE} --json --gpu)
+    set_tests_properties(cli_trace_gpu_json PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"failed_rays\": 0,[\r\n]+  \"warnings\"")
+    # Kein sichtbares Gerät (CUDA_VISIBLE_DEVICES=-1): Meldung statt Ausnahme.
+    add_test(NAME cli_trace_gpu_no_device
+        COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_EINZELLINSE} --gpu)
+    set_tests_properties(cli_trace_gpu_no_device PROPERTIES
+        ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1"
+        PASS_REGULAR_EXPRESSION "--gpu: kein CUDA-Ger.+t gefunden")
+else()
+    add_test(NAME cli_trace_gpu_unavailable
+        COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_EINZELLINSE} --gpu)
+    set_tests_properties(cli_trace_gpu_unavailable PROPERTIES
+        PASS_REGULAR_EXPRESSION "--gpu: ohne CUDA gebaut")
+endif()
+
 include(GoogleTest)
 # PRE_TEST: Testliste erst beim Ausführen ermitteln (CI ohne GPU baut nur).
 gtest_discover_tests(mikroptim_tests DISCOVERY_MODE PRE_TEST)

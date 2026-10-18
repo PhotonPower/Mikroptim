@@ -1,6 +1,8 @@
 // Unterbefehl `mikroptim trace` (M1-T8): JSON-Ausgabe gegen die Bibliotheksfunktionen
 // (compute_paraxial, evaluate_wavefront), afokales System, Punktquelle, Fehlerfälle und
-// Textausgabe. Der Aufruf des fertigen Programms steht als ctest-Kommando in CMakeLists.txt.
+// Textausgabe. Option --gpu (M2-T5): im CUDA-Build GPU- gegen CPU-Ausgabe (übersprungen ohne
+// Gerät), sonst die Meldung "GPU-Backend nicht verfügbar". Der Aufruf des fertigen Programms
+// steht als ctest-Kommando in tests/CMakeLists.txt.
 
 #include "cli/trace_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
@@ -8,13 +10,20 @@
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "tolerances.hpp"
 
+#ifdef MIKROPTIM_HAS_CUDA
+#include "mikroptim/cuda/device_info.hpp"
+#endif
+
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iostream>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -102,11 +111,13 @@ TEST(CliTrace, EinzellinseJsonMatchesLibrary) {
 
     for (const char* key :
          {"format", "mikroptim_version", "system", "file", "reference_nm", "wavelengths_nm",
-          "source", "paraxial", "quadrature", "target_focal_length", "wavefront", "wavefront_error",
-          "rays", "failed_rays", "warnings"}) {
+          "source", "paraxial", "quadrature", "backend", "device", "target_focal_length",
+          "wavefront", "wavefront_error", "rays", "failed_rays", "warnings"}) {
         EXPECT_TRUE(j.contains(key)) << key;
     }
     EXPECT_EQ(j["format"], "mikroptim.trace/1");
+    EXPECT_EQ(j["backend"], "cpu");
+    EXPECT_TRUE(j["device"].is_null());
     EXPECT_EQ(j["system"], "Einzellinse N-BK7");
     EXPECT_EQ(j["file"], kEinzellinse);
     EXPECT_EQ(j["reference_nm"].get<double>(), 587.56);
@@ -277,7 +288,11 @@ TEST(CliTrace, UsageErrors) {
     for (const std::vector<std::string_view>& args : std::vector<std::vector<std::string_view>>{
              {},
              {"--json"},
-             {kEinzellinse, "--gpu"},
+             {kEinzellinse, "--unbekannt"},
+             {kEinzellinse, "--device", "0"}, // --device ohne --gpu
+             {kEinzellinse, "--gpu", "--device"},
+             {kEinzellinse, "--gpu", "--device", "-1"},
+             {kEinzellinse, "--gpu", "--device", "x"},
              {kEinzellinse, kPlanplatte},
              {kEinzellinse, "--rings"},
              {kEinzellinse, "--rings", "0"},
@@ -306,6 +321,9 @@ TEST(CliTrace, EinzellinseText) {
     EXPECT_NE(s.find("Brennweite f'"), std::string::npos);
     EXPECT_NE(s.find("101.049"), std::string::npos);
     EXPECT_NE(s.find("Versagte Strahlen: 0 von 510"), std::string::npos) << s;
+    // Schlüssel auf 44 Zeichen aufgefüllt
+    EXPECT_NE(s.find("\n  Backend" + std::string(44 - 7, ' ') + "CPU, FP64\n"), std::string::npos)
+        << s;
     // Keine plattformabhängigen Darstellungen nicht endlicher Zahlen
     EXPECT_EQ(s.find("nan"), std::string::npos);
     EXPECT_EQ(s.find("inf"), std::string::npos);
@@ -321,3 +339,326 @@ TEST(CliTrace, EinzellinseText) {
     }
     EXPECT_EQ(rows, 9U) << s;
 }
+
+// ------------------------------------------------------------------------------------------
+// --gpu (M2-T5)
+// ------------------------------------------------------------------------------------------
+
+#ifndef MIKROPTIM_HAS_CUDA
+
+// Ohne CUDA gebaut: klare Meldung, Exit-Code kExitNoGpu, keine Ausgabe (läuft in der CI).
+TEST(CliTrace, GpuUnavailableWithoutCuda) {
+    for (const std::vector<std::string_view>& args : std::vector<std::vector<std::string_view>>{
+             {kEinzellinse, "--gpu"},
+             {kEinzellinse, "--gpu", "--json"},
+             {kEinzellinse, "--gpu", "--device", "1"},
+         }) {
+        std::ostringstream out;
+        std::ostringstream err;
+        EXPECT_EQ(mko::cli::run_trace_command(args, out, err), mko::cli::kExitNoGpu);
+        EXPECT_TRUE(out.str().empty()) << out.str();
+        EXPECT_NE(err.str().find("ohne CUDA gebaut"), std::string::npos) << err.str();
+    }
+}
+
+#else
+
+namespace {
+
+using mko::test::kCpuGpuFp64;
+using mko::test::kCpuGpuFp64Relative;
+
+const std::string kMehrlinser =
+    std::string(MKO_SOURCE_DIR) + "/data/systems/testsystem_mehrlinser.json";
+
+bool have_gpu() {
+    return mko::cuda::device_count() > 0;
+}
+
+// Schranke CPU gegen GPU für einen Wert in mm (tests/tolerances.hpp).
+double cpu_gpu_bound_mm(double cpu_mm) {
+    return std::max(kCpuGpuFp64, kCpuGpuFp64Relative * std::abs(cpu_mm));
+}
+
+// Größte beobachtete Abweichung der RMS-Werte (für das Testprotokoll).
+struct Deviation {
+    double abs_mm = 0.0;
+    double rel = 0.0;
+    int values = 0;
+};
+
+// RMS in Einheiten von `unit_mm` (1 für mm, λ_ref in mm für Wellen).
+void expect_rms_near(const json& gpu, const json& cpu, double unit_mm, const std::string& what,
+                     Deviation& dev) {
+    if (cpu.is_null()) {
+        EXPECT_TRUE(gpu.is_null()) << what;
+        return;
+    }
+    ASSERT_TRUE(gpu.is_number()) << what;
+    const double c = cpu.get<double>() * unit_mm;
+    const double g = gpu.get<double>() * unit_mm;
+    const double d = std::abs(g - c);
+    EXPECT_LE(d, cpu_gpu_bound_mm(c)) << what << ": GPU " << g << " mm, CPU " << c << " mm";
+    dev.abs_mm = std::max(dev.abs_mm, d);
+    if (c != 0.0) {
+        dev.rel = std::max(dev.rel, d / std::abs(c));
+    }
+    ++dev.values;
+}
+
+std::vector<std::string> keys_of(const json& j) {
+    std::vector<std::string> keys;
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        keys.push_back(it.key());
+    }
+    return keys;
+}
+
+// GPU-JSON gegen CPU-JSON: gleiche Felder in gleicher Reihenfolge, alles bitgleich außer
+// backend/device, rms_waves/rms_mm (innerhalb der CPU/GPU-Toleranz) und piston_mm (die Engine
+// liefert keinen Kolben, GPU null). Versagte Strahlen und Strahlzahlen sind damit identisch.
+Deviation expect_gpu_json_matches_cpu(const json& gpu, const json& cpu) {
+    Deviation dev;
+    EXPECT_EQ(keys_of(gpu), keys_of(cpu));
+    EXPECT_EQ(cpu["backend"], "cpu");
+    EXPECT_TRUE(cpu["device"].is_null());
+    EXPECT_EQ(gpu["backend"], "gpu");
+    EXPECT_EQ(gpu["device"]["index"], 0);
+    EXPECT_FALSE(gpu["device"]["name"].get<std::string>().empty());
+    const double lambda_ref_mm = cpu["reference_nm"].get<double>() * 1e-6;
+    for (auto it = cpu.begin(); it != cpu.end(); ++it) {
+        const std::string& key = it.key();
+        if (key == "backend" || key == "device") {
+            continue;
+        }
+        if (key != "wavefront" || it.value().is_null()) {
+            EXPECT_EQ(gpu[key], it.value()) << key;
+            continue;
+        }
+        const json& ce = it.value();
+        const json& ge = gpu[key];
+        if (!ge.is_array() || ge.size() != ce.size()) {
+            ADD_FAILURE() << "wavefront: GPU " << ge.dump() << ", CPU " << ce.dump();
+            continue;
+        }
+        for (std::size_t i = 0; i < ce.size(); ++i) {
+            EXPECT_EQ(keys_of(ge[i]), keys_of(ce[i]));
+            for (auto e = ce[i].begin(); e != ce[i].end(); ++e) {
+                const std::string what = "wavefront[" + std::to_string(i) + "]." + e.key();
+                if (e.key() == "rms_waves") {
+                    expect_rms_near(ge[i][e.key()], e.value(), lambda_ref_mm, what, dev);
+                } else if (e.key() == "rms_mm") {
+                    expect_rms_near(ge[i][e.key()], e.value(), 1.0, what, dev);
+                } else if (e.key() == "piston_mm") {
+                    EXPECT_TRUE(ge[i][e.key()].is_null()) << what;
+                } else {
+                    EXPECT_EQ(ge[i][e.key()], e.value()) << what;
+                }
+            }
+        }
+    }
+    return dev;
+}
+
+void print_deviation(const std::string& name, const Deviation& d) {
+    std::cout << "[          ] " << name << ": " << d.values
+              << " RMS-Werte, max |GPU - CPU| = " << d.abs_mm << " mm, relativ " << d.rel << '\n';
+}
+
+json run_json(std::initializer_list<std::string_view> args) {
+    const RunResult r = run(args);
+    EXPECT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    return json::parse(r.out);
+}
+
+std::vector<std::string> lines_of(const std::string& s) {
+    std::vector<std::string> lines;
+    std::istringstream in(s);
+    for (std::string line; std::getline(in, line);) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+// Zeile der Wellenfronttabelle (Feld, Winkel, Wellenlänge, Strahlen, versagt, RMS [Wellen]
+// %.6f, RMS [mm] %.6e), bei der die Rundung der letzten Stelle zwischen GPU und CPU kippen
+// darf: Die ersten fünf Spalten sind gleich, die RMS-Werte unterscheiden sich um höchstens
+// eine Einheit der letzten gedruckten Stelle. Abweichungen von ~1e-12 relativ ändern die
+// gedruckte Zahl nur, wenn der Wert fast genau auf einer Rundungsgrenze liegt.
+bool same_row_within_rounding(const std::string& gpu, const std::string& cpu) {
+    std::istringstream gs(gpu);
+    std::istringstream cs(cpu);
+    std::vector<std::string> g;
+    std::vector<std::string> c;
+    for (std::string t; gs >> t;) {
+        g.push_back(t);
+    }
+    for (std::string t; cs >> t;) {
+        c.push_back(t);
+    }
+    if (g.size() != 7 || c.size() != 7) {
+        return false;
+    }
+    for (std::size_t i = 0; i < 5; ++i) {
+        if (g[i] != c[i]) {
+            return false;
+        }
+    }
+    const double gw = std::stod(g[5]);
+    const double cw = std::stod(c[5]);
+    const double gm = std::stod(g[6]);
+    const double cm = std::stod(c[6]);
+    return std::abs(gw - cw) <= 1.5e-6 && std::abs(gm - cm) <= 1.5e-6 * std::abs(cm);
+}
+
+// Textausgabe GPU gegen CPU: identisch bis auf die Zeile "Backend" (und höchstens gekippte
+// Rundung in einer Tabellenzeile, siehe same_row_within_rounding).
+void expect_gpu_text_matches_cpu(const std::string& gpu, const std::string& cpu) {
+    const std::vector<std::string> g = lines_of(gpu);
+    const std::vector<std::string> c = lines_of(cpu);
+    ASSERT_EQ(g.size(), c.size()) << gpu << "\n---\n" << cpu;
+    const std::string backend = "  Backend" + std::string(44 - 7, ' ');
+    int backend_lines = 0;
+    int rounding_flips = 0;
+    for (std::size_t i = 0; i < c.size(); ++i) {
+        if (c[i].rfind("  Backend ", 0) == 0) {
+            ++backend_lines;
+            EXPECT_EQ(c[i], backend + "CPU, FP64");
+            EXPECT_EQ(g[i].rfind(backend + "GPU 0 (", 0), 0U) << g[i];
+            EXPECT_TRUE(g[i].ends_with("), FP64")) << g[i];
+            continue;
+        }
+        if (g[i] != c[i]) {
+            ++rounding_flips;
+            EXPECT_TRUE(same_row_within_rounding(g[i], c[i]))
+                << "Zeile " << i << "\nGPU: " << g[i] << "\nCPU: " << c[i];
+        }
+    }
+    EXPECT_EQ(backend_lines, 1);
+    std::cout << "[          ] Text: " << c.size() << " Zeilen, gekippte Rundung in "
+              << rounding_flips << " Zeilen\n";
+}
+
+// Plankonvexlinse mit R = 9,09 mm hinter einer Blende mit Radius 10 mm: Die äußeren Strahlen
+// treffen die erste Fläche nicht (Missed), unter Feldwinkel auch weitere. Frei erfundenes
+// Testsystem für versagte Strahlen.
+std::string vignetting_json() {
+    return std::string(R"({
+  "format": "mikroptim.system/1",
+  "name": "CLI-Test Vignettierung",
+  "units": "mm",
+  "glass_catalogs": [")") +
+           MKO_SOURCE_DIR + R"(/data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [486.13, 587.56], "weights": [1.0, 1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0, 5.0, 10.0], "field_weights": [1.0, 1.0, 1.0] },
+  "surfaces": [
+    { "type": "stop", "semi_diameter": 10.0, "thickness": 2.0, "material": "AIR" },
+    { "type": "sphere", "curvature": 0.11, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 9.0 },
+    { "type": "plane", "thickness": 13.6, "material": "AIR", "semi_diameter": 9.0 }
+  ]
+})";
+}
+
+} // namespace
+
+// Abnahmekriterium M2-T5: `--gpu --json` gleich der CPU-Ausgabe innerhalb der Toleranz.
+TEST(CliTraceGpu, JsonMatchesCpu) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    for (const std::string& file : {kEinzellinse, kMehrlinser}) {
+        SCOPED_TRACE(file);
+        const json cpu = run_json({file, "--json"});
+        const json gpu = run_json({file, "--json", "--gpu"});
+        ASSERT_TRUE(gpu["wavefront"].is_array());
+        print_deviation(file, expect_gpu_json_matches_cpu(gpu, cpu));
+    }
+    // Andere Quadratur und ausdrücklich gewähltes Gerät 0
+    const json cpu = run_json({kMehrlinser, "--json", "--rings", "16", "--spokes", "12"});
+    const json gpu = run_json(
+        {kMehrlinser, "--json", "--rings", "16", "--spokes", "12", "--gpu", "--device", "0"});
+    print_deviation("Mehrlinser 16 x 12", expect_gpu_json_matches_cpu(gpu, cpu));
+}
+
+// Abnahmekriterium M2-T5: Textausgabe identisch bis auf die Backend-Zeile.
+TEST(CliTraceGpu, TextMatchesCpu) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    for (const std::string& file : {kEinzellinse, kMehrlinser}) {
+        SCOPED_TRACE(file);
+        const RunResult cpu = run({file});
+        const RunResult gpu = run({file, "--gpu"});
+        ASSERT_EQ(cpu.code, mko::cli::kExitOk) << cpu.err;
+        ASSERT_EQ(gpu.code, mko::cli::kExitOk) << gpu.err;
+        EXPECT_TRUE(gpu.err.empty()) << gpu.err;
+        expect_gpu_text_matches_cpu(gpu.out, cpu.out);
+    }
+}
+
+// Versagte Strahlen pro Feld und Wellenlänge identisch.
+TEST(CliTraceGpu, FailedRaysMatchCpu) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const TempFile file("mikroptim_cli_trace_vignetting.json", vignetting_json());
+    const json cpu = run_json({file.path(), "--json"});
+    const json gpu = run_json({file.path(), "--json", "--gpu"});
+    ASSERT_TRUE(cpu["failed_rays"].is_number());
+    EXPECT_GT(cpu["failed_rays"].get<int>(), 0);
+    EXPECT_LT(cpu["failed_rays"].get<int>(), cpu["rays"].get<int>());
+    print_deviation("Vignettierung", expect_gpu_json_matches_cpu(gpu, cpu));
+    std::cout << "[          ] Vignettierung: " << cpu["failed_rays"] << " von " << cpu["rays"]
+              << " Strahlen versagt\n";
+}
+
+// Punktquelle auf der Achse (axis), in der y-z-Ebene (half) und außerhalb (full).
+TEST(CliTraceGpu, PointSourceMatchesCpu) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const std::vector<std::vector<std::string>> cases = {{"[0.0, 0.0, -50.0]", "axis"},
+                                                         {"[0.0, 2.0, -50.0]", "half"},
+                                                         {"[1.0, 2.0, -50.0]", "full"}};
+    for (const std::vector<std::string>& c : cases) {
+        SCOPED_TRACE(c[0]);
+        const TempFile file("mikroptim_cli_trace_gpu_point.json",
+                            lens_json(R"({ "type": "point", "point": )" + c[0] +
+                                          R"(, "numerical_aperture": 0.05 })",
+                                      "N-BK7"));
+        const json cpu = run_json({file.path(), "--json"});
+        const json gpu = run_json({file.path(), "--json", "--gpu"});
+        ASSERT_EQ(cpu["wavefront"].size(), 1U);
+        EXPECT_EQ(cpu["wavefront"][0]["pupil_mode"], c[1]);
+        print_deviation("Punktquelle " + c[0], expect_gpu_json_matches_cpu(gpu, cpu));
+    }
+}
+
+// Afokal ohne target.focal_length: wie im CPU-Pfad keine Wellenfront, gleiche Meldung.
+TEST(CliTraceGpu, AfocalSameAsCpu) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const json cpu = run_json({kPlanplatte, "--json"});
+    const json gpu = run_json({kPlanplatte, "--json", "--gpu"});
+    EXPECT_TRUE(gpu["wavefront"].is_null());
+    EXPECT_EQ(gpu["wavefront_error"], cpu["wavefront_error"]);
+    expect_gpu_json_matches_cpu(gpu, cpu);
+
+    const RunResult t = run({kPlanplatte, "--gpu"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("Wellenfront nicht auswertbar"), std::string::npos) << t.out;
+}
+
+TEST(CliTraceGpu, InvalidDeviceFails) {
+    if (!have_gpu()) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const std::string device = std::to_string(mko::cuda::device_count());
+    const RunResult r = run({kEinzellinse, "--gpu", "--device", device});
+    EXPECT_EQ(r.code, mko::cli::kExitError);
+    EXPECT_TRUE(r.out.empty());
+    EXPECT_NE(r.err.find("--device " + device), std::string::npos) << r.err;
+}
+
+#endif
