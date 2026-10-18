@@ -60,6 +60,8 @@ struct OutputRequest {
     std::int64_t extra_residuals = 0;  // weitere Residuen pro Variante (Paraxial, Strafen)
     bool residuals = true;             // Residuenvektor: rays + extra Werte (FP64)
     bool ray_status = true;            // Status pro Strahl (1 Byte, TraceStatus)
+    bool opd = false;                  // rohe OPD pro Strahl nach Kolbenabzug (FP64), z. B.
+                                       // für Tests und Auswertung (Kernel RESIDUALS, M2-T2)
     bool merit = true;                 // Merit (FP64) + Teilsumme pro Block (v, f, l)
     bool surface_max = true;           // max. Strahlhöhe und Einfallswinkel pro Fläche (2 · S FP64)
                                        // + dasselbe pro Block (v, f, l)
@@ -67,8 +69,9 @@ struct OutputRequest {
 
 // Strahlen pro Variante: L · (axis_fields · axis_samples + (fields − axis_fields) · samples).
 // `samples` = sample_count der Quadratur für Feldpunkte (N · M), `axis_samples` = sample_count
-// der Quadratur im Achsfall (N) für die ersten axis_fields Felder. Wirft std::invalid_argument
-// bei negativen Werten oder axis_fields > fields.
+// der Quadratur im Achsfall (N) für axis_fields der Felder (an beliebiger Stelle; die Ablage
+// pro Feld legt ResidualLayout fest, batch_residuals.hpp). Wirft std::invalid_argument bei
+// negativen Werten oder axis_fields > fields.
 std::int64_t rays_per_variant(int fields, int wavelengths, int samples, int axis_fields = 0,
                               int axis_samples = 0);
 
@@ -78,6 +81,7 @@ std::int64_t rays_per_variant(int fields, int wavelengths, int samples, int axis
 struct OutputLayout {
     BufferRegion residuals;           // V · (rays + extra_residuals) · 8
     BufferRegion ray_status;          // V · rays · 1
+    BufferRegion opd;                 // V · rays · 8
     BufferRegion merit;               // V · 8
     BufferRegion merit_partial;       // V · F · L · 8
     BufferRegion surface_max;         // V · 2 · S · 8

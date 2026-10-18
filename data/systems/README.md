@@ -4,6 +4,7 @@
 |---|---|
 | `einzellinse_bk7.json` | einfache Testlinse (Paraxialdaten, sphärische Aberration, Farbe) |
 | `planplatte_bk7.json` | exakt bekannte optische Weglänge |
+| `testsystem_mehrlinser.json` | frei erfundenes Mehrlinsensystem (kein reales Objektiv): vier Gläser, drei Felder, vier Wellenlängen; CPU/GPU-Abgleich der Residuen (M2-T2) |
 
 Geplante Start- und Referenzsysteme (Linsendaten trägt der Maintainer ein, Agenten erfinden keine Daten realer Objektive):
 

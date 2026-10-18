@@ -1,0 +1,27 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Testsystem Mehrlinser",
+  "description": "Frei erfundenes Testsystem (kein reales Objektiv): Kittglied, Einzellinse und Meniskus aus vier Gläsern, f ca. 20,6 mm, drei Felder, vier Wellenlängen. Bildebene nahe dem paraxialen Fokus.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": {
+    "wavelengths_nm": [486.13, 546.07, 587.56, 656.27],
+    "weights": [1.0, 1.0, 1.0, 1.0],
+    "reference_nm": 546.07
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [0.0, 1.5, 3.0],
+    "field_weights": [1.0, 1.0, 1.0]
+  },
+  "surfaces": [
+    { "type": "stop", "semi_diameter": 4.0, "thickness": 3.0, "material": "AIR" },
+    { "type": "sphere", "curvature": 0.03333, "thickness": 3.5, "material": "CAF2", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.04, "thickness": 1.5, "material": { "model": "buchdahl", "n0": 1.62, "nu": [-0.12, 0.02] }, "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.0125, "thickness": 1.0, "material": "AIR", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": 0.025, "thickness": 3.0, "material": "N-BK7", "semi_diameter": 6.0 },
+    { "type": "plane", "thickness": 2.0, "material": "AIR", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": 0.05, "thickness": 4.0, "material": { "model": "constant", "n": 1.72 }, "semi_diameter": 5.5 },
+    { "type": "sphere", "curvature": 0.016667, "thickness": 14.45, "material": "AIR", "semi_diameter": 5.0 }
+  ]
+}

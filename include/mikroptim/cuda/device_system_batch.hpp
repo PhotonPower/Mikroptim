@@ -35,7 +35,8 @@ public:
     // Lädt die gemeinsamen Felder und die Varianten [first, first + count) von `host` hoch
     // (count < 0: bis zum Ende); auf dem Gerät tragen sie die Nummern 0 … count − 1 (Tranchen,
     // Aufteilung auf mehrere GPUs). Der Puffer wird wiederverwendet, wenn er groß genug ist.
-    // count = 0 ist erlaubt (nur gemeinsame Felder). Bei einer Ausnahme ist der Container leer.
+    // count = 0 ist erlaubt (nur gemeinsame Felder). Prüft vorher check_pupil_modes für den
+    // Bereich (std::invalid_argument). Bei einer Ausnahme ist der Container leer.
     void upload(const SystemBatchHost& host, int first = 0, int count = -1);
 
     // Schreibt alle Gerätevarianten nach `host` an die Stellen first … first + variants() − 1

@@ -97,6 +97,16 @@ void validate_topology(const BatchTopology& t) {
         fail_topology(std::to_string(ghosts) +
                       " Flächen vom Typ GhostPlate, aber G = " + std::to_string(t.ghost_plates));
     }
+    if (!t.pupil_mode.empty() && t.pupil_mode.size() != to_size(t.fields)) {
+        fail_topology("Pupillenarten für " + std::to_string(t.pupil_mode.size()) +
+                      " Felder, erwartet " + std::to_string(t.fields) + " oder keine");
+    }
+    for (std::size_t f = 0; f < t.pupil_mode.size(); ++f) {
+        const PupilMode m = t.pupil_mode[f];
+        if (m != PupilMode::Half && m != PupilMode::Full && m != PupilMode::Axis) {
+            fail_topology("Feld " + std::to_string(f) + ": unbekannte Pupillenart");
+        }
+    }
 }
 
 // ---- SystemBatchHost ---------------------------------------------------------------------
@@ -411,6 +421,43 @@ void SystemBatchHost::validate_values() const {
             fail("Quellpunkt ist nicht endlich");
         }
     }
+    check_pupil_modes(*this);
+}
+
+void check_pupil_modes(const SystemBatchHost& batch, int first, int count) {
+    const int total = batch.variants();
+    if (first < 0 || first > total || count > total - first) {
+        throw std::out_of_range("check_pupil_modes: Variantenbereich außerhalb des Batches");
+    }
+    if (count < 0) {
+        count = total - first;
+    }
+    const std::vector<PupilMode>& modes = batch.topology().pupil_mode;
+    if (modes.empty()) {
+        return;
+    }
+    const auto fail = [](const std::string& what) {
+        throw std::invalid_argument("SystemBatch: " + what);
+    };
+    if (batch.source() == SourceKind::Point) {
+        // Ein Feld; der Quellpunkt ist gemeinsam für alle Varianten.
+        const PupilMode m = modes[0];
+        const auto& q = batch.source_point;
+        if ((m == PupilMode::Axis && !(q[0] == 0.0 && q[1] == 0.0)) ||
+            (m == PupilMode::Half && !(q[0] == 0.0))) {
+            fail("Quellpunkt passt nicht zur Pupillenart des Feldes 0 (Axis verlangt x = y = 0, "
+                 "Half x = 0)");
+        }
+        return;
+    }
+    for (int v = first; v < first + count; ++v) {
+        for (int f = 0; f < batch.fields(); ++f) {
+            if (modes[to_size(f)] == PupilMode::Axis && batch.field_angle(v, f) != 0.0) {
+                fail("Variante " + std::to_string(v) + ", Feld " + std::to_string(f) +
+                     ": Achsfeld (Pupillenart Axis) verlangt Feldwinkel 0");
+            }
+        }
+    }
 }
 
 bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
@@ -441,6 +488,18 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
     t.fields = source_field_count(system);
     t.source = system.source.type == SourceType::Point ? SourceKind::Point : SourceKind::Collimated;
     t.type = table.type;
+    // Pupillenart pro Feld, gleiche Regel wie wavefront_pupil_mode (merit/wavefront.cpp)
+    for (int f = 0; f < t.fields; ++f) {
+        if (t.source == SourceKind::Collimated) {
+            t.pupil_mode.push_back(system.source.field_angles_deg[to_size(f)] == 0.0
+                                       ? PupilMode::Axis
+                                       : PupilMode::Half);
+        } else {
+            const auto& q = system.source.point;
+            t.pupil_mode.push_back(q[0] == 0.0 ? (q[1] == 0.0 ? PupilMode::Axis : PupilMode::Half)
+                                               : PupilMode::Full);
+        }
+    }
     return t;
 }
 
