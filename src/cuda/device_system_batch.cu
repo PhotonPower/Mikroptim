@@ -116,6 +116,9 @@ void DeviceSystemBatch::upload(const SystemBatchHost& host, int first, int count
 
     loaded_ = false;
     variants_ = 0;
+    // Achsfelder bestimmen die Ablage der Residuen (ResidualLayout); der Kernel kann eine
+    // Variante, die ein Achsfeld verlässt, nicht erkennen.
+    check_pupil_modes(host, first, count);
     if (device_ < 0) {
         device_ = detail::current_device();
     }

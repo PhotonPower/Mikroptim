@@ -11,6 +11,14 @@ inline constexpr double kLengthFp64 = 1e-11;
 inline constexpr double kUnitFp64 = 1e-13;
 // CPU gegen GPU, beide FP64 (Unterschiede nur durch FMA-Kontraktion)
 inline constexpr double kCpuGpuFp64 = 1e-12;
+// CPU gegen GPU für OPD und Residuen zufällig gestörter Varianten (M2-T2), relativ zum Betrag
+// des CPU-Werts. Schranke pro Strahl: max(kCpuGpuFp64, kCpuGpuFp64Relative · |x|), also rein
+// absolut kCpuGpuFp64 bis |x| = 0,1 mm (ca. 180 Wellen). Schlecht konditionierte Strahlen (nahe
+// Totalreflexion oder streifend, z. B. k = 2e-3 an der letzten Fläche und danach d_z < 0)
+// verstärken die Rundungsunterschiede aus FMA-Kontraktion und sin/cos der CUDA-Bibliothek; sie
+// haben |OPD| von einigen mm. Beobachtet: bis 2,4e-12 mm bei |OPD| = 1,8 … 6 mm, relativ
+// <= 1,3e-12 (auch mit --fmad=false noch 1,3e-12 mm, also nicht nur FMA).
+inline constexpr double kCpuGpuFp64Relative = 1e-11;
 // Brechzahl aus Katalogkoeffizienten gegen gedruckte Kontrollwerte (n_d mit 5 Nachkommastellen,
 // Rundung der Datenblätter und Koeffizienten). Kein Maß für die Rechengenauigkeit.
 inline constexpr double kIndexCatalog = 1e-5;

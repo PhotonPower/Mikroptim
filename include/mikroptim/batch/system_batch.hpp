@@ -30,6 +30,13 @@ struct BatchTopology {
     int ghost_terms = 0;  // K >= 0, >= 1 wenn G > 0
     SourceKind source = SourceKind::Collimated;
     std::vector<SurfaceKind> type; // [S]
+    // Pupillenart pro Feld [F] oder leer (nicht festgelegt). Eigenschaft des Batches, nicht
+    // der Variante: Sie bestimmt Zahl und Ablage der Residuen (ResidualLayout) und wird beim
+    // Aufbau aus dem Ausgangssystem festgelegt (topology_of): kollimiert θ_f = 0 → Axis, sonst
+    // Half; Punktquelle auf der Achse → Axis, mit x = 0 → Half, sonst Full (dieselbe Regel wie
+    // wavefront_pupil_mode). Varianten dürfen ein Achsfeld nicht verlassen
+    // (check_pupil_modes). Der Residuen-Kernel verlangt die Festlegung.
+    std::vector<PupilMode> pupil_mode;
 
     friend bool operator==(const BatchTopology&, const BatchTopology&) = default;
 };
@@ -141,7 +148,8 @@ public:
     SurfaceTableView<double> surface_table(int v) const;
 
     // Prüft die Werte: alle endlich, Pupillenradius > 0, Brechzahlen > 0, Gewichte >= 0,
-    // Normierungsradien > 0, λ_ref > 0, bei der Punktquelle 0 < NA < index[v][0][l].
+    // Normierungsradien > 0, λ_ref > 0, bei der Punktquelle 0 < NA < index[v][0][l], und die
+    // Pupillenarten (check_pupil_modes).
     // Wirft std::invalid_argument mit Variante und Feld der ersten Verletzung.
     void validate_values() const;
 
@@ -169,7 +177,16 @@ private:
     std::vector<double> ghost_index_;
 };
 
-// Topologie eines Systems aus der Datei (G = K = 0, Geisterplatten folgen in M4).
+// Prüft, ob die Varianten [first, first + count) (count < 0: bis zum Ende) zu den
+// Pupillenarten der Topologie passen: kollimiert verlangt Axis den Feldwinkel θ_f = 0 (±0) in
+// jeder Variante (Varianten dürfen das Achsfeld nicht verlassen; Half und Full gelten für
+// jeden Winkel, auch 0); Punktquelle verlangt Axis den Quellpunkt auf der Achse (x = y = 0)
+// und Half x = 0. Ohne festgelegte Pupillenarten (leer) wird nichts geprüft.
+// Wirft std::invalid_argument mit Variante und Feld, std::out_of_range bei ungültigem Bereich.
+void check_pupil_modes(const SystemBatchHost& batch, int first = 0, int count = -1);
+
+// Topologie eines Systems aus der Datei (G = K = 0, Geisterplatten folgen in M4) mit den
+// Pupillenarten pro Feld (siehe BatchTopology::pupil_mode).
 BatchTopology topology_of(const SystemDescription& system, const IndexTable& index);
 
 // Baut einen Batch mit `variants` gleichen Varianten aus Systembeschreibung und Brechzahltabelle

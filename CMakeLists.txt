@@ -126,10 +126,12 @@ target_link_libraries(mikroptim_merit
     PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
-# SystemBatch (Host): SoA-Layout vieler Varianten, Speicherabschätzung, CPU-Trace pro Variante
+# SystemBatch (Host): SoA-Layout vieler Varianten, Speicherabschätzung, CPU-Trace und
+# CPU-Referenz der Residuen pro Variante
 # --------------------------------------------------------------------------
 add_library(mikroptim_batch STATIC
     src/batch/batch_memory.cpp
+    src/batch/batch_residuals.cpp
     src/batch/batch_trace_cpu.cpp
     src/batch/system_batch.cpp)
 add_library(Mikroptim::batch ALIAS mikroptim_batch)
@@ -147,6 +149,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
         src/cuda/quadrature_check.cu
+        src/cuda/residuals.cu
         src/cuda/smoke_trace.cu
         src/cuda/trace_check.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)

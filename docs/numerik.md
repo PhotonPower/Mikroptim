@@ -169,6 +169,16 @@ Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug 
 
 Die Abweichung des RMS von der Seidel-Näherung ist der Anteil höherer Ordnung (W₀₆₀ ρ⁶ usw., relativ ∝ NA²: Faktor 4 zwischen NA 0,049 und 0,025); der Fit A ρ⁴ + B ρ⁶ + K trennt ihn ab. Die Lage der Referenzsphäre durch den Scheitel statt durch die Austrittspupille ändert auf der Achse nur Terme zweiter Ordnung in der Queraberration und ist darin enthalten.
 
+### Residuen pro Strahl (M2)
+
+Festlegung für den Kernel `RESIDUALS` und seine CPU-Referenz (M2-T2, `include/mikroptim/merit/ray_residual.hpp`, Ablage: [architektur.md, „Kernel RESIDUALS“](architektur.md#kernel-residuals-m2-t2)). Pro Variante, Feld f, Wellenlänge l und Stützstelle k:
+
+$$r_k = s_{f,l}\,\sqrt{W_i V_j}\;\mathrm{OPD}_k \quad [\mathrm{mm}],\qquad s_{f,l} = 1\ \text{in M2}$$
+
+mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne gültigen Strahl im Tupel alle OPD und Residuen 0) und √(W_i V_j) = `residual_weight(sample)`. Der Faktor s_{f,l} (`residual_scale`) ist der Erweiterungspunkt für M4-T1: √(w_f w_λ)/λ_ref nach [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor); danach ist r dimensionslos (Wellen). Ohne Versagen gilt Σ_k r_k² = RMS² des Tupels (Gewichte mit Summe 1). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches.
+
+Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern und ist für df64 (M7) vorgemerkt, muss dann aber in CPU und Kernel gleich definiert werden.
+
 ## 8. Pupillenquadratur
 
 Mittelwert über die Kreispupille als Gauß-Quadratur (Forbes):
