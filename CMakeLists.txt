@@ -53,6 +53,16 @@ else()
 endif()
 
 # --------------------------------------------------------------------------
+# Externe Abhängigkeiten (feste Versionen, siehe ADR-0001)
+# --------------------------------------------------------------------------
+include(FetchContent)
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# --------------------------------------------------------------------------
 # Kern (header-only, host + device)
 # --------------------------------------------------------------------------
 add_library(mikroptim_core INTERFACE)
@@ -61,11 +71,23 @@ target_include_directories(mikroptim_core INTERFACE ${PROJECT_SOURCE_DIR}/includ
 target_compile_features(mikroptim_core INTERFACE cxx_std_20)
 
 # --------------------------------------------------------------------------
+# Glasmodell (Host): Glaskataloge, Brechzahltabellen
+# --------------------------------------------------------------------------
+add_library(mikroptim_glass STATIC
+    src/glass/catalog.cpp
+    src/glass/index_table.cpp)
+add_library(Mikroptim::glass ALIAS mikroptim_glass)
+target_link_libraries(mikroptim_glass
+    PUBLIC mikroptim_core
+    PRIVATE nlohmann_json::nlohmann_json mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
         src/cuda/device_info.cu
+        src/cuda/dispersion_eval.cu
         src/cuda/smoke_trace.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda PUBLIC mikroptim_core PRIVATE CUDA::cudart mikroptim_warnings)

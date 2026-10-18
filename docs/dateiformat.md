@@ -69,3 +69,22 @@ Beispiel: [data/glass/basis.json](../data/glass/basis.json).
 | `glasses[].source` | string | Herkunft der Daten |
 
 Brechzahlen sind relativ zu Luft.
+
+### Einlesen (`mikroptim/glass/catalog.hpp`, ab M1-T2)
+
+```cpp
+mko::GlassCatalog cat = mko::GlassCatalog::from_file("data/glass/basis.json");
+cat.merge(mko::GlassCatalog::from_file("data/glass/private/schott.json")); // mehrere Kataloge
+const mko::Glass& g = cat.at("N-BK7");   // find() liefert nullptr statt Ausnahme
+double n = g.index(587.56);              // nm; Ausnahme außerhalb von range_nm
+```
+
+Regeln des Lesers (Fehler als `mko::GlassError`, Meldung mit Datei und JSON-Pfad, z. B. `basis.json: glasses[2].B: Feld mit genau 3 Zahlen erwartet`):
+
+- `format` muss genau `"mikroptim.glass/1"` sein; `mikroptim.glass/<n>` mit n ≠ 1 wird als unbekannte Hauptversion abgelehnt.
+- Pflichtfelder je Glas: `name`, `model` (nur `"sellmeier"`), `B`, `C` (je 3 endliche Zahlen), `range_nm` (2 Zahlen, 0 < min < max).
+- Namen sind eindeutig, nicht leer und nicht `AIR` (Schlüsselwort der Systemdatei). Der Vergleich beachtet Groß-/Kleinschreibung. Doppelte Namen werden in einer Datei und beim Zusammenführen (`merge`) abgelehnt.
+- Ein Sellmeier-Pol (λ² = C_i) innerhalb von `range_nm` wird abgelehnt.
+- Optional: `reference.n_d` (wird gespeichert), `source` (wird gespeichert), `transmission` und `comment` (werden ignoriert). Unbekannte Felder werden ignoriert und in `GlassCatalog::warnings()` gemeldet.
+
+Die Brechzahltabelle für ein System beschreibt [architektur.md](architektur.md#brechzahltabelle).

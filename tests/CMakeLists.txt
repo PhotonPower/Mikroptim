@@ -10,11 +10,18 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
+    test_dispersion.cpp
+    test_glass_catalog.cpp
+    test_index_table.cpp
     test_surface_ops.cpp)
-target_link_libraries(mikroptim_tests PRIVATE mikroptim_core mikroptim_warnings GTest::gtest_main)
+target_link_libraries(mikroptim_tests PRIVATE
+    mikroptim_core mikroptim_glass mikroptim_warnings GTest::gtest_main)
+target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 if(MIKROPTIM_ENABLE_CUDA)
-    target_sources(mikroptim_tests PRIVATE test_cuda_smoke.cpp)
+    target_sources(mikroptim_tests PRIVATE
+        test_cuda_dispersion.cpp
+        test_cuda_smoke.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()
 
