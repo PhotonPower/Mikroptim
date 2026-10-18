@@ -343,12 +343,6 @@ TEST(CudaFdJacobian, DevicePathMatchesHostDifferences) {
     s.extra_residuals = opt.extra.count; // Platz für Zusatzresiduen wie dokumentiert
     const mko::cuda::TraceOutput out = engine.run(fd.batch, mko::cuda::TraceMode::Residuals, s);
     const std::vector<double> extra = mko::test::extra_values(fd.batch, opt.extra);
-    const std::vector<double> units =
-        mko::test::residual_units(fd.batch, ResidualLayout(p.base.topology(), opt.quadrature));
-    const auto unit = [&](std::int64_t r) {
-        return r < static_cast<std::int64_t>(units.size()) ? units[static_cast<std::size_t>(r)]
-                                                           : 0.0;
-    };
     FdJacobian host;
     mko::fd_jacobian_from_residuals(fd, out.residuals, extra, opt.extra.count, host);
 
