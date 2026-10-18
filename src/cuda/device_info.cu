@@ -1,5 +1,7 @@
 #include "mikroptim/cuda/device_info.hpp"
 
+#include "device_guard.hpp"
+
 #include <cuda_runtime.h>
 
 #include <cstdio>
@@ -32,6 +34,13 @@ int print_devices() {
                     p.multiProcessorCount, p.singleToDoublePrecisionPerfRatio);
     }
     return n;
+}
+
+DeviceMemoryInfo device_memory_info(int device) {
+    const detail::DeviceGuard guard(device);
+    DeviceMemoryInfo info;
+    MKO_CUDA_CHECK(cudaMemGetInfo(&info.free_bytes, &info.total_bytes));
+    return info;
 }
 
 } // namespace mko::cuda

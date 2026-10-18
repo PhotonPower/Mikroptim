@@ -126,17 +126,33 @@ target_link_libraries(mikroptim_merit
     PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# SystemBatch (Host): SoA-Layout vieler Varianten, Speicherabschätzung, CPU-Trace pro Variante
+# --------------------------------------------------------------------------
+add_library(mikroptim_batch STATIC
+    src/batch/batch_memory.cpp
+    src/batch/batch_trace_cpu.cpp
+    src/batch/system_batch.cpp)
+add_library(Mikroptim::batch ALIAS mikroptim_batch)
+target_link_libraries(mikroptim_batch
+    PUBLIC mikroptim_core mikroptim_model mikroptim_glass mikroptim_cpu
+    PRIVATE mikroptim_paraxial mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
+        src/cuda/batch_trace_check.cu
         src/cuda/device_info.cu
+        src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
         src/cuda/quadrature_check.cu
         src/cuda/smoke_trace.cu
         src/cuda/trace_check.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
-    target_link_libraries(mikroptim_cuda PUBLIC mikroptim_core PRIVATE CUDA::cudart mikroptim_warnings)
+    target_link_libraries(mikroptim_cuda
+        PUBLIC mikroptim_core mikroptim_batch
+        PRIVATE CUDA::cudart mikroptim_warnings)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)
     target_compile_options(mikroptim_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--Werror=cross-execution-space-call>)

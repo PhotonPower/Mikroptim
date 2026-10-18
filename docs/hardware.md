@@ -20,7 +20,7 @@ Architekturen: `CMAKE_CUDA_ARCHITECTURES = 60-real;86-real;86-virtual`.
 - Warp-Primitive nur als `_sync`-Varianten.
 - Shared Memory pro Block ≤ 48 KB.
 - Keine Tensor Cores, keine Features oberhalb sm_60 ohne Fallback.
-- Batchgrößen aus `cudaMemGetInfo` ableiten.
+- Batchgrößen aus `cudaMemGetInfo` ableiten: `mko::cuda::device_memory_info()` und `max_variants_on_device()` mit Sicherheitsreserve (Formel in [architektur.md, „Speicherbedarf“](architektur.md#speicherbedarf)); auf der P100 (16 GB) passen deutlich weniger Varianten als auf der RTX 3090 (24 GB).
 
 ## Durchsatzabschätzung
 

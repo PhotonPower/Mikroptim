@@ -10,6 +10,7 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
+    test_batch_memory.cpp
     test_buchdahl_fit.cpp
     test_dispersion.cpp
     test_glass_catalog.cpp
@@ -18,12 +19,13 @@ add_executable(mikroptim_tests
     test_paraxial.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
+    test_system_batch.cpp
     test_system_io.cpp
     test_trace.cpp
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-    mikroptim_warnings GTest::gtest_main)
+    mikroptim_batch mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
@@ -32,6 +34,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_dispersion.cpp
         test_cuda_quadrature.cpp
         test_cuda_smoke.cpp
+        test_cuda_system_batch.cpp
         test_cuda_trace.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()
