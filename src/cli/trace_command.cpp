@@ -50,6 +50,7 @@ struct TraceArgs {
     bool gpu = false;
     bool have_device = false; // --device angegeben
     int device = 0;
+    bool df64 = false; // --precision df64 (nur mit --gpu)
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
 };
@@ -86,6 +87,19 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
                 throw UsageError("--device muss >= 0 sein");
             }
             a.have_device = true;
+        } else if (arg == "--precision") {
+            if (i + 1 >= args.size()) {
+                throw UsageError("--precision erwartet einen Wert (fp64 oder df64)");
+            }
+            const std::string_view value = args[++i];
+            if (value == "fp64") {
+                a.df64 = false;
+            } else if (value == "df64") {
+                a.df64 = true;
+            } else {
+                throw UsageError("--precision erwartet fp64 oder df64, nicht '" +
+                                 std::string(value) + "'");
+            }
         } else if (arg == "--rings" || arg == "--spokes") {
             if (i + 1 >= args.size()) {
                 throw UsageError(std::string(arg) + " erwartet einen Wert");
@@ -118,6 +132,9 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
     if (a.have_device && !a.gpu) {
         throw UsageError("--device verlangt --gpu");
     }
+    if (a.df64 && !a.gpu) {
+        throw UsageError("--precision df64 verlangt --gpu (die CPU rechnet immer in FP64)");
+    }
     return a;
 }
 
@@ -148,6 +165,7 @@ struct BackendInfo {
     bool gpu = false;
     int device = -1;         // nur GPU
     std::string device_name; // nur GPU
+    bool df64 = false;       // Rechentyp der Wellenfront: df64 (nur GPU) statt FP64
 };
 
 // Alles, was ausgegeben wird.
@@ -193,7 +211,7 @@ WavefrontReport report_from(const WavefrontResult& w) {
 // std::invalid_argument), h_f = f_soll · tan θ_f, w = Dicke der letzten Fläche. Die Engine
 // liefert keinen Kolben (piston bleibt NaN).
 WavefrontReport evaluate_wavefront_gpu(const LoadedSystem& loaded, const WavefrontOptions& options,
-                                       cuda::TraceEngine& engine) {
+                                       cuda::TraceEngine& engine, bool df64) {
     const SystemDescription& sys = loaded.system;
     std::optional<double> focal_length;
     if (sys.source.type == SourceType::Collimated) {
@@ -206,6 +224,7 @@ WavefrontReport evaluate_wavefront_gpu(const LoadedSystem& loaded, const Wavefro
     settings.quadrature.spokes = options.spokes;
     settings.opd = true;
     settings.status = true;
+    settings.precision = df64 ? cuda::Precision::Df64 : cuda::Precision::Fp64;
     const cuda::TraceOutput out = engine.run(batch, cuda::TraceMode::Residuals, settings);
     const std::vector<TupleWavefront> tuples = tuple_wavefronts(out.residuals, out.layout, 0);
 
@@ -326,6 +345,7 @@ void write_json(const TraceReport& r, std::ostream& out) {
     } else {
         j["device"] = nullptr;
     }
+    j["precision"] = r.backend.df64 ? "df64" : "fp64";
     if (r.wavefront) {
         const WavefrontReport& w = *r.wavefront;
         j["target_focal_length"] = number(w.focal_length);
@@ -521,7 +541,8 @@ void write_text(const TraceReport& r, std::ostream& out) {
         << " Speichen, RMS in Wellen bei " << fixed(ref, 3) << " nm)\n";
     if (r.backend.gpu) {
         kv(out, "Backend",
-           "GPU " + std::to_string(r.backend.device) + " (" + r.backend.device_name + "), FP64");
+           "GPU " + std::to_string(r.backend.device) + " (" + r.backend.device_name + "), " +
+               (r.backend.df64 ? "df64" : "FP64"));
     } else {
         kv(out, "Backend", "CPU, FP64");
     }
@@ -548,7 +569,7 @@ void write_text(const TraceReport& r, std::ostream& out) {
 
 void print_trace_usage(std::ostream& out) {
     out << "Aufruf: mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
-           "                       [--gpu [--device N]]\n"
+           "                       [--gpu [--device N] [--precision fp64|df64]]\n"
            "  Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge und versagte Strahlen\n"
            "  (FP64; Beschreibung: docs/cli.md).\n"
            "  --json       maschinenlesbare Ausgabe (Format mikroptim.trace/1)\n"
@@ -560,6 +581,8 @@ void print_trace_usage(std::ostream& out) {
         << ")\n"
            "  --gpu        Wellenfront auf der GPU rechnen (Kernel RESIDUALS) statt auf der CPU\n"
            "  --device N   CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
+           "  --precision P  Rechentyp der Wellenfront mit --gpu: fp64 (Standard) oder df64\n"
+           "               (Paar aus zwei float, auf GeForce-Karten schneller, ca. 1e-9 mm)\n"
            "  --help       diese Hilfe\n"
            "Exit-Code: 0 Erfolg, 1 Fehler beim Laden oder Auswerten, 2 ungültige "
            "Kommandozeile,\n"
@@ -629,7 +652,8 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
                 r.backend.gpu = true;
                 r.backend.device = engine->device();
                 r.backend.device_name = engine->device_name();
-                r.wavefront = evaluate_wavefront_gpu(r.loaded, r.options, *engine);
+                r.backend.df64 = a.df64;
+                r.wavefront = evaluate_wavefront_gpu(r.loaded, r.options, *engine, a.df64);
             } else {
                 r.wavefront = report_from(evaluate_wavefront(r.loaded, r.options));
             }

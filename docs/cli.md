@@ -2,7 +2,7 @@
 
 ```
 mikroptim [--version] [--devices]
-mikroptim trace <system.json> [--json] [--rings N] [--spokes M] [--gpu [--device N]]
+mikroptim trace <system.json> [--json] [--rings N] [--spokes M] [--gpu [--device N] [--precision fp64|df64]]
 ```
 
 | Aufruf | Wirkung |
@@ -32,6 +32,7 @@ Gerechnet wird in FP64, die Wellenfront standardmäßig auf der CPU, mit `--gpu`
 | `--spokes M` | Speichen der Pupillenquadratur, M ≥ 1 (Achsfeld immer 1) | 8 |
 | `--gpu` | Wellenfront auf der GPU rechnen (Kernel `RESIDUALS` über `mko::cuda::TraceEngine`) | aus (CPU) |
 | `--device N` | CUDA-Gerät für `--gpu`, N ≥ 0 (Liste: `mikroptim --devices`); nur zusammen mit `--gpu` | 0 |
+| `--precision P` | Rechentyp der Wellenfront: `fp64` oder `df64` (Paar aus zwei float, M7-T1; auf GeForce-Karten wie der RTX 3090 im Kernel etwa 4× schneller, Abweichung zu FP64 ≤ 10⁻⁹ mm). `df64` nur zusammen mit `--gpu`, die CPU rechnet immer in FP64 | `fp64` |
 | `--help`, `-h` | Hilfe | – |
 
 Die Pupillenquadratur folgt [numerik.md, Abschnitt 8](numerik.md#8-pupillenquadratur): Auf der Achse ein meridionaler Fächer mit N Stützstellen, außerhalb der Achse die halbe Pupille mit N·M Stützstellen (Punktquelle außerhalb der y-z-Ebene: volle Pupille).
@@ -42,7 +43,7 @@ Die Pupillenquadratur folgt [numerik.md, Abschnitt 8](numerik.md#8-pupillenquadr
 |---|---|
 | 0 | Auswertung ausgegeben, auch wenn die Wellenfront nicht auswertbar ist (siehe unten) |
 | 1 | Fehler beim Laden oder Auswerten: Datei fehlt oder ist nicht lesbar, JSON-Syntax- oder Formatfehler, unbekanntes Glas, Brechzahl außerhalb des Gültigkeitsbereichs, … Mit `--gpu` auch: Gerät `--device N` existiert nicht oder ist ungeeignet (unter sm_60), CUDA-Fehler, Speichermangel |
-| 2 | ungültige Kommandozeile (unbekannte Option, fehlende Datei, ungültige Zahl, `--device` ohne `--gpu`) |
+| 2 | ungültige Kommandozeile (unbekannte Option, fehlende Datei, ungültige Zahl, `--device` ohne `--gpu`, `--precision df64` ohne `--gpu`, unbekannter Rechentyp) |
 | 3 | `--gpu`, aber das GPU-Backend ist nicht verfügbar: ohne CUDA gebaut (`MIKROPTIM_ENABLE_CUDA=OFF`) oder kein CUDA-Gerät sichtbar. Geprüft vor dem Laden der Systemdatei (`kExitNoGpu`) |
 
 Fehlermeldungen gehen auf stderr, die Standardausgabe bleibt dann leer. Formatfehler nennen Datei und JSON-Pfad, z. B.
@@ -119,6 +120,7 @@ Ein JSON-Objekt (eingerückt mit zwei Leerzeichen, abschließender Zeilenumbruch
 | `quadrature` | object | `{"rings": N, "spokes": M}` wie angefordert |
 | `backend` | string | Rechenwerk der Wellenfront: `"cpu"` oder `"gpu"` (seit M2-T5; die Paraxialdaten entstehen immer auf dem Host) |
 | `device` | object \| null | bei `"gpu"`: `{"index": N, "name": "<Gerätename>"}`, sonst `null` (seit M2-T5) |
+| `precision` | string | Rechentyp der Wellenfront: `"fp64"` oder `"df64"` (nur mit `--gpu`); kompatible Erweiterung nach M7-T1 |
 | `target_focal_length` | number \| null | verwendete Sollbrennweite f_soll für die Bildpunkte (`target.focal_length` oder paraxial); `null` bei der Punktquelle oder ohne Wellenfront |
 | `wavefront` | object[] \| null | ein Eintrag pro Feld f und Wellenlänge l, Reihenfolge `f · L + l`; `null`, wenn nicht auswertbar |
 | `wavefront_error` | string \| null | Grund, warum `wavefront` `null` ist |
@@ -223,6 +225,7 @@ Beispiel (`mikroptim trace data/systems/einzellinse_bk7.json --json`):
   },
   "backend": "cpu",
   "device": null,
+  "precision": "fp64",
   "target_focal_length": 101.04968094724019,
   "wavefront": [
     {
@@ -405,6 +408,8 @@ Paraxialdaten, Sollbrennweite und Bildpunkte entstehen auf dem Host und sind bit
 - `piston_mm` ist `null`: Der Kernel `RESIDUALS` zieht den Kolben ab, gibt ihn aber nicht aus.
 - `backend` ist `"gpu"`, `device` nennt Index und Namen des Geräts.
 
+**df64** (`--gpu --precision df64`): Die Kernel rechnen im Zahlentyp df64 (numerik.md, Abschnitt 12), Batch und Ausgaben bleiben FP64. RMS-Werte weichen von der CPU höchstens um max(`kDf64VsFp64`, `kDf64VsFp64Relative` · |RMS|) ab (10⁻⁹ mm bzw. 10⁻¹⁰ relativ); Strahlzahlen und versagte Strahlen sind in den Testsystemen identisch (an der Versagensgrenze kann der Status in Ausnahmefällen kippen). Im JSON ist `precision` `"df64"`, die Zeile `Backend` endet auf `df64`. Test: `CliTraceGpu.Df64MatchesCpuWithinDf64Tolerance`.
+
 Afokale Systeme ohne `target.focal_length` verhalten sich wie im CPU-Pfad (`wavefront: null`, gleiche Meldung in `wavefront_error`, Exit-Code 0); die Punktquelle (Achse, y-z-Ebene, allgemein) wird unterstützt. Ohne CUDA gebaut oder ohne sichtbares Gerät endet `--gpu` mit einer Meldung auf stderr und Exit-Code 3, z. B.
 
 ```
@@ -428,6 +433,7 @@ Mit `--json` ändern sich gegenüber dem Beispiel oben nur
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090"
   },
+  "precision": "fp64",
 ```
 
 sowie in den Einträgen von `wavefront` die RMS-Werte in den letzten Stellen und der Kolben, z. B. für Feld 0 bei 486,13 nm `"rms_waves": 4.5020929504633`, `"rms_mm": 0.002645249733974216`, `"piston_mm": null` (CPU: `4.502092950462526`, `0.0026452497339737612`, `14.130347293916047`).
