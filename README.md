@@ -6,7 +6,7 @@ Mikroptim optimiert sequenzielle Linsensysteme aus sphärischen Flächen auf CUD
 
 ## Status
 
-M0 und M1 abgeschlossen: Systeme und Glaskataloge aus JSON laden, sequenzieller CPU-Referenztracer, Paraxialoptik, Pupillenquadratur, OPD und RMS-Wellenfront, Kommandozeile `mikroptim trace` ([docs/cli.md](docs/cli.md)). In Arbeit: M2 (CUDA-Vorwärtskernel). Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
+M0 und M1 abgeschlossen: Systeme und Glaskataloge aus JSON laden, sequenzieller CPU-Referenztracer, Paraxialoptik, Pupillenquadratur, OPD und RMS-Wellenfront, Kommandozeile `mikroptim trace` ([docs/cli.md](docs/cli.md)). M2 (CUDA-Vorwärtskernel) umgesetzt: SystemBatch, Kernel `RESIDUALS` und `MERIT` mit deterministischer Reduktion, `TraceEngine` mit Tranchen, `mikroptim trace --gpu`, Benchmark ([docs/benchmarks.md](docs/benchmarks.md)); die Abnahme auf der Tesla P100 steht noch aus. Vorgezogen aus M4: Flächentyp Geisterplatte. In Arbeit: M3 (Optimierung) und M7-T1 (df64). Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
 
 ## Erstes Zielsystem
 
