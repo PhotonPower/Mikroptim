@@ -186,6 +186,28 @@ TEST(ReferenceSphere, DivergingSphericalWaveWithShiftedCenterThroughSystem) {
                 max_opl, max_opd);
 }
 
+// Strahl läuft nach der Brechung an der letzten Fläche rückwärts (numerik.md §11): Glas
+// n = 1,5 vor einer konkaven Fläche (c = −0,2) in Luft, steiler Strahl (82°). Der Schnittpunkt
+// liegt bei |c·y| ≈ 0,65 und k ≈ 0,024 (keine Totalreflexion), danach ist d_z ≈ −0,53.
+// trace_ray meldet Ok (kein Transfer mehr), trace_to_reference_sphere muss Backward liefern.
+TEST(ReferenceSphere, BackwardRayAfterLastSurfaceIsReported) {
+    const HostSurfaceTable table =
+        make_table({SurfaceKind::Plane, SurfaceKind::Sphere}, {0.0, -0.2}, {1.0, 10.0}, {1.5, 1.0});
+    const Ray<double> start{
+        {0.0, 4.8, 0.0}, {0.0, std::sin(82.0 * kDeg), std::cos(82.0 * kDeg)}, 0.0};
+
+    Ray<double> traced = start;
+    ASSERT_EQ(mko::trace_ray(table.view(), 0, traced, nullptr), TraceStatus::Ok);
+    ASSERT_LT(traced.d.z, -0.5);
+
+    Ray<double> ray = start;
+    int failed = 0;
+    EXPECT_EQ(
+        mko::trace_to_reference_sphere(table.view(), 0, ray, Vec3<double>{0.0, 0.0, 10.0}, &failed),
+        TraceStatus::Backward);
+    EXPECT_EQ(failed, table.surfaces);
+}
+
 // Strahl verfehlt die Referenzsphäre: Status Missed, Strahl unverändert; im Systemtrace zählt
 // die Referenzsphäre als Fläche S.
 TEST(ReferenceSphere, MissedSphereLeavesRayUnchanged) {

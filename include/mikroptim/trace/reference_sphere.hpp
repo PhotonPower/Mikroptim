@@ -62,10 +62,12 @@ MKO_HD inline TraceStatus reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n
 // `center` im Medium nach der letzten Fläche (index[(S−1)·L + l]). Pro-Strahl-Teil der
 // Wellenfrontauswertung für CPU und Kernel.
 //
-// Status: der von trace_ray (dann *failed_surface = versagende Fläche) oder Missed von
-// reference_sphere_step; dann *failed_surface = S, die Referenzsphäre zählt als Fläche nach
-// der letzten. Ohne Versagen *failed_surface = −1. Ende (Ok): Strahl auf der Referenzsphäre in
-// lokalen Koordinaten der letzten Fläche, OPL bis dorthin.
+// Status: der von trace_ray (dann *failed_surface = versagende Fläche); Backward, wenn der
+// Strahl nach der Brechung an der letzten Fläche rückwärts läuft (d_z <= 0, auch NaN;
+// numerik.md §11), oder Missed von reference_sphere_step. In beiden letzten Fällen ist
+// *failed_surface = S: der Schritt in den Bildraum zählt als Fläche nach der letzten. Ohne
+// Versagen *failed_surface = −1. Ende (Ok): Strahl auf der Referenzsphäre in lokalen
+// Koordinaten der letzten Fläche, OPL bis dorthin.
 template <class R, class SurfaceTable>
 MKO_HD inline TraceStatus trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index,
                                                     Ray<R>& ray, Vec3<R> center,
@@ -73,6 +75,13 @@ MKO_HD inline TraceStatus trace_to_reference_sphere(const SurfaceTable& sys, int
     const TraceStatus st = trace_ray(sys, wavelength_index, ray, nullptr, failed_surface);
     if (st != TraceStatus::Ok) {
         return st;
+    }
+    // trace_ray prüft d_z nur vor jedem Transfer; nach der letzten Brechung folgt keiner mehr.
+    if (!(ray.d.z > R(0))) {
+        if (failed_surface != nullptr) {
+            *failed_surface = sys.surfaces;
+        }
+        return TraceStatus::Backward;
     }
     const int last = sys.surfaces - 1;
     const R n_image = R(sys.index[last * sys.wavelengths + wavelength_index]);

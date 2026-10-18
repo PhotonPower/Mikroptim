@@ -43,7 +43,7 @@ Punkt **q** im Medium vor einer Fläche, Richtungen über die Quadratur im Richt
 
 Festlegung (M1-T5, `point_source_ray` in `include/mikroptim/trace/trace.hpp`): **q** in lokalen Koordinaten von Fläche 0, Kegelachse +z, Richtungen gleichmäßig im Raum der Richtungskosinus mit denselben Pupillenkoordinaten (ρ, φ) wie bei der kollimierten Quelle:
 
-$$\mathbf{d}_0 = \left(sho\sinarphi,\; sho\cosarphi,\; \sqrt{1 - s^2ho^2}ight),\qquad s = \sinartheta_{\max} = \mathrm{NA}/n_0$$
+$$\mathbf{d}_0 = \left(s\rho\sin\varphi,\; s\rho\cos\varphi,\; \sqrt{1 - s^2\rho^2}\right),\qquad s = \sin\vartheta_{\max} = \mathrm{NA}/n_0$$
 
 n₀ ist die Brechzahl des Startmediums, also des Mediums nach Fläche 0 (siehe Abschnitt 5, „Sequenzieller Trace“). Bei Systemen aus Dateien ist das Luft. Für eine Quelle im Glas (aplanatische Punkte) wird eine Flächentabelle benutzt, deren Fläche 0 eine Ebene mit Glas als Medium ist; das ist nur über die Tabellen-API möglich, weil die Systemdatei die Blende in Luft verlangt (ADR-0006).
 
@@ -88,7 +88,7 @@ Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_su
 | 0 | `Ok` | Strahl hat alle Flächen passiert |
 | 1 | `Missed` | Fläche verfehlt: B² − cH < 0 oder B + √(B² − cH) ≤ 0 |
 | 2 | `TIR` | Totalreflexion, k < 0 |
-| 3 | `Backward` | d_z ≤ 0 (oder NaN) vor einem Transfer; Abschnitt 11 |
+| 3 | `Backward` | d_z ≤ 0 (oder NaN) vor einem Transfer oder nach der Brechung an der letzten Fläche (vor dem Schritt auf die Referenzsphäre, dann versagende Fläche S); Abschnitt 11 |
 | 4 | `Unsupported` | Flächentyp vom Tracer nicht unterstützt (z. B. Geisterplatte vor M4-T5) |
 
 Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen).
@@ -140,7 +140,7 @@ $$s_{\mathrm{ref}} = \frac{g}{\,b + \sigma\sqrt{b^2 - g}\,},\qquad \sigma = \beg
 
 σ hängt nur vom Bildpunkt ab, der Zweig ist also für alle Strahlen eines Feldes gleich. g wird als **p**·(**p** − 2**M**_f) gerechnet; das ist wegen R_ref = |**M**_f| algebraisch gleich |**q**|² − R_ref², vermeidet aber die Differenz zweier Quadrate der Größe R_ref² (≈ 10⁴ mm²). Danach steht der Strahl auf der Referenzsphäre (**p** += s_ref **d**), OPL += n_B s_ref mit n_B = index[S−1][l] (Medium nach der letzten Fläche).
 
-**Versagen.** b² − g < 0 (Gerade verfehlt die Sphäre) oder σ (b + σ√(b² − g)) ≤ 0 bzw. NaN (die zugewandte Kappe wird nicht getroffen) ergibt den Status `Missed`; als versagende Fläche wird S gemeldet (die Referenzsphäre zählt als Fläche nach der letzten). Der Strahl bleibt dann unverändert.
+**Versagen.** Läuft der Strahl nach der Brechung an der letzten Fläche rückwärts (d_z ≤ 0 oder NaN), meldet `trace_to_reference_sphere` `Backward` mit versagender Fläche S, bevor die Sphäre geschnitten wird (`trace_ray` selbst prüft d_z nur vor einem Transfer). b² − g < 0 (Gerade verfehlt die Sphäre) oder σ (b + σ√(b² − g)) ≤ 0 bzw. NaN (die zugewandte Kappe wird nicht getroffen) ergibt den Status `Missed`; als versagende Fläche wird S gemeldet (die Referenzsphäre zählt als Fläche nach der letzten). Der Strahl bleibt dann unverändert.
 
 **Idealer Bildpunkt und f_soll.** w = thickness[S−1] (Arbeitsabstand; negativ bei einem virtuellen Bildpunkt), h_f = f_soll · tan θ_f mit dem Feldwinkel θ_f der kollimierten Quelle. f_soll ist `target.focal_length`, falls gesetzt, sonst die paraxiale Brennweite 1/φ (Abschnitt 9) bei `spectrum.reference_nm`. Ist sie nicht endlich (afokales System), meldet der Host einen Fehler. Bei der Punktquelle (Tests) ist **M** = (0, 0, w); für Quellen außerhalb der Achse gibt der Aufrufer die Bildpunkte explizit vor.
 
