@@ -1,3 +1,4 @@
+#include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -5,14 +6,18 @@
 #endif
 
 #include <cstdio>
+#include <iostream>
 #include <string_view>
+#include <vector>
 
 namespace {
 
 void print_usage() {
     std::puts("Aufruf: mikroptim [--version] [--devices]\n"
+              "        mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
               "  --version   Version ausgeben\n"
-              "  --devices   CUDA-Geräte auflisten");
+              "  --devices   CUDA-Geräte auflisten\n"
+              "  trace       System auswerten (Hilfe: mikroptim trace --help)");
 }
 
 } // namespace
@@ -34,6 +39,10 @@ int main(int argc, char** argv) {
         std::puts("Ohne CUDA gebaut (MIKROPTIM_ENABLE_CUDA=OFF).");
         return 1;
 #endif
+    }
+    if (arg == "trace") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_trace_command(args, std::cout, std::cerr);
     }
     print_usage();
     return 1;

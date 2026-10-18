@@ -37,7 +37,7 @@ flowchart TD
 | Optimierer | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
-| CLI | – | `src/cli/` | M1 ff. |
+| CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
 | Python | – | `python/` | M9 |
 
 ## Datenmodell und IO
@@ -155,7 +155,7 @@ WavefrontResult evaluate_wavefront(const SystemDescription&, const HostSurfaceTa
 WavefrontResult evaluate_wavefront(const LoadedSystem&, const WavefrontOptions& = {});
 ```
 
-Jedes Feld hat eine eigene Quadratur (Achsfächer auf der Achse, sonst halbe Pupille), daher die Ablage pro Tupel statt eines gemeinsamen Arrays wie in `CpuTraceResult`. Fehler: `std::invalid_argument` (Tabelle passt nicht, falsche Zahl von Bildpunkten, afokales System ohne `target.focal_length`, ungültige Quadratur), `std::out_of_range` (Feld), `GlassError` (Brechzahl bei `reference_nm`). Die Ausgabe in der CLI folgt mit M1-T8.
+Jedes Feld hat eine eigene Quadratur (Achsfächer auf der Achse, sonst halbe Pupille), daher die Ablage pro Tupel statt eines gemeinsamen Arrays wie in `CpuTraceResult`. Fehler: `std::invalid_argument` (Tabelle passt nicht, falsche Zahl von Bildpunkten, afokales System ohne `target.focal_length`, ungültige Quadratur), `std::out_of_range` (Feld), `GlassError` (Brechzahl bei `reference_nm`). Ausgabe auf der Kommandozeile: `mikroptim trace` ([cli.md](cli.md)).
 
 ## SystemBatch und Datenlayout
 

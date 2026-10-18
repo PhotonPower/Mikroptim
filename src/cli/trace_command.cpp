@@ -1,0 +1,479 @@
+// Unterbefehl `mikroptim trace`: Laden, Paraxialdaten, Wellenfront, Ausgabe als Text oder JSON.
+// Ausgabeformate und JSON-Schema: docs/cli.md.
+
+#include "cli/trace_command.hpp"
+#include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/pupil/quadrature.hpp"
+#include "mikroptim/version.hpp"
+
+#include <nlohmann/json.hpp>
+
+#include <charconv>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <exception>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace mko::cli {
+
+namespace {
+
+using Json = nlohmann::ordered_json;
+
+constexpr int kDefaultRings = 10;
+constexpr int kDefaultSpokes = 8;
+
+// Fehler in der Kommandozeile (Exit-Code kExitUsage).
+class UsageError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+struct TraceArgs {
+    std::string file;
+    bool json = false;
+    bool help = false;
+    int rings = kDefaultRings;
+    int spokes = kDefaultSpokes;
+};
+
+int parse_int(std::string_view option, std::string_view text) {
+    int value = 0;
+    const char* first = text.data();
+    const char* last = text.data() + text.size();
+    const auto [ptr, ec] = std::from_chars(first, last, value);
+    if (ec != std::errc{} || ptr != last || text.empty()) {
+        throw UsageError(std::string(option) + " erwartet eine ganze Zahl, nicht \"" +
+                         std::string(text) + "\"");
+    }
+    return value;
+}
+
+TraceArgs parse_args(std::span<const std::string_view> args) {
+    TraceArgs a;
+    bool have_file = false;
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        const std::string_view arg = args[i];
+        if (arg == "--help" || arg == "-h") {
+            a.help = true;
+        } else if (arg == "--json") {
+            a.json = true;
+        } else if (arg == "--rings" || arg == "--spokes") {
+            if (i + 1 >= args.size()) {
+                throw UsageError(std::string(arg) + " erwartet einen Wert");
+            }
+            const int value = parse_int(arg, args[++i]);
+            if (arg == "--rings") {
+                if (value < 1 || value > kMaxPupilRings) {
+                    throw UsageError("--rings muss in [1, " + std::to_string(kMaxPupilRings) +
+                                     "] liegen");
+                }
+                a.rings = value;
+            } else {
+                if (value < 1) {
+                    throw UsageError("--spokes muss >= 1 sein");
+                }
+                a.spokes = value;
+            }
+        } else if (arg.size() > 1 && arg.front() == '-') {
+            throw UsageError("unbekannte Option " + std::string(arg));
+        } else if (have_file) {
+            throw UsageError("mehr als eine Systemdatei angegeben");
+        } else {
+            a.file = std::string(arg);
+            have_file = true;
+        }
+    }
+    if (!have_file && !a.help) {
+        throw UsageError("keine Systemdatei angegeben");
+    }
+    return a;
+}
+
+// Alles, was ausgegeben wird.
+struct TraceReport {
+    std::string file; // wie auf der Kommandozeile angegeben
+    LoadedSystem loaded;
+    ParaxialData paraxial;
+    WavefrontOptions options;
+    std::optional<WavefrontResult> wavefront; // leer: nicht auswertbar (wavefront_error)
+    std::string wavefront_error;
+};
+
+const char* pupil_mode_name(PupilMode mode) {
+    switch (mode) {
+    case PupilMode::Half:
+        return "half";
+    case PupilMode::Full:
+        return "full";
+    case PupilMode::Axis:
+        return "axis";
+    }
+    return "unknown";
+}
+
+// ------------------------------------------------------------------------------------------
+// JSON
+// ------------------------------------------------------------------------------------------
+
+// Nicht endliche Zahlen sind in JSON nicht darstellbar und werden null (docs/cli.md).
+Json number(double v) {
+    if (!std::isfinite(v)) {
+        return Json(nullptr);
+    }
+    return Json(v);
+}
+
+Json vec3(const Vec3<double>& v) {
+    return Json::array({number(v.x), number(v.y), number(v.z)});
+}
+
+Json paraxial_json(const ParaxialData& p, double wavelength_nm) {
+    Json j;
+    j["wavelength_nm"] = number(wavelength_nm);
+    j["afocal"] = p.afocal;
+    j["power"] = number(p.power);
+    j["focal_length"] = number(p.focal_length);
+    j["back_focal_distance"] = number(p.back_focal_distance);
+    j["front_focal_distance"] = number(p.front_focal_distance);
+    j["front_principal_plane"] = number(p.front_principal_plane);
+    j["rear_principal_plane"] = number(p.rear_principal_plane);
+    j["image_defocus"] = number(p.image_defocus);
+    j["petzval_sum"] = number(p.petzval_sum);
+    j["petzval_curvature"] = number(p.petzval_curvature);
+    j["petzval_radius"] = number(p.petzval_radius);
+    Json ep;
+    ep["at_infinity"] = p.exit_pupil_at_infinity;
+    ep["position"] = number(p.exit_pupil_position);
+    ep["magnification"] = number(p.exit_pupil_magnification);
+    ep["semi_diameter"] = number(p.exit_pupil_semi_diameter);
+    j["exit_pupil"] = std::move(ep);
+    j["abcd"] =
+        Json::array({number(p.abcd[0]), number(p.abcd[1]), number(p.abcd[2]), number(p.abcd[3])});
+    return j;
+}
+
+Json source_json(const Source& s) {
+    Json j;
+    if (s.type == SourceType::Collimated) {
+        j["type"] = "collimated";
+        Json angles = Json::array();
+        for (const double a : s.field_angles_deg) {
+            angles.push_back(number(a));
+        }
+        j["field_angles_deg"] = std::move(angles);
+    } else {
+        j["type"] = "point";
+        j["point"] = Json::array({number(s.point[0]), number(s.point[1]), number(s.point[2])});
+        j["numerical_aperture"] = number(s.numerical_aperture);
+    }
+    return j;
+}
+
+void write_json(const TraceReport& r, std::ostream& out) {
+    const SystemDescription& sys = r.loaded.system;
+    Json j;
+    j["format"] = std::string(kTraceFormat);
+    j["mikroptim_version"] = kVersion;
+    j["system"] = sys.name;
+    j["file"] = r.file;
+    j["reference_nm"] = number(sys.spectrum.reference_nm);
+    Json wl = Json::array();
+    for (const double w : sys.spectrum.wavelengths_nm) {
+        wl.push_back(number(w));
+    }
+    j["wavelengths_nm"] = std::move(wl);
+    j["source"] = source_json(sys.source);
+    j["paraxial"] = paraxial_json(r.paraxial, sys.spectrum.reference_nm);
+    j["quadrature"] = Json{{"rings", r.options.rings}, {"spokes", r.options.spokes}};
+    if (r.wavefront) {
+        const WavefrontResult& w = *r.wavefront;
+        j["target_focal_length"] = number(w.focal_length);
+        Json entries = Json::array();
+        std::size_t rays = 0;
+        for (const WavefrontMap& m : w.maps) {
+            Json e;
+            e["field"] = m.field;
+            if (sys.source.type == SourceType::Collimated) {
+                e["field_angle_deg"] =
+                    number(sys.source.field_angles_deg[static_cast<std::size_t>(m.field)]);
+            } else {
+                e["field_angle_deg"] = nullptr;
+            }
+            e["wavelength"] = m.wavelength;
+            e["wavelength_nm"] = number(m.wavelength_nm);
+            e["image_point"] = vec3(m.image_point);
+            e["pupil_mode"] = pupil_mode_name(m.quadrature.mode);
+            e["rays"] = m.samples();
+            e["failed_rays"] = m.failed;
+            e["rms_waves"] = number(m.rms_waves);
+            e["rms_mm"] = number(m.rms);
+            e["piston_mm"] = number(m.piston);
+            entries.push_back(std::move(e));
+            rays += static_cast<std::size_t>(m.samples());
+        }
+        j["wavefront"] = std::move(entries);
+        j["wavefront_error"] = nullptr;
+        j["rays"] = rays;
+        j["failed_rays"] = w.failed_count();
+    } else {
+        j["target_focal_length"] = nullptr;
+        j["wavefront"] = nullptr;
+        j["wavefront_error"] = r.wavefront_error;
+        j["rays"] = nullptr;
+        j["failed_rays"] = nullptr;
+    }
+    Json warnings = Json::array();
+    for (const std::string& w : r.loaded.warnings) {
+        warnings.push_back(w);
+    }
+    j["warnings"] = std::move(warnings);
+    // Ungültiges UTF-8 (z. B. ein Dateiname in der ANSI-Codepage) wird ersetzt statt zu werfen.
+    out << j.dump(2, ' ', false, Json::error_handler_t::replace) << '\n';
+}
+
+// ------------------------------------------------------------------------------------------
+// Text
+// ------------------------------------------------------------------------------------------
+
+// printf-artige Formatierung (C-Locale, unabhängig von Plattform und Compiler). Nicht endliche
+// Werte werden ausgeschrieben, weil die C-Bibliotheken sie unterschiedlich drucken. Ein
+// Minuszeichen vor einer zu null gerundeten Zahl (-0 oder winzige negative Rundungsreste)
+// entfällt, damit das Vorzeichen von Rundungsresten nicht in der Ausgabe erscheint.
+std::string format_number(const char* fmt, double v) {
+    if (std::isnan(v)) {
+        return "-";
+    }
+    if (std::isinf(v)) {
+        return v > 0 ? "unendlich" : "-unendlich";
+    }
+    char buf[64];
+    std::snprintf(buf, sizeof buf, fmt, v);
+    std::string s(buf);
+    if (!s.empty() && s.front() == '-') {
+        const std::string mantissa = s.substr(1, s.find_first_of("eE") - 1);
+        if (mantissa.find_first_not_of("0.") == std::string::npos) {
+            s.erase(0, 1);
+        }
+    }
+    return s;
+}
+
+std::string fixed(double v, int decimals = 6) {
+    const std::string fmt = "%." + std::to_string(decimals) + "f";
+    return format_number(fmt.c_str(), v);
+}
+
+std::string sci(double v, int decimals = 6) {
+    const std::string fmt = "%." + std::to_string(decimals) + "e";
+    return format_number(fmt.c_str(), v);
+}
+
+// Wert mit Einheit; ohne Einheit, wenn der Wert nicht endlich ist.
+std::string with_unit(const std::string& value, double v, const char* unit) {
+    if (!std::isfinite(v) || unit[0] == '\0') {
+        return value;
+    }
+    return value + " " + unit;
+}
+
+// Zahl der Zeichen eines UTF-8-Texts (Fortsetzungsbytes 10xxxxxx zählen nicht).
+std::size_t display_width(std::string_view s) {
+    std::size_t n = 0;
+    for (const char c : s) {
+        if ((static_cast<unsigned char>(c) & 0xC0U) != 0x80U) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+// Linksbündig auf `width` Zeichen aufgefüllt.
+std::string pad_right(std::string_view s, std::size_t width) {
+    std::string out(s);
+    const std::size_t w = display_width(s);
+    if (w < width) {
+        out.append(width - w, ' ');
+    }
+    return out;
+}
+
+// Rechtsbündig auf `width` Zeichen aufgefüllt.
+std::string pad_left(std::string_view s, std::size_t width) {
+    const std::size_t w = display_width(s);
+    std::string out;
+    if (w < width) {
+        out.append(width - w, ' ');
+    }
+    out += s;
+    return out;
+}
+
+void kv(std::ostream& out, std::string_view key, const std::string& value) {
+    out << "  " << pad_right(key, 44) << value << '\n';
+}
+
+std::string join_fixed(const std::vector<double>& values, int decimals) {
+    std::string s;
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            s += ", ";
+        }
+        s += fixed(values[i], decimals);
+    }
+    return s;
+}
+
+void write_text(const TraceReport& r, std::ostream& out) {
+    const SystemDescription& sys = r.loaded.system;
+    const ParaxialData& p = r.paraxial;
+    const double ref = sys.spectrum.reference_nm;
+
+    out << "System: " << sys.name << '\n';
+    kv(out, "Datei", r.file);
+    if (sys.source.type == SourceType::Collimated) {
+        kv(out, "Quelle",
+           "kollimiert, Feldwinkel " + join_fixed(sys.source.field_angles_deg, 3) + " deg");
+    } else {
+        const auto& q = sys.source.point;
+        kv(out, "Quelle",
+           "Punktquelle bei (" + fixed(q[0], 6) + ", " + fixed(q[1], 6) + ", " + fixed(q[2], 6) +
+               ") mm, NA " + fixed(sys.source.numerical_aperture, 6));
+    }
+    kv(out, "Wellenlängen", join_fixed(sys.spectrum.wavelengths_nm, 3) + " nm");
+    kv(out, "Referenzwellenlänge", fixed(ref, 3) + " nm");
+    kv(out, "Flächen", std::to_string(sys.surfaces.size()));
+
+    out << '\n' << "Paraxialdaten bei " << fixed(ref, 3) << " nm\n";
+    std::string f = with_unit(fixed(p.focal_length), p.focal_length, "mm");
+    if (p.afocal) {
+        f += " (afokal)";
+    }
+    kv(out, "Brennweite f'", f);
+    kv(out, "Brechkraft", with_unit(sci(p.power), p.power, "1/mm"));
+    kv(out, "Hintere Schnittweite (ab letzter Fläche)",
+       with_unit(fixed(p.back_focal_distance), p.back_focal_distance, "mm"));
+    kv(out, "Vordere Schnittweite (ab Fläche 0)",
+       with_unit(fixed(p.front_focal_distance), p.front_focal_distance, "mm"));
+    kv(out, "Hauptebene H (ab Fläche 0)",
+       with_unit(fixed(p.front_principal_plane), p.front_principal_plane, "mm"));
+    kv(out, "Hauptebene H' (ab letzter Fläche)",
+       with_unit(fixed(p.rear_principal_plane), p.rear_principal_plane, "mm"));
+    kv(out, "Defokus der Bildebene", with_unit(fixed(p.image_defocus), p.image_defocus, "mm"));
+    kv(out, "Petzvalsumme", with_unit(sci(p.petzval_sum), p.petzval_sum, "1/mm"));
+    kv(out, "Petzvalkrümmung", with_unit(sci(p.petzval_curvature), p.petzval_curvature, "1/mm"));
+    kv(out, "Petzvalradius", with_unit(fixed(p.petzval_radius), p.petzval_radius, "mm"));
+    if (p.exit_pupil_at_infinity) {
+        kv(out, "Austrittspupille", "im Unendlichen (bildseitig telezentrisch)");
+    } else {
+        kv(out, "Austrittspupille Lage (ab letzter Fläche)",
+           with_unit(fixed(p.exit_pupil_position), p.exit_pupil_position, "mm"));
+        kv(out, "Austrittspupille Radius",
+           with_unit(fixed(p.exit_pupil_semi_diameter), p.exit_pupil_semi_diameter, "mm"));
+        kv(out, "Pupillenvergrößerung", fixed(p.exit_pupil_magnification));
+    }
+
+    out << '\n';
+    if (!r.wavefront) {
+        out << "Wellenfront nicht auswertbar\n  " << r.wavefront_error << '\n';
+        return;
+    }
+    const WavefrontResult& w = *r.wavefront;
+    out << "Wellenfront (Quadratur " << r.options.rings << " Ringe x " << r.options.spokes
+        << " Speichen, RMS in Wellen bei " << fixed(ref, 3) << " nm)\n";
+    if (std::isfinite(w.focal_length)) {
+        kv(out, "Sollbrennweite für die Bildpunkte", fixed(w.focal_length) + " mm");
+    }
+    out << "  " << pad_left("Feld", 4) << pad_left("Winkel [deg]", 14)
+        << pad_left("Wellenlänge [nm]", 18) << pad_left("Strahlen", 10) << pad_left("versagt", 9)
+        << pad_left("RMS [Wellen]", 14) << pad_left("RMS [mm]", 15) << '\n';
+    std::size_t rays = 0;
+    for (const WavefrontMap& m : w.maps) {
+        const std::string angle =
+            sys.source.type == SourceType::Collimated
+                ? fixed(sys.source.field_angles_deg[static_cast<std::size_t>(m.field)], 3)
+                : std::string("-");
+        out << "  " << pad_left(std::to_string(m.field), 4) << pad_left(angle, 14)
+            << pad_left(fixed(m.wavelength_nm, 3), 18) << pad_left(std::to_string(m.samples()), 10)
+            << pad_left(std::to_string(m.failed), 9) << pad_left(fixed(m.rms_waves), 14)
+            << pad_left(sci(m.rms, 6), 15) << '\n';
+        rays += static_cast<std::size_t>(m.samples());
+    }
+    out << "  Versagte Strahlen: " << w.failed_count() << " von " << rays << '\n';
+}
+
+} // namespace
+
+void print_trace_usage(std::ostream& out) {
+    out << "Aufruf: mikroptim trace <system.json> [--json] [--rings N] [--spokes M]\n"
+           "  Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge und versagte Strahlen\n"
+           "  (CPU, FP64; Beschreibung: docs/cli.md).\n"
+           "  --json       maschinenlesbare Ausgabe (Format mikroptim.trace/1)\n"
+           "  --rings N    radiale Ringe der Pupillenquadratur, 1 bis "
+        << kMaxPupilRings << " (Standard " << kDefaultRings
+        << ")\n"
+           "  --spokes M   Speichen der Pupillenquadratur, >= 1 (Standard "
+        << kDefaultSpokes
+        << ")\n"
+           "  --help       diese Hilfe\n"
+           "Exit-Code: 0 Erfolg, 1 Fehler beim Laden oder Auswerten, 2 ungültige "
+           "Kommandozeile.\n";
+}
+
+int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
+                      std::ostream& err) {
+    TraceArgs a;
+    try {
+        a = parse_args(args);
+    } catch (const UsageError& e) {
+        err << "mikroptim trace: " << e.what() << '\n';
+        print_trace_usage(err);
+        return kExitUsage;
+    }
+    if (a.help) {
+        print_trace_usage(out);
+        return kExitOk;
+    }
+
+    try {
+        TraceReport r;
+        r.file = a.file;
+        r.loaded = load_system(std::filesystem::path(a.file));
+        for (const std::string& w : r.loaded.warnings) {
+            err << "mikroptim trace: Warnung: " << w << '\n';
+        }
+        r.paraxial = compute_paraxial(r.loaded.system, r.loaded.catalog);
+        r.options.rings = a.rings;
+        r.options.spokes = a.spokes;
+        try {
+            r.wavefront = evaluate_wavefront(r.loaded, r.options);
+        } catch (const std::invalid_argument& e) {
+            // Quadratur und Tabelle sind hier gültig; übrig bleibt die fehlende Sollbrennweite
+            // eines afokalen Systems ohne target.focal_length (docs/cli.md).
+            r.wavefront_error = e.what();
+        }
+        if (a.json) {
+            write_json(r, out);
+        } else {
+            write_text(r, out);
+        }
+        out.flush();
+        if (!out) {
+            err << "mikroptim trace: Fehler beim Schreiben der Ausgabe\n";
+            return kExitError;
+        }
+        return kExitOk;
+    } catch (const std::exception& e) {
+        err << "mikroptim trace: Fehler: " << e.what() << '\n';
+        return kExitError;
+    }
+}
+
+} // namespace mko::cli
