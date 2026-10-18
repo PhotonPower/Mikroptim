@@ -124,5 +124,13 @@ inline constexpr double kDf64SqrtRelative = (3.125 + 0.0625) * 0x1p-48;
 // Taylor-Polynome mit Abbruchfehler < 7e-17; die Rundungsfehler der etwa 20 df64-Operationen
 // liegen bei wenigen u² (u² ≈ 3,6e-15), dazu ≤ 1 ulp der FP64-Referenz.
 inline constexpr double kDf64Trig = 1e-14;
+// FP32-Vorfilterung (M7-T2): Grenzabstand (Einheit eines Kosinus) in float gegen dieselbe
+// Funktion in FP64 an der Versagensgrenze der Totalreflexion. Nahe der Grenze ist der
+// Grenzabstand √|k|, die Rundung von k in float (einige u ≈ 6e-8) wirkt dort als
+// √(δk) ≈ 5e-4; weit weg einige u. Beobachtet 4,6e-5.
+inline constexpr double kPrefilterMarginFp32VsFp64 = 1e-3;
+// FP32-Vorfilterung: größte optische Länge Λ_v (Maximum über Strahlen in float) GPU gegen
+// CPU-Referenz, relativ; Unterschiede nur aus FMA-Kontraktion auf dem Gerät (einige u).
+inline constexpr double kPrefilterGpuCpuLengthRelative = 1e-4;
 
 } // namespace mko::test

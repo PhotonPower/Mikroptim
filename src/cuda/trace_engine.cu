@@ -159,10 +159,12 @@ void TraceEngine::release() noexcept {
     batch_.release();
     residuals_.release();
     merit_.release();
+    prefilter_.release();
 }
 
 std::size_t TraceEngine::device_bytes() const {
-    return batch_.capacity_bytes() + residuals_.capacity_bytes() + merit_.capacity_bytes();
+    return batch_.capacity_bytes() + residuals_.capacity_bytes() + merit_.capacity_bytes() +
+           prefilter_.capacity_bytes();
 }
 
 std::size_t TraceEngine::available_bytes() const {
@@ -189,6 +191,9 @@ TraceEngine::TranchePlan TraceEngine::plan_tranches(const BatchTopology& topolog
                                                     const TraceSettings& settings, int variants,
                                                     int granularity) {
     const bool merit_mode = mode == TraceMode::Merit;
+    // Der Puffer der Vorfilterung (M7-T2) zählt in available_bytes als verfügbar und wird
+    // deshalb hier freigegeben.
+    prefilter_.release();
     const OutputRequest request = output_request(mode, layout, settings);
     const std::size_t extra_per_variant = extra_bytes_per_variant(mode, settings);
     const auto g = static_cast<std::size_t>(granularity);

@@ -9,12 +9,14 @@
 // #ifdef MIKROPTIM_HAS_CUDA.
 
 #include "mikroptim/batch/batch_memory.hpp"
+#include "mikroptim/batch/batch_prefilter.hpp"
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/merit.hpp"
 #include "mikroptim/cuda/precision.hpp"
+#include "mikroptim/cuda/prefilter.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 
 #include <cstddef>
@@ -64,6 +66,15 @@ struct TraceSettings {
     // Residuen weichen typisch um einige 1e-11 mm ab, höchstens 1e-9 mm (docs/numerik.md,
     // Abschnitt 12). Batch, Ausgaben (FP64) und Speicherbedarf sind gleich.
     Precision precision = Precision::Fp64;
+};
+
+// Einstellungen der FP32-Vorfilterung (M7-T2, prefilter_variants).
+struct PrefilterSettings {
+    ResidualSettings quadrature{}; // Pupillenquadratur N × M wie im späteren FP64-Lauf
+    PrefilterOptions options{};    // Kriterien und Sicherheitsmargen (batch_prefilter.hpp)
+    // Leer oder ein Wert pro Variante (FP64, z. B. Σ e² der paraxialen Nebenbedingungen), der zu
+    // beiden Schranken der Merit addiert wird. Muss bis zur Rückkehr gültig bleiben.
+    std::span<const double> extra_merit{};
 };
 
 // Statistik des letzten Laufs.
@@ -156,6 +167,20 @@ public:
     TraceRunInfo run_on_device(const SystemBatchHost& batch, const TraceSettings& settings,
                                int granularity, const DeviceTrancheFn& consume);
 
+    // FP32-VORFILTERUNG (M7-T2): bewertet alle Varianten von `batch` grob in float (Kernel der
+    // Vorfilterung, Tranchen wie run) und entscheidet konservativ, welche sicher aussortiert
+    // werden können (prefilter_decide; Regel und Margen: docs/numerik.md, Abschnitt 12). Die
+    // Werte in `out` sind nur Schranken für die Auswahl und dürfen nie in Merit, Jacobi-Matrix
+    // oder Optimierung einfließen; behaltene Varianten werden danach mit run in FP64 oder df64
+    // bewertet. Der Puffer der Vorfilterung wird beim nächsten run freigegeben, die Puffer von
+    // run nur, wenn sie die Tranche verkleinern würden. Wirft wie run, zusätzlich
+    // std::invalid_argument bei ungültigen Optionen und zu vielen Stützstellen pro Feld
+    // (prefilter_max_samples). Rückgabe: Statistik des Laufs.
+    TraceRunInfo prefilter_variants(const SystemBatchHost& batch, const PrefilterSettings& settings,
+                                    PrefilterResult& out);
+    PrefilterResult prefilter_variants(const SystemBatchHost& batch,
+                                       const PrefilterSettings& settings = {});
+
     // Größte Variantenzahl pro Tranche für Batches dieser Topologie: max_variants mit dem
     // freien Speicher des Geräts (zuzüglich der von der Engine schon belegten Puffer, die
     // ein Lauf freigibt oder wiederverwendet), höchstens memory_limit_bytes, abzüglich der
@@ -193,6 +218,7 @@ private:
     DeviceSystemBatch batch_;
     DeviceResiduals residuals_;
     DeviceMerit merit_;
+    DevicePrefilter prefilter_; // FP32-Vorfilterung (M7-T2)
 };
 
 } // namespace mko::cuda

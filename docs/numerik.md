@@ -372,7 +372,7 @@ Im Modus `EVAL` ist jedes Versagen hart. Die Statusmaske pro Strahl wird immer m
 
 ## 12. Genauigkeit
 
-- Ziel: absoluter Fehler der OPD ≤ 1·10⁻⁶ mm (1 nm) nach Akkumulation über alle Flächen. FP32 (ε ≈ 6·10⁻⁸ bei OPL ≈ 100 mm) erfüllt das nicht.
+- Ziel: absoluter Fehler der OPD ≤ 1·10⁻⁶ mm (1 nm) nach Akkumulation über alle Flächen. FP32 (ε ≈ 6·10⁻⁸ bei OPL ≈ 100 mm) erfüllt das nicht; float ist deshalb nur in der FP32-Vorfilterung erlaubt (unten, M7-T2), deren Werte nie in Merit, Jacobi-Matrix oder Optimierung einfließen.
 - FP64: typisch 10⁻¹², df64: typisch 10⁻⁹ (Ziel); gemessen für df64 einige 10⁻¹¹ mm, höchstens 9·10⁻¹⁰ mm gegen FP64 (M7-T1, unten).
 - FMA-Kontraktion ist erlaubt; CPU/GPU-Unterschiede dadurch werden durch `kCpuGpuFp64` abgedeckt.
 - Toleranzen der Tests: `tests/tolerances.hpp`.
@@ -425,6 +425,60 @@ Referenz ist FP64 aus den exakt nach double gewandelten Operanden (Test `Df64.Ar
 | Stapel mit 64 Flächen, 200 | 36.000 (0) | 8,7·10⁻¹³ | 2,5·10⁻¹² | 1,2·10⁻¹³ | 1,3·10⁻¹³ | 3,4·10⁻¹³ |
 
 Toleranz pro Strahl max(`kDf64VsFp64`, `kDf64VsFp64Relative`·|x|) = max(10⁻⁹ mm, 10⁻¹⁰·|x|), wie bei `kCpuGpuFp64Relative` erst ab |x| > 10 mm relativ; alle Strahlen liegen auch unter 10⁻⁹ mm absolut. Merit über die 2-Norm: |√F_df64 − √F_FP64| ≤ √(Σ_k Schranke_k²); relativ |ΔF|/F ≤ 1,0·10⁻¹⁰. Der abgeschaltete Stresstest `CudaDf64.DISABLED_StressManySeeds` (je zweimal 10.000 Varianten von vier Systemen, 3,9·10⁷ Strahlen) liefert höchstens 3,6·10⁻¹⁰ mm (Geisterplatte, |OPD| = 22 mm), für Systeme ohne Geisterplatte ≤ 1,9·10⁻¹⁰ mm bei |OPD| = 6 mm und sonst ≤ 7·10⁻¹¹ mm, ohne Statuswechsel. Die größten Abweichungen gehören zu schlecht konditionierten Strahlen extremer Varianten (Pupillenradius ×3 … ×5, |OPD| von mm bis einige 10 mm, Geisterplatten weit außerhalb von r_g): Dort verstärken sich die Rundungsfehler relativ um ca. 10⁴ wie in FP64 (vgl. `kCpuGpuFp64Relative`). Auf der CPU liefert derselbe Pfad (`batch_ray_opl` über eine df64-Flächentabelle) ≤ 1,7·10⁻¹¹ mm für OPL und OPD (Test `Df64.CpuTraceMatchesFp64`, läuft auch in der CI); MERIT gegen Σ RESIDUALS² in df64 ≤ 2,3·10⁻¹⁵ relativ (`kMeritVsResidualSumDf64`).
+
+### FP32-Vorfilterung (M7-T2)
+
+**Zweck.** Im Multistart sind viele Varianten hoffnungslos: massives Strahlversagen oder eine Merit, die um Größenordnungen über der besten liegt. Die Vorfilterung bewertet alle Varianten grob in float (auf der RTX 3090 rechnet FP32 64-mal so schnell wie FP64) und sortiert nur die aus, die die Kriterien **auch in FP64 sicher** erfüllen; alle übrigen werden danach in FP64 oder df64 bewertet. Das ist der einzige Pfad mit R = float (AGENTS.md §6.1, ADR-0003): API `mko::cuda::TraceEngine::prefilter_variants` (GPU) bzw. `mko::prefilter_cpu` (CPU-Referenz), Kernel `prefilter_kernel` ([architektur.md, „FP32-Vorfilterung“](architektur.md#fp32-vorfilterung-m7-t2)). Die Werte (`PrefilterResult`) sind Schranken für die Auswahl und dürfen nie in Merit, Residuen, Jacobi-Matrix oder Optimierung einfließen; so steht es in jedem beteiligten Header und Quelltext.
+
+**Pro Strahl** (`prefilter_ray` in `include/mikroptim/merit/prefilter_ray.hpp`, header-only, gemeinsam für CPU und Kernel): dieselben Funktionen wie in FP64 (`batch_source_ray`, `trace_ray`, Prüfung d_z > 0 nach der letzten Brechung, `reference_sphere_step`) in float, Flächentabelle und Quadratur beim Laden nach float gewandelt. Zusätzlich liefert jeder Strahl seinen **Grenzabstand**: den Abstand seiner Prüfgrößen zur Versagensgrenze, einheitlich als Kosinus.
+
+| Prüfung des Tracers | Prüfgröße | Grenzabstand (gültig) | Betrag des Versagens |
+|---|---|---|---|
+| Richtung vor jedem Transfer und nach der letzten Brechung | d_z > 0 | d_z | −d_z |
+| Sphäre getroffen | D = B² − cH ≥ 0 und B + √D > 0 | cos I = **d**·**N** (= √D) | max(√(−D), −B) |
+| Brechung | k = 1 − μ²(1 − cos² I) ≥ 0 | cos I′ = **d**′·**N** (= √k) | √(−k) |
+| Geisterplatte | 1 − \|**d**′_⊥\|² ≥ 0 | d′_z | √(\|**d**′_⊥\|² − 1) |
+| Referenzsphäre | b² − g ≥ 0 und σ(b + σ√(b² − g)) > 0 | √(b² − g)/R_ref und σ(b + σ√(b² − g))/R_ref | √(g − b²)/R_ref bzw. −σ(…)/R_ref |
+
+Für gültige Strahlen wertet ein Beobachter von `trace_ray` die Größen im Schnittpunkt aus (`PrefilterMarginObserver`): Mit **p** = **p**_t + s **d** (Tangentialebene, |**d**| = 1) ist **d**·**N** = d_z − c(**p**·**d**) = B − cs und s = H/(B + √D), also **d**·**N** = (D + B√D)/(B + √D) = √D; aus **d**′ = μ**d** + (√k − μ cos I)**N** folgt **d**′·**N** = √k. Für versagte Strahlen rechnet `prefilter_surface_failure` die verletzte Prüfgröße aus dem Zustand nach, in dem `trace_ray` zurückkehrt (dieselben Formeln wie `surface_ops.hpp` und `ghost_plate.hpp`). Beim Verfehlen genügt das Vorzeichen von B: Wegen cH = c²(x² + y²) ≥ 0 ist √D ≤ |B|, also trifft auch FP64 nur bei B > 0. NaN ergibt den Grenzabstand 0.
+
+**Klassen.** Gültig oder versagt mit Grenzabstand > η heißt *sicher*, sonst *unsicher*. Annahme (A): Sicher entschiedene Strahlen werden in FP64 gleich entschieden. Die Rundungsfehler der Prüfgrößen selbst sind klein (FP32 gegen FP64 über dieselbe Funktion, Grenzabstände bis 1: ≤ 2·10⁻⁵, Test `Prefilter.RayClassesAndErrorModel`), aber streifende Strahlen verstärken die Fehler aller folgenden Flächen: ein Richtungsfehler δd_z erzeugt über die Dicke t einen Querfehler ≈ t·δd_z/d_z², und eine Geisterplatte weit außerhalb ihres Normierungsradius macht daraus einen großen Richtungsfehler. Deshalb ist η groß gewählt (`PrefilterMargins::boundary` = 0,15, Winkel über 81,4°): Im Stresstest (`CudaPrefilter.DISABLED_StressManySeeds`, 3·10⁵ Multistart-Varianten, 1,7·10⁸ Strahlen) war bei η = 0,05 genau ein Strahl falsch sicher (Geisterplatte lenkt auf d_z = 0,05 ab, 2,5 mm Luft versetzen ihn um 50 mm, die zweite Geisterplatte bei r = 2,6 r_g lenkt in FP32 und FP64 verschieden ab; FP64 totalreflektiert an der Linse, FP32 nicht, cos I′ = 0,05), bei η = 0,1, 0,15 und 0,2 keiner. Physikalisch brauchbare Strahlen liegen weit über der Schwelle (Bildraum bei NA 0,95: d_z = 0,31). Grenzabstand an der Totalreflexion als Orakel (`Prefilter.MarginAtTirBoundary`, äußerster Strahl der Einzellinse um den Grenzradius a* = 49,5597 mm): fällt wie √|δ| (1,5·10⁻³ bei |δ| = 10⁻⁶, 0,15 bei 10⁻²), FP32 und FP64 gleich bis 5·10⁻⁵.
+
+**OPL relativ.** Die Start-OPL wird um `prefilter_opl_offset` vermindert, die axiale optische Länge Σ_{s ≤ S−2} n_s t_s des Tupels (jede Konstante lässt die OPD unverändert; diese liegt nahe an allen OPL, weil die Referenzsphäre durch den Scheitel der letzten Fläche geht). Kolben und Quadratsumme werden damit aus Zahlen von einigen mm statt ~100 mm gebildet; der Kolben wird nur über die sicher gültigen Strahlen genommen.
+
+**Fehlermodell der OPD** (sicher gültige Strahlen in Tupeln ohne unsichere Strahlen):
+
+$$|\mathrm{OPD}_{32} - \mathrm{OPD}_{64}| \le \kappa\,u\,\Lambda_v + m\,|\mathrm{OPD}|,\qquad u = 2^{-24},\quad \Lambda_v = \max_k\big(|\mathrm{opl\_offset}| + |\mathrm{OPL}_k - \mathrm{opl\_offset}|\big)$$
+
+Der erste Term ist die Rundung der akkumulierten OPL (einige Rundungen der Größe u·Λ pro Fläche), der zweite die relative Rundung großer OPD extremer Varianten (mm bis einige 10 mm, dort schlecht konditionierte Strahlen). Gemessen (je 600 Varianten, Test `Prefilter.RayClassesAndErrorModel`): nötiges κ bei m = 0 20 / 19 / 162 (Einzellinse / Mehrlinser / Geisterplatte), bei m = 0,01 4,7 / 3,9 / 2,8. Standard κ = 32, m = 0,01 (`PrefilterMargins`); bei Λ = 25 mm ist κuΛ = 4,8·10⁻⁵ mm ≈ 0,09 λ.
+
+**Schranken der Merit.** F32_v = Σ r_k² über die Menge C der sicher gültigen Strahlen. (1) Weglassen von Strahlen verkleinert F: Für A ⊆ B ist F_A = min_x Σ_A W_k (OPL_k − x)² ≤ Σ_A W_k (OPL_k − x_B)² ≤ F_B (Gewichte nicht renormiert, wie in r_k). Nach (A) ist C in der Menge der FP64-gültigen Strahlen enthalten, also F_FP64 ≥ F_FP64(C), mit Gleichheit ohne unsichere Strahlen. (2) Dreiecksungleichung in der gewichteten 2-Norm: |√F32(C) − √F64(C)| ≤ ‖s√W·δOPD‖₂ ≤ Δ_v + m√F64(C) mit Δ_v = κuΛ_v√(Σ_(f,l) s_(f,l)²) (s = `residual_scale`, ab M4-T1 die Gewichte; Σ_k W_k ≤ 1 pro Tupel). Daraus
+
+$$L_v = \Big(\frac{\max(0,\ \sqrt{F_{32}} - \Delta_v)}{1 + m}\Big)^2 + E_v \;\le\; F_{\mathrm{FP64}} \;\le\; U_v = \Big(\frac{\sqrt{F_{32}} + \Delta_v}{1 - m}\Big)^2 + E_v,$$
+
+U_v nur ohne unsichere Strahlen (sonst +∞); E_v ist der optionale Anteil weiterer Residuen (FP64 vom Aufrufer, exakt addiert). NaN in den Rohdaten (Überlauf) ergibt L_v = E_v, U_v = +∞.
+
+**Entscheidungsregel** (`prefilter_decide`; „Wahrheit“ `prefilter_decide_exact` = dieselbe Regel auf FP64-Werten ohne Margen):
+
+| Kriterium | FP32 sortiert aus, wenn | FP64-Wahrheit | warum konservativ |
+|---|---|---|---|
+| (a) Strahlversagen | sicher versagt > f_max·R_v | versagt > f_max·R_v | sicher versagt ≤ versagt_FP64 ≤ sicher versagt + unsicher (A) |
+| (b) Merit absolut | L_v > F_max | F_v > F_max | L_v ≤ F_v |
+| (c) Merit relativ | L_v > q·min_u U_u | F_v > q·F_best | Referenzmenge: Varianten ohne unsichere Strahlen, ohne (a), mit mindestens einem gültigen Strahl; dort entscheidet FP64 (a) gleich und F_u ≤ U_u, also F_best ≤ min_u U_u |
+
+F_best der Wahrheit ist die kleinste Merit der Varianten ohne (a) mit mindestens einem gültigen Strahl. Ergebnis: Bitmaske der Gründe pro Variante (`reject`, 0 = behalten), L_v, U_v, Rohdaten (F32, Λ, sicher versagte, unsichere Strahlen), Referenzvariante. Ein Grund, den FP64 nicht hat, kommt nicht vor (getestet).
+
+**Abnahme** (keine falsch aussortierten Varianten; RTX 3090, Test `CudaPrefilter.AcceptanceNoFalseRejections`): je 10.000 Multistart-Varianten von `einzellinse_bk7.json`, `testsystem_mehrlinser.json` und `einzellinse_geisterplatte.json` (Krümmungen ±50 %, Dicken ±30 %, Pupille ×0,5 … 2, jede siebte Variante extrem; 7,1 / 8,5 / 12,5 % versagte Strahlen, 793 / 985 / 1.083 Varianten mit über 50 % Versagen, Merit über 6–8 Größenordnungen), 13 Kriterien pro System (Versagen > 1, 10, 50 % und am 0,9-Quantil der FP64-Werte, Merit über den 0,25/0,5/0,9-Quantilen, über 2-, 10-, 100-, 10⁴-mal die beste, kombiniert, kombiniert mit weiteren Residuen):
+
+| System | FP64-Ablehnungen (Summe über die Kriterien) | falsch aussortiert | zusätzlich behalten | unsichere Strahlen |
+|---|---:|---:|---:|---:|
+| Einzellinse | 65.266 | 0 | 480 | 12.660 von 5,1·10⁶ |
+| Mehrlinser | 64.944 | 0 | 727 | 16.995 von 6,8·10⁶ |
+| Geisterplatte | 67.781 | 0 | 478 | 7.401 von 5,1·10⁶ |
+
+Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (1 ± m)² und Δ_v) und beim Kriterium 10⁴-mal die beste (U der besten Variante enthält Δ_v ≈ 10⁻⁴ mm gegen √F_best ≈ 5·10⁻⁴ mm). Stresstest mit 10 weiteren Seeds (3·10⁵ Varianten, 390 Entscheidungsläufe): 0 falsch aussortiert, 16.834 von 1.978.009 FP64-Ablehnungen zusätzlich behalten (0,85 %), 0,22 % unsichere Strahlen; L_v ≤ F_FP64 ≤ U_v und die Klammer der versagten Strahlen für alle Varianten. CPU in der CI (`Prefilter.CpuAcceptanceNoFalseRejections`, je 1.000 Varianten gegen `merit_cpu`): 0 falsch aussortiert, 137 von 18.139 zusätzlich behalten. GPU gegen CPU-Referenz (`CudaPrefilter.MatchesCpuReference`): Klassen in allen 900 Varianten gleich, |F_GPU/F_CPU − 1| ≤ 9·10⁻⁵ (FMA-Kontraktion und Summationsreihenfolge). Determinismus: zehn Läufe und vier Tranchen bitgleich (`CudaPrefilter.RepeatedRunsAndTranchesAreBitIdentical`, Baumreduktionen wie MERIT, ADR-0007).
+
+**Grenzen.** Annahme (A) und die Konstanten κ, m sind empirisch belegt, nicht bewiesen; wer η, κ oder m verkleinert, verlässt den getesteten Bereich. float läuft bei |x| > 3,4·10³⁸ über (Geisterplatten weit außerhalb von r_g, wie df64); das ergibt NaN, also unsicher. Hartes Versagen wie in M2: Mit dem weichen Versagen (M4-T2, Strafresiduen) muss die Vorfilterung die Strafen in L_v aufnehmen. Kriterium (c) wird nur angewandt, wenn mindestens eine Variante ohne unsichere Strahlen in die Referenzmenge fällt.
 
 ## 13. Literatur
 
