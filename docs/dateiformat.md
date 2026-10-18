@@ -24,7 +24,8 @@ Beispiel: [data/systems/einzellinse_bk7.json](../data/systems/einzellinse_bk7.js
 | `target` | object | nein | Sollwerte, z. B. `focal_length`, `parfocal_length`, `working_distance` (ab M3) |
 | `surfaces` | object[] | ja | Flächen in Tracerichtung, siehe unten |
 | `ghost_plates` | object[] | nein | Geisterplatten (M4-T5), siehe unten |
-| `variables`, `constraints` | object | nein | Optimierungsangaben (ab M3; Schema wird dort festgelegt) |
+| `variables` | object | nein | Optimierungsvariablen (ab M3-T1), siehe [Variablen](#variablen-ab-m3-t1) |
+| `constraints` | object | nein | Nebenbedingungen (Schema folgt in M3-T3/M4-T3) |
 
 ### Flächen
 
@@ -77,7 +78,49 @@ Beispiel `einzellinse_geisterplatte.json` (Platten bei 1,0 und 3,5 mm im 5-mm-Sp
 | Dateifläche | 0 | – | – | 1 | 2 |
 | Dicke | 1,0 | 2,5 | 1,5 | 6,0 | 98,23 |
 
-Die Abbildung liefert `mko::make_surface_map(system)` (`include/mikroptim/model/system.hpp`) als `SurfaceMap` mit `table_of_file`, `file_of_table` (−1 bei Geisterplatten), `ghost_of_table`, `table_of_ghost` und den Funktionen `file_surface(j)` und `table_surface(i)`, die zusätzlich die Referenzsphäre abbilden (j = S_Tabelle ↔ i = S_Datei). **Ausgaben mit Flächennummern beziehen sich auf Tabellenflächen**, insbesondere `failed_surface` in `CpuTraceResult`, `WavefrontMap` und der Batch-Trace; für Meldungen in Dateiflächen ist `file_surface` anzuwenden. `table_surface_count(system)` = Zahl der Tabellenflächen; zusammen höchstens `kMaxSurfaces` = 64. Die Paraxialoptik rechnet über dieselben Tabellenflächen. Optimierungsvariablen (M3) sehen einen geteilten Luftspalt als mehrere Dicken.
+Die Abbildung liefert `mko::make_surface_map(system)` (`include/mikroptim/model/system.hpp`) als `SurfaceMap` mit `table_of_file`, `file_of_table` (−1 bei Geisterplatten), `ghost_of_table`, `table_of_ghost` und den Funktionen `file_surface(j)` und `table_surface(i)`, die zusätzlich die Referenzsphäre abbilden (j = S_Tabelle ↔ i = S_Datei). **Ausgaben mit Flächennummern beziehen sich auf Tabellenflächen**, insbesondere `failed_surface` in `CpuTraceResult`, `WavefrontMap` und der Batch-Trace; für Meldungen in Dateiflächen ist `file_surface` anzuwenden. `table_surface_count(system)` = Zahl der Tabellenflächen; zusammen höchstens `kMaxSurfaces` = 64. Die Paraxialoptik rechnet über dieselben Tabellenflächen. Optimierungsvariablen (M3-T1) beziehen sich auf Dateiflächen; die Dicke eines geteilten Luftspalts ist eine Variable mit dem Wert der Dateidicke (siehe [Variablen](#variablen-ab-m3-t1)).
+
+### Variablen (ab M3-T1)
+
+Beispiel: [data/systems/einzellinse_bk7_variablen.json](../data/systems/einzellinse_bk7_variablen.json).
+
+```json
+"variables": {
+  "items": [
+    { "type": "curvature", "surfaces": "all", "min": -0.05, "max": 0.05 },
+    { "type": "thickness", "surface": 1, "min": 2.0, "max": 12.0, "comment": "Mittendicke" },
+    { "type": "thickness", "surfaces": [0, 3], "min": 0.1, "typical": 2.0 },
+    { "type": "working_distance", "min": 50.0, "max": 150.0, "typical": 10.0 }
+  ]
+}
+```
+
+`variables` ist ein Objekt (Platz für spätere Einstellungen) mit der Pflichtliste `items`. Jeder Eintrag beschreibt eine oder mehrere Variablen eines Typs:
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `type` | string | `"curvature"` (Krümmung c [1/mm]), `"thickness"` (Dicke bzw. Luftabstand t [mm]), `"working_distance"` (Arbeitsabstand w [mm]) |
+| `surface` | integer | eine Fläche (Index in `surfaces`, ab 0) |
+| `surfaces` | integer[] oder `"all"` | mehrere Flächen in dieser Reihenfolge; `"all"`: bei `curvature` alle Flächen vom Typ `sphere`, bei `thickness` alle Flächen außer der letzten |
+| `min`, `max` | number | Schranken (docs/optimierung.md, Abschnitt 1: \|c\| ≤ c_max als `min` = −c_max, `max` = c_max; t_min ≤ t ≤ t_max; w ≥ w_min); fehlt ein Feld, ist die Schranke offen |
+| `typical` | number | typische Größe x_typ > 0 für die Schrittweite der finiten Differenzen h = ε^{1/3}·max(\|x\|, x_typ); Standard: 0,01 1/mm (Krümmung), 1 mm (Dicke, Arbeitsabstand) |
+| `comment` | string | optional |
+
+Der Startwert jeder Variable ist der Wert in `surfaces` (`curvature` bzw. `thickness`); Variablen werden nicht doppelt gespeichert. Die Schranken gelten für alle Flächen eines Eintrags. Glas folgt in M6-T1, Geisterkoeffizienten in M4-T6 als weitere Werte von `type`.
+
+Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `variables.items[2].surfaces[1]`):
+
+- `type` ist Pflicht; unbekannte Typen werden abgelehnt (nicht ignoriert), damit ein Tippfehler keine Variable verschwinden lässt.
+- `curvature` und `thickness` verlangen genau eines der Felder `surface` und `surfaces`; Indizes sind nichtnegative ganze Zahlen (`3` und `3.0` sind erlaubt, wie bei `ghost_plates`), die Fläche muss existieren, eine Liste darf nicht leer sein.
+- `curvature` nur bei Flächen vom Typ `sphere`. Die Blende ist eben und nie variabel. Eine Planfläche, die gekrümmt werden darf, steht als `"type": "sphere", "curvature": 0` in der Datei: Ein Wechsel plane → sphere würde den Flächentyp und damit die Topologie des Batches ändern (ADR-0004).
+- `thickness` nicht für die letzte Fläche: Deren Dicke ist der Arbeitsabstand, dafür gibt es genau den Typ `working_distance` (eine Quelle der Wahrheit, wie `thickness[v][S−1]` im Batch). `working_distance` hat kein `surface`/`surfaces`.
+- Keine Variable doppelt, auch nicht über Kurzformen (`"all"` und ein Einzeleintrag derselben Fläche), `working_distance` höchstens einmal.
+- `min` < `max` (beide endlich), `typical` > 0; der Startwert liegt in [`min`, `max`] (sonst Fehler unter `min` bzw. `max` mit dem Pfad des Werts, z. B. `surfaces[0].thickness`). Ein unzulässiger Start würde sonst durch die Projektion des Optimierers stillschweigend verändert.
+- Unbekannte Felder in `variables` und in den Einträgen werden wie überall mit Warnung ignoriert.
+
+**Flächenindizes** beziehen sich immer auf die Dateiflächen `surfaces[i]`, auch wenn Geisterplatten als zusätzliche Tabellenflächen eingefügt sind; die Abbildung auf den Batch übernimmt die `SurfaceMap` (`checked_surface_map` in `include/mikroptim/optim/variable_set.hpp`). Die Dicke einer Dateifläche, in deren Luftspalt Geisterplatten liegen, ist als Variable die ganze Dateidicke T; im Batch ändert sie nur das letzte Teilstück nach der letzten Platte, die Abstände `distance` der Platten bleiben fest (docs/optimierung.md). Ihre untere Schranke ist mindestens der `distance` der letzten Platte im Spalt (die Platte muss im Spalt bleiben).
+
+Modell: `mko::Variables` mit Einträgen `mko::VariableSpec` (`include/mikroptim/model/variables.hpp`), wie sie in der Datei stehen (inklusive Kurzform, damit das Schreiben die Form erhält). `resolve_variables(system)` löst sie in einzelne Variablen auf (`ResolvedVariable`: Typ, Dateifläche, Schranken ±∞ wenn offen, x_typ, Eintrag) und prüft dabei die Regeln; `validate_system` ruft es auf. Reihenfolge: Einträge in Dateireihenfolge, innerhalb eines Eintrags die Flächen wie angegeben (bei `"all"` aufsteigend); sie ist die Reihenfolge der Komponenten des Variablenvektors (docs/optimierung.md).
 
 ### Einlesen und Validierung
 
@@ -107,12 +150,13 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 - `material`: `"AIR"`, sonst Glasname (nicht leer); Objekte mit `model` `constant` (`n` > 0) oder `buchdahl` (`n0` > 0, `nu` mit 2 oder 3 Koeffizienten, fehlende = 0).
 - `ghost_plates` (Liste von Objekten, Pfade `ghost_plates[g].<feld>`): Pflichtfelder laut Tabelle; `after_surface` und `order` nichtnegative ganze Zahlen (`7` und `7.0` sind erlaubt); `order` gleich der Länge von `coefficients`, 1 ≤ `order` ≤ 32, Koeffizienten endlich; `after_surface` ≤ S − 2 (nach der letzten Fläche liegt der Arbeitsabstand) und das Medium nach `after_surface` ist `"AIR"` (Luftspalt); 0 ≤ `distance` ≤ Dicke des Spalts; `norm_radius` > 0; `glass` wie `material`, aber nicht `"AIR"`; die Liste ist nach (`after_surface`, `distance`) aufsteigend sortiert (Fehler unter `ghost_plates[g]`). Eine leere Liste wird nicht geschrieben.
 - Ob Glasnamen in den Katalogen existieren, prüft `validate_materials` mit einer vom Aufrufer gelieferten Abfrage (Fehler unter `surfaces[i].material` bzw. `ghost_plates[g].glass`), weil der Leser den Glaskatalog nicht kennt.
-- `variables` und `constraints` (Objekte) werden bis zur Festlegung ihres Schemas (M3) als kompakter JSON-Text im Modell aufbewahrt und unverändert wieder geschrieben.
+- `variables`: Regeln im Abschnitt [Variablen](#variablen-ab-m3-t1).
+- `constraints` (Objekt) wird bis zur Festlegung seines Schemas (M3-T3/M4-T3) als kompakter JSON-Text im Modell aufbewahrt und unverändert wieder geschrieben.
 - Unbekannte Felder werden ignoriert; als Warnung `"<pfad>: unbekanntes Feld wird ignoriert"` an `warnings` angehängt (die Bibliothek schreibt nichts auf stderr).
 
 Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
 
-Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
+Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder. Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
 
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 

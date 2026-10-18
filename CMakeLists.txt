@@ -75,6 +75,7 @@ target_compile_features(mikroptim_core INTERFACE cxx_std_20)
 # --------------------------------------------------------------------------
 add_library(mikroptim_model STATIC
     src/model/system.cpp
+    src/model/variables.cpp
     src/io/system_json.cpp)
 add_library(Mikroptim::model ALIAS mikroptim_model)
 target_link_libraries(mikroptim_model
@@ -140,6 +141,17 @@ add_library(Mikroptim::batch ALIAS mikroptim_batch)
 target_link_libraries(mikroptim_batch
     PUBLIC mikroptim_core mikroptim_model mikroptim_glass mikroptim_cpu
     PRIVATE mikroptim_paraxial mikroptim_warnings)
+
+# --------------------------------------------------------------------------
+# Optimierer (Host): Variablenabbildung Vektor ↔ Batch, Variantengenerator (ab M3)
+# --------------------------------------------------------------------------
+add_library(mikroptim_optim STATIC
+    src/optim/variable_set.cpp
+    src/optim/variant_generator.cpp)
+add_library(Mikroptim::optim ALIAS mikroptim_optim)
+target_link_libraries(mikroptim_optim
+    PUBLIC mikroptim_core mikroptim_model mikroptim_batch
+    PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
 # CUDA-Backend

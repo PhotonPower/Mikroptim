@@ -1,0 +1,22 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7 mit Variablen",
+  "description": "Beispiel für den Abschnitt variables (M3-T1): Linse wie einzellinse_bk7.json, kleine Apertur, eine Wellenlänge, Sollbrennweite 100 mm.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 100.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 5.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.00967, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.00967, "thickness": 99.05, "material": "AIR", "semi_diameter": 12.5 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.05, "max": 0.05 },
+      { "type": "thickness", "surface": 1, "min": 2.0, "max": 12.0, "comment": "Mittendicke" },
+      { "type": "working_distance", "min": 50.0, "max": 150.0, "typical": 10.0 }
+    ]
+  }
+}

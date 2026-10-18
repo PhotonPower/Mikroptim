@@ -34,7 +34,7 @@ flowchart TD
 | CPU-Tracer, Lader | `include/mikroptim/cpu/` | `src/cpu/` | M1 |
 | CUDA-Backend | `include/mikroptim/cuda/` (reines C++) | `src/cuda/` | M2–M8 |
 | Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
-| Optimierer | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
+| Optimierer (ab M3-T1: Variablen, Variantengenerator) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
@@ -45,6 +45,7 @@ flowchart TD
 Statische Host-Bibliothek `mikroptim_model` (Alias `Mikroptim::model`), gelinkt in CLI und Tests:
 
 - `include/mikroptim/model/system.hpp`: `mko::SystemDescription` mit `Spectrum`, `Source`, `Target`, `Surface` (Typen `SurfaceType`, `SourceType`), Validierung `validate_system` und `validate_materials`.
+- `include/mikroptim/model/variables.hpp`: Abschnitt `variables` (`mko::Variables`, `VariableSpec`, `VariableType`), Auflösung und Prüfung `resolve_variables` (ab M3-T1).
 - `include/mikroptim/model/material.hpp`: `mko::MaterialSpec` (Medium nach einer Fläche; gemeinsam mit dem Glasmodell).
 - `include/mikroptim/model/format_error.hpp`: `mko::FormatError` mit JSON-Pfad.
 - `include/mikroptim/io/system_json.hpp`: Einlesen und Schreiben von `mikroptim.system/1`, Auflösung der Glaskatalog-Pfade (Details: [dateiformat.md](dateiformat.md#einlesen-und-validierung)).
@@ -636,6 +637,37 @@ Gegenüber der ursprünglichen Skizze (`upload(batch)`, dann `run(mode, settings
 **Auswertung für die CLI (M2-T5):** Mit `opd = true` liefert `tuple_wavefronts(out.residuals, out.layout, v)` pro Feld und Wellenlänge RMS [mm], Σ W der gültigen Strahlen und die Zahl versagter Strahlen, Ablage [f·L + l] wie `WavefrontResult::maps`. Für das Ergebnis von `residuals_cpu` ist das bitgleich zu `evaluate_wavefront` (Test `ResidualsCpu.TupleWavefrontsMatchEvaluateWavefront`), für die GPU innerhalb 1,6·10⁻¹⁵ mm (Test `TraceEngine.TupleWavefrontsMatchEvaluateWavefront`). Die Umrechnung in Wellen (λ_ref) und die Paraxialdaten bleiben in der CLI.
 
 **Abgrenzung der Tests:** Alle GPU-Tests, die die Kernel `RESIDUALS` und `MERIT` fachlich prüfen (CPU-Abgleich, Determinismus, Grenzfälle, Durchsatz), laufen über die Engine. Direkt auf die Bausteine greifen nur Tests zu, die deren eigenen Vertrag prüfen: `CudaResiduals.DeviceBufferReuse` und `CudaResiduals.InvalidUseThrows` (`DeviceResiduals`), `CudaMerit.DeviceBufferReuse` und `CudaMerit.InvalidUseThrows` (`DeviceMerit`), `test_cuda_system_batch.cpp` (Upload/Download des Batches) und die Prüfkernel aus M1 (`test_cuda_trace.cpp`, `test_cuda_quadrature.cpp`, `test_cuda_dispersion.cpp`, `test_cuda_smoke.cpp`).
+
+## Optimierer: Variablen und Variantengenerator (M3-T1)
+
+Statische Host-Bibliothek `mikroptim_optim` (Alias `Mikroptim::optim`), linkt `model` und `batch`; ohne CUDA. Formeln und Festlegungen: [optimierung.md](optimierung.md#variablenabbildung-ab-m3-t1).
+
+```cpp
+// variable_set.hpp
+struct Variable { VariableType type; int file_surface, batch_surface; bool split; double offset;
+                  double lower, upper, typical; std::string name; }; // name: "c[3]", "t[2]", "w"
+SurfaceMap checked_surface_map(const SystemDescription&, const BatchTopology&); // make_surface_map + Prüfung
+class VariableSet {
+    VariableSet(const SystemDescription&, const BatchTopology&);
+    int size() const; const Variable& operator[](int) const;
+    std::span<const double> lower() const, upper() const, typical() const;
+    std::vector<double> extract(const SystemBatchHost&, int v) const;
+    void apply(SystemBatchHost&, int v, std::span<const double> x) const;
+    std::vector<double> extract(const SystemDescription&) const;
+    void apply_to_description(SystemDescription&, std::span<const double> x) const;
+    bool feasible(std::span<const double>) const; void clamp_to_bounds(std::span<double>) const;
+};
+// variant_generator.hpp
+std::vector<double> perturbed_vector(const VariableSet&, std::span<const double> x0,
+                                     const PerturbationOptions&, std::uint64_t j);
+void write_perturbed_variants(set, base, base_variant, x0, options, SystemBatchHost& out, int first, int count);
+SystemBatchHost make_perturbed_batch(set, base, base_variant, x0, int variants, options);
+FdPattern fd_pattern(const VariableSet&, std::span<const double> x0, FdScheme);
+FdPattern write_fd_variants(set, base, base_variant, x0, FdScheme, SystemBatchHost& out, int first);
+FdBatch make_fd_batch(set, base, base_variant, x0, FdScheme = FdScheme::Central);
+```
+
+Der Generator arbeitet nur auf dem Host-Batch (`SystemBatchHost`); die TraceEngine lädt ihn wie jeden anderen Batch hoch. Für den gebündelten LM (M3-T4) liegen die FD-Muster mehrerer Läufe hintereinander in einem Batch (`write_fd_variants` mit `first` = Lauf · (2P + 1)).
 
 ## Mehrere GPUs (M7)
 
