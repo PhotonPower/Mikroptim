@@ -37,7 +37,8 @@ enum class SurfaceKind : std::uint8_t {
 // (`sys.surfaces`, `sys.wavelengths`, `sys.type[s]`, `sys.curvature[s]`, `sys.thickness[s]`,
 // `sys.index[s * sys.wavelengths + l]`). Andere Tabellen (z. B. feste Felder im Shared Memory
 // oder eine Batch-Sicht mit Versatz pro Variante) müssen nur diese Namen bereitstellen.
-template <class R> struct SurfaceTableView {
+template <class R>
+struct SurfaceTableView {
     int surfaces;
     int wavelengths;
     const SurfaceKind* type;

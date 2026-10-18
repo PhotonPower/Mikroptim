@@ -189,7 +189,8 @@ void gauss_legendre_reference(int n, std::vector<double>& u, std::vector<double>
 }
 
 // Mittelwert einer Funktion f(ρ, φ) über die Quadratur.
-template <class F> double quad_mean(const PupilQuadrature<double>& q, F f) {
+template <class F>
+double quad_mean(const PupilQuadrature<double>& q, F f) {
     double sum = 0.0;
     for (int k = 0; k < mko::sample_count(q); ++k) {
         const PupilSample<double> s = mko::sample(q, k);

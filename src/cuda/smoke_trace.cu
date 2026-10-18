@@ -50,8 +50,8 @@ bool smoke_trace(const std::vector<double>& heights, double curvature, double mu
     MKO_CUDA_TRY(cudaMalloc(&b.h, heights.size() * sizeof(double)));
     MKO_CUDA_TRY(cudaMalloc(&b.z, heights.size() * sizeof(double)));
     MKO_CUDA_TRY(cudaMalloc(&b.s, heights.size() * sizeof(unsigned)));
-    MKO_CUDA_TRY(cudaMemcpy(b.h, heights.data(), heights.size() * sizeof(double),
-                            cudaMemcpyHostToDevice));
+    MKO_CUDA_TRY(
+        cudaMemcpy(b.h, heights.data(), heights.size() * sizeof(double), cudaMemcpyHostToDevice));
 
     constexpr int kBlock = 128;
     const int grid = (n + kBlock - 1) / kBlock;
@@ -61,8 +61,8 @@ bool smoke_trace(const std::vector<double>& heights, double curvature, double mu
 
     MKO_CUDA_TRY(cudaMemcpy(axis_crossing.data(), b.z, heights.size() * sizeof(double),
                             cudaMemcpyDeviceToHost));
-    MKO_CUDA_TRY(cudaMemcpy(status.data(), b.s, heights.size() * sizeof(unsigned),
-                            cudaMemcpyDeviceToHost));
+    MKO_CUDA_TRY(
+        cudaMemcpy(status.data(), b.s, heights.size() * sizeof(unsigned), cudaMemcpyDeviceToHost));
     return true;
 }
 

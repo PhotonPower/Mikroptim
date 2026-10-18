@@ -36,7 +36,8 @@ enum class PupilMode : int {
 // Trivial kopierbarer Parametersatz der Quadratur; wird per Wert an Kernel übergeben.
 // Index-Abbildung: index = i·spokes + j mit Ring i = 0 … rings−1 (u aufsteigend, innen
 // nach außen) und Speiche j = 0 … spokes−1.
-template <class R> struct PupilQuadrature {
+template <class R>
+struct PupilQuadrature {
     int rings;           // N, 1 … kMaxPupilRings
     int spokes;          // M (im Achsfall 1)
     PupilMode mode;      // halbe Pupille, volle Pupille oder Achsfall
@@ -49,20 +50,23 @@ static_assert(std::is_standard_layout_v<PupilQuadrature<double>>);
 
 // Eine Stützstelle: normierter Pupillenradius ρ ∈ (0, 1), Azimut φ (gemessen von +y,
 // docs/numerik.md, Abschnitt 4) und Gewicht W_i·V_j (Summe über alle Stützstellen 1).
-template <class R> struct PupilSample {
+template <class R>
+struct PupilSample {
     R rho;
     R phi;
     R weight;
 };
 
 // Anzahl der Stützstellen N·M.
-template <class R> MKO_HD inline int sample_count(const PupilQuadrature<R>& q) {
+template <class R>
+MKO_HD inline int sample_count(const PupilQuadrature<R>& q) {
     return q.rings * q.spokes;
 }
 
 // Stützstelle zum linearen Index. Vorbedingung: 0 <= index < sample_count(q)
 // (wird nicht geprüft, damit der Aufruf im Kernel verzweigungsarm bleibt).
-template <class R> MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>& q, int index) {
+template <class R>
+MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>& q, int index) {
     const R pi = R(3.14159265358979323846264338327950288);
     const int i = index / q.spokes;
     const int j = index - i * q.spokes;
@@ -85,7 +89,8 @@ template <class R> MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>&
 }
 
 // Gewicht der Stützstelle im Residuum: √(W_i·V_j) (docs/optimierung.md, Abschnitt Merit).
-template <class R> MKO_HD inline R residual_weight(const PupilSample<R>& s) {
+template <class R>
+MKO_HD inline R residual_weight(const PupilSample<R>& s) {
     return msqrt(s.weight);
 }
 
