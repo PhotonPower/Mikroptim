@@ -51,8 +51,11 @@ struct HostSurfaceTable {
 };
 
 // Brechzahltabelle eines Systems: Zeilen der Dateiflächen (make_index_table mit den Medien der
-// Flächen und den Wellenlängen von system.spectrum) und die Brechzahlen der Gläser aller
-// Geisterplatten (ghost_n). Wirft GlassError; die Meldung nennt Fläche bzw. Geisterplatte.
+// Flächen und den Wellenlängen von system.spectrum), die Brechzahlen der Gläser aller
+// Geisterplatten (ghost_n) und beide bei der Referenzwellenlänge spectrum.reference_nm
+// (reference_n, reference_ghost_n; Paraxialrechnung). Wirft GlassError (auch wenn λ_ref
+// außerhalb des Gültigkeitsbereichs eines Glases liegt); die Meldung nennt Fläche bzw.
+// Geisterplatte.
 IndexTable make_system_index_table(const SystemDescription& system, const GlassCatalog& catalog);
 
 // Baut die Tabelle aus Systembeschreibung und Brechzahltabelle (make_system_index_table oder,

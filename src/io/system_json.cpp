@@ -103,8 +103,7 @@ public:
             sys.variables = read_variables(*v, "variables");
         }
         if (const Json* c = member(root, "constraints")) {
-            expect_object(*c, "constraints");
-            sys.constraints_json = c->dump();
+            sys.constraints = read_constraints(*c, "constraints");
         }
         warn_unknown(root, "",
                      {"format", "name", "description", "units", "glass_catalogs", "spectrum",
@@ -487,6 +486,61 @@ private:
         return v;
     }
 
+    // ---- Abschnitt `constraints` (M3-T3) -----------------------------------------------
+
+    Constraints read_constraints(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        Constraints cons;
+        const std::string items_path = join(path, "items");
+        const Json& items = required(j, path, "items");
+        if (!items.is_array()) {
+            fail_type(items_path, "Liste von Objekten", items);
+        }
+        cons.items.reserve(items.size());
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            cons.items.push_back(read_constraint(items[i], at(items_path, i)));
+        }
+        warn_unknown(j, path, {"items"});
+        return cons;
+    }
+
+    ConstraintSpec read_constraint(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        ConstraintSpec c;
+        const std::string type_path = join(path, "type");
+        const std::string type = as_string(required(j, path, "type"), type_path);
+        const std::optional<ConstraintType> t = constraint_type_from_string(type);
+        if (!t) {
+            fail(type_path, "unbekannter Typ einer Nebenbedingung \"" + type +
+                                "\" (erlaubt: focal_length, parfocal_length, working_distance, "
+                                "paraxial_focus)");
+        }
+        c.type = *t;
+        if (const Json* m = member(j, "mode")) {
+            const std::string mode_path = join(path, "mode");
+            const std::string mode = as_string(*m, mode_path);
+            const std::optional<ConstraintMode> cm = constraint_mode_from_string(mode);
+            if (!cm) {
+                fail(mode_path, "unbekannter Modus \"" + mode + "\" (erlaubt: equal, min, max)");
+            }
+            c.mode = *cm;
+        }
+        if (const Json* w = member(j, "weight")) {
+            c.weight = as_number(*w, join(path, "weight"));
+        }
+        if (const Json* r = member(j, "reference_surface")) {
+            c.reference_surface = as_count(*r, join(path, "reference_surface"));
+        }
+        if (const Json* o = member(j, "offset")) {
+            c.offset = as_number(*o, join(path, "offset"));
+        }
+        if (const Json* m = member(j, "comment")) {
+            c.comment = as_string(*m, join(path, "comment"));
+        }
+        warn_unknown(j, path, {"type", "mode", "weight", "reference_surface", "offset", "comment"});
+        return c;
+    }
+
     std::vector<std::string>* warnings_;
 };
 
@@ -558,12 +612,31 @@ Json variables_to_json(const Variables& vars) {
     return root;
 }
 
-Json raw_to_json(const std::string& raw, const char* path) {
-    try {
-        return Json::parse(raw);
-    } catch (const Json::exception& e) {
-        fail(path, std::string("aufbewahrter Abschnitt ist kein gültiges JSON: ") + e.what());
+Json constraints_to_json(const Constraints& cons) {
+    Json items = Json::array();
+    for (const ConstraintSpec& c : cons.items) {
+        Json j;
+        j["type"] = std::string(to_string(c.type));
+        if (c.mode) {
+            j["mode"] = std::string(to_string(*c.mode));
+        }
+        if (c.weight) {
+            j["weight"] = *c.weight;
+        }
+        if (c.reference_surface) {
+            j["reference_surface"] = *c.reference_surface;
+        }
+        if (c.offset) {
+            j["offset"] = *c.offset;
+        }
+        if (c.comment) {
+            j["comment"] = *c.comment;
+        }
+        items.push_back(std::move(j));
     }
+    Json root;
+    root["items"] = std::move(items);
+    return root;
 }
 
 Json to_json(const SystemDescription& sys) {
@@ -641,8 +714,8 @@ Json to_json(const SystemDescription& sys) {
     if (sys.variables) {
         root["variables"] = variables_to_json(*sys.variables);
     }
-    if (sys.constraints_json) {
-        root["constraints"] = raw_to_json(*sys.constraints_json, "constraints");
+    if (sys.constraints) {
+        root["constraints"] = constraints_to_json(*sys.constraints);
     }
     return root;
 }

@@ -284,6 +284,7 @@ void validate_system(const SystemDescription& system) {
     check_surfaces(system.surfaces);
     check_ghost_plates(system.ghost_plates, system.surfaces);
     (void)resolve_variables(system); // wirft FormatError unter variables.items[i]…
+    check_constraints(system);       // wirft FormatError unter constraints.items[i]…
 }
 
 void validate_materials(const SystemDescription& system,

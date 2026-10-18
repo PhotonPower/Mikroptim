@@ -108,6 +108,13 @@ public:
     double ghost_coeff(int v, int g, int k) const;
     double& ghost_index(int v, int g, int l);
     double ghost_index(int v, int g, int l) const;
+    // Brechzahlen bei λ_ref für die Paraxialrechnung (Paraxial-Nebenbedingungen, M3-T3):
+    // Medium nach Fläche s bzw. Glas der Geisterplatte g. Sie gehören zu index/ghost_index:
+    // Wer die Brechzahlen einer Variante ändert (Glasvariablen, M6), ändert beide.
+    double& paraxial_index(int v, int s);
+    double paraxial_index(int v, int s) const;
+    double& paraxial_ghost_index(int v, int g);
+    double paraxial_ghost_index(int v, int g) const;
     // Arbeitsabstand = thickness(v, S−1) (einzige Quelle, kein eigenes Feld).
     double& image_distance(int v) { return thickness(v, surfaces() - 1); }
     double image_distance(int v) const { return thickness(v, surfaces() - 1); }
@@ -139,6 +146,10 @@ public:
     std::span<const double> ghost_coeff_data() const { return ghost_coeff_; }
     std::span<double> ghost_index_data() { return ghost_index_; }
     std::span<const double> ghost_index_data() const { return ghost_index_; }
+    std::span<double> paraxial_index_data() { return paraxial_index_; }
+    std::span<const double> paraxial_index_data() const { return paraxial_index_; }
+    std::span<double> paraxial_ghost_index_data() { return paraxial_ghost_index_; }
+    std::span<const double> paraxial_ghost_index_data() const { return paraxial_ghost_index_; }
 
     // ---- Sichten ---------------------------------------------------------------------------
     // Sicht auf die Host-Vektoren; gültig, bis der Batch verändert (resize, Zuweisung) oder
@@ -149,7 +160,9 @@ public:
 
     // Prüft die Werte: alle endlich, Pupillenradius > 0, Brechzahlen > 0, Gewichte >= 0,
     // Normierungsradien > 0, λ_ref > 0, bei der Punktquelle 0 < NA < index[v][0][l], und die
-    // Pupillenarten (check_pupil_modes).
+    // Pupillenarten (check_pupil_modes). Die Brechzahlen bei λ_ref (paraxial_index,
+    // paraxial_ghost_index) müssen nur endlich sein: Der Trace braucht sie nicht, von Hand
+    // gebaute Batches dürfen sie auf 0 lassen; die Paraxialrechnung prüft n > 0 selbst.
     // Wirft std::invalid_argument mit Variante und Feld der ersten Verletzung.
     void validate_values() const;
 
@@ -175,6 +188,8 @@ private:
     std::vector<double> field_target_;
     std::vector<double> ghost_coeff_;
     std::vector<double> ghost_index_;
+    std::vector<double> paraxial_index_;
+    std::vector<double> paraxial_ghost_index_;
 };
 
 // Prüft, ob die Varianten [first, first + count) (count < 0: bis zum Ende) zu den
@@ -196,12 +211,16 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
 // Pupillenradius = semi_diameter der Fläche 0, Feldwinkel θ_f = field_angles_deg[f] · π/180,
 // Gewichte und Wellenlängen aus spectrum bzw. source, λ_ref = spectrum.reference_nm,
 // Geisterplatten: ghost_norm_radius, ghost_coeff (mit 0 auf K ergänzt), ghost_index.
+// Brechzahlen bei λ_ref (paraxial_index, paraxial_ghost_index) aus index.reference_n und
+// index.reference_ghost_n (make_system_index_table; index.reference_nm muss gleich
+// spectrum.reference_nm sein), sonst aus der Spalte von λ_ref, wenn λ_ref unter den
+// Wellenlängen des Spektrums ist; Geisterplatten im Luftspalt erhalten das Medium des Spalts.
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
-// `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (nur wenn λ_ref
-// unter den Wellenlängen des Spektrums ist). Ist keine Brennweite bestimmbar (afokales System)
+// `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (mit den
+// Brechzahlen bei λ_ref wie paraxial_index). Ist keine Brennweite bestimmbar (afokales System)
 // oder θ_f = 0 oder die Quelle eine Punktquelle, ist h_f = 0.
-// Wirft std::invalid_argument bei unpassender Tabelle (wie make_surface_table), variants < 1
-// oder nicht endlicher `focal_length`.
+// Wirft std::invalid_argument bei unpassender Tabelle (wie make_surface_table), fehlenden
+// Brechzahlen bei λ_ref, variants < 1 oder nicht endlicher `focal_length`.
 SystemBatchHost make_system_batch(const SystemDescription& system, const IndexTable& index,
                                   int variants = 1,
                                   std::optional<double> focal_length = std::nullopt);

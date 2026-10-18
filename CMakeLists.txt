@@ -76,6 +76,7 @@ target_compile_features(mikroptim_core INTERFACE cxx_std_20)
 # Datenmodell und IO (nur Host; nlohmann/json bleibt privat, siehe docs/architektur.md)
 # --------------------------------------------------------------------------
 add_library(mikroptim_model STATIC
+    src/model/constraints.cpp
     src/model/system.cpp
     src/model/variables.cpp
     src/io/system_json.cpp)
@@ -145,15 +146,18 @@ target_link_libraries(mikroptim_batch
     PRIVATE mikroptim_paraxial mikroptim_warnings)
 
 # --------------------------------------------------------------------------
-# Optimierer (Host): Variablenabbildung Vektor ↔ Batch, Variantengenerator (ab M3)
+# Optimierer (Host): Variablenabbildung Vektor ↔ Batch, Variantengenerator (ab M3),
+# paraxiale Nebenbedingungen mit Paraxialtrace aller Varianten auf Host-Threads (M3-T3)
 # --------------------------------------------------------------------------
+find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
+    src/optim/paraxial_residuals.cpp
     src/optim/variable_set.cpp
     src/optim/variant_generator.cpp)
 add_library(Mikroptim::optim ALIAS mikroptim_optim)
 target_link_libraries(mikroptim_optim
-    PUBLIC mikroptim_core mikroptim_model mikroptim_batch
-    PRIVATE mikroptim_warnings)
+    PUBLIC mikroptim_core mikroptim_model mikroptim_batch mikroptim_paraxial
+    PRIVATE Threads::Threads mikroptim_warnings)
 
 # --------------------------------------------------------------------------
 # CUDA-Backend

@@ -182,7 +182,7 @@ TEST(SystemIo, RoundtripAllFeatures) {
     { "after_surface": 0, "distance": 1, "glass": { "model": "constant", "n": 1.6 }, "norm_radius": 3.5, "order": 2, "coefficients": [1e-3, -2.5e-4] }
   ],
   "variables": { "items": [{ "type": "working_distance", "min": 0.1 }] },
-  "constraints": {}
+  "constraints": { "items": [{ "type": "focal_length", "weight": 4 }, { "type": "working_distance", "mode": "min" }] }
 }
 )";
     std::vector<std::string> warnings;
@@ -219,7 +219,13 @@ TEST(SystemIo, RoundtripAllFeatures) {
     ASSERT_EQ(a.variables->items.size(), 1u);
     EXPECT_EQ(a.variables->items[0].type, mko::VariableType::WorkingDistance);
     EXPECT_EQ(a.variables->items[0].min, 0.1);
-    EXPECT_EQ(a.constraints_json, "{}");
+    ASSERT_TRUE(a.constraints.has_value());
+    ASSERT_EQ(a.constraints->items.size(), 2u);
+    EXPECT_EQ(a.constraints->items[0].type, mko::ConstraintType::FocalLength);
+    EXPECT_EQ(a.constraints->items[0].weight, 4.0);
+    EXPECT_FALSE(a.constraints->items[0].mode.has_value());
+    EXPECT_EQ(a.constraints->items[1].type, mko::ConstraintType::WorkingDistance);
+    EXPECT_EQ(a.constraints->items[1].mode, mko::ConstraintMode::Min);
 
     const std::string text1 = mko::write_system_json(a);
     const SystemDescription b = mko::read_system_json(text1);
@@ -604,12 +610,15 @@ TEST(SystemIo, WriterRejectsInvalidModel) {
     }
     {
         SystemDescription t = s;
-        t.constraints_json = "{oops";
+        t.constraints = mko::Constraints{};
+        t.constraints->items.push_back(mko::ConstraintSpec{});
+        t.constraints->items[0].type = mko::ConstraintType::WorkingDistance;
+        t.constraints->items[0].weight = -1.0;
         try {
             (void)mko::write_system_json(t);
             FAIL() << "keine Ausnahme";
         } catch (const FormatError& e) {
-            EXPECT_EQ(e.json_path(), "constraints");
+            EXPECT_EQ(e.json_path(), "constraints.items[0].weight");
         }
     }
     {

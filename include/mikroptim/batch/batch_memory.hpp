@@ -38,14 +38,16 @@ struct SystemBatchLayout {
     BufferRegion wavelength_weight; // L · 8
     BufferRegion field_weight;      // F · 8
     // pro Variante
-    BufferRegion curvature;    // V · S · 8
-    BufferRegion thickness;    // V · S · 8
-    BufferRegion index;        // V · S · L · 8
-    BufferRegion pupil_radius; // V · 8
-    BufferRegion field_angle;  // V · F · 8
-    BufferRegion field_target; // V · F · 8
-    BufferRegion ghost_coeff;  // V · G · K · 8
-    BufferRegion ghost_index;  // V · G · L · 8
+    BufferRegion curvature;            // V · S · 8
+    BufferRegion thickness;            // V · S · 8
+    BufferRegion index;                // V · S · L · 8
+    BufferRegion pupil_radius;         // V · 8
+    BufferRegion field_angle;          // V · F · 8
+    BufferRegion field_target;         // V · F · 8
+    BufferRegion ghost_coeff;          // V · G · K · 8
+    BufferRegion ghost_index;          // V · G · L · 8
+    BufferRegion paraxial_index;       // V · S · 8 (Brechzahlen bei λ_ref, M3-T3)
+    BufferRegion paraxial_ghost_index; // V · G · 8
     std::size_t total_bytes = 0;
 };
 

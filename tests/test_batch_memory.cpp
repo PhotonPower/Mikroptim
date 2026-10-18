@@ -91,7 +91,12 @@ TEST(BatchMemory, BatchLayoutLens) {
     EXPECT_EQ(b.ghost_coeff.offset, 3072u);
     EXPECT_EQ(b.ghost_coeff.bytes, 0u);
     EXPECT_EQ(b.ghost_index.offset, 3072u);
-    EXPECT_EQ(b.total_bytes, 3072u);
+    // Brechzahlen bei λ_ref (M3-T3): paraxial_index 240 -> 256, paraxial_ghost_index 0
+    EXPECT_EQ(b.paraxial_index.offset, 3072u);
+    EXPECT_EQ(b.paraxial_index.bytes, 240u);
+    EXPECT_EQ(b.paraxial_ghost_index.offset, 3328u);
+    EXPECT_EQ(b.paraxial_ghost_index.bytes, 0u);
+    EXPECT_EQ(b.total_bytes, 3328u);
 }
 
 TEST(BatchMemory, BatchLayoutGhostPlates) {
@@ -105,12 +110,29 @@ TEST(BatchMemory, BatchLayoutGhostPlates) {
     EXPECT_EQ(b.ghost_coeff.bytes, 80000u);
     EXPECT_EQ(b.ghost_index.bytes, 48000u);
     EXPECT_EQ(b.ghost_index.offset, 442368u - 48128u);
-    EXPECT_EQ(b.total_bytes, 442368u);
+    // paraxial_index 48000 -> 48128, paraxial_ghost_index 16000 -> 16128
+    EXPECT_EQ(b.paraxial_index.offset, 442368u);
+    EXPECT_EQ(b.paraxial_index.bytes, 48000u);
+    EXPECT_EQ(b.paraxial_ghost_index.offset, 442368u + 48128u);
+    EXPECT_EQ(b.paraxial_ghost_index.bytes, 16000u);
+    EXPECT_EQ(b.total_bytes, 442368u + 48128u + 16128u);
     // Jeder Bereich beginnt ausgerichtet und überlappt nicht mit dem nächsten
-    const mko::BufferRegion regions[] = {
-        b.type,         b.ghost_surface, b.ghost_norm_radius, b.wavelength_nm, b.wavelength_weight,
-        b.field_weight, b.curvature,     b.thickness,         b.index,         b.pupil_radius,
-        b.field_angle,  b.field_target,  b.ghost_coeff,       b.ghost_index};
+    const mko::BufferRegion regions[] = {b.type,
+                                         b.ghost_surface,
+                                         b.ghost_norm_radius,
+                                         b.wavelength_nm,
+                                         b.wavelength_weight,
+                                         b.field_weight,
+                                         b.curvature,
+                                         b.thickness,
+                                         b.index,
+                                         b.pupil_radius,
+                                         b.field_angle,
+                                         b.field_target,
+                                         b.ghost_coeff,
+                                         b.ghost_index,
+                                         b.paraxial_index,
+                                         b.paraxial_ghost_index};
     for (std::size_t i = 0; i < std::size(regions); ++i) {
         EXPECT_EQ(regions[i].offset % mko::kBatchAlignment, 0u);
         if (i + 1 < std::size(regions)) {
@@ -148,7 +170,7 @@ TEST(BatchMemory, OutputLayoutAndEstimate) {
     EXPECT_EQ(o.surface_max_partial.bytes, 4320u);
     EXPECT_EQ(o.extra.bytes, 1000u);
     EXPECT_EQ(o.total_bytes, 54016u);
-    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3072u + 54016u);
+    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3328u + 54016u);
 
     // Nicht angeforderte Ausgaben kosten nichts
     OutputRequest none;
@@ -158,7 +180,7 @@ TEST(BatchMemory, OutputLayoutAndEstimate) {
     none.merit = false;
     none.surface_max = false;
     EXPECT_EQ(mko::make_output_layout(lens_topology(), 10, none).total_bytes, 0u);
-    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, none), 3072u);
+    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, none), 3328u);
 
     OutputRequest bad;
     bad.rays_per_variant = -1;

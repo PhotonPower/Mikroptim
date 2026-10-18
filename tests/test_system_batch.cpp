@@ -85,6 +85,8 @@ TEST(BatchShape, IndexFormulas) {
     EXPECT_EQ(sh.field_at(1, 2), 5u);           // 1·3 + 2
     EXPECT_EQ(sh.ghost_coeff_at(2, 1, 4), 29u); // (2·2 + 1)·5 + 4
     EXPECT_EQ(sh.ghost_index_at(2, 1, 1), 11u); // (2·2 + 1)·2 + 1
+    EXPECT_EQ(sh.ghost_at(2, 1), 5u);           // 2·2 + 1
+    EXPECT_EQ(sh.ghost_stride(), 2u);
     EXPECT_EQ(sh.surface_stride(), 4u);
     EXPECT_EQ(sh.index_stride(), 8u);
     EXPECT_EQ(sh.field_stride(), 3u);
@@ -137,6 +139,13 @@ TEST(BatchShape, IndexFormulasAreBijectiveAndRowMajor) {
         }
     }
     EXPECT_EQ(next, 7u * sh.ghost_index_stride());
+    next = 0;
+    for (int v = 0; v < sh.variants; ++v) {
+        for (int g = 0; g < sh.ghost_plates; ++g) {
+            ASSERT_EQ(sh.ghost_at(v, g), next++);
+        }
+    }
+    EXPECT_EQ(next, 7u * sh.ghost_stride());
 }
 
 // ---- Host-Container ----------------------------------------------------------------------
@@ -152,6 +161,8 @@ TEST(SystemBatchHost, SizesAndGhostSurfaces) {
     EXPECT_EQ(b.field_target_data().size(), 7u * 4u);
     EXPECT_EQ(b.ghost_coeff_data().size(), 7u * 2u * 5u);
     EXPECT_EQ(b.ghost_index_data().size(), 7u * 2u * 3u);
+    EXPECT_EQ(b.paraxial_index_data().size(), 7u * 6u);
+    EXPECT_EQ(b.paraxial_ghost_index_data().size(), 7u * 2u);
     EXPECT_EQ(b.wavelength_nm_data().size(), 3u);
     EXPECT_EQ(b.wavelength_weight_data().size(), 3u);
     EXPECT_EQ(b.field_weight_data().size(), 4u);
@@ -199,6 +210,10 @@ TEST(SystemBatchHost, WriteReadRoundtripAllIndices) {
             for (int l = 0; l < sh.wavelengths; ++l) {
                 b.ghost_index(v, g, l) = code(8, v, g, l);
             }
+            b.paraxial_ghost_index(v, g) = code(10, v, g);
+        }
+        for (int s = 0; s < sh.surfaces; ++s) {
+            b.paraxial_index(v, s) = code(9, v, s);
         }
     }
 
@@ -254,6 +269,13 @@ TEST(SystemBatchHost, WriteReadRoundtripAllIndices) {
                 EXPECT_EQ(b.ghost_index(v, g, l), code(8, v, g, l));
                 EXPECT_EQ(view.ghost_index[sh.ghost_index_at(v, g, l)], code(8, v, g, l));
             }
+            EXPECT_EQ(b.paraxial_ghost_index(v, g), code(10, v, g));
+            EXPECT_EQ(b.paraxial_ghost_index_data()[sh.ghost_at(v, g)], code(10, v, g));
+            EXPECT_EQ(view.paraxial_ghost_index[sh.ghost_at(v, g)], code(10, v, g));
+        }
+        for (int s = 0; s < sh.surfaces; ++s) {
+            EXPECT_EQ(b.paraxial_index(v, s), code(9, v, s));
+            EXPECT_EQ(view.paraxial_index[sh.surface_at(v, s)], code(9, v, s));
         }
     }
 }
@@ -272,6 +294,10 @@ TEST(SystemBatchHost, AccessorsCheckEveryIndex) {
     EXPECT_THROW(b.ghost_coeff(0, 0, 5), std::out_of_range);
     EXPECT_THROW(b.ghost_coeff(0, 2, 0), std::out_of_range);
     EXPECT_THROW(b.ghost_index(0, 1, 3), std::out_of_range);
+    EXPECT_THROW(b.paraxial_index(0, 6), std::out_of_range);
+    EXPECT_THROW(b.paraxial_index(2, 0), std::out_of_range);
+    EXPECT_THROW(b.paraxial_ghost_index(0, 2), std::out_of_range);
+    EXPECT_THROW(b.paraxial_ghost_index(-1, 0), std::out_of_range);
     EXPECT_THROW(b.wavelength_nm(3), std::out_of_range);
     EXPECT_THROW(b.field_weight(4), std::out_of_range);
     EXPECT_THROW(b.ghost_norm_radius(2), std::out_of_range);
@@ -293,6 +319,8 @@ TEST(SystemBatchHost, VariantOperations) {
         b.field_target(v, 3) = code(6, v, 3);
         b.ghost_coeff(v, 1, 4) = code(7, v, 1, 4);
         b.ghost_index(v, 1, 2) = code(8, v, 1, 2);
+        b.paraxial_index(v, 5) = code(9, v, 5);
+        b.paraxial_ghost_index(v, 1) = code(10, v, 1);
     }
     // Vergrößern: neue Varianten 0, alte unverändert
     b.resize(4);
@@ -315,6 +343,9 @@ TEST(SystemBatchHost, VariantOperations) {
     EXPECT_EQ(b.field_target(4, 3), code(6, 1, 3));
     EXPECT_EQ(b.ghost_coeff(4, 1, 4), code(7, 1, 1, 4));
     EXPECT_EQ(b.ghost_index(4, 1, 2), code(8, 1, 1, 2));
+    EXPECT_EQ(b.paraxial_index(4, 5), code(9, 1, 5));
+    EXPECT_EQ(b.paraxial_ghost_index(4, 1), code(10, 1, 1));
+    EXPECT_EQ(b.paraxial_index(3, 5), 0.0);
 
     // Kopieren in die Mitte lässt die Nachbarn unverändert
     b.copy_variant(0, 2);
@@ -353,6 +384,13 @@ TEST(SystemBatchHost, EqualityIsBitwise) {
     b.source_na = 0.5;
     EXPECT_FALSE(a == b);
     b.source_na = 0.0;
+    b.paraxial_ghost_index(1, 1) = 1.5;
+    EXPECT_FALSE(a == b);
+    b.paraxial_ghost_index(1, 1) = 0.0;
+    b.paraxial_index(0, 2) = 1.5;
+    EXPECT_FALSE(a == b);
+    b.paraxial_index(0, 2) = 0.0;
+    EXPECT_TRUE(a == b);
     b.resize(3);
     EXPECT_FALSE(a == b);
 }
@@ -436,6 +474,8 @@ TEST(MakeSystemBatch, SingleLensFromFile) {
             for (int l = 0; l < 3; ++l) {
                 EXPECT_EQ(b.index(v, s, l), ls.index.at(s, l));
             }
+            // λ_ref = 587,56 nm ist Spalte 1 des Spektrums
+            EXPECT_TRUE(same_bits(b.paraxial_index(v, s), ls.index.at(s, 1)));
         }
         EXPECT_EQ(b.image_distance(v), 99.05);
         EXPECT_EQ(b.pupil_radius(v), 10.0);
@@ -505,6 +545,64 @@ TEST(MakeSystemBatch, Errors) {
     EXPECT_THROW(mko::make_system_batch(lens.system, wrong, 1), std::invalid_argument);
 }
 
+// Brechzahlen bei λ_ref (M3-T3): aus der Brechzahltabelle (reference_n), auch wenn λ_ref nicht
+// unter den Wellenlängen des Spektrums ist; sonst aus der Spalte von λ_ref.
+TEST(MakeSystemBatch, ParaxialIndexAtReferenceWavelength) {
+    mko::SystemDescription sys = mko::read_system_file(kSystems + "einzellinse_bk7.json");
+    sys.spectrum.wavelengths_nm = {486.13, 656.27};
+    sys.spectrum.weights = {1.0, 1.0};
+    ASSERT_EQ(sys.spectrum.reference_nm, 587.56); // nicht im Spektrum
+    const mko::LoadedSystem ls = mko::prepare_system(sys, MKO_SOURCE_DIR);
+    ASSERT_EQ(ls.index.reference_n.size(), 3u);
+    EXPECT_EQ(ls.index.reference_nm, 587.56);
+    const double n_bk7 = ls.catalog.at("N-BK7").index(587.56);
+    EXPECT_TRUE(same_bits(ls.index.reference_n[1], n_bk7));
+    EXPECT_EQ(ls.index.reference_n[0], 1.0);
+    const SystemBatchHost b = mko::make_system_batch(ls, 2);
+    for (int v = 0; v < 2; ++v) {
+        EXPECT_EQ(b.paraxial_index(v, 0), 1.0);
+        EXPECT_TRUE(same_bits(b.paraxial_index(v, 1), n_bk7));
+        EXPECT_EQ(b.paraxial_index(v, 2), 1.0);
+    }
+    EXPECT_TRUE(mko::make_system_batch(ls.system, ls.index, 2) == b);
+
+    // Tabelle ohne Brechzahlen bei λ_ref (z. B. make_index_table) und λ_ref nicht im Spektrum
+    mko::IndexTable bare = ls.index;
+    bare.reference_n.clear();
+    bare.reference_ghost_n.clear();
+    EXPECT_THROW(mko::make_system_batch(ls.system, bare, 1), std::invalid_argument);
+    // mit λ_ref im Spektrum: Spalte von λ_ref
+    mko::SystemDescription in_spectrum = ls.system;
+    in_spectrum.spectrum.reference_nm = 656.27;
+    const SystemBatchHost c = mko::make_system_batch(in_spectrum, bare, 1);
+    EXPECT_TRUE(same_bits(c.paraxial_index(0, 1), ls.index.at(1, 1)));
+    // Tabelle für eine andere Referenzwellenlänge berechnet
+    EXPECT_THROW(mko::make_system_batch(in_spectrum, ls.index, 1), std::invalid_argument);
+    // Größe passt nicht
+    mko::IndexTable short_ref = ls.index;
+    short_ref.reference_n.pop_back();
+    EXPECT_THROW(mko::make_system_batch(ls.system, short_ref, 1), std::invalid_argument);
+}
+
+// Geisterplatten: Tabellenflächen der Platten erhalten das Medium des Spalts, die Gläser ihre
+// Brechzahl bei λ_ref.
+TEST(MakeSystemBatch, ParaxialIndexWithGhostPlates) {
+    const mko::LoadedSystem ls = mko::load_system(kSystems + "einzellinse_geisterplatte.json");
+    const SystemBatchHost b = mko::make_system_batch(ls, 2);
+    ASSERT_EQ(b.surfaces(), 5);
+    const double n_bk7 = ls.catalog.at("N-BK7").index(587.56);
+    const double n_caf2 = ls.catalog.at("CAF2").index(587.56);
+    for (int v = 0; v < 2; ++v) {
+        EXPECT_EQ(b.paraxial_index(v, 0), 1.0);
+        EXPECT_EQ(b.paraxial_index(v, 1), 1.0); // Geisterplatte im Luftspalt
+        EXPECT_EQ(b.paraxial_index(v, 2), 1.0);
+        EXPECT_TRUE(same_bits(b.paraxial_index(v, 3), n_bk7));
+        EXPECT_EQ(b.paraxial_index(v, 4), 1.0);
+        EXPECT_TRUE(same_bits(b.paraxial_ghost_index(v, 0), n_caf2));
+        EXPECT_TRUE(same_bits(b.paraxial_ghost_index(v, 1), n_bk7));
+    }
+}
+
 TEST(SystemBatchHost, ValidateValues) {
     const mko::LoadedSystem ls = mko::load_system(kSystems + "einzellinse_bk7.json");
     SystemBatchHost b = mko::make_system_batch(ls, 3);
@@ -523,6 +621,12 @@ TEST(SystemBatchHost, ValidateValues) {
     EXPECT_THROW(c.validate_values(), std::invalid_argument);
     c = b;
     c.field_weight(1) = -1.0;
+    EXPECT_THROW(c.validate_values(), std::invalid_argument);
+    // Brechzahlen bei λ_ref: nur endlich verlangt (0 in von Hand gebauten Batches erlaubt)
+    c = b;
+    c.paraxial_index(1, 1) = 0.0;
+    EXPECT_NO_THROW(c.validate_values());
+    c.paraxial_index(1, 1) = std::numeric_limits<double>::infinity();
     EXPECT_THROW(c.validate_values(), std::invalid_argument);
     // Leerer Batch (alles 0) ist nicht gültig
     EXPECT_THROW(SystemBatchHost(ghost_topology(), 1).validate_values(), std::invalid_argument);

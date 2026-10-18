@@ -73,6 +73,8 @@ SystemBatchLayout make_batch_layout(const BatchTopology& t, int variants) {
     b.field_target = place(end, mul_sat(V, F * d));
     b.ghost_coeff = place(end, mul_sat(V, G * K * d));
     b.ghost_index = place(end, mul_sat(V, G * L * d));
+    b.paraxial_index = place(end, mul_sat(V, S * d));
+    b.paraxial_ghost_index = place(end, mul_sat(V, G * d));
     b.total_bytes = end;
     return b;
 }

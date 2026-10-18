@@ -1,0 +1,29 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7 mit Nebenbedingungen",
+  "description": "Beispiel für den Abschnitt constraints (M3-T3): Linse und Variablen wie einzellinse_bk7_variablen.json. Sollwerte stehen in target; Brennweite als Gleichung, Abgleichlänge ab einer angenommenen Anlagefläche 5 mm vor der Blende, Arbeitsabstand als Untergrenze.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 100.0, "parfocal_length": 115.0, "working_distance": 95.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 5.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.00967, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.00967, "thickness": 99.05, "material": "AIR", "semi_diameter": 12.5 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.05, "max": 0.05 },
+      { "type": "thickness", "surface": 1, "min": 2.0, "max": 12.0, "comment": "Mittendicke" },
+      { "type": "working_distance", "min": 50.0, "max": 150.0, "typical": 10.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 100.0 },
+      { "type": "parfocal_length", "reference_surface": 0, "offset": 5.0, "comment": "Anlagefläche 5 mm vor der Blende (Annahme)" },
+      { "type": "working_distance", "mode": "min", "weight": 10.0 }
+    ]
+  }
+}

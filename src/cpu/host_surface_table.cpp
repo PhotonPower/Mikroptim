@@ -50,6 +50,29 @@ IndexTable make_system_index_table(const SystemDescription& system, const GlassC
             }
         }
     }
+    // Brechzahlen bei λ_ref (Paraxialrechnung): derselbe Ausdruck wie in den Spalten, daher
+    // bitgleich zur Spalte, wenn λ_ref unter den Wellenlängen ist.
+    const double ref = system.spectrum.reference_nm;
+    t.reference_nm = ref;
+    t.reference_n.reserve(system.surfaces.size());
+    for (std::size_t s = 0; s < system.surfaces.size(); ++s) {
+        try {
+            t.reference_n.push_back(material_index(system.surfaces[s].material, ref, catalog));
+        } catch (const GlassError& e) {
+            throw GlassError("Medium nach Fläche " + std::to_string(s) + ", Referenzwellenlänge " +
+                             std::to_string(ref) + " nm: " + e.what());
+        }
+    }
+    t.reference_ghost_n.reserve(system.ghost_plates.size());
+    for (std::size_t g = 0; g < system.ghost_plates.size(); ++g) {
+        try {
+            t.reference_ghost_n.push_back(
+                material_index(system.ghost_plates[g].glass, ref, catalog));
+        } catch (const GlassError& e) {
+            throw GlassError("Glas der Geisterplatte " + std::to_string(g) +
+                             ", Referenzwellenlänge " + std::to_string(ref) + " nm: " + e.what());
+        }
+    }
     return t;
 }
 

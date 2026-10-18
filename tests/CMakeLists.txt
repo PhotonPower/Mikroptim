@@ -15,12 +15,14 @@ add_executable(mikroptim_tests
     test_batch_residuals.cpp
     test_buchdahl_fit.cpp
     test_cli_trace.cpp
+    test_constraints_schema.cpp
     test_dispersion.cpp
     test_ghost_plate.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
     test_load_system.cpp
     test_paraxial.cpp
+    test_paraxial_residuals.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
