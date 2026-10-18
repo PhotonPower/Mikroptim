@@ -93,7 +93,9 @@ Ziel: Ein System aus JSON laden und auf der CPU exakt tracen, mit Paraxialdaten 
 
 ---
 
-## M2 – CUDA-Vorwärtskernel FP64
+## M2 – CUDA-Vorwärtskernel FP64 ✅ (P100 ausstehend)
+
+Umgesetzt mit den PRs #9, #12, #14, #16, #17, #19 (Oktober 2026), getestet auf der RTX 3090. Offen: GPU-Tests und Benchmark auf der Tesla P100 (Befehl in docs/benchmarks.md).
 
 Ziel: Dieselben Ergebnisse wie die CPU, für viele Varianten gleichzeitig.
 
