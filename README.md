@@ -55,6 +55,7 @@ src/cuda/            CUDA-Backend (Kernel, Batch-Trace, Reduktionen)
 tests/               GoogleTest-Tests (analytische Orakel, CPU/GPU-Abgleich)
 bench/               Benchmarks
 python/              Python-Bindings (ab M9)
+tools/               Hilfsskripte (z. B. Generator der Quadraturtabelle)
 data/systems/        Testsysteme und Startsysteme (JSON)
 data/glass/          Glasdaten (JSON)
 docs/                Spezifikation, Architektur, Numerik, Optimierung, ADRs, Plan

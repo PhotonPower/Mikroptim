@@ -106,6 +106,51 @@ $$\langle f\rangle = \frac{1}{\pi}\int_0^{2\pi}\!\!\int_0^1 f\,\rho\,d\rho\,d\va
 - Auf der Achse: M = 1 (nur ein radialer Fächer).
 - Standard: N = 10, M = 8. Die Gewichte gehen als √(W_i V_j) in die Residuen ein.
 
+### Festlegungen der Implementierung (M1-T4)
+
+Implementiert in `include/mikroptim/pupil/quadrature.hpp` (header-only, `MKO_HD`).
+
+**Modi.** In 0-basierter Zählung (j = 0 … M−1) und mit V_j = 1/M in allen Modi:
+
+| Modus | Azimut φ_j | exakt für |
+|---|---|---|
+| `PupilMode::Half` | (j + ½)·π/M, also φ ∈ (0, π), Hälfte x > 0 | cos(mφ), 0 ≤ m ≤ 2M − 1 |
+| `PupilMode::Full` | (j + ½)·2π/M, also φ ∈ (0, 2π) | cos(mφ), sin(mφ), 0 ≤ m ≤ M − 1 |
+| `PupilMode::Axis` | φ = 0 (M = 1, Fächer entlang +y) | nur rotationssymmetrische Funktionen (m = 0) |
+
+- Volle Pupille: dieselbe Mittelpunktsregel wie die halbe. Die ersten M/2 Speichen einer vollen Regel mit gerader Speichenzahl M sind bitgleich die Speichen der halben Regel mit M/2 Speichen, die übrigen deren Spiegelbilder x → −x (φ → 2π − φ). Gebraucht wird die volle Pupille, sobald die Symmetrie x → −x fehlt (M8-T3).
+- Achsfall: Auf der Achse ist die Wellenfront rotationssymmetrisch, ein radialer Fächer genügt. φ = 0 statt des Werts π/2, den die halbe Regel für M = 1 liefert, weil dann sin φ = 0 und cos φ = 1 exakt sind: die Startpunkte p₀ = (0, aρ, 0) liegen exakt im Meridionalschnitt (x = 0), unabhängig von der Rundung von π. `make_pupil_quadrature` ersetzt im Achsfall die Speichenzahl durch 1.
+
+**Index-Abbildung.** Ringweise (ring-major): `index = i·M + j` mit Ring i = 0 … N−1 (u aufsteigend, innen nach außen) und Speiche j = 0 … M−1. Gewicht der Stützstelle W_i·V_j = W_i / M (eine Division), Summe über alle Stützstellen 1. Ein Kernel-Thread berechnet seine Stützstelle mit `sample(q, index)` aus dem Index.
+
+**Knoten und Gewichte.** Tabelle `include/mikroptim/pupil/gauss_legendre_table.hpp` für N = 1 … 16, erzeugt von `tools/gen_gauss_legendre_table.py` (Python-Standardbibliothek `decimal`, 60 Stellen, Newton-Iteration). Die FP64-Werte sind korrekt gerundet; ein Test vergleicht sie bitgenau mit einer unabhängigen Rechnung in doppelt-double-Arithmetik.
+
+**Exaktheitsbereich für Zernike-Polynome** Z = R_n^m cos(mφ) (Tensorprodukt der beiden Regeln):
+
+- Mittelwert ⟨R_n^0⟩ = δ_n0 exakt für gerade n ≤ 4N − 2 (R_n^0 hat Grad n/2 in u).
+- Orthogonalität ⟨Z_a Z_b⟩ = δ_ab (1 + δ_m0) / (2(n + 1)) auf der halben Pupille exakt, wenn m + m′ ≤ 2M − 1 und zusätzlich n + n′ ≤ 4N − 2 oder m + m′ ungerade. Für m + m′ gerade ist R_n^m R_n′^m′ ein Polynom vom Grad (n + n′)/2 in u; für m + m′ ungerade verschwindet das Ergebnis schon azimutal exakt. Insbesondere sind alle Z mit n ≤ 2N − 1 paarweise exakt orthogonal (Abnahmekriterium „bis n = 2N − 1“). Auf der vollen Pupille gilt dasselbe mit m + m′ ≤ M − 1, zusätzlich für die Sinusterme.
+
+**API** (Namensraum `mko`):
+
+```cpp
+enum class PupilMode : int { Half = 0, Full = 1, Axis = 2 };
+inline constexpr int kMaxPupilRings = 16;
+
+template <class R> struct PupilQuadrature {   // trivial kopierbar, per Wert an den Kernel
+    int rings, spokes; PupilMode mode;
+    R u[kMaxPupilRings], w[kMaxPupilRings];   // Knoten u_i = ρ_i² aufsteigend, Gewichte W_i
+};
+template <class R> struct PupilSample { R rho, phi, weight; };
+
+// Nur Host; wirft std::invalid_argument bei rings ∉ [1, 16] oder spokes < 1.
+template <class R = double>
+PupilQuadrature<R> make_pupil_quadrature(int rings, int spokes, PupilMode mode);
+
+template <class R> MKO_HD int sample_count(const PupilQuadrature<R>& q);          // N·M
+template <class R> MKO_HD PupilSample<R> sample(const PupilQuadrature<R>& q, int index);
+template <class R> MKO_HD R residual_weight(const PupilSample<R>& s);             // √(W_i V_j)
+```
+
 ## 9. Paraxialoptik
 
 y-nu-Trace mit Brechkraft φ_i = c_i (n′_i − n_i):
