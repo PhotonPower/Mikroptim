@@ -15,6 +15,7 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <stdexcept>
@@ -345,4 +346,68 @@ TEST(ResidualsCpu, AllVariantsMatchSingleCalls) {
         }
     }
     EXPECT_EQ(failed, all.failed_count());
+}
+
+// RMS pro Tupel aus OPD und Status (Grundlage für `mikroptim trace --gpu`, M2-T5): für das
+// Ergebnis von residuals_cpu bitgleich zu evaluate_wavefront, auch mit versagten Strahlen und
+// für Tupel ohne gültigen Strahl (rms NaN).
+TEST(ResidualsCpu, TupleWavefrontsMatchEvaluateWavefront) {
+    const mko::LoadedSystem lens = mko::test::load_residual_system("einzellinse_bk7.json");
+    mko::SystemDescription clipped = lens.system;
+    clipped.surfaces[0].semi_diameter = 115.0; // äußere Ringe verfehlen die Linse (R = 103 mm)
+    mko::SystemDescription blocked = lens.system;
+    blocked.surfaces[0].semi_diameter = 1e4; // alle Strahlen verfehlen
+    const mko::LoadedSystem systems[] = {
+        mko::test::load_residual_system("testsystem_mehrlinser.json"), lens, modified(clipped),
+        modified(blocked)};
+    std::size_t failed_total = 0;
+    int invalid_tuples = 0;
+    int index = 0;
+    for (const mko::LoadedSystem& ls : systems) {
+        SCOPED_TRACE(index++);
+        for (const ResidualSettings settings : {ResidualSettings{}, ResidualSettings{6, 5}}) {
+            WavefrontOptions opt;
+            opt.rings = settings.rings;
+            opt.spokes = settings.spokes;
+            const WavefrontResult wf = mko::evaluate_wavefront(ls, opt);
+            const SystemBatchHost b = mko::make_system_batch(ls, 2);
+            const ResidualLayout layout(b.topology(), settings);
+            const ResidualResult r = mko::residuals_cpu(b, layout);
+            for (int v = 0; v < 2; ++v) {
+                const std::vector<mko::TupleWavefront> t = mko::tuple_wavefronts(r, layout, v);
+                ASSERT_EQ(t.size(), wf.maps.size());
+                for (std::size_t i = 0; i < t.size(); ++i) {
+                    const WavefrontMap& m = wf.maps[i];
+                    EXPECT_EQ(t[i].field, m.field);
+                    EXPECT_EQ(t[i].wavelength, m.wavelength);
+                    EXPECT_EQ(t[i].samples, m.samples());
+                    EXPECT_EQ(t[i].failed, m.failed);
+                    EXPECT_TRUE(same_bits(t[i].valid_weight, m.valid_weight));
+                    EXPECT_EQ(t[i].valid(), m.valid());
+                    if (m.valid()) {
+                        EXPECT_TRUE(same_bits(t[i].rms, m.rms)) << t[i].rms << " " << m.rms;
+                    } else {
+                        EXPECT_TRUE(std::isnan(t[i].rms));
+                        ++invalid_tuples;
+                    }
+                    failed_total += static_cast<std::size_t>(t[i].failed);
+                }
+            }
+        }
+    }
+    EXPECT_GT(failed_total, 0u);
+    EXPECT_GT(invalid_tuples, 0);
+}
+
+TEST(ResidualsCpu, TupleWavefrontsInvalidInputThrows) {
+    const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");
+    const SystemBatchHost b = mko::make_system_batch(ls, 1);
+    const ResidualLayout layout(b.topology());
+    ResidualResult r = mko::residuals_cpu(b, layout);
+    EXPECT_THROW((void)mko::tuple_wavefronts(r, layout, 1), std::out_of_range);
+    EXPECT_THROW((void)mko::tuple_wavefronts(r, layout, -1), std::out_of_range);
+    const ResidualLayout other(b.topology(), ResidualSettings{6, 5});
+    EXPECT_THROW((void)mko::tuple_wavefronts(r, other, 0), std::invalid_argument);
+    r.opd.clear();
+    EXPECT_THROW((void)mko::tuple_wavefronts(r, layout, 0), std::invalid_argument);
 }

@@ -30,6 +30,14 @@ nvcc 12.9 warnt bei sm_60, dass die Offline-Kompilierung für Architekturen unte
 - Keine Tensor Cores, keine Features oberhalb sm_60 ohne Fallback.
 - Batchgrößen aus `cudaMemGetInfo` ableiten: `mko::cuda::device_memory_info()` und `max_variants_on_device()` mit Sicherheitsreserve (Formel in [architektur.md, „Speicherbedarf“](architektur.md#speicherbedarf)); auf der P100 (16 GB) passen deutlich weniger Varianten als auf der RTX 3090 (24 GB).
 
+## Speicherreserve und Tranchen
+
+Programme tracen über `mko::cuda::TraceEngine` ([architektur.md, „Host-API TraceEngine“](architektur.md#host-api-traceengine-m2-t4)). Die Engine teilt einen Batch, der nicht in den Gerätespeicher passt, selbst in Tranchen; die Ergebnisse sind davon unabhängig bitgleich.
+
+- **Reserve:** Vom freien Speicher bleibt max(`min_bytes`, `fraction` · frei) unbenutzt, Standard max(256 MiB, 5 %) (`MemoryReserve`, `EngineOptions::reserve`). Sie deckt den CUDA-Kontext, Kernel-Stacks, Local Memory (z. B. `TraceRecord` ab M4/M5) und Fragmentierung. Auf der RTX 3090 (gemessen ca. 22,8 GiB frei am Arbeitsplatz-PC mit Desktop) sind das ca. 1,1 GiB, auf der P100 rechnerisch höchstens ca. 0,8 GiB (5 % von 16 GB; dort nicht gemessen). Wird in M4/M5 viel Local Memory pro Strahl gebraucht, ist die Reserve zu prüfen.
+- **Teilen einer GPU:** `EngineOptions::memory_limit_bytes` begrenzt den Speicher, den die Engine als verfügbar ansieht (z. B. wenn andere Programme dieselbe GPU nutzen oder zwei Engines auf einer GPU laufen). Die Engine fragt den freien Speicher bei jedem Lauf neu ab; Speicher, den andere Programme zwischen Abfrage und `cudaMalloc` belegen, führt zu einem `CudaError` (kein automatischer Neuversuch).
+- **Größenordnung:** `testsystem_mehrlinser.json` (S = 8, 680 Strahlen) passt mit ca. 3,5 Mio. Varianten pro Tranche auf die RTX 3090 (Test `TraceEngine.MaxVariantsFromFreeMemory`); Tranchen sind also erst bei großen Jacobi-Batches oder dichten Quadraturen zu erwarten.
+
 ## Durchsatzabschätzung
 
 Annahme: ca. 140 Flop-Äquivalente pro Strahl und Fläche (inklusive zwei Wurzeln und zwei Divisionen in FP64), 30 Flächen, also ca. 4.500 pro Strahl.

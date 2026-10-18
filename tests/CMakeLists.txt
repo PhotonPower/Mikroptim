@@ -24,6 +24,7 @@ add_executable(mikroptim_tests
     test_system_batch.cpp
     test_system_io.cpp
     test_trace.cpp
+    test_trace_engine_header.cpp
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
@@ -38,7 +39,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_residuals.cpp
         test_cuda_smoke.cpp
         test_cuda_system_batch.cpp
-        test_cuda_trace.cpp)
+        test_cuda_trace.cpp
+        test_cuda_trace_engine.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()
 

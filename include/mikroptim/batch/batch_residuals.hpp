@@ -131,4 +131,28 @@ ResidualResult residuals_cpu(const SystemBatchHost& batch, const ResidualLayout&
 // wirft std::invalid_argument.
 void check_residual_layout(const BatchTopology& topology, const ResidualLayout& layout);
 
+// RMS-Wellenfront und versagte Strahlen eines Tupels (Feld f, Wellenlänge l) einer Variante,
+// berechnet aus OPD und Status eines ResidualResult (CPU-Referenz oder Download vom Gerät),
+// z. B. für die Ausgabe von `mikroptim trace --gpu` (M2-T5).
+struct TupleWavefront {
+    int field = 0;
+    int wavelength = 0;
+    int samples = 0;           // n_f
+    double valid_weight = 0.0; // Σ W_k der Strahlen mit Status Ok
+    double rms = 0.0;          // √(Σ_ok W_k OPD_k² / valid_weight) [mm]; NaN ohne gültigen Strahl
+    int failed = 0;            // Strahlen mit Status ≠ Ok
+
+    // Mindestens ein gültiger Strahl (sonst ist rms NaN).
+    bool valid() const { return valid_weight > 0.0; }
+};
+
+// Statistik aller Tupel der Variante v, Ablage [f · L + l] wie WavefrontResult::maps. Summiert
+// wie opd_statistics (Pass 2) in aufsteigender Reihenfolge k mit den Gewichten W_k der
+// Quadratur des Feldes; für das Ergebnis von residuals_cpu ist rms daher bitgleich zu
+// evaluate_wavefront. Verlangt OPD und Status im Ergebnis und dieselbe Ablage wie `layout`.
+// Wirft std::invalid_argument (OPD oder Status fehlen, Größen passen nicht zum Layout),
+// std::out_of_range (v).
+std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
+                                             const ResidualLayout& layout, int v);
+
 } // namespace mko
