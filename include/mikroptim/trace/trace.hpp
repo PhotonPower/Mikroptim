@@ -10,6 +10,7 @@
 #include "mikroptim/math/vec3.hpp"
 #include "mikroptim/trace/ghost_plate.hpp"
 #include "mikroptim/trace/ray.hpp"
+#include "mikroptim/trace/surface_extrema.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/surface_table.hpp"
 
@@ -135,11 +136,13 @@ propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after
 // Versagen: Rückgabe des Status der ersten versagenden Fläche, *failed_surface = deren Nummer
 // (sonst −1). Die Funktion kehrt dann sofort zurück und wirft nie; ein Kernel führt den Strahl
 // über die Statusmaske maskiert weiter. `record` und `failed_surface` dürfen nullptr sein.
+// `observer` (optional, Schnittstelle in surface_extrema.hpp) sieht den Startzustand (s = 0)
+// und jede erfolgreich passierte Fläche; ohne Beobachter entfällt der Aufruf.
 // Vorbedingung: 2 <= S <= kMaxSurfaces (prüft der Host beim Aufbau der Tabelle).
-template <class R, class SurfaceTable>
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
 MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
                                     typename detail::NonDeduced<TraceRecord<R>>::type* record,
-                                    int* failed_surface = nullptr) {
+                                    int* failed_surface = nullptr, Observer* observer = nullptr) {
     const int L = sys.wavelengths;
     const int S = sys.surfaces;
     if (record != nullptr) {
@@ -147,6 +150,9 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
         record->p[0] = ray.p;
         record->d[0] = ray.d;
         record->opl[0] = ray.opl;
+    }
+    if (observer != nullptr) {
+        observer->surface(0, R(0), ray.d, ray);
     }
     R n_before = R(sys.index[wavelength_index]);
     int ghost = 0; // Nummer der nächsten Geisterplatte (g-te Fläche vom Typ GhostPlate)
@@ -165,6 +171,7 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
             }
             ++ghost;
         }
+        const Vec3<R> d_before = ray.d;
         const TraceStatus st = propagate_surface(ray, R(sys.thickness[s - 1]), kind,
                                                  R(sys.curvature[s]), n_before, n_after, plate_ptr);
         if (st != TraceStatus::Ok) {
@@ -172,6 +179,9 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
                 *failed_surface = s;
             }
             return st;
+        }
+        if (observer != nullptr) {
+            observer->surface(s, surface_curvature(kind, R(sys.curvature[s])), d_before, ray);
         }
         if (record != nullptr && s < kMaxSurfaces) {
             record->count = s + 1;

@@ -1,5 +1,6 @@
 // Host-API TraceEngine (M2-T4): Gerätewahl, Prüfung, Tranchen nach freiem Gerätespeicher,
 // Rückgabe in Host-Vektoren (docs/architektur.md, Abschnitt "Host-API TraceEngine").
+// Modi RESIDUALS (M2-T2) und MERIT (M2-T3).
 
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
@@ -21,10 +22,8 @@ namespace {
 void check_mode(TraceMode mode) {
     switch (mode) {
     case TraceMode::Residuals:
-        return;
     case TraceMode::Merit:
-        throw std::invalid_argument(
-            "TraceEngine: Modus MERIT ist noch nicht verfügbar (Kernel folgt mit M2-T3)");
+        return;
     }
     throw std::invalid_argument("TraceEngine: unbekannter Modus");
 }
@@ -35,17 +34,26 @@ void check_settings(const TraceSettings& settings) {
     }
 }
 
-// Ausgaben auf dem Gerät im Modus RESIDUALS, wie DeviceResiduals::run sie anlegt (der Status
-// wird immer geschrieben, weil Durchlauf 2 des Kernels ihn liest).
-OutputRequest residual_request(const ResidualLayout& layout, const TraceSettings& settings) {
+// Ausgaben auf dem Gerät, wie DeviceResiduals::run bzw. DeviceMerit::run sie anlegen. Im
+// Modus RESIDUALS wird der Status immer geschrieben, weil Durchlauf 2 des Kernels ihn liest;
+// im Modus MERIT liegen Residuen, Status und OPL nur im Shared Memory.
+OutputRequest output_request(TraceMode mode, const ResidualLayout& layout,
+                             const TraceSettings& settings) {
     OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
-    r.extra_residuals = settings.extra_residuals;
-    r.residuals = true;
-    r.ray_status = true;
-    r.opd = settings.opd;
-    r.merit = false;
-    r.surface_max = false;
+    r.surface_max = settings.extrema;
+    if (mode == TraceMode::Merit) {
+        r.residuals = false;
+        r.ray_status = false;
+        r.opd = false;
+        r.merit = true;
+    } else {
+        r.extra_residuals = settings.extra_residuals;
+        r.residuals = true;
+        r.ray_status = true;
+        r.opd = settings.opd;
+        r.merit = false;
+    }
     return r;
 }
 
@@ -54,18 +62,48 @@ std::size_t fixed_run_bytes(const BatchTopology& topology) {
     return align_bytes(static_cast<std::size_t>(topology.fields) * sizeof(ResidualFieldPlan));
 }
 
+// Speicher pro Variante außerhalb von OutputRequest: im Modus MERIT der Anteil weiterer
+// Residuen extra_merit[v] (ein FP64 pro Variante, wie DeviceMerit ihn ablegt).
+std::size_t extra_bytes_per_variant(TraceMode mode, const TraceSettings& settings) {
+    return mode == TraceMode::Merit && !settings.extra_merit.empty() ? sizeof(double) : 0;
+}
+
 // Größte Tranche für `usable` Byte nutzbaren Speicher (nach Abzug der Reserve).
 int tranche_capacity(std::size_t usable, const BatchTopology& topology,
-                     const OutputRequest& request) {
+                     const OutputRequest& request, std::size_t extra_per_variant) {
     const std::size_t fixed = fixed_run_bytes(topology);
     if (usable <= fixed) {
         return 0;
     }
-    return mko::max_variants(usable - fixed, topology, request, MemoryReserve{0, 0.0});
+    return mko::max_variants(usable - fixed, topology, request, MemoryReserve{0, 0.0},
+                             extra_per_variant);
 }
 
 std::string mib(std::size_t bytes) {
     return std::to_string(static_cast<double>(bytes) / (1024.0 * 1024.0)) + " MiB";
+}
+
+// Leert ein Ergebnis; die Kapazität der Vektoren bleibt erhalten.
+void clear(SurfaceExtremaResult& e) {
+    e.variants = 0;
+    e.surfaces = 0;
+    e.values.clear();
+}
+void clear(ResidualResult& r) {
+    r.variants = 0;
+    r.rays_per_variant = 0;
+    r.stride = 0;
+    r.residuals.clear();
+    r.opd.clear();
+    r.status.clear();
+    clear(r.extrema);
+}
+void clear(MeritResult& m) {
+    m.variants = 0;
+    m.rays_per_variant = 0;
+    m.merit.clear();
+    m.failed.clear();
+    clear(m.extrema);
 }
 
 // Kopiert `bytes` Byte vom Gerät nach `dst`.
@@ -119,10 +157,11 @@ TraceEngine& TraceEngine::operator=(TraceEngine&&) noexcept = default;
 void TraceEngine::release() noexcept {
     batch_.release();
     residuals_.release();
+    merit_.release();
 }
 
 std::size_t TraceEngine::device_bytes() const {
-    return batch_.capacity_bytes() + residuals_.capacity_bytes();
+    return batch_.capacity_bytes() + residuals_.capacity_bytes() + merit_.capacity_bytes();
 }
 
 std::size_t TraceEngine::available_bytes() const {
@@ -140,7 +179,8 @@ int TraceEngine::max_variants(const BatchTopology& topology, TraceMode mode,
     check_settings(settings);
     const ResidualLayout layout(topology, settings.quadrature);
     const std::size_t usable = usable_bytes(available_bytes(), options_.reserve);
-    return tranche_capacity(usable, topology, residual_request(layout, settings));
+    return tranche_capacity(usable, topology, output_request(mode, layout, settings),
+                            extra_bytes_per_variant(mode, settings));
 }
 
 TraceOutput TraceEngine::run(const SystemBatchHost& batch, TraceMode mode,
@@ -158,23 +198,64 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
     const BatchTopology& topology = batch.topology();
     ResidualLayout layout(topology, settings.quadrature); // verlangt festgelegte Pupillenarten
     batch.validate_values();                              // inklusive check_pupil_modes
-    const OutputRequest request = residual_request(layout, settings);
-
-    // ---- Host-Ausgabe anlegen ----
     const int V = batch.variants();
+    const bool merit_mode = mode == TraceMode::Merit;
+    if (merit_mode && !settings.extra_merit.empty() &&
+        settings.extra_merit.size() != static_cast<std::size_t>(V)) {
+        throw std::invalid_argument("TraceEngine: extra_merit muss leer sein oder " +
+                                    std::to_string(V) + " Werte haben");
+    }
+    if (merit_mode && V > 0) {
+        // OPL und Status eines Tupels liegen im Shared Memory (fragt nur Kernelattribute ab)
+        int samples = 0;
+        for (const ResidualFieldPlan& p : layout.plan()) {
+            samples = std::max(samples, p.samples);
+        }
+        const detail::DeviceGuard guard(device_);
+        const int limit =
+            merit_max_samples(settings.extrema, topology.ghost_plates, topology.ghost_terms);
+        if (samples > limit) {
+            throw std::invalid_argument("TraceEngine: Modus MERIT erlaubt höchstens " +
+                                        std::to_string(limit) + " Stützstellen pro Feld (" +
+                                        std::to_string(samples) + " angefordert)");
+        }
+    }
+    const OutputRequest request = output_request(mode, layout, settings);
+    const std::size_t extra_per_variant = extra_bytes_per_variant(mode, settings);
+
+    // ---- Host-Ausgabe anlegen (Ergebnis des anderen Modus leer) ----
+    const int S = topology.surfaces;
     const std::int64_t rays = layout.rays_per_variant();
     const std::int64_t stride = rays + settings.extra_residuals;
     const auto rays_total = static_cast<std::size_t>(V) * static_cast<std::size_t>(rays);
+    const std::size_t extrema_total =
+        settings.extrema ? static_cast<std::size_t>(V) * static_cast<std::size_t>(S) * 2 : 0;
     out.mode = mode;
     out.info = TraceRunInfo{};
     out.info.variants = V;
     ResidualResult& r = out.residuals;
-    r.variants = V;
-    r.rays_per_variant = rays;
-    r.stride = stride;
-    r.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(stride));
-    r.opd.resize(settings.opd ? rays_total : 0);
-    r.status.resize(settings.status ? rays_total : 0);
+    MeritResult& m = out.merit;
+    clear(r);
+    clear(m);
+    if (merit_mode) {
+        m.variants = V;
+        m.rays_per_variant = rays;
+        m.merit.resize(static_cast<std::size_t>(V));
+        m.failed.resize(static_cast<std::size_t>(V));
+        m.extrema.variants = settings.extrema ? V : 0;
+        m.extrema.surfaces = settings.extrema ? S : 0;
+        m.extrema.values.resize(extrema_total);
+    } else {
+        r.variants = V;
+        r.rays_per_variant = rays;
+        r.stride = stride;
+        r.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(stride));
+        r.opd.resize(settings.opd ? rays_total : 0);
+        r.status.resize(settings.status ? rays_total : 0);
+        r.extrema.variants = settings.extrema ? V : 0;
+        r.extrema.surfaces = settings.extrema ? S : 0;
+        r.extrema.values.resize(extrema_total);
+    }
     out.layout = std::move(layout);
     if (V == 0) {
         out.info.device_bytes = device_bytes();
@@ -182,49 +263,96 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
     }
 
     // ---- Tranchengröße ----
+    // Der Ausgabepuffer des anderen Modus bleibt erhalten (Wechsel RESIDUALS/MERIT im
+    // Optimierer) und zählt dann nicht als verfügbar, solange die Tranche dadurch nicht
+    // kleiner wird; sonst wird er freigegeben.
     const std::size_t available = available_bytes();
-    const std::size_t usable = usable_bytes(available, options_.reserve);
-    const int capacity = tranche_capacity(usable, topology, request);
+    const std::size_t other = merit_mode ? residuals_.capacity_bytes() : merit_.capacity_bytes();
+    std::size_t usable = usable_bytes(available - std::min(other, available), options_.reserve);
+    int capacity = tranche_capacity(usable, topology, request, extra_per_variant);
+    if (other > 0 && capacity < V) {
+        const std::size_t usable_all = usable_bytes(available, options_.reserve);
+        const int capacity_all = tranche_capacity(usable_all, topology, request, extra_per_variant);
+        if (capacity_all > capacity) {
+            if (merit_mode) {
+                residuals_.release();
+            } else {
+                merit_.release();
+            }
+            usable = usable_all;
+            capacity = capacity_all;
+        }
+    }
     if (capacity < 1) {
-        throw CudaError(
-            "TraceEngine: nicht einmal eine Variante passt in den Gerätespeicher "
-            "(Gerät " +
-            std::to_string(device_) + ", verfügbar " + mib(available) + ", nach Reserve " +
-            mib(usable) + ", eine Variante braucht " +
-            mib(estimate_device_bytes(topology, 1, request) + fixed_run_bytes(topology)) + ")");
+        throw CudaError("TraceEngine: nicht einmal eine Variante passt in den Gerätespeicher "
+                        "(Gerät " +
+                        std::to_string(device_) + ", verfügbar " + mib(available) +
+                        ", nach Reserve " + mib(usable) + ", eine Variante braucht " +
+                        mib(estimate_device_bytes(topology, 1, request, extra_per_variant) +
+                            fixed_run_bytes(topology)) +
+                        ")");
     }
     const int tranche = std::min(capacity, V);
-    // Reichen die vorhandenen Puffer nicht, vorher beide freigeben: Sonst lägen alter und
-    // neuer Puffer kurz gleichzeitig im Speicher, und das Budget würde überschritten.
+    // Reichen die vorhandenen Puffer nicht, vorher Batch und Ausgabepuffer des Modus
+    // freigeben: Sonst lägen alter und neuer Puffer kurz gleichzeitig im Speicher, und das
+    // Budget würde überschritten.
     const std::size_t need_batch = make_batch_layout(topology, tranche).total_bytes;
     const std::size_t need_out =
-        make_output_layout(topology, tranche, request).total_bytes + fixed_run_bytes(topology);
-    if (need_batch > batch_.capacity_bytes() || need_out > residuals_.capacity_bytes()) {
-        release();
+        make_output_layout(topology, tranche, request, extra_per_variant).total_bytes +
+        fixed_run_bytes(topology);
+    const std::size_t have_out = merit_mode ? merit_.capacity_bytes() : residuals_.capacity_bytes();
+    if (need_batch > batch_.capacity_bytes() || need_out > have_out) {
+        batch_.release();
+        if (merit_mode) {
+            merit_.release();
+        } else {
+            residuals_.release();
+        }
     }
 
     // ---- Tranchen: Upload, Kernel, Download an die richtige Stelle ----
-    ResidualRunOptions run_options;
-    run_options.opd = settings.opd;
-    run_options.extra_residuals = settings.extra_residuals;
+    ResidualRunOptions residual_options;
+    residual_options.opd = settings.opd;
+    residual_options.extra_residuals = settings.extra_residuals;
+    residual_options.extrema = settings.extrema;
+    MeritRunOptions merit_options;
+    merit_options.extrema = settings.extrema;
+    const auto extrema_stride = static_cast<std::size_t>(S) * 2;
     const detail::DeviceGuard guard(device_);
     for (int first = 0; first < V; first += tranche) {
         const int count = std::min(tranche, V - first);
-        batch_.upload(batch, first, count);
-        residuals_.run(batch_, out.layout, run_options);
         const auto v0 = static_cast<std::size_t>(first);
         const auto n = static_cast<std::size_t>(count);
-        copy_to_host(r.residuals.data() + v0 * static_cast<std::size_t>(stride),
-                     residuals_.device_residuals(),
-                     n * static_cast<std::size_t>(stride) * sizeof(double));
-        if (settings.status) {
-            copy_to_host(r.status.data() + v0 * static_cast<std::size_t>(rays),
-                         residuals_.device_status(), n * static_cast<std::size_t>(rays));
-        }
-        if (settings.opd) {
-            copy_to_host(r.opd.data() + v0 * static_cast<std::size_t>(rays),
-                         residuals_.device_opd(),
-                         n * static_cast<std::size_t>(rays) * sizeof(double));
+        batch_.upload(batch, first, count);
+        if (merit_mode) {
+            if (!settings.extra_merit.empty()) {
+                merit_options.extra_merit = settings.extra_merit.subspan(v0, n);
+            }
+            merit_.run(batch_, out.layout, merit_options);
+            copy_to_host(m.merit.data() + v0, merit_.device_merit(), n * sizeof(double));
+            copy_to_host(m.failed.data() + v0, merit_.device_failed(), n * sizeof(std::int64_t));
+            if (settings.extrema) {
+                copy_to_host(m.extrema.values.data() + v0 * extrema_stride, merit_.device_extrema(),
+                             n * extrema_stride * sizeof(double));
+            }
+        } else {
+            residuals_.run(batch_, out.layout, residual_options);
+            copy_to_host(r.residuals.data() + v0 * static_cast<std::size_t>(stride),
+                         residuals_.device_residuals(),
+                         n * static_cast<std::size_t>(stride) * sizeof(double));
+            if (settings.status) {
+                copy_to_host(r.status.data() + v0 * static_cast<std::size_t>(rays),
+                             residuals_.device_status(), n * static_cast<std::size_t>(rays));
+            }
+            if (settings.opd) {
+                copy_to_host(r.opd.data() + v0 * static_cast<std::size_t>(rays),
+                             residuals_.device_opd(),
+                             n * static_cast<std::size_t>(rays) * sizeof(double));
+            }
+            if (settings.extrema) {
+                copy_to_host(r.extrema.values.data() + v0 * extrema_stride,
+                             residuals_.device_extrema(), n * extrema_stride * sizeof(double));
+            }
         }
         ++out.info.tranches;
     }

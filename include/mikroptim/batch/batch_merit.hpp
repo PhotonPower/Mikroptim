@@ -1,0 +1,48 @@
+#pragma once
+
+// Merit pro Variante eines SystemBatch: Ergebnis (MeritResult) und CPU-Referenz (merit_cpu)
+// für den Kernel MERIT (M2-T3). Reines C++ ohne CUDA-Typen. Definitionen und
+// Summationsreihenfolge: docs/architektur.md, Abschnitt "Kernel MERIT".
+
+#include "mikroptim/batch/batch_extrema.hpp"
+#include "mikroptim/batch/batch_residuals.hpp"
+#include "mikroptim/batch/system_batch.hpp"
+
+#include <cstdint>
+#include <vector>
+
+namespace mko {
+
+// Merit, versagte Strahlen und optional Max-Reduktionen für `variants` Varianten (CPU-Referenz
+// und Download vom Gerät).
+//
+// - merit[v] = Σ r_k² über alle Strahlresiduen der Variante (Ablage von ResidualLayout;
+//   versagte Strahlen haben r_k = 0, hartes Versagen wie im Kernel RESIDUALS), auf dem Gerät
+//   plus einem vom Aufrufer gelieferten Anteil weiterer Residuen
+//   (mko::cuda::MeritRunOptions::extra_merit). Eine Variante ohne gültigen Strahl hat die
+//   Merit 0 (plus Anteil); sie ist nur an failed[v] erkennbar, das der Aufrufer deshalb immer
+//   prüfen muss (weiches Versagen mit Strafresiduen folgt in M4-T2).
+// - failed[v] = Zahl der Strahlen mit Status ≠ Ok (inklusive Referenzsphäre).
+// - extrema: Max-Reduktionen pro Variante und Fläche (batch_extrema.hpp), leer, wenn nicht
+//   angefordert.
+struct MeritResult {
+    int variants = 0;
+    std::int64_t rays_per_variant = 0;
+    std::vector<double> merit;        // [V]
+    std::vector<std::int64_t> failed; // [V]
+    SurfaceExtremaResult extrema;
+};
+
+// CPU-Referenz des Kernels MERIT für Variante v: Residuen wie residuals_cpu, Merit als
+// Σ_(f, l) (Σ_k r_k²), innen in aufsteigender Reihenfolge k, außen in der Reihenfolge der
+// Tupel (f-major, dann l) wie die zweite Stufe des Kernels. Mit `extrema` zusätzlich
+// surface_extrema_cpu. Ergebnis mit variants = 1.
+// Wirft wie residuals_cpu (std::out_of_range, std::invalid_argument).
+MeritResult merit_cpu(const SystemBatchHost& batch, int v, const ResidualLayout& layout,
+                      bool extrema = true);
+
+// Wie oben für alle Varianten (CPU-Pfad ohne GPU).
+MeritResult merit_cpu(const SystemBatchHost& batch, const ResidualLayout& layout,
+                      bool extrema = true);
+
+} // namespace mko

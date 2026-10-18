@@ -56,12 +56,13 @@ nlohmann/json (v3.12.0, FetchContent) wird nur in Quellen unter `src/` eingebund
 Alle Rechnungen, die pro Strahl laufen, liegen header-only im Mathe-Kern, sind `MKO_HD` und über den Zahlentyp `R` templatisiert (ADR-0005). CPU-Tracer und CUDA-Kernel rufen dieselben Funktionen auf. Der sequenzielle Trace über ein System ist eine Funktion
 
 ```cpp
-template <class R, class SurfaceTable>
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
 MKO_HD TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
-                             TraceRecord<R>* record, int* failed_surface = nullptr);
+                             TraceRecord<R>* record, int* failed_surface = nullptr,
+                             Observer* observer = nullptr);
 ```
 
-`SurfaceTable` ist eine schlanke Sicht (Zeiger und Längen) auf die Flächendaten einer Variante, im Kernel auf Shared Memory. `record` ist optional und speichert Zwischenzustände für den adjungierten Modus und für Strahlhöhen-Reduktionen. Details im folgenden Abschnitt.
+`SurfaceTable` ist eine schlanke Sicht (Zeiger und Längen) auf die Flächendaten einer Variante, im Kernel auf Shared Memory. `record` ist optional und speichert Zwischenzustände für den adjungierten Modus. `observer` (optional, ab M2-T3) sieht jede passierte Fläche, z. B. für Strahlhöhen und Einfallswinkel ([Max-Reduktionen](#max-reduktionen-m2-t3)). Details im folgenden Abschnitt.
 
 ## Sequenzieller Trace (M1-T5)
 
@@ -100,11 +101,13 @@ template <class R> MKO_HD Ray<R> collimated_ray(R a, R theta, R rho, R phi);    
 template <class R> MKO_HD Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi); // OPL₀ = 0
 template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after,
                                                         const GhostPlateParams<R>* ghost = nullptr);
-template <class R, class T> MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr);
+template <class R, class T, class Obs = NoSurfaceObserver>
+MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr,
+                             Obs* observer = nullptr);   // Beobachter: surface_extrema.hpp (M2-T3)
 template <class R, class T> MKO_HD TraceStatus transfer_to_image_plane(const T& sys, int l, Ray<R>&);
 ```
 
-Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5). Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) folgen aus `p[s]`, `d[s − 1]` und der Flächennormale.
+Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5). Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) liefert der Beobachter `RaySurfaceRecord` ohne `TraceRecord` (Abschnitt [Max-Reduktionen](#max-reduktionen-m2-t3)); dieselben Werte folgen aus `p[s]`, `d[s − 1]` und der Flächennormale (Test `SurfaceExtrema.ObserverMatchesTraceRecord`).
 
 ### Host-Schicht (Bibliothek `Mikroptim::cpu`, `src/cpu/`)
 
@@ -438,12 +441,14 @@ template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       
 ```cpp
 // include/mikroptim/cuda/residuals.hpp (reines C++)
 inline constexpr int kResidualThreads = 128;
-struct ResidualRunOptions { bool opd = false; int64_t extra_residuals = 0; };
+struct ResidualRunOptions { bool opd = false; int64_t extra_residuals = 0;
+                            bool extrema = false; };   // Max-Reduktionen (M2-T3)
 class DeviceResiduals {                  // Ausgabepuffer auf dem Gerät, RAII, nur verschiebbar
     void run(const DeviceSystemBatch&, const ResidualLayout&, const ResidualRunOptions& = {});
     ResidualResult download() const; void download(ResidualResult&) const; void release() noexcept;
     const double* device_residuals() const; const uint8_t* device_status() const;
     const double* device_opd() const;     // für Folgekernel (M3), gültig bis zum nächsten run
+    const double* device_extrema() const; // [V][S][2], nur mit extrema (M2-T3)
 };
 ResidualResult run_residuals(const DeviceSystemBatch&, const ResidualLayout&,
                              const ResidualRunOptions& = {});   // ein Lauf mit Download
@@ -451,9 +456,95 @@ ResidualResult run_residuals(const DeviceSystemBatch&, const ResidualLayout&,
 
 `run` legt einen Puffer an (ein `cudaMalloc`, Layout `make_output_layout` plus `ResidualFieldPlan[F]`) oder verwendet ihn weiter, lädt die Feldablage hoch, startet den Kernel auf dem Gerät des Batches, prüft `cudaGetLastError` und wartet auf das Ende (`cudaDeviceSynchronize`; Streams und Überlappung sind Sache von M2-T4/M7). Fehler: `CudaError` (CUDA), `std::invalid_argument` (Layout passt nicht, zu großes Grid, negative Zahl weiterer Residuen), `std::logic_error` (leerer Batch, Download ohne Lauf). Die Werte der Varianten prüft der Aufrufer auf dem Host (`validate_values`; `check_pupil_modes` läuft beim Upload). Die [TraceEngine](#host-api-traceengine-m2-t4) (M2-T4) kapselt Gerätewahl, Prüfung, Tranchen und diese Klasse; Programme benutzen nur sie.
 
-**Erweiterungspunkte:** `residual_scale(view, f, l)` liefert in M2 den Faktor 1; M4-T1 setzt dort √(w_f·w_λ)/λ_ref ein (CPU und Kernel gemeinsam). Weiches Versagen (M4-T2) ersetzt die harte Maske in den Durchläufen 1 und 2 und hängt Strafresiduen an. Der Kernel `MERIT` (M2-T3) bildet aus denselben Größen die Quadratsumme pro Block.
+**Erweiterungspunkte:** `residual_scale(view, f, l)` liefert in M2 den Faktor 1; M4-T1 setzt dort √(w_f·w_λ)/λ_ref ein (CPU und Kernel gemeinsam). Weiches Versagen (M4-T2) ersetzt die harte Maske in den Durchläufen 1 und 2 und hängt Strafresiduen an. Der Kernel `MERIT` (M2-T3, unten) bildet aus denselben Größen die Quadratsumme pro Block; Laden, Kolben und Reduktionen teilen sich beide Kernel in `src/cuda/wavefront_block.hpp`. Mit `extrema` liefert auch `RESIDUALS` die [Max-Reduktionen](#max-reduktionen-m2-t3) (`ResidualResult::extrema`, bitgleich zu denen aus `MERIT`).
 
 **Erste Durchsatzzahl** (RTX 3090, FP64, Test `CudaResiduals.LargeBatch`, kein Benchmark): 10.000 Varianten von `testsystem_mehrlinser.json` (S = 8, 680 Strahlen pro Variante) in ca. 26 ms für den Kernel allein, also ca. 2,6·10⁸ Strahlen/s; über die TraceEngine mit Upload und Download (seit M2-T4) ca. 33 ms, 2,1·10⁸ Strahlen/s. Messungen über Flächenzahl und Batchgröße folgen in M2-T6.
+
+## Kernel MERIT (M2-T3)
+
+Implementiert in `src/cuda/merit.cu` (Kernel `merit_kernel<R, kExtrema>` und `merit_finalize_kernel<R>`), Host-API in `include/mikroptim/cuda/merit.hpp` (reines C++), Ergebnis und CPU-Referenz in `include/mikroptim/batch/batch_merit.hpp` (Bibliothek `Mikroptim::batch`). Programme benutzen den Modus über die TraceEngine (`TraceMode::Merit`).
+
+**Definition.** Pro Variante v
+
+F_v = Σ_k r_k² (+ E_v),
+
+über alle R_v Strahlresiduen in der Ablage von `ResidualLayout`, mit denselben r_k wie im Kernel `RESIDUALS` (r_k = s_{f,l}·√(W_i V_j)·OPD_k, hartes Versagen: versagte Strahlen r_k = 0, Tupel ohne gültigen Strahl alle r_k = 0). E_v ist der optionale Anteil weiterer Residuen (Paraxial, Strafen ab M3/M4), den der Aufrufer pro Variante liefert (`MeritRunOptions::extra_merit` bzw. `TraceSettings::extra_merit`); der Kernel berechnet ihn nicht. Zusätzlich `failed[v]` = Zahl der Strahlen mit Status ≠ Ok. **Eine Variante ohne gültigen Strahl hat F_v = 0 (+ E_v)**; sie ist nur an `failed[v] = R_v` erkennbar, deshalb muss jeder Aufrufer (Liniensuche, Screening) `failed` prüfen, bis M4-T2 Strafresiduen für versagte Strahlen einführt.
+
+**Ablauf im Block** (b = (v·F + f)·L + l, 128 Threads, wie RESIDUALS):
+
+1. Laden der Flächentabelle und Quadratur (`load_block_table`, gemeinsam mit RESIDUALS).
+   Geisterplatten (M4-T5) lädt `load_block_ghosts` wie in RESIDUALS an den Anfang des dynamischen Shared Memory ((G·K + 2G)·8 Byte, höchstens 17 KiB).
+2. Durchlauf 1: `batch_ray_opl` pro Stützstelle; OPL und Status in den **Shared Memory** (dynamisch hinter den Geisterdaten, n_max·9 Byte, n_max = größte Stützstellenzahl eines Feldes), Teilsummen (W_k, W_k·OPL_k) der gültigen Strahlen in aufsteigender Reihenfolge der eigenen Stützstellen.
+3. Kolben per `block_piston` – dieselbe Funktion, Threadzuordnung und Reihenfolge wie in RESIDUALS. Daher sind Kolben, OPD und r_k in beiden Kernels **bitgleich**; MERIT braucht keinen Residuenvektor im globalen Speicher.
+4. Durchlauf 2: r_k aus der OPL im Shared Memory, Teilsumme Σ r_k² pro Thread in aufsteigender Reihenfolge, Zähler versagter Strahlen.
+5. Blocksumme `block_sum`: Baumreduktion im Warp mit `__shfl_down_sync` (Abstände 16, 8, 4, 2, 1, volle Maske), Thread 0 summiert die 4 Warp-Summen in fester Reihenfolge; Ablage `merit_partial[b]` und `failed_rays_partial[b]` (int32).
+6. **Zweite Stufe** (`merit_finalize_kernel`, ein Thread pro Variante): F_v = ((Σ_{b = f·L + l} partial in der Reihenfolge f, dann l) + E_v), `failed[v]` als int64.
+
+Keine Gleitkomma-Atomics (ADR-0007). Die Summationsreihenfolge hängt nur von `kMeritThreads` = `kResidualThreads` = 128, F und L ab, nicht von der Batchgröße, der Lage der Variante oder der Aufteilung in Tranchen: zehn Läufe sind bitgleich (Test `CudaMerit.RepeatedRunsAreBitIdentical`), ebenso dieselben Varianten an anderer Stelle eines Batches und über mehrere Tranchen (`TraceEngine.MeritTranchesMatchSingleRun`).
+
+**Vergleich mit Σ RESIDUALS²** (Abnahme, Test `CudaMerit.MatchesSumOfResiduals`): Der Test lädt die RESIDUALS-Ausgabe herunter und summiert r_k² pro Variante auf dem Host **kompensiert (Neumaier) in der Ablagereihenfolge (f, l, k)**, also nahezu exakt; die Abweichung ist allein der Rundungsfehler der Baumsumme (Schranke ≈ (⌈n/128⌉ + 7 + F·L)·ε). Gemessen für je 1.000 gestörte Varianten von `einzellinse_bk7.json` und `testsystem_mehrlinser.json` (N × M = 10 × 8 und 6 × 5): ≤ 4,1·10⁻¹⁶ relativ; mit Geisterplatten (`einzellinse_geisterplatte.json`, Koeffizienten und Gläser gestört, Test `CudaMerit.GhostPlates`) ≤ 3,7·10⁻¹⁶ (Toleranz `kMeritVsResidualSum` = 10⁻¹³). Zur Information rechnet der Test zusätzlich die Kernel-Reihenfolge auf dem Host nach (`std::fma` pro Thread, Warp-Baum, Warps, Tupel): 2.999 von 3.000 Varianten sind dazu bitgleich.
+
+**CPU-Referenz** `merit_cpu(batch, v, layout, extrema)`: F_v = Σ_{(f,l)} (Σ_k r_k²) aus `residuals_cpu`, innen aufsteigend in k, außen in der Tupelreihenfolge wie die zweite Stufe; ohne E_v. GPU gegen CPU: |√F_GPU − √F_CPU| ≤ ‖r_GPU − r_CPU‖₂, geprüft gegen die 2-Norm der Toleranzen pro Strahl aus M2-T2 (max(`kCpuGpuFp64`, `kCpuGpuFp64Relative`·|r|)); gemessen ≤ 3,5·10⁻¹⁴ mm (1.000 Varianten), 1,2·10⁻¹² mm (10.000 Varianten mit einzelnen schlecht konditionierten Strahlen).
+
+**Shared Memory** (R = double): statisch 2,0 KB (Tabelle, Quadratur, Kolben, Warp-Summen), mit Max-Reduktionen 6,1 KB, plus dynamisch Geisterdaten (G·K + 2G)·8 Byte und n_max·9 Byte. Höchstens 48 KB pro Block (`kMeritMaxSharedBytes`, ohne Opt-in auf beiden Karten): ohne Geisterplatten n_max ≤ 5.239 ohne bzw. 4.784 mit Max-Reduktionen, mit Geisterplatten entsprechend weniger (`merit_max_samples(extrema, G, K)`, aus den Kernelattributen; im ungünstigsten Fall G = 64, K = 32 mit Max-Reduktionen noch ca. 2.800); die Standardquadratur hat 80. Größere Quadraturen weist `DeviceMerit::run` bzw. die TraceEngine mit `std::invalid_argument` ab.
+
+**Register und Local Memory** (`cuobjdump --dump-resource-usage`, CUDA 12.9):
+
+| Kernel | sm_60 | sm_86 |
+|---|---|---|
+| `merit_kernel<double, false>` | 110 Register, Stack 72 B | 110 Register, Stack 72 B |
+| `merit_kernel<double, true>` | 105 Register, Stack 2.120 B | 112 Register, Stack 2.120 B |
+| `residuals_kernel<double, false>` | 118 Register, Stack 72 B (wie main nach M4-T5) | 110 Register, Stack 72 B (main nach M4-T5: 96 Register, Stack 104 B) |
+| `residuals_kernel<double, true>` | 116 Register, Stack 2.120 B | 96 Register, Stack 2.144 B |
+
+Ohne Max-Reduktionen kostet die Erweiterung nichts Wesentliches (sm_60 identisch zu RESIDUALS auf main nach M4-T5; auf sm_86 verteilt ptxas anders: mehr Register, weniger Stack). Der Registerbedarf stammt überwiegend aus dem Zweig der Geisterplatte (M4-T5) im Trace. Mit Max-Reduktionen liegen `RaySurfaceRecord` und `SurfaceExtrema` (je 2·`kMaxSurfaces`·8 = 1 KB) im Local Memory; die Laufzeitreserve dafür beträgt etwa 2 KB × 2.048 Threads × SM-Zahl (RTX 3090: ca. 350 MB, P100: ca. 240 MB) und ist in der Standardreserve (≥ 5 % des freien Speichers) enthalten. Kleinere Felder für kleine S sind ein Thema für M7.
+
+**Durchsatz** (RTX 3090, FP64, Test `CudaMerit.LargeBatch`, über die TraceEngine mit Upload und Download, kein Benchmark): 10.000 Varianten von `testsystem_mehrlinser.json` (680 Strahlen): MERIT ca. 29 ms (2,3·10⁸ Strahlen/s), MERIT mit Max-Reduktionen ca. 38 ms (1,8·10⁸ Strahlen/s), RESIDUALS ca. 36 ms (1,9·10⁸ Strahlen/s). Der Kernel allein ist in beiden Modi gleich schnell (ca. 24 ms; die FP64-Rechnung pro Strahl dominiert); MERIT spart den Download der Residuen (54 MB) und vor allem Gerätespeicher: ca. 0,6 kB statt 6,5 kB pro Variante beim Mehrlinser (ohne Max-Reduktionen; mit ihnen ca. 2,3 kB wegen der Teilergebnisse pro Block und Fläche), also entsprechend größere Tranchen für Liniensuche und Multistart-Screening.
+
+### Host-API
+
+```cpp
+// include/mikroptim/cuda/merit.hpp (reines C++)
+inline constexpr int kMeritThreads = kResidualThreads;
+inline constexpr size_t kMeritMaxSharedBytes = 48 * 1024;
+struct MeritRunOptions { bool extrema = false; std::span<const double> extra_merit; /* leer oder [V] */ };
+class DeviceMerit {                      // Ausgabepuffer auf dem Gerät, RAII, nur verschiebbar
+    void run(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
+    MeritResult download() const; void download(MeritResult&) const; void release() noexcept;
+    const double* device_merit() const; const int64_t* device_failed() const;
+    const double* device_extrema() const; // [V][S][2] oder nullptr
+};
+MeritResult run_merit(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
+int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0);
+
+// include/mikroptim/batch/batch_merit.hpp, batch_extrema.hpp (Host, auch ohne CUDA)
+struct MeritResult { int variants; int64_t rays_per_variant; std::vector<double> merit;  // [V]
+                     std::vector<int64_t> failed; SurfaceExtremaResult extrema; };
+struct SurfaceExtremaResult { int variants, surfaces; std::vector<double> values;   // [V][S][2]
+    double max_height(v, s), min_cos_incidence(v, s), max_incidence_angle(v, s); };
+MeritResult merit_cpu(const SystemBatchHost&, int v, const ResidualLayout&, bool extrema = true);
+MeritResult merit_cpu(const SystemBatchHost&, const ResidualLayout&, bool extrema = true);
+SurfaceExtremaResult surface_extrema_cpu(const SystemBatchHost&, int v, const ResidualLayout&);
+SurfaceExtremaResult surface_extrema_cpu(const SystemBatchHost&, const ResidualLayout&);
+void check_residual_variant(const SystemBatchHost&, int v, const ResidualLayout&);
+```
+
+`run` legt einen Puffer an (Layout `make_output_layout` mit `merit` und optional `surface_max`, plus `ResidualFieldPlan[F]` und `extra_merit[V]`) oder verwendet ihn weiter, startet Block-Kernel, zweite Stufe und gegebenenfalls die zweite Stufe der Max-Reduktionen, prüft nach jedem Start `cudaGetLastError` und wartet auf das Ende. Fehler: `CudaError`, `std::invalid_argument` (Layout, Grid, Länge von `extra_merit`, zu viele Stützstellen), `std::logic_error` (leerer Batch, Download ohne Lauf).
+
+### Max-Reduktionen (M2-T3)
+
+Pro Variante v und Fläche s über alle **gültigen** Strahlen (Status Ok, einschließlich Referenzsphäre) aller Felder, Wellenlängen und Stützstellen; Ablage `[(v·S + s)·2 + {0, 1}]`:
+
+- {0} **größte Strahlhöhe** h = √(x² + y²) [mm] im Schnittpunkt mit Fläche s (lokale Koordinaten),
+- {1} **kleinster cos I** = **d**·**N**, **d** = Richtung vor der Brechung, **N** = (−c x, −c y, 1 − c z) die Einheitsnormale (numerik.md, Abschnitt 5), also der größte Einfallswinkel I = arccos(cos I) (`max_incidence_angle` begrenzt cos I auf [−1, 1]).
+
+**Flächen sind Tabellenflächen** (wie `failed_surface` seit M4-T5): Dateiflächen plus Geisterplatten in Tracerichtung, s = 0 … S − 1 der `SurfaceTableView`; die Zuordnung zu Dateiflächen liefert `SurfaceMap` (`make_surface_map`, Modell). Eine Geisterplatte ist eine Ebene (c = 0): Höhe im Durchstoßpunkt, cos I = d_z vor dem Phasenschritt. Fläche 0 (Blende, keine Brechung): Startpunkt in ihrer Ebene und cos I = d_z des Startstrahls (c = 0). Versagte Strahlen tragen nichts bei, auch nicht zu den Flächen vor der versagenden (hartes Versagen wie M2-T2; weiches Versagen M4-T2 kann hier Strafen anhängen). Ohne gültigen Strahl bleiben die neutralen Elemente h = 0 und cos I = 1. Gespeichert wird cos I statt des Winkels: die Reduktion bleibt exakt und ohne `acos` im Kernel, und eine Nebenbedingung „I ≤ I_max“ lautet cos I ≥ cos I_max (M4-T3).
+
+**Pro-Strahl-Teil** (`include/mikroptim/trace/surface_extrema.hpp`, header-only, `MKO_HD`): `trace_ray`, `trace_to_reference_sphere` und `batch_ray_opl` nehmen einen optionalen Beobachter (Template-Parameter, Standard `NoSurfaceObserver`; ohne Beobachter entfällt der Aufruf zur Übersetzungszeit). Er wird nach jeder passierten Fläche mit (s, wirksame Krümmung `surface_curvature(kind, c)`, Richtung vor der Brechung, Strahl im Schnittpunkt) aufgerufen, für s = 0 mit dem Startzustand. `RaySurfaceRecord<R>` legt pro Strahl x² + y² und cos I ab; erst nach dem Status Ok übernimmt `SurfaceExtrema<R>::add_ray` die Werte (Maximum der Höhenquadrate, Minimum von cos I mit `extremum_max`/`extremum_min`). Dieselben Bausteine nutzen später M4-T3 (mechanische Nebenbedingungen) und M5 (eigener Beobachter für die Adjungierte).
+
+**Reduktion:** pro Thread `SurfaceExtrema`, im Block pro Fläche `warp_max`/`warp_min` mit `__shfl_down_sync` (gleiche Struktur wie die Summen), Lane 0 in den Shared Memory [Warp][Fläche][2], Threads s < S kombinieren die 4 Warps in fester Reihenfolge und schreiben `surface_max_partial[b][s][2]` (Höhe²). Zweite Stufe `extrema_finalize_kernel` (ein Thread pro (v, s)): Maximum/Minimum über die Blöcke in der Reihenfolge (f, l), dann √ der Höhe (√ ist monoton und korrekt gerundet, also gleich dem Maximum der Wurzeln). Max und Min sind exakt und reihenfolgeunabhängig; die feste Reihenfolge und der Verzicht auf einen `atomicMax`-Trick halten trotzdem dasselbe Schema wie die Summen. Beide Modi (`MERIT`, `RESIDUALS`) liefern bitgleiche Max-Reduktionen.
+
+**CPU-Referenz** `surface_extrema_cpu` (gleiche Bausteine über `batch_ray_opl`). GPU gegen CPU: max ist 1-Lipschitz, also gelten die Toleranzen pro Strahl: Höhe ≤ max(`kCpuGpuFp64`, `kCpuGpuFp64Relative`·h), gemessen ≤ 9,9·10⁻¹³ mm; cos I ≤ `kCpuGpuFp64`, gemessen ≤ 6·10⁻¹⁴. Geschlossene Formeln (Tests `SurfaceExtrema.CollimatedBeamMatchesClosedForm`, `CudaMerit.FailedRaysAndClosedForm`): achsparalleles Bündel der Einzellinse, h = a·ρ_N an Blende und erster Fläche, cos I = 1 bzw. √(1 − (c h)²); mit Feldwinkeln bis 2° cos I = cos 2° an der Blende.
 
 ## Kernel-Modi
 
@@ -481,9 +572,9 @@ Jedes Feld wird auf A = `kBatchAlignment` = 256 Byte aufgerundet, ⌈x⌉_A = A�
 - **Batch** (`make_batch_layout(topology, V).total_bytes`):
   ⌈S⌉ + ⌈4G⌉ + ⌈8G⌉ + 2·⌈8L⌉ + ⌈8F⌉ + 2·⌈8VS⌉ + ⌈8VSL⌉ + ⌈8V⌉ + 2·⌈8VF⌉ + ⌈8VGK⌉ + ⌈8VGL⌉ (jeweils ⌈·⌉_A, leere Felder 0).
 - **Ausgaben** (`make_output_layout(topology, V, OutputRequest, extra)`), jede einzeln abschaltbar:
-  Residuen ⌈8V(R_v + E)⌉, Status pro Strahl ⌈V·R_v⌉ (1 Byte), rohe OPD pro Strahl ⌈8V·R_v⌉ (nur auf Anforderung, `opd`, ab M2-T2), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉, Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
+  Residuen ⌈8V(R_v + E)⌉, Status pro Strahl ⌈V·R_v⌉ (1 Byte), rohe OPD pro Strahl ⌈8V·R_v⌉ (nur auf Anforderung, `opd`, ab M2-T2), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉ + versagte Strahlen ⌈8V⌉ (int64) + pro Block ⌈4VB⌉ (int32, ab M2-T3, `failed_rays`, `failed_rays_partial`), Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
 - **Strahlen pro Variante:** `rays_per_variant(F, L, N·M, F_Achse, N)` = L·(F_Achse·N + (F − F_Achse)·N·M), wenn die F_Achse Achsfelder (an beliebiger Stelle) die Achsquadratur (M = 1) nutzen (`sample_count` in `include/mikroptim/pupil/quadrature.hpp`); gleich `ResidualLayout::rays_per_variant()`.
-- `estimate_device_bytes` = Batch + Ausgaben. Der Kernel `RESIDUALS` legt seine Ausgaben nach diesem Schema an (Residuen, Status, optional OPD); M2-T3 ergänzt Merit und Max-Reduktionen.
+- `estimate_device_bytes` = Batch + Ausgaben. Der Kernel `RESIDUALS` legt seine Ausgaben nach diesem Schema an (Residuen, Status, optional OPD und Max-Reduktionen), der Kernel `MERIT` ebenso (Merit, Teilsummen, versagte Strahlen, optional Max-Reduktionen; keine Residuen, kein Status); `extra_merit` von `MERIT` belegt 8 Byte pro Variante (in der TraceEngine als `extra_bytes_per_variant`).
 
 Größte Batchgröße: `max_variants(free, topology, outputs, reserve, extra)` sucht (Bisektion, die Abschätzung ist monoton in V) das größte V mit Abschätzung ≤ free − max(`min_bytes`, `fraction`·free); Standardreserve max(256 MiB, 5 %) für Kontext, Kernel-Stacks, Local Memory (`TraceRecord`) und Fragmentierung. Zusätzlich gilt V·F·L ≤ 2³¹ − 1 (größtes Grid). Auf dem Gerät: `max_variants_on_device` mit `device_memory_info().free_bytes`; nie fest verdrahten (AGENTS.md, Abschnitt 7). Die TraceEngine bestimmt daraus die Tranchengröße (zusätzlich eigene Puffer, künstliche Grenze und Feldablage, Abschnitt [Host-API TraceEngine](#host-api-traceengine-m2-t4)).
 
@@ -495,12 +586,17 @@ Einziger Einstieg für Programme, die auf der GPU tracen (CLI ab M2-T5, Optimier
 
 ```cpp
 namespace mko::cuda {
-enum class TraceMode { Residuals, Merit /* M2-T3, bis dahin std::invalid_argument */ };
+enum class TraceMode { Residuals, Merit /* M2-T3 */ };
 struct EngineOptions { std::optional<size_t> memory_limit_bytes; MemoryReserve reserve; };
 struct TraceSettings { ResidualSettings quadrature;   // N × M
-                       bool opd = false, status = true; int64_t extra_residuals = 0; };
+                       bool opd = false, status = true; int64_t extra_residuals = 0;   // nur RESIDUALS
+                       bool extrema = false;                     // beide Modi (M2-T3)
+                       std::span<const double> extra_merit; };  // nur MERIT: leer oder [V]
 struct TraceRunInfo { int variants, tranches, tranche_variants; size_t budget_bytes, device_bytes; };
-struct TraceOutput { TraceMode mode; ResidualLayout layout; ResidualResult residuals; TraceRunInfo info; };
+struct TraceOutput { TraceMode mode; ResidualLayout layout;
+                     ResidualResult residuals;   // Modus Residuals (sonst leer), Extrema in .extrema
+                     MeritResult merit;          // Modus Merit (sonst leer), Extrema in .extrema
+                     TraceRunInfo info; };
 class TraceEngine {                                   // nur verschiebbar
 public:
     explicit TraceEngine(int device, const EngineOptions& = {});
@@ -519,27 +615,27 @@ Gegenüber der ursprünglichen Skizze (`upload(batch)`, dann `run(mode, settings
 
 **Ablauf von `run`:**
 
-1. **Prüfen** (Host, vor jeder Gerätearbeit): Modus verfügbar, `extra_residuals` ≥ 0, `ResidualLayout(topology, quadrature)` (verlangt festgelegte Pupillenarten und eine gültige Quadratur), `validate_values()` (endliche Werte, Brechzahlen, Gewichte, Punktquellen-NA, `check_pupil_modes`).
-2. **Host-Ausgabe** anlegen: `residuals` [V·(R_v + E)], `opd` [V·R_v] nur mit `opd`, `status` [V·R_v] nur mit `status`; Ablage wie `DeviceResiduals::download` ([Kernel RESIDUALS](#kernel-residuals-m2-t2)). `out` ist wiederverwendbar (die Vektoren behalten ihre Kapazität).
-3. **Tranchengröße** T = `max_variants(topology, mode, settings)`: verfügbar A = min(frei + eigene Puffer, `memory_limit_bytes`), nutzbar U = `usable_bytes(A, reserve)`, dann das größte V mit `estimate_device_bytes(V)` + ⌈16·F⌉_A ≤ U (Bisektion `max_variants` aus batch_memory mit Reserve 0; ⌈16·F⌉_A ist die Feldablage `ResidualFieldPlan[F]`, die pro Lauf unabhängig von V anfällt). Die Ausgaben sind die von `DeviceResiduals` (Residuen, Status – der Kernel braucht ihn immer –, OPD nur auf Anforderung; keine Merit-Felder). Eigene Puffer zählen als verfügbar, weil ein Lauf sie wiederverwendet oder freigibt. T ≥ 1, sonst `CudaError` mit verfügbarem, nutzbarem und benötigtem Speicher. Die Gridgrenze V·F·L ≤ 2³¹ − 1 steckt schon in `max_variants`.
-4. **Puffer:** Reichen die vorhandenen Puffer (`DeviceSystemBatch`, `DeviceResiduals`) nicht für T Varianten, werden beide vorher freigegeben, damit alter und neuer Puffer nie gleichzeitig belegt sind. Danach werden sie über alle Tranchen und folgende Läufe wiederverwendet (die letzte, kleinere Tranche nutzt denselben Puffer).
-5. **Tranchen** [first, first + T): `DeviceSystemBatch::upload(host, first, count)`, `DeviceResiduals::run`, dann je ein `cudaMemcpy` für Residuen, Status und OPD von den Gerätezeigern an die Stelle `first` der Host-Vektoren. Synchron; bei der Rückkehr liegen alle Daten auf dem Host.
+1. **Prüfen** (Host, vor jeder Gerätearbeit): Modus bekannt, `extra_residuals` ≥ 0, `ResidualLayout(topology, quadrature)` (verlangt festgelegte Pupillenarten und eine gültige Quadratur), `validate_values()` (endliche Werte, Brechzahlen, Gewichte, Punktquellen-NA, `check_pupil_modes`); im Modus MERIT außerdem `extra_merit` leer oder V Werte lang und höchstens `merit_max_samples(extrema)` Stützstellen pro Feld (fragt nur Kernelattribute ab, legt keinen Speicher an).
+2. **Host-Ausgabe** anlegen: RESIDUALS: `residuals` [V·(R_v + E)], `opd` [V·R_v] nur mit `opd`, `status` [V·R_v] nur mit `status`, `residuals.extrema` [V·S·2] nur mit `extrema`; Ablage wie `DeviceResiduals::download` ([Kernel RESIDUALS](#kernel-residuals-m2-t2)). MERIT: `merit.merit`, `merit.failed` [V], `merit.extrema` [V·S·2] nur mit `extrema` ([Kernel MERIT](#kernel-merit-m2-t3)). Das Ergebnis des jeweils anderen Modus ist leer. `out` ist wiederverwendbar (die Vektoren behalten ihre Kapazität).
+3. **Tranchengröße** T = `max_variants(topology, mode, settings)`: verfügbar A = min(frei + eigene Puffer, `memory_limit_bytes`), nutzbar U = `usable_bytes(A, reserve)`, dann das größte V mit `estimate_device_bytes(V)` + ⌈16·F⌉_A ≤ U (Bisektion `max_variants` aus batch_memory mit Reserve 0; ⌈16·F⌉_A ist die Feldablage `ResidualFieldPlan[F]`, die pro Lauf unabhängig von V anfällt). Die Ausgaben sind im Modus RESIDUALS die von `DeviceResiduals` (Residuen, Status – der Kernel braucht ihn immer –, OPD und Max-Reduktionen nur auf Anforderung; keine Merit-Felder), im Modus MERIT die von `DeviceMerit` (Merit, Teilsummen, versagte Strahlen, Max-Reduktionen auf Anforderung, `extra_merit` als 8 Byte pro Variante). Eigene Puffer zählen als verfügbar, weil ein Lauf sie wiederverwendet oder freigibt. Der Ausgabepuffer des anderen Modus bleibt beim Wechsel RESIDUALS ↔ MERIT erhalten (Liniensuche im LM) und zählt dann nicht als verfügbar; nur wenn die Tranche dadurch kleiner als V und kleiner als ohne ihn wäre, wird er freigegeben. T ≥ 1, sonst `CudaError` mit verfügbarem, nutzbarem und benötigtem Speicher. Die Gridgrenze V·F·L ≤ 2³¹ − 1 steckt schon in `max_variants`.
+4. **Puffer:** Reichen die vorhandenen Puffer (`DeviceSystemBatch` und `DeviceResiduals` bzw. `DeviceMerit`) nicht für T Varianten, werden beide vorher freigegeben, damit alter und neuer Puffer nie gleichzeitig belegt sind. Danach werden sie über alle Tranchen und folgende Läufe wiederverwendet (die letzte, kleinere Tranche nutzt denselben Puffer).
+5. **Tranchen** [first, first + T): `DeviceSystemBatch::upload(host, first, count)`, `DeviceResiduals::run` bzw. `DeviceMerit::run` (mit `extra_merit.subspan(first, count)`), dann je ein `cudaMemcpy` pro Ausgabe (Residuen, Status, OPD bzw. Merit, versagte Strahlen; Max-Reduktionen) von den Gerätezeigern an die Stelle `first` der Host-Vektoren. Synchron; bei der Rückkehr liegen alle Daten auf dem Host.
 
-**Bitgleichheit:** Der Kernel rechnet jede Variante unabhängig von ihrer Lage im Batch (Summationsreihenfolge nur abhängig von `kResidualThreads`), daher sind die Ergebnisse jeder Variante unabhängig von der Aufteilung in Tranchen bitgleich (Test `TraceEngine.TranchesMatchSingleRun`: 700 Varianten mit einer Grenze für genau 200, also 4 Tranchen, bitgleich zum Lauf in einer Tranche; `TraceEngine.OneVariantPerTranche`). Dasselbe gilt später für die Verteilung auf mehrere GPUs gleicher Architektur (M7).
+**Bitgleichheit:** Der Kernel rechnet jede Variante unabhängig von ihrer Lage im Batch (Summationsreihenfolge nur abhängig von `kResidualThreads`), daher sind die Ergebnisse jeder Variante unabhängig von der Aufteilung in Tranchen bitgleich (Test `TraceEngine.TranchesMatchSingleRun`: 700 Varianten mit einer Grenze für genau 200, also 4 Tranchen, bitgleich zum Lauf in einer Tranche; `TraceEngine.OneVariantPerTranche`; für MERIT mit Max-Reduktionen und `extra_merit` sowie RESIDUALS mit Max-Reduktionen `TraceEngine.MeritTranchesMatchSingleRun`). Dasselbe gilt später für die Verteilung auf mehrere GPUs gleicher Architektur (M7).
 
 **Künstliche Grenze** (`EngineOptions::memory_limit_bytes`): begrenzt den Speicher, den die Engine als verfügbar ansieht (Tests der Tranchen; Teilen einer GPU mit anderen Programmen). Die Reserve gilt zusätzlich; für exakte Tests `MemoryReserve{0, 0.0}`. Mit Grenze G und Reserve 0 belegt eine volle Tranche höchstens G Byte (`device_bytes()`), im Test genau G.
 
 **Gerätewahl:** `TraceEngine(device)` verlangt 0 ≤ device < `device_count()`; ohne Gerät `CudaError`, ungültiger Index oder ein Gerät unter sm_60 (keine passende Kernel-Version, ADR-0002) `std::invalid_argument`. Der Konstruktor legt noch keinen Kontext und keinen Speicher an. Jeder Aufruf setzt das Gerät der Engine und stellt danach das aktuelle Gerät des Aufrufers wieder her (`DeviceGuard`).
 
-**Fehler:** CUDA-Fehler und Speichermangel `CudaError`, ungültige Argumente (Index, Einstellungen, Werte im Batch, Modus MERIT bis M2-T3) `std::invalid_argument`, bevor das Gerät angefasst wird. Nach einer Ausnahme bleibt die Engine benutzbar, der Inhalt von `out` ist unbestimmt. Ein leerer Batch (V = 0) liefert leere Vektoren und `tranches = 0` ohne Gerätearbeit.
+**Fehler:** CUDA-Fehler und Speichermangel `CudaError`, ungültige Argumente (Index, Einstellungen, Werte im Batch, im Modus MERIT Länge von `extra_merit` und zu viele Stützstellen pro Feld) `std::invalid_argument`, bevor das Gerät angefasst wird. Nach einer Ausnahme bleibt die Engine benutzbar, der Inhalt von `out` ist unbestimmt. Ein leerer Batch (V = 0) liefert leere Vektoren und `tranches = 0` ohne Gerätearbeit.
 
 **Thread-Sicherheit:** Kein globaler Zustand; mehrere Engines (auch auf demselben Gerät, Test `TraceEngine.EnginesAreIndependent`) sind unabhängig. Eine Engine darf nicht gleichzeitig aus mehreren Threads benutzt werden. Für mehrere GPUs (M7-T3) bekommt jede GPU eine eigene Engine, sinnvollerweise in einem eigenen Host-Thread (`cudaSetDevice` gilt pro Thread; der Default-Stream und `cudaDeviceSynchronize` blockieren nur das eigene Gerät).
 
-**Einhängen von MERIT (M2-T3):** `TraceMode::Merit` wirft bis dahin in `run` und `max_variants`. Für den Modus braucht die Engine einen zweiten Ausgabepuffer (`DeviceMerit`), eine eigene `OutputRequest` (Merit, Teilsummen, Max-Reduktionen) in der Tranchenrechnung und ein Feld in `TraceOutput` (Merit pro Variante, Max-Reduktionen pro Variante und Fläche); der Ablauf (Prüfen, Tranchen, Download an die Stelle `first`) bleibt gleich.
+**Modus MERIT (M2-T3):** eigener Ausgabepuffer `DeviceMerit` neben `DeviceResiduals`, eigene `OutputRequest` in der Tranchenrechnung, Ergebnis in `TraceOutput::merit`; der Ablauf (Prüfen, Tranchen, Download an die Stelle `first`) ist derselbe wie bei RESIDUALS.
 
 **Auswertung für die CLI (M2-T5):** Mit `opd = true` liefert `tuple_wavefronts(out.residuals, out.layout, v)` pro Feld und Wellenlänge RMS [mm], Σ W der gültigen Strahlen und die Zahl versagter Strahlen, Ablage [f·L + l] wie `WavefrontResult::maps`. Für das Ergebnis von `residuals_cpu` ist das bitgleich zu `evaluate_wavefront` (Test `ResidualsCpu.TupleWavefrontsMatchEvaluateWavefront`), für die GPU innerhalb 1,6·10⁻¹⁵ mm (Test `TraceEngine.TupleWavefrontsMatchEvaluateWavefront`). Die Umrechnung in Wellen (λ_ref) und die Paraxialdaten bleiben in der CLI.
 
-**Abgrenzung der Tests:** Alle GPU-Tests, die den Kernel `RESIDUALS` fachlich prüfen (CPU-Abgleich, Determinismus, Grenzfälle, Durchsatz), laufen über die Engine. Direkt auf die Bausteine greifen nur Tests zu, die deren eigenen Vertrag prüfen: `CudaResiduals.DeviceBufferReuse` und `CudaResiduals.InvalidUseThrows` (`DeviceResiduals`), `test_cuda_system_batch.cpp` (Upload/Download des Batches) und die Prüfkernel aus M1 (`test_cuda_trace.cpp`, `test_cuda_quadrature.cpp`, `test_cuda_dispersion.cpp`, `test_cuda_smoke.cpp`).
+**Abgrenzung der Tests:** Alle GPU-Tests, die die Kernel `RESIDUALS` und `MERIT` fachlich prüfen (CPU-Abgleich, Determinismus, Grenzfälle, Durchsatz), laufen über die Engine. Direkt auf die Bausteine greifen nur Tests zu, die deren eigenen Vertrag prüfen: `CudaResiduals.DeviceBufferReuse` und `CudaResiduals.InvalidUseThrows` (`DeviceResiduals`), `CudaMerit.DeviceBufferReuse` und `CudaMerit.InvalidUseThrows` (`DeviceMerit`), `test_cuda_system_batch.cpp` (Upload/Download des Batches) und die Prüfkernel aus M1 (`test_cuda_trace.cpp`, `test_cuda_quadrature.cpp`, `test_cuda_dispersion.cpp`, `test_cuda_smoke.cpp`).
 
 ## Mehrere GPUs (M7)
 

@@ -33,12 +33,15 @@ MKO_HD inline Vec3<R> batch_image_point(const SystemBatchView<R>& b, const Surfa
 // dieselben Zahlen.
 // Rückgabe: Status des Strahls; *opl ist nur bei Ok gültig (sonst der teilweise
 // fortgeschriebene Wert, der nicht verwendet werden darf).
-template <class R, class SurfaceTable>
+// `observer` (optional) sieht Startzustand und Flächen wie bei trace_ray, z. B. ein
+// RaySurfaceRecord für die Max-Reduktionen (Kernel MERIT, M2-T3); die OPL hängt nicht davon ab.
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
 MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<R>& b, const SurfaceTable& table,
                                         int table_l, int v, int f, int l, const PupilSample<R>& s,
-                                        Vec3<R> center, R* opl) {
+                                        Vec3<R> center, R* opl, Observer* observer = nullptr) {
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
-    const TraceStatus st = trace_to_reference_sphere(table, table_l, ray, center);
+    const TraceStatus st =
+        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer);
     *opl = ray.opl;
     return st;
 }

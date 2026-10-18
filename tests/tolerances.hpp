@@ -19,6 +19,11 @@ inline constexpr double kCpuGpuFp64 = 1e-12;
 // haben |OPD| von einigen mm. Beobachtet: bis 2,4e-12 mm bei |OPD| = 1,8 … 6 mm, relativ
 // <= 1,3e-12 (auch mit --fmad=false noch 1,3e-12 mm, also nicht nur FMA).
 inline constexpr double kCpuGpuFp64Relative = 1e-11;
+// Merit des Kernels MERIT gegen die Summe der Quadrate der RESIDUALS-Ausgabe, relativ
+// (Abnahmekriterium M2-T3). Beide Kernel bilden bitgleiche Residuen; der Unterschied ist nur
+// die Summationsreihenfolge der Quadratsumme (Baumreduktion gegen kompensierte Summe auf dem
+// Host), Fehlerschranke ~ (⌈n/128⌉ + 7 + F·L) · ε ≈ 1e-14 bei n <= 80 Stützstellen pro Tupel.
+inline constexpr double kMeritVsResidualSum = 1e-13;
 // Brechzahl aus Katalogkoeffizienten gegen gedruckte Kontrollwerte (n_d mit 5 Nachkommastellen,
 // Rundung der Datenblätter und Koeffizienten). Kein Maß für die Rechengenauigkeit.
 inline constexpr double kIndexCatalog = 1e-5;

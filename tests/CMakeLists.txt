@@ -11,6 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
     test_batch_memory.cpp
+    test_batch_merit.cpp
     test_batch_residuals.cpp
     test_buchdahl_fit.cpp
     test_cli_trace.cpp
@@ -36,6 +37,7 @@ target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOU
 if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_dispersion.cpp
+        test_cuda_merit.cpp
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp
         test_cuda_smoke.cpp
