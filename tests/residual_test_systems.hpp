@@ -68,12 +68,13 @@ inline SystemBatchHost perturbed_batch(const LoadedSystem& system, int variants,
     return b;
 }
 
-// Stapel aus S = kMaxSurfaces Flächen: Blende, 31 schwach gekrümmte Linsen (Gläser n = 1,5
-// und 1,7 abwechselnd), letzte Fläche (Luft auf beiden Seiten) mit Arbeitsabstand; zwei
-// Felder (Achse, Feldpunkt).
-inline SystemBatchHost many_surface_batch(int variants, std::uint64_t seed) {
+// Stapel aus S Flächen (Standard kMaxSurfaces): Blende, (S − 2)/2 schwach gekrümmte Linsen
+// (Gläser n = 1,5 und 1,7 abwechselnd), letzte Fläche (Luft auf beiden Seiten) mit
+// Arbeitsabstand; zwei Felder (Achse, Feldpunkt). S gerade, 4 <= S <= kMaxSurfaces.
+inline SystemBatchHost many_surface_batch(int variants, std::uint64_t seed,
+                                          int surfaces = kMaxSurfaces) {
     BatchTopology t;
-    t.surfaces = kMaxSurfaces;
+    t.surfaces = surfaces;
     t.wavelengths = 2;
     t.fields = 2;
     t.type.assign(static_cast<std::size_t>(t.surfaces), SurfaceKind::Sphere);

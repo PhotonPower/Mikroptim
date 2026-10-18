@@ -214,7 +214,7 @@ mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem 
 
 **Merit (M2-T3):** F_v = Σ_k r_k² über alle Strahlresiduen der Variante (plus einem vom Aufrufer gelieferten Anteil weiterer Residuen); ohne gültigen Strahl ist F_v = 0 und nur an der Zahl versagter Strahlen erkennbar. Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
 
-Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern und ist für df64 (M7) vorgemerkt, muss dann aber in CPU und Kernel gleich definiert werden.
+Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern, müsste dann aber in CPU und Kernel gleich definiert werden. Für df64 ist sie nicht nötig: Der Rundungsfehler der OPL in df64 liegt bei einigen u²·OPL ≈ 10⁻¹² mm, die gemessene Abweichung der OPD von FP64 bei einigen 10⁻¹¹ mm (Abschnitt 12, „Zahlentyp df64“).
 
 ## 8. Pupillenquadratur
 
@@ -373,9 +373,58 @@ Im Modus `EVAL` ist jedes Versagen hart. Die Statusmaske pro Strahl wird immer m
 ## 12. Genauigkeit
 
 - Ziel: absoluter Fehler der OPD ≤ 1·10⁻⁶ mm (1 nm) nach Akkumulation über alle Flächen. FP32 (ε ≈ 6·10⁻⁸ bei OPL ≈ 100 mm) erfüllt das nicht.
-- FP64: typisch 10⁻¹², df64: typisch 10⁻⁹ (ab M7).
+- FP64: typisch 10⁻¹², df64: typisch 10⁻⁹ (Ziel); gemessen für df64 einige 10⁻¹¹ mm, höchstens 9·10⁻¹⁰ mm gegen FP64 (M7-T1, unten).
 - FMA-Kontraktion ist erlaubt; CPU/GPU-Unterschiede dadurch werden durch `kCpuGpuFp64` abgedeckt.
 - Toleranzen der Tests: `tests/tolerances.hpp`.
+
+### Zahlentyp df64 (M7-T1)
+
+Implementiert in `include/mikroptim/math/df64.hpp` (header-only, `MKO_HD`, Typ `mko::df64`), Einsatz in den Kerneln über `TraceSettings::precision = Precision::Df64` ([architektur.md, „Zahlentypen der Kernel“](architektur.md#zahlentypen-der-kernel-m7-t1)). FP32 bleibt außerhalb von df64 im OPD-Pfad verboten (AGENTS.md §6.1); df64 ist der in ADR-0003 vorgesehene zweite Zahlentyp.
+
+**Darstellung.** x = hi + lo aus zwei float mit |lo| ≤ ulp(hi)/2 (normiert), 8 Byte wie double, trivial kopierbar und trivial default-konstruierbar (Shared Memory). Mit u = 2⁻²⁴ (Einheitsrundung von float) ist die relative Genauigkeit etwa u² = 2⁻⁴⁸ ≈ 3,6·10⁻¹⁵ (FP64: 2⁻⁵³ ≈ 1,1·10⁻¹⁶), also rund 48 statt 53 Bit; benachbarte double sind in df64 im Allgemeinen nicht unterscheidbar.
+
+**Grundoperationen** (Joldes, Muller, Popescu 2017; Wurzel nach Lefèvre, Louvet, Muller, Picot, Rideau 2023; alle Ergebnisse normiert):
+
+| Operation | Verfahren | Schranke (relativ) | gemessen (2·10⁵ Zufallspaare, 16 Dekaden) |
+|---|---|---|---|
+| a + b, a − b | AccurateDWPlusDW (Alg. 6), auch bei Auslöschung | 3u² + 13u³ | 1,97 u² (Auslöschung 0,48 u²) |
+| a · b | DWTimesDW3 (Alg. 12, mit FMA) | 4u² | 3,10 u² |
+| a · f, f float | DWTimesFP3 (Alg. 9, mit FMA) | 2u² | 1,50 u² |
+| a / b | DWDivDW2 (Alg. 17) | 15u² + 56u³ | 6,28 u² |
+| √a | SQRTDWtoDW (ρ₁ = a_hi − s_h² exakt per FMA) | 25/8 u² | 2,68 u² |
+
+Referenz ist FP64 aus den exakt nach double gewandelten Operanden (Test `Df64.ArithmeticAccuracy`, `Df64.SqrtAccuracyAndEdgeCases`; Toleranzen `kDf64AddRelative` … `kDf64SqrtRelative` = Schranke + 2·2⁻⁵³ für die Rundungen der Referenz und der Rückwandlung).
+
+**Fehlerfreie Transformationen und FMA-Kontraktion.** two_sum (6 Operationen), fast_two_sum (3, Vorbedingung |a| ≥ |b|) und two_prod (p = a·b, e = fma(a, b, −p)) sind nur exakt, wenn jede Operation einzeln gerundet wird. Gefährlich ist nicht nur ein Produkt innerhalb der Transformation, sondern auch ein Operand, der selbst ein Produkt ist: nvcc zieht `fmul` und `fadd` auch dann zu einem FMA zusammen, wenn das Produkt noch anderweitig gebraucht wird, und die Summe passte dann nicht mehr zum gerundeten Operanden. Deshalb rechnet df64 im Device-Code ausschließlich über die Intrinsics `__fadd_rn`, `__fsub_rn`, `__fmul_rn`, `__fmaf_rn`, `__fdiv_rn`, `__fsqrt_rn`, die laut CUDA-Dokumentation nie zusammengezogen werden; die Kompilieroptionen bleiben unverändert (keine fast-math-Optionen, `--fmad` wie bisher). Auf dem Host steht jede Operation in einer eigenen Anweisung; GCC zieht im ISO-Modus (`-std=c++20`, `CMAKE_CXX_EXTENSIONS OFF`) nicht zusammen (`-ffp-contract=off`), MSVC mit `/fp:precise` erzeugt ohne `/arch:AVX2` keine FMA-Befehle, `fmaf` ist korrekt gerundet. Geprüft wird das doppelt: `Df64.ErrorFreeTransformations` (2·10⁵ Paare, Summe und Produkt exakt) und `CudaDf64.DeviceMatchesHostBitwise` (10⁵ Eingaben, 12 Operationen einschließlich des zusammengesetzten Ausdrucks a·b + a und der Umwandlungen: Gerät und Host **bitgleich**).
+
+**Umwandlungen.** Aus double: hi = RN(x), lo = RN(x − hi) (x − hi ist in double exakt), relativer Fehler ≤ 2⁻⁴⁹ (gemessen 2⁻⁴⁹); aus Ganzzahlen exakt für |i| < 2⁴⁸; nach double: hi + lo (eine Rundung, exakt für jedes df64 aus einem double). Im Device-Code kostet die Umwandlung aus double eine FP64-Subtraktion: Die Kernel wandeln die Flächentabelle einmal pro Block, pro Strahl nur Pupillenradius und Feldwinkel (Punktquelle: Quellpunkt, NA, Brechzahl) und am Ende OPD und Residuum nach double.
+
+**sin und cos.** `msincos`: Reduktion r = x − q·π/2, q = round(x·2/π), mit π/2 als Summe dreier float (Fehler < 2⁻⁷⁴) und exakten Produkten q·P₀, q·P₁ (two_prod), danach Taylor-Polynome in r² für |r| ≤ π/4 (sin bis r¹⁵, cos bis r¹⁶, Abbruchfehler < 7·10⁻¹⁷) mit Koeffizienten 1/n! als df64-Paaren aus exakten Brüchen. Gemessen ≤ 7,3·10⁻¹⁵ absolut für |x| ≤ 100 (Test `Df64.SinCosAccuracy`, `kDf64Trig` = 10⁻¹⁴); sin 0 = 0 und cos 0 = 1 exakt (der Achsfächer bleibt in der Meridionalebene); |x| ≥ 2²⁰, ±∞ und NaN ergeben NaN. Gebraucht werden sin/cos nur für Startstrahlen (Azimut φ der Stützstelle, Feldwinkel θ). Alternativen: sin/cos in FP64 auf dem Gerät kosten auf der RTX 3090 pro Aufruf etwa 30–40 FP64-Befehle, also bei 1/64 der FP32-Rate so viel wie mehrere tausend FP32-Befehle – mehr als der ganze Trace in df64; eine Tabelle von sin φ_j, cos φ_j im Shared Memory würde die gemeinsame Funktion `collimated_ray` ändern. Die df64-Reihe kostet etwa 20 df64-Multiplikationen und -Additionen pro Aufruf, so viel wie ungefähr eine Fläche.
+
+**Vergleiche** lexikographisch (hi, dann lo), für normierte Werte exakt. NaN verhält sich wie bei double (jeder Vergleich außer ≠ falsch), damit die Prüfungen des Tracers (`!(denom > 0)`, `!(d_z > 0)`, `D < 0`, `k < 0`) nicht endliche Werte wie in FP64 als Versagen melden.
+
+**Wertebereich und Grenzen.**
+
+- Exponentenbereich von float: Ergebnisse über FLT_MAX ≈ 3,4·10³⁸ werden **NaN** (nicht ±∞, weil die fehlerfreien Transformationen dann ∞ − ∞ bilden); die Umwandlung aus double ergibt dort ±∞. Volle relative Genauigkeit für |x| ≥ 2⁻¹⁰⁰ ≈ 7,9·10⁻³¹, darunter wird lo subnormal (absoluter Fehler dann ≈ 10⁻⁴⁵).
+- Division durch 0 ergibt NaN (double: ±∞); der Tracer dividiert nur durch geprüfte Größen (d_z > 0, Nenner > 0, Brechzahlen, r_g² > 0, W_ok > 0).
+- Zwischenwerte im Tracer (Test `Df64.TracerIntermediateValuesStayInFloatRange`: alle Strahlen der CPU-Testszenarien – gestörte Varianten von Einzellinse, Mehrlinser, Planplatte, Geisterplatte, Punktquelle, 64 Flächen – mit einem Zahlentyp, der jedes Zwischenergebnis festhält): gültige Strahlen |x| ∈ [4,3·10⁻¹⁹, 1,4·10⁷], also auch Produkte und Quadrate (z. B. c·(x² + y²), B² − cH, b² − g) weit innerhalb von float; das Maximum stammt aus dem Legendre-Profil einer Geisterplatte weit außerhalb des Normierungsradius. Kolbenabzug und Residuen reichen bis 1·10⁻³¹ (Quadrate von OPD im Bereich des Rundungsrauschens, ohne Bedeutung). Versagte Strahlen erreichen 6·10¹⁷.
+- Geisterplatten: P_K(ξ) wächst wie (2ξ)^K; für K = 32 läuft das Profil bei |ξ| ≳ 8 (r ≳ 2 r_g) über, df64 meldet dann Versagen (NaN), wo FP64 noch rechnet. Der Normierungsradius soll den Strahlbereich ohnehin abdecken (Abschnitt 6).
+- **Versagensgrenze:** Der Status entsteht aus Vergleichen von Größen mit relativem Fehler ≈ u² statt ≈ 2⁻⁵³. Strahlen sehr nahe an einer Grenze (Totalreflexion, Fläche verfehlt, d_z = 0) können in df64 anders entschieden werden als in FP64. Test `CudaDf64.StatusAtFailureBoundary`: äußerster Strahl des Achsfeldes von `einzellinse_bk7.json`, Grenzradius a* = 49,5597 mm (Totalreflexion an der zweiten Fläche), Pupillenradius a*·(1 + δ): gleicher Status für |δ| ≥ 10⁻¹⁴, abweichend für δ = 0 und δ = +10⁻¹⁵ (df64 noch Ok, FP64 TIR). In den gestörten Varianten der Testsuite (ca. 4·10⁷ Strahlen einschließlich des abgeschalteten Stresstests) kippt kein Status. Ein gekippter Status ist bei hartem Versagen ein Sprung in Kolben und Merit; das weiche Versagen (M4-T2, Abschnitt 11) macht ihn stetig.
+- Determinismus (ADR-0007): Die df64-Operationen sind deterministisch und die Reduktionen nutzen dieselbe Baumstruktur (Shuffle über zwei float-Shuffles); zehn Läufe und Läufe in mehreren Tranchen sind bitgleich (`CudaDf64.RepeatedRunsAreBitIdentical`).
+
+**Abnahme df64 gegen FP64** (Test `CudaDf64.MatchesFp64ForPerturbedVariants` über die TraceEngine, RTX 3090; RESIDUALS mit OPD und Max-Reduktionen, MERIT mit Max-Reduktionen; Vergleich mit FP64 auf der GPU und mit der CPU-Referenz `residuals_cpu`; Status in allen Fällen gleich):
+
+| Szenario | Strahlen (versagt) | max \|Δr\| [mm] | max \|ΔOPD\| [mm] | max \|Δh\| [mm] | max \|Δ cos I\| | max \|Δ√F\| [mm] |
+|---|---|---|---|---|---|---|
+| `einzellinse_bk7.json`, 1.000 Varianten | 510.000 (35.877) | 1,4·10⁻¹² | 9,9·10⁻¹² | 3,0·10⁻¹³ | 1,2·10⁻¹⁴ | 1,1·10⁻¹² |
+| `testsystem_mehrlinser.json`, 1.000 | 680.000 (57.371) | 2,1·10⁻¹² | 1,6·10⁻¹¹ | 2,2·10⁻¹¹ | 2,7·10⁻¹² | 1,9·10⁻¹² |
+| dasselbe, Quadratur 6 × 5 | 264.000 (21.203) | 2,2·10⁻¹² | 9,9·10⁻¹² | 1,6·10⁻¹¹ | 1,6·10⁻¹² | 9,7·10⁻¹³ |
+| `planplatte_bk7.json`, 500 | 45.000 (1.583) | 3,4·10⁻¹³ | 2,5·10⁻¹² | 1,9·10⁻¹³ | 4,1·10⁻¹⁵ | 2,6·10⁻¹³ |
+| `einzellinse_geisterplatte.json`, 500, Koeffizienten und Gläser gestört | 255.000 (36.231) | 8,7·10⁻¹¹ | 9,0·10⁻¹⁰ (ein Strahl, \|OPD\| = 21 mm) | 1,4·10⁻¹⁰ | 1,5·10⁻¹¹ | 7,3·10⁻¹¹ |
+| Punktquelle neben der Achse (volle Pupille), 200 | 48.000 (242) | 6,6·10⁻¹³ | 5,9·10⁻¹² | 2,5·10⁻¹³ | 8,8·10⁻¹⁵ | 6,4·10⁻¹³ |
+| Stapel mit 64 Flächen, 200 | 36.000 (0) | 8,7·10⁻¹³ | 2,5·10⁻¹² | 1,2·10⁻¹³ | 1,3·10⁻¹³ | 3,4·10⁻¹³ |
+
+Toleranz pro Strahl max(`kDf64VsFp64`, `kDf64VsFp64Relative`·|x|) = max(10⁻⁹ mm, 10⁻¹⁰·|x|), wie bei `kCpuGpuFp64Relative` erst ab |x| > 10 mm relativ; alle Strahlen liegen auch unter 10⁻⁹ mm absolut. Merit über die 2-Norm: |√F_df64 − √F_FP64| ≤ √(Σ_k Schranke_k²); relativ |ΔF|/F ≤ 1,0·10⁻¹⁰. Der abgeschaltete Stresstest `CudaDf64.DISABLED_StressManySeeds` (je zweimal 10.000 Varianten von vier Systemen, 3,9·10⁷ Strahlen) liefert höchstens 3,6·10⁻¹⁰ mm (Geisterplatte, |OPD| = 22 mm), für Systeme ohne Geisterplatte ≤ 1,9·10⁻¹⁰ mm bei |OPD| = 6 mm und sonst ≤ 7·10⁻¹¹ mm, ohne Statuswechsel. Die größten Abweichungen gehören zu schlecht konditionierten Strahlen extremer Varianten (Pupillenradius ×3 … ×5, |OPD| von mm bis einige 10 mm, Geisterplatten weit außerhalb von r_g): Dort verstärken sich die Rundungsfehler relativ um ca. 10⁴ wie in FP64 (vgl. `kCpuGpuFp64Relative`). Auf der CPU liefert derselbe Pfad (`batch_ray_opl` über eine df64-Flächentabelle) ≤ 1,7·10⁻¹¹ mm für OPL und OPD (Test `Df64.CpuTraceMatchesFp64`, läuft auch in der CI); MERIT gegen Σ RESIDUALS² in df64 ≤ 2,3·10⁻¹⁵ relativ (`kMeritVsResidualSumDf64`).
 
 ## 13. Literatur
 
@@ -384,3 +433,6 @@ Im Modus `EVAL` ist jedes Versagen hart. Die Statusmaske pro Strahl wird immer m
 - R. Kingslake, R. B. Johnson: Lens Design Fundamentals.
 - G. W. Forbes: Optical system assessment for design: numerical ray tracing in the Gaussian pupil, JOSA A 5 (1988).
 - P. N. Robb, R. I. Mercado: Calculation of refractive indices using Buchdahl's chromatic coordinate, Applied Optics 22 (1983).
+- T. J. Dekker: A floating-point technique for extending the available precision, Numerische Mathematik 18 (1971).
+- M. Joldes, J.-M. Muller, V. Popescu: Tight and rigorous error bounds for basic building blocks of double-word arithmetic, ACM Transactions on Mathematical Software 44 (2017).
+- V. Lefèvre, N. Louvet, J.-M. Muller, J. Picot, L. Rideau: Accurate calculation of Euclidean norms using double-word arithmetic, ACM Transactions on Mathematical Software 49 (2023).

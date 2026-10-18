@@ -34,7 +34,7 @@ Misst den Durchsatz der Trace-Kernel über die öffentliche `mko::cuda::TraceEng
 | `--surfaces LISTE` | Flächenzahlen S (4 … 64) | 10,20,30,40 |
 | `--variants LISTE` | Variantenzahlen V ≥ 1 | 1,10,100,1000,10000 |
 | `--mode LISTE` | `residuals`, `merit`, `residuals+extrema`, `merit+extrema`, `all` (alle vier) | residuals,merit |
-| `--type LISTE` | Zahlentyp: `fp64` (df64 folgt mit M7) | fp64 |
+| `--type LISTE` | Zahlentyp der Kernel: `fp64`, `df64` (M7-T1, `TraceSettings::precision`) | fp64 |
 | `--fields F` | Felder (Feldwinkel 0 … 3°) | 3 |
 | `--wavelengths L` | Wellenlängen | 3 |
 | `--rings N`, `--spokes M` | Pupillenquadratur N × M | 10 × 8 |
@@ -68,4 +68,4 @@ Exit-Codes: 0 Erfolg, 1 Fehler, 2 Aufruffehler, 3 kein CUDA-Gerät (wie `mikropt
 
 **Smoke-Test.** `ctest` führt im CUDA-Build `bench_trace_throughput_smoke` aus (S = 10 und 40, V = 10, alle Modi, ein Lauf) und verlangt, dass kein Strahl versagt; ohne GPU wird der Test übersprungen (Exit-Code 3).
 
-**Zahlentyp (Erweiterung M7-T1).** `NumberType` in `trace_throughput.cpp` hat zurzeit nur `Fp64`. Für df64 einen Wert ergänzen, in `parse_types`/`to_string` eintragen und in `configure_number_type` an die Engine weitergeben; Tabelle, CSV und JSON führen den Typ bereits als Spalte.
+**Zahlentyp (M7-T1).** `--type fp64,df64` misst beide Rechentypen der Kernel (`configure_number_type` setzt `TraceSettings::precision`, die Kernelzeit nutzt dieselbe Einstellung in `ResidualRunOptions`/`MeritRunOptions`); Tabelle, CSV und JSON führen den Typ als Spalte. Ergebnisse: [docs/benchmarks.md, „df64“](../docs/benchmarks.md#df64-m7-t1).

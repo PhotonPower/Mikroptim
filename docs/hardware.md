@@ -7,7 +7,9 @@
 | Architektur | Ampere, sm_86 | Pascal, sm_60 |
 | Speicher | 24 GB GDDR6X | 16 GB HBM2 |
 | FP32 : FP64 | 64 : 1 (ca. 0,55 TFLOPS FP64) | 2 : 1 (ca. 4,7–5,3 TFLOPS FP64) |
-| Rolle | Entwicklung, Debugging, FP32-Vorfilterung, später df64 | FP64-Referenz und Produktionsläufe |
+| Rolle | Entwicklung, Debugging, FP32-Vorfilterung, Produktionsläufe mit df64 (M7-T1) | FP64-Referenz und Produktionsläufe |
+
+**df64 auf der RTX 3090 (M7-T1).** Mit `TraceSettings::precision = Precision::Df64` rechnen die Kernel mit Paaren aus zwei float ([numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)): ca. 48 Bit Genauigkeit bei FP32-Rate, OPD und Residuen weichen von FP64 typisch um einige 10⁻¹¹ mm ab (höchstens 10⁻⁹ mm, Abnahme M7-T1). Der Kernel ist damit auf der RTX 3090 etwa 4-mal so schnell wie in FP64 (S = 30: 3,5·10⁸ statt 8,3·10⁷ Strahlen/s, [benchmarks.md](benchmarks.md#df64-m7-t1)). Die Tesla P100 rechnet FP64 mit halber FP32-Rate; dort bringt df64 (ca. 10–20 FP32-Befehle pro Operation) nichts, sie bleibt FP64-Referenz. Ergebnisse aus df64 und FP64 sind nicht bitgleich; Läufe, die bitgleich reproduzierbar sein müssen (ADR-0007, Multi-GPU M7-T3), verwenden auf allen Geräten denselben Zahlentyp.
 
 ## CUDA-Version
 
@@ -51,3 +53,5 @@ Annahme: ca. 140 Flop-Äquivalente pro Strahl und Fläche (inklusive zwei Wurzel
 Diese Werte sind Schätzungen und werden in M2 durch Messungen in [benchmarks.md](benchmarks.md) ersetzt. Weicht eine Messung um mehr als den Faktor 3 ab, wird die Ursache im PR erklärt.
 
 **Messung (M2-T6, `bench/trace_throughput`, [benchmarks.md](benchmarks.md)):** Auf der RTX 3090 in FP64 liefert der Kernel bei S = 30 und 10.000 Varianten 8,4·10⁷ Strahlen/s (über die TraceEngine mit Upload und Download 7,0–7,7·10⁷), die Jacobi mit 225.000 Strahlen dauert 3,2 ms (Engine 3,5–3,8 ms), 2·10⁸ Strahlen 2,4 s (Engine 2,6–2,7 s). Die Schätzung ist also um den Faktor 1,3–1,7 pessimistisch; der Kernel ist auf der RTX 3090 durch den FP64-Durchsatz begrenzt (ca. 2,5·10⁹ Strahl-Flächen/s unabhängig von S). Die P100-Messung steht noch aus.
+
+**Messung df64 (M7-T1, `trace_throughput --type fp64,df64`):** RTX 3090, S = 30, 10.000 Varianten: Kernel 3,5·10⁸ Strahlen/s (≈ 1,04·10¹⁰ Strahl-Flächen/s), über die Engine 2,5·10⁸ (MERIT) bzw. 1,9·10⁸ (RESIDUALS); Jacobi mit 225.000 Strahlen 0,76 ms (Engine 1,6–1,8 ms), 2·10⁸ Strahlen 0,58 s (Engine 0,94–1,35 s). Das trifft die Schätzung (2–3·10⁸ Strahlen/s, ca. 1 ms, ca. 1 s) im Kernel um den Faktor 1,2–1,7 besser; über die Engine ist der Upload des Batches im Verhältnis teurer als in FP64 (Messreihe in [benchmarks.md](benchmarks.md#df64-m7-t1)).

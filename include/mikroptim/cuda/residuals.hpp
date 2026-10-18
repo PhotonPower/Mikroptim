@@ -9,6 +9,7 @@
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
+#include "mikroptim/cuda/precision.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,11 +23,12 @@ inline constexpr int kResidualThreads = 128;
 
 // Optionen eines Laufs.
 struct ResidualRunOptions {
-    bool opd = false;                 // rohe OPD pro Strahl zusätzlich ablegen
-    std::int64_t extra_residuals = 0; // weitere Residuen pro Variante nach den Strahlresiduen
-                                      // (Paraxial, Strafen ab M3); run setzt sie auf 0
-    bool extrema = false;             // Max-Reduktionen pro Variante und Fläche (M2-T3,
-                                      // ResidualResult::extrema; Definition batch_extrema.hpp)
+    bool opd = false;                      // rohe OPD pro Strahl zusätzlich ablegen
+    std::int64_t extra_residuals = 0;      // weitere Residuen pro Variante nach den Strahlresiduen
+                                           // (Paraxial, Strafen ab M3); run setzt sie auf 0
+    bool extrema = false;                  // Max-Reduktionen pro Variante und Fläche (M2-T3,
+                                           // ResidualResult::extrema; Definition batch_extrema.hpp)
+    Precision precision = Precision::Fp64; // Rechentyp im Kernel (M7-T1); Ausgaben immer FP64
 };
 
 // Ausgabepuffer des Kernels RESIDUALS auf dem Gerät (RAII, nur verschiebbar): ein
@@ -49,7 +51,8 @@ public:
     // Tranchen sind Sache der TraceEngine, M2-T4). `layout` muss zur Topologie passen
     // (check_residual_layout). Die Werte der Varianten prüft der Aufrufer auf dem Host
     // (SystemBatchHost::validate_values; check_pupil_modes läuft schon beim Upload).
-    // Wirft std::logic_error bei leerem Batch.
+    // Wirft std::logic_error bei leerem Batch, std::invalid_argument bei unbekanntem
+    // options.precision.
     void run(const DeviceSystemBatch& batch, const ResidualLayout& layout,
              const ResidualRunOptions& options = {});
 

@@ -13,15 +13,19 @@
 #include "mikroptim/trace/reference_sphere.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 
+#include <type_traits>
+
 namespace mko {
 
 // Mittelpunkt der Referenzsphäre M_f = (0, h_f, w) der Variante v für Feld f in lokalen
 // Koordinaten der letzten Fläche: h_f = field_target[v][f], w = thickness[S−1] aus `table`
-// (Flächentabelle derselben Variante; im Kernel die Kopie im Shared Memory).
-template <class R, class SurfaceTable>
-MKO_HD inline Vec3<R> batch_image_point(const SystemBatchView<R>& b, const SurfaceTable& table,
-                                        int v, int f) {
-    return Vec3<R>{R(0), b.field_target[b.shape.field_at(v, f)],
+// (Flächentabelle derselben Variante; im Kernel die Kopie im Shared Memory). Der Rechentyp ist
+// der Zahlentyp der Tabelle; der Batch darf einen anderen Speichertyp haben (M7-T1).
+template <class B, class SurfaceTable>
+MKO_HD inline auto batch_image_point(const SystemBatchView<B>& b, const SurfaceTable& table, int v,
+                                     int f) {
+    using R = std::remove_cv_t<std::remove_reference_t<decltype(table.thickness[0])>>;
+    return Vec3<R>{R(0), R(b.field_target[b.shape.field_at(v, f)]),
                    table.thickness[table.surfaces - 1]};
 }
 
@@ -35,8 +39,10 @@ MKO_HD inline Vec3<R> batch_image_point(const SystemBatchView<R>& b, const Surfa
 // fortgeschriebene Wert, der nicht verwendet werden darf).
 // `observer` (optional) sieht Startzustand und Flächen wie bei trace_ray, z. B. ein
 // RaySurfaceRecord für die Max-Reduktionen (Kernel MERIT, M2-T3); die OPL hängt nicht davon ab.
-template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
-MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<R>& b, const SurfaceTable& table,
+// Rechentyp R (Stützstelle, Tabelle, Ergebnis) und Speichertyp B des Batches dürfen verschieden
+// sein (Kernel mit R = df64, M7-T1; batch_source_ray).
+template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserver>
+MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table,
                                         int table_l, int v, int f, int l, const PupilSample<R>& s,
                                         Vec3<R> center, R* opl, Observer* observer = nullptr) {
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
@@ -50,9 +56,11 @@ MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<R>& b, const Surfa
 // Faktor 1: r_k = √(W_i V_j) · OPD_k [mm]. M4-T1 ersetzt ihn durch
 // √(w_f · w_λ) / λ_ref (docs/optimierung.md, Abschnitt 2) aus field_weight, wavelength_weight
 // und reference_wavelength_nm der Sicht; CPU-Referenz und Kernel rufen dieselbe Funktion.
-template <class R>
-MKO_HD inline R residual_scale(const SystemBatchView<R>& /*b*/, int /*f*/, int /*l*/) {
-    return R(1);
+// Ergebnis im Speichertyp B des Batches; ein Kernel mit anderem Rechentyp wandelt es einmal
+// pro Block um (M7-T1).
+template <class B>
+MKO_HD inline B residual_scale(const SystemBatchView<B>& /*b*/, int /*f*/, int /*l*/) {
+    return B(1);
 }
 
 // Residuum eines Strahls: scale · √(W_i V_j) · OPD_k. Versagte Strahlen übergeben OPD = 0

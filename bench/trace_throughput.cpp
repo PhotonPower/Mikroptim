@@ -16,6 +16,7 @@
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/merit.hpp"
+#include "mikroptim/cuda/precision.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #include "mikroptim/model/system.hpp"
@@ -55,27 +56,29 @@ constexpr int kExitNoGpu = 3; // wie `mikroptim trace --gpu` (SKIP_RETURN_CODE d
 
 constexpr const char* kJsonFormat = "mikroptim.bench.trace_throughput/1";
 
-// Zahlentyp der Rechnung. Erweiterungspunkt für M7-T1 (df64): neuen Wert ergänzen, in
-// parse_number_type und to_string eintragen und in configure_number_type an die Engine
-// weitergeben. Alle Ausgaben führen den Typ schon als Spalte.
+// Rechentyp der Kernel (TraceSettings::precision, M7-T1). Alle Ausgaben führen ihn als Spalte.
 enum class NumberType {
     Fp64,
+    Df64,
 };
 
 const char* to_string(NumberType type) {
     switch (type) {
     case NumberType::Fp64:
         return "fp64";
+    case NumberType::Df64:
+        return "df64";
     }
     return "?";
 }
 
-// Stellt den Zahlentyp für einen Lauf ein. FP64 ist zurzeit der einzige Typ der Engine.
-void configure_number_type(NumberType type, mko::cuda::TraceSettings& /*settings*/) {
-    switch (type) {
-    case NumberType::Fp64:
-        return;
-    }
+mko::cuda::Precision precision_of(NumberType type) {
+    return type == NumberType::Df64 ? mko::cuda::Precision::Df64 : mko::cuda::Precision::Fp64;
+}
+
+// Stellt den Zahlentyp für einen Lauf ein.
+void configure_number_type(NumberType type, mko::cuda::TraceSettings& settings) {
+    settings.precision = precision_of(type);
 }
 
 // Ein zu messender Modus: Kernel-Modus der Engine, optional mit Max-Reduktionen.
@@ -130,7 +133,7 @@ void print_usage() {
         "  --variants LISTE    Variantenzahlen V >= 1 (Standard 1,10,100,1000,10000)\n"
         "  --mode LISTE        residuals, merit, residuals+extrema, merit+extrema, all\n"
         "                      (Standard residuals,merit; all = alle vier)\n"
-        "  --type LISTE        Zahlentyp: fp64 (Standard; df64 folgt mit M7)\n"
+        "  --type LISTE        Zahlentyp: fp64 (Standard), df64\n"
         "  --fields F          Felder, Feldwinkel 0 ... 3 Grad (Standard 3)\n"
         "  --wavelengths L     Wellenlängen 486,13 ... 656,27 nm (Standard 3)\n"
         "  --rings N           Ringe der Pupillenquadratur (Standard 10)\n"
@@ -218,9 +221,11 @@ std::vector<NumberType> parse_types(std::string_view text) {
     for (const std::string_view item : split_list(text)) {
         if (item == "fp64") {
             types.push_back(NumberType::Fp64);
+        } else if (item == "df64") {
+            types.push_back(NumberType::Df64);
         } else {
             throw UsageError("--type: unbekannter Zahlentyp \"" + std::string(item) +
-                             "\" (verfügbar: fp64)");
+                             "\" (verfügbar: fp64, df64)");
         }
     }
     return types;
@@ -501,12 +506,14 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType typ
                 mko::cuda::DeviceMerit merit;
                 mko::cuda::MeritRunOptions opt;
                 opt.extrema = mode.extrema;
+                opt.precision = settings.precision;
                 r.kernel =
                     measure(o.warmup, o.repeat, [&] { merit.run(device_batch, layout, opt); });
             } else {
                 mko::cuda::DeviceResiduals residuals;
                 mko::cuda::ResidualRunOptions opt;
                 opt.extrema = mode.extrema;
+                opt.precision = settings.precision;
                 r.kernel =
                     measure(o.warmup, o.repeat, [&] { residuals.run(device_batch, layout, opt); });
             }

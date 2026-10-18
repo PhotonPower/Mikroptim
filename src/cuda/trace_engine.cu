@@ -32,6 +32,7 @@ void check_settings(const TraceSettings& settings) {
     if (settings.extra_residuals < 0) {
         throw std::invalid_argument("TraceEngine: negative Zahl weiterer Residuen");
     }
+    check_precision(settings.precision);
 }
 
 // Ausgaben auf dem Gerät, wie DeviceResiduals::run bzw. DeviceMerit::run sie anlegen. Im
@@ -278,8 +279,8 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
             samples = std::max(samples, p.samples);
         }
         const detail::DeviceGuard guard(device_);
-        const int limit =
-            merit_max_samples(settings.extrema, topology.ghost_plates, topology.ghost_terms);
+        const int limit = merit_max_samples(settings.extrema, topology.ghost_plates,
+                                            topology.ghost_terms, settings.precision);
         if (samples > limit) {
             throw std::invalid_argument("TraceEngine: Modus MERIT erlaubt höchstens " +
                                         std::to_string(limit) + " Stützstellen pro Feld (" +
@@ -335,8 +336,10 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
     residual_options.opd = settings.opd;
     residual_options.extra_residuals = settings.extra_residuals;
     residual_options.extrema = settings.extrema;
+    residual_options.precision = settings.precision;
     MeritRunOptions merit_options;
     merit_options.extrema = settings.extrema;
+    merit_options.precision = settings.precision;
     const auto extrema_stride = static_cast<std::size_t>(S) * 2;
     const detail::DeviceGuard guard(device_);
     for (int first = 0; first < V; first += tranche) {

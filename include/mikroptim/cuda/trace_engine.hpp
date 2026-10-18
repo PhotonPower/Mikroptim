@@ -14,6 +14,7 @@
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
 #include "mikroptim/cuda/merit.hpp"
+#include "mikroptim/cuda/precision.hpp"
 #include "mikroptim/cuda/residuals.hpp"
 
 #include <cstddef>
@@ -58,6 +59,11 @@ struct TraceSettings {
     // Quadratsumme addiert (Anteil weiterer Residuen, MeritRunOptions::extra_merit). Die
     // Daten müssen bis zur Rückkehr von run gültig bleiben.
     std::span<const double> extra_merit{};
+    // Beide Modi: Rechentyp im Kernel (M7-T1). Df64 (Paar aus zwei float, ca. 48 Bit) ist auf
+    // GeForce-Karten (RTX 3090: Kernel ca. 4-mal so schnell) schneller als FP64; OPD und
+    // Residuen weichen typisch um einige 1e-11 mm ab, höchstens 1e-9 mm (docs/numerik.md,
+    // Abschnitt 12). Batch, Ausgaben (FP64) und Speicherbedarf sind gleich.
+    Precision precision = Precision::Fp64;
 };
 
 // Statistik des letzten Laufs.

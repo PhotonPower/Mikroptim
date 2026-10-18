@@ -157,15 +157,20 @@ static_assert(std::is_standard_layout_v<SystemBatchView<double>>);
 // - kollimiert: collimated_ray(pupil_radius[v], field_angle[v][f], ρ, φ),
 // - Punktquelle: point_source_ray(source_point, source_na / index[v][0][l], ρ, φ).
 // Prüft nichts (Vorbedingung bei der Punktquelle: 0 < source_na < index[v][0][l]).
-template <class R>
-MKO_HD inline Ray<R> batch_source_ray(const SystemBatchView<R>& b, int v, int f, int l,
+// Rechentyp R (aus der Stützstelle) und Speichertyp B des Batches dürfen verschieden sein
+// (Kernel mit R = df64 über einem FP64-Batch, M7-T1): Die Werte des Batches werden mit R(…)
+// umgewandelt, für R = B ohne Wirkung.
+template <class R, class B>
+MKO_HD inline Ray<R> batch_source_ray(const SystemBatchView<B>& b, int v, int f, int l,
                                       const PupilSample<R>& s) {
     if (b.source == SourceKind::Point) {
-        const R sin_max = b.source_na / b.index[b.shape.index_at(v, 0, l)];
-        return point_source_ray(Vec3<R>{b.source_point[0], b.source_point[1], b.source_point[2]},
-                                sin_max, s.rho, s.phi);
+        const R sin_max = R(b.source_na) / R(b.index[b.shape.index_at(v, 0, l)]);
+        return point_source_ray(
+            Vec3<R>{R(b.source_point[0]), R(b.source_point[1]), R(b.source_point[2])}, sin_max,
+            s.rho, s.phi);
     }
-    return collimated_ray(b.pupil_radius[v], b.field_angle[b.shape.field_at(v, f)], s.rho, s.phi);
+    return collimated_ray(R(b.pupil_radius[v]), R(b.field_angle[b.shape.field_at(v, f)]), s.rho,
+                          s.phi);
 }
 
 } // namespace mko
