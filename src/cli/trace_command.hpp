@@ -2,6 +2,8 @@
 
 // Unterbefehl `mikroptim trace` (docs/cli.md): Paraxialdaten, RMS-Wellenfront pro Feld und
 // Wellenlänge und versagte Strahlen eines Systems, als Text oder als JSON `mikroptim.trace/1`.
+// Die Wellenfront entsteht auf der CPU oder mit --gpu über mko::cuda::TraceEngine (nur in
+// CUDA-Builds, dann linkt mikroptim_cli die Bibliothek mikroptim_cuda).
 // Interner Header der Bibliothek mikroptim_cli (gelinkt in das Programm und die Tests).
 
 #include <ostream>
@@ -17,6 +19,7 @@ inline constexpr std::string_view kTraceFormat = "mikroptim.trace/1";
 inline constexpr int kExitOk = 0;    // Auswertung ausgegeben (auch ohne auswertbare Wellenfront)
 inline constexpr int kExitError = 1; // Datei nicht lesbar, Formatfehler, Glasfehler, ...
 inline constexpr int kExitUsage = 2; // ungültige Kommandozeile
+inline constexpr int kExitNoGpu = 3; // --gpu, aber ohne CUDA gebaut oder kein CUDA-Gerät
 
 // Hilfetext des Unterbefehls.
 void print_trace_usage(std::ostream& out);

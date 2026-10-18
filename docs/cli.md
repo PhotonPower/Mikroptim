@@ -2,14 +2,14 @@
 
 ```
 mikroptim [--version] [--devices]
-mikroptim trace <system.json> [--json] [--rings N] [--spokes M]
+mikroptim trace <system.json> [--json] [--rings N] [--spokes M] [--gpu [--device N]]
 ```
 
 | Aufruf | Wirkung |
 |---|---|
 | `mikroptim --version` | Version ausgeben |
 | `mikroptim --devices` | CUDA-Geräte auflisten (nur mit `MIKROPTIM_ENABLE_CUDA=ON`) |
-| `mikroptim trace …` | System auswerten (M1-T8, dieser Abschnitt) |
+| `mikroptim trace …` | System auswerten (M1-T8, mit `--gpu` M2-T5; dieser Abschnitt) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
 
@@ -20,7 +20,7 @@ Lädt eine Systembeschreibung `mikroptim.system/1` ([dateiformat.md](dateiformat
 - **Paraxialdaten** bei der Referenzwellenlänge `spectrum.reference_nm` (`compute_paraxial`, Definitionen und Vorzeichen: [numerik.md, Abschnitt 9](numerik.md#9-paraxialoptik)),
 - **RMS-Wellenfront** pro Feld und Wellenlänge, in Wellen bei λ_ref und in mm, sowie die **Anzahl versagter Strahlen** (`evaluate_wavefront` mit den idealen Bildpunkten, [numerik.md, Abschnitt 7](numerik.md#7-referenzsphäre-und-opd); Bibliothek `Mikroptim::merit`, [architektur.md](architektur.md#wellenfront-m1-t7)).
 
-Gerechnet wird auf der CPU in FP64; die GPU-Variante `--gpu` folgt mit M2-T5.
+Gerechnet wird in FP64, die Wellenfront standardmäßig auf der CPU, mit `--gpu` auf einem CUDA-Gerät (siehe [GPU-Backend](#gpu-backend---gpu)).
 
 ### Optionen
 
@@ -30,6 +30,8 @@ Gerechnet wird auf der CPU in FP64; die GPU-Variante `--gpu` folgt mit M2-T5.
 | `--json` | maschinenlesbare Ausgabe `mikroptim.trace/1` statt Text | aus |
 | `--rings N` | radiale Ringe der Pupillenquadratur, 1 ≤ N ≤ 16 | 10 |
 | `--spokes M` | Speichen der Pupillenquadratur, M ≥ 1 (Achsfeld immer 1) | 8 |
+| `--gpu` | Wellenfront auf der GPU rechnen (Kernel `RESIDUALS` über `mko::cuda::TraceEngine`) | aus (CPU) |
+| `--device N` | CUDA-Gerät für `--gpu`, N ≥ 0 (Liste: `mikroptim --devices`); nur zusammen mit `--gpu` | 0 |
 | `--help`, `-h` | Hilfe | – |
 
 Die Pupillenquadratur folgt [numerik.md, Abschnitt 8](numerik.md#8-pupillenquadratur): Auf der Achse ein meridionaler Fächer mit N Stützstellen, außerhalb der Achse die halbe Pupille mit N·M Stützstellen (Punktquelle außerhalb der y-z-Ebene: volle Pupille).
@@ -39,8 +41,9 @@ Die Pupillenquadratur folgt [numerik.md, Abschnitt 8](numerik.md#8-pupillenquadr
 | Code | Bedeutung |
 |---|---|
 | 0 | Auswertung ausgegeben, auch wenn die Wellenfront nicht auswertbar ist (siehe unten) |
-| 1 | Fehler beim Laden oder Auswerten: Datei fehlt oder ist nicht lesbar, JSON-Syntax- oder Formatfehler, unbekanntes Glas, Brechzahl außerhalb des Gültigkeitsbereichs, … |
-| 2 | ungültige Kommandozeile (unbekannte Option, fehlende Datei, ungültige Zahl) |
+| 1 | Fehler beim Laden oder Auswerten: Datei fehlt oder ist nicht lesbar, JSON-Syntax- oder Formatfehler, unbekanntes Glas, Brechzahl außerhalb des Gültigkeitsbereichs, … Mit `--gpu` auch: Gerät `--device N` existiert nicht oder ist ungeeignet (unter sm_60), CUDA-Fehler, Speichermangel |
+| 2 | ungültige Kommandozeile (unbekannte Option, fehlende Datei, ungültige Zahl, `--device` ohne `--gpu`) |
+| 3 | `--gpu`, aber das GPU-Backend ist nicht verfügbar: ohne CUDA gebaut (`MIKROPTIM_ENABLE_CUDA=OFF`) oder kein CUDA-Gerät sichtbar. Geprüft vor dem Laden der Systemdatei (`kExitNoGpu`) |
 
 Fehlermeldungen gehen auf stderr, die Standardausgabe bleibt dann leer. Formatfehler nennen Datei und JSON-Pfad, z. B.
 
@@ -82,6 +85,7 @@ Paraxialdaten bei 587.560 nm
   Pupillenvergrößerung                        1.074401
 
 Wellenfront (Quadratur 10 Ringe x 8 Speichen, RMS in Wellen bei 587.560 nm)
+  Backend                                     CPU, FP64
   Sollbrennweite für die Bildpunkte           101.049681 mm
   Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen  versagt  RMS [Wellen]       RMS [mm]
      0         0.000           486.130        10        0      4.502093   2.645250e-03
@@ -113,6 +117,8 @@ Ein JSON-Objekt (eingerückt mit zwei Leerzeichen, abschließender Zeilenumbruch
 | `source` | object | `{"type": "collimated", "field_angles_deg": [...]}` oder `{"type": "point", "point": [x, y, z], "numerical_aperture": NA}` |
 | `paraxial` | object | Paraxialdaten bei λ_ref, siehe unten |
 | `quadrature` | object | `{"rings": N, "spokes": M}` wie angefordert |
+| `backend` | string | Rechenwerk der Wellenfront: `"cpu"` oder `"gpu"` (seit M2-T5; die Paraxialdaten entstehen immer auf dem Host) |
+| `device` | object \| null | bei `"gpu"`: `{"index": N, "name": "<Gerätename>"}`, sonst `null` (seit M2-T5) |
 | `target_focal_length` | number \| null | verwendete Sollbrennweite f_soll für die Bildpunkte (`target.focal_length` oder paraxial); `null` bei der Punktquelle oder ohne Wellenfront |
 | `wavefront` | object[] \| null | ein Eintrag pro Feld f und Wellenlänge l, Reihenfolge `f · L + l`; `null`, wenn nicht auswertbar |
 | `wavefront_error` | string \| null | Grund, warum `wavefront` `null` ist |
@@ -156,7 +162,7 @@ Einträge von `wavefront`:
 | `failed_rays` | integer | versagte Strahlen |
 | `rms_waves` | number \| null | RMS-Wellenfront in Wellen bei λ_ref (`null` ohne gültigen Strahl) |
 | `rms_mm` | number \| null | RMS-Wellenfront [mm] |
-| `piston_mm` | number \| null | Kolben Σ W·OPL / Σ W [mm] |
+| `piston_mm` | number \| null | Kolben Σ W·OPL / Σ W [mm]; mit `--gpu` immer `null` (der Kernel `RESIDUALS` gibt den Kolben nicht aus) |
 
 **Stabilität:** Neue Felder können in `mikroptim.trace/1` hinzukommen; Leser sollen unbekannte Felder ignorieren. Umbenennen, Entfernen oder Bedeutungsänderungen erhöhen die Version auf `mikroptim.trace/2`.
 
@@ -215,6 +221,8 @@ Beispiel (`mikroptim trace data/systems/einzellinse_bk7.json --json`):
     "rings": 10,
     "spokes": 8
   },
+  "backend": "cpu",
+  "device": null,
   "target_focal_length": 101.04968094724019,
   "wavefront": [
     {
@@ -382,8 +390,52 @@ Beispiel (`mikroptim trace data/systems/einzellinse_bk7.json --json`):
 
 Für `planplatte_bk7.json` (afokal) sind in `paraxial` die Felder `focal_length`, `back_focal_distance`, `front_focal_distance`, `front_principal_plane`, `rear_principal_plane`, `image_defocus` und `petzval_radius` `null`, `afocal` ist `true`, und es gilt `"wavefront": null` mit `"wavefront_error": "Wellenfront: Sollbrennweite ist nicht endlich (afokales System?); target.focal_length setzen"`.
 
+### GPU-Backend (`--gpu`)
+
+Mit `--gpu` entsteht die Wellenfront über die Host-API `mko::cuda::TraceEngine` ([architektur.md](architektur.md), Abschnitt „Host-API TraceEngine“) auf dem Gerät `--device N` (Standard 0):
+
+1. Sollbrennweite f_soll wie im CPU-Pfad mit `target_focal_length` (nur kollimierte Quelle), dann `make_system_batch(system, index, 1, f_soll)` – eine Variante mit den Feldzielen h_f = f_soll · tan θ_f, also denselben idealen Bildpunkten wie `evaluate_wavefront`.
+2. `TraceEngine::run(batch, TraceMode::Residuals, {quadrature = {N, M}, opd = true, status = true})`.
+3. `tuple_wavefronts(out.residuals, out.layout, 0)` liefert RMS [mm] und versagte Strahlen pro Feld und Wellenlänge; RMS in Wellen = RMS / λ_ref wie im CPU-Pfad.
+
+Paraxialdaten, Sollbrennweite und Bildpunkte entstehen auf dem Host und sind bitgleich zur CPU-Variante; Text und JSON werden von denselben Ausgabefunktionen geschrieben. Unterschiede zur CPU-Variante:
+
+- `rms_waves`, `rms_mm`: Abweichung höchstens max(`kCpuGpuFp64`, `kCpuGpuFp64Relative` · |RMS|) (`tests/tolerances.hpp`; FMA-Kontraktion und CUDA-Mathematikbibliothek). Gemessen auf der RTX 3090: höchstens 7,7·10⁻¹⁵ mm (relativ ≤ 4,8·10⁻¹²). Die Textausgabe ist bei 6 Stellen deshalb praktisch immer identisch; sie unterscheidet sich nur in der Zeile `Backend`.
+- `failed_rays` und `rays` sind identisch (gleiches Versagenskriterium im header-only Tracer).
+- `piston_mm` ist `null`: Der Kernel `RESIDUALS` zieht den Kolben ab, gibt ihn aber nicht aus.
+- `backend` ist `"gpu"`, `device` nennt Index und Namen des Geräts.
+
+Afokale Systeme ohne `target.focal_length` verhalten sich wie im CPU-Pfad (`wavefront: null`, gleiche Meldung in `wavefront_error`, Exit-Code 0); die Punktquelle (Achse, y-z-Ebene, allgemein) wird unterstützt. Ohne CUDA gebaut oder ohne sichtbares Gerät endet `--gpu` mit einer Meldung auf stderr und Exit-Code 3, z. B.
+
+```
+mikroptim trace: --gpu: ohne CUDA gebaut (MIKROPTIM_ENABLE_CUDA=OFF), GPU-Backend nicht verfügbar
+mikroptim trace: --gpu: kein CUDA-Gerät gefunden (GPU-Backend nicht verfügbar)
+```
+
+Beispiel (`mikroptim trace data/systems/einzellinse_bk7.json --gpu`, RTX 3090): Ausgabe wie oben, nur die Zeile `Backend` lautet
+
+```
+Wellenfront (Quadratur 10 Ringe x 8 Speichen, RMS in Wellen bei 587.560 nm)
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Sollbrennweite für die Bildpunkte           101.049681 mm
+```
+
+Mit `--json` ändern sich gegenüber dem Beispiel oben nur
+
+```json
+  "backend": "gpu",
+  "device": {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 3090"
+  },
+```
+
+sowie in den Einträgen von `wavefront` die RMS-Werte in den letzten Stellen und der Kolben, z. B. für Feld 0 bei 486,13 nm `"rms_waves": 4.5020929504633`, `"rms_mm": 0.002645249733974216`, `"piston_mm": null` (CPU: `4.502092950462526`, `0.0026452497339737612`, `14.130347293916047`).
+
 ### Tests
 
 `tests/test_cli_trace.cpp` ruft `mko::cli::run_trace_command` direkt auf und prüft die JSON-Ausgabe gegen `compute_paraxial` und `evaluate_wavefront` (bitgleich), das afokale System, die Punktquelle, Warnungen, Fehlerfälle und die Textausgabe. Die ctest-Kommandos `cli_trace_json`, `cli_trace_text` und `cli_trace_missing_file` starten das gebaute Programm.
 
-Implementierung: `src/cli/trace_command.cpp` (Bibliothek `mikroptim_cli`, interner Header `src/cli/trace_command.hpp`), `src/cli/main.cpp` verteilt nur die Unterbefehle.
+`--gpu`: Im CPU-Build prüfen `CliTrace.GpuUnavailableWithoutCuda` und das ctest-Kommando `cli_trace_gpu_unavailable` Meldung und Exit-Code 3 (läuft in der CI). Im CUDA-Build vergleichen die Tests `CliTraceGpu.*` (übersprungen ohne Gerät) GPU- gegen CPU-Ausgabe für `einzellinse_bk7.json`, `testsystem_mehrlinser.json` (auch mit 16 × 12 Stützstellen), ein System mit versagten Strahlen, die Punktquelle und das afokale System; dazu die ctest-Kommandos `cli_trace_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen, `SKIP_RETURN_CODE`) und `cli_trace_gpu_no_device` (`CUDA_VISIBLE_DEVICES=-1`).
+
+Implementierung: `src/cli/trace_command.cpp` (Bibliothek `mikroptim_cli`, interner Header `src/cli/trace_command.hpp`; im CUDA-Build gelinkt gegen `mikroptim_cuda`, GPU-Pfad unter `#ifdef MIKROPTIM_HAS_CUDA`), `src/cli/main.cpp` verteilt nur die Unterbefehle.
