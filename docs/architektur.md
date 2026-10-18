@@ -89,6 +89,20 @@ Modul Glasmodell (`include/mikroptim/glass/`, Bibliothek `Mikroptim::glass`):
 - `dispersion.hpp` – header-only, `MKO_HD`, templatisiert über `R`: `sellmeier_index`, `buchdahl_omega`, `buchdahl_index` (λ in µm) und `nm_to_um` als einzige Umrechnungsstelle nm → µm.
 - `catalog.hpp` – `GlassCatalog` (Host), Einlesen siehe [dateiformat.md](dateiformat.md#glasdaten).
 - `index_table.hpp` – `material_index` und `make_index_table`.
+- `buchdahl_fit.hpp` – Kleinste-Quadrate-Fit des Buchdahl-Modells (Verfahren: [numerik.md](numerik.md#10-glasmodelle)):
+
+```cpp
+struct BuchdahlFitOptions { double lambda_min_nm = 400, lambda_max_nm = 700; int samples = 301;
+                            BuchdahlFitNodes nodes = Chebyshev; int check_samples = 3001; };
+struct BuchdahlFit { int dispersion_terms; double n0; std::array<double, 3> nu;
+                     double max_abs_error, rms_error; BuchdahlFitOptions options;
+                     double index(double lambda_nm) const; };
+BuchdahlFit fit_buchdahl(const Glass& glass, int dispersion_terms /* 2 oder 3 */,
+                         const BuchdahlFitOptions& = {});
+BuchdahlFit fit_buchdahl(const IndexFunction& index_nm, int dispersion_terms,
+                         const BuchdahlFitOptions& = {}); // beliebiges n(lambda_nm)
+MaterialSpec to_buchdahl_material(const BuchdahlFit& fit);   // kind = Buchdahl
+```
 
 ```cpp
 struct IndexTable { int surfaces; int wavelengths; std::vector<double> n; double at(int s, int l) const; };

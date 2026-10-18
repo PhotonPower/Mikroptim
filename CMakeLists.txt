@@ -82,9 +82,10 @@ target_link_libraries(mikroptim_model
     PRIVATE nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
-# Glasmodell (Host): Glaskataloge, Brechzahltabellen
+# Glasmodell (Host): Glaskataloge, Brechzahltabellen, Buchdahl-Fit
 # --------------------------------------------------------------------------
 add_library(mikroptim_glass STATIC
+    src/glass/buchdahl_fit.cpp
     src/glass/catalog.cpp
     src/glass/index_table.cpp)
 add_library(Mikroptim::glass ALIAS mikroptim_glass)

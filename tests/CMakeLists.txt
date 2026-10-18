@@ -10,6 +10,7 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
+    test_buchdahl_fit.cpp
     test_dispersion.cpp
     test_glass_catalog.cpp
     test_index_table.cpp

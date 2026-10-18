@@ -176,6 +176,24 @@ Die Koordinate ist nur für 1 + 2,5 δλ > 0 definiert, also λ > 0,146074 µm; 
 
 Koeffizienten werden per kleinsten Quadraten an Sellmeier über 400–700 nm angepasst. Optimiert werden (n₀, ν₁, ν₂) innerhalb der konvexen Hülle der Katalog-Gläser (normierte Koordinaten); ν₃ dient der Bewertung.
 
+**Buchdahl-Fit** (`include/mikroptim/glass/buchdahl_fit.hpp`, `mko::fit_buchdahl`):
+
+- *Termzahl:* gezählt werden die Dispersionskoeffizienten ohne n₀. „3 Terme“: (n₀, ν₁, ν₂, ν₃); „2 Terme“: (n₀, ν₁, ν₂) mit ν₃ = 0. Die 2-Term-Koeffizienten sind die Glasvariablen der Optimierung, der 3-Term-Fit dient der Bewertung.
+- *Stützstellen:* standardmäßig N = 301 Tschebyschow-Knoten erster Art in λ, λ_k = λ_m − h cos(π (k + ½)/N) mit Mitte λ_m und halber Breite h des Bereichs. Ungewichtete kleinste Quadrate auf diesen Knoten kommen dem gleichmäßig besten (Minimax-)Fit nahe; das passt zum Fehlermaß der Abnahme (Maximum). Alternativ äquidistant in λ mit Randpunkten. Bereich, N und Knotenart sind Parameter (`BuchdahlFitOptions`).
+- *Lösung:* Das Modell ist linear in den Koeffizienten. Entwurfsmatrix A_ij = ω_i^j (Vandermonde in ω, j = 0 … Termzahl), rechte Seite n(λ_i); min ‖A x − b‖₂ per Householder-QR in FP64, keine Normalgleichungen (die würden die Konditionszahl quadrieren; cond(A) ≈ 1,2·10² für 2 und 1,4·10³ für 3 Terme über 400–700 nm).
+- *Fehlermaß:* max |n_Buchdahl − n_Sellmeier| und RMS auf einem eigenen äquidistanten Prüfgitter mit Randpunkten (Standard 3001 Punkte = 0,1 nm), ausgewertet mit derselben Formel wie die Brechzahltabelle.
+- *Fehler:* Fitbereich außerhalb von `range_nm` des Glases, Termzahl ≠ 2, 3, zu wenige Stützstellen, Bereich unterhalb von 146,074 nm → `GlassError`.
+
+Ergebnisse für `data/glass/basis.json` (Standardeinstellungen; „äquidistant“ = 301 äquidistante Knoten zum Vergleich):
+
+| Glas | n₀ | ν₁ | ν₂ | ν₃ | max. Fehler 3 Terme | max. Fehler 2 Terme | äquidistant 3 / 2 Terme |
+|---|---|---|---|---|---|---|---|
+| N-BK7 | 1,5187250 | −5,1460·10⁻² | 5,2807·10⁻³ | −5,7541·10⁻⁴ | 5,5·10⁻⁶ | 6,1·10⁻⁶ | 9,0·10⁻⁶ / 9,9·10⁻⁶ |
+| CAF2 | 1,4349406 | −2,9243·10⁻² | 5,1323·10⁻³ | 7,1493·10⁻³ | 1,1·10⁻⁶ | 1,1·10⁻⁵ | 1,9·10⁻⁶ / 2,0·10⁻⁵ |
+| F_SILICA | 1,4600812 | −4,3132·10⁻² | 1,3161·10⁻³ | −3,6838·10⁻³ | 5,7·10⁻⁶ | 9,4·10⁻⁶ | 9,3·10⁻⁶ / 1,5·10⁻⁵ |
+
+(Koeffizienten des 3-Term-Fits. Der Test `BuchdahlFit.AcceptanceBasisCatalog` gibt diese Tabelle aus.)
+
 ## 11. Weiches Versagen
 
 Nur in den Optimierungsmodi (`MERIT`, `RESIDUALS`, `ADJOINT`):
