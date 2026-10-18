@@ -116,6 +116,16 @@ target_link_libraries(mikroptim_cpu
     PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# Merit (Host): Wellenfrontauswertung (Referenzsphäre, Kolbenabzug, RMS) auf der CPU
+# --------------------------------------------------------------------------
+add_library(mikroptim_merit STATIC
+    src/merit/wavefront.cpp)
+add_library(Mikroptim::merit ALIAS mikroptim_merit)
+target_link_libraries(mikroptim_merit
+    PUBLIC mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
+    PRIVATE mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)

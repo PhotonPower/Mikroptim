@@ -125,6 +125,50 @@ $$\mathrm{OPD}_i = \mathrm{OPL}_i - \sum_j W_j\,\mathrm{OPL}_j$$
 
 Kippung wird **nicht** entfernt: Sie entspricht Verzeichnung bzw. Brennweitenfehler und soll bestraft werden. Für die Endbewertung (M8) wird die Referenzsphäre durch die paraxiale Austrittspupille gelegt; der Unterschied ist von zweiter Ordnung in der Queraberration.
 
+### Festlegungen der Implementierung (M1-T7)
+
+Implementiert in `include/mikroptim/trace/reference_sphere.hpp` (`reference_sphere_step`, `trace_to_reference_sphere`; header-only, `MKO_HD`), `include/mikroptim/merit/opd.hpp` (`opd_statistics`; header-only, `MKO_HD`) und `include/mikroptim/merit/wavefront.hpp` (Host-API, Bibliothek `Mikroptim::merit`).
+
+**Wahl des Schnittpunkts.** Der Strahl **p** + s **d** (|**d**| = 1) schneidet die Sphäre |**x** − **M**_f| = R_ref, wo s² − 2bs + g = 0, also s_± = b ± √(b² − g) mit s₊ s₋ = g. Gesucht ist der Schnitt mit der Kappe, die dem Scheitel der letzten Fläche zugewandt ist (die Wellenfront durch den Scheitel), d. h. die betragskleinere Nullstelle für Strahlen in der Nähe der Fläche:
+
+- **Reeller Bildpunkt** (M_z ≥ 0, Strahlen laufen auf **M**_f zu): b ≈ |**q**| > 0, gesucht ist s₋ = b − √(b² − g) = g / (b + √(b² − g)). Das ist die Formel oben, in der auslöschungsfreien Form. s₊ läge jenseits von **M**_f auf der Gegenseite der Sphäre.
+- **Virtueller Bildpunkt** (M_z < 0, Strahlen laufen von **M**_f weg; z. B. aplanatische Punkte, Abnahme M1-T7): b ≈ −|**q**| < 0, gesucht ist s₊ = g / (b − √(b² − g)). Die Formel oben lieferte hier die ferne Nullstelle und für den Achsstrahl im Scheitel 0/0.
+
+Zusammengefasst, für M_z ≥ 0 identisch mit der Formel oben:
+
+$$s_{\mathrm{ref}} = \frac{g}{\,b + \sigma\sqrt{b^2 - g}\,},\qquad \sigma = \begin{cases} +1 & M_z \ge 0\\ -1 & M_z < 0\end{cases}$$
+
+σ hängt nur vom Bildpunkt ab, der Zweig ist also für alle Strahlen eines Feldes gleich. g wird als **p**·(**p** − 2**M**_f) gerechnet; das ist wegen R_ref = |**M**_f| algebraisch gleich |**q**|² − R_ref², vermeidet aber die Differenz zweier Quadrate der Größe R_ref² (≈ 10⁴ mm²). Danach steht der Strahl auf der Referenzsphäre (**p** += s_ref **d**), OPL += n_B s_ref mit n_B = index[S−1][l] (Medium nach der letzten Fläche).
+
+**Versagen.** b² − g < 0 (Gerade verfehlt die Sphäre) oder σ (b + σ√(b² − g)) ≤ 0 bzw. NaN (die zugewandte Kappe wird nicht getroffen) ergibt den Status `Missed`; als versagende Fläche wird S gemeldet (die Referenzsphäre zählt als Fläche nach der letzten). Der Strahl bleibt dann unverändert.
+
+**Idealer Bildpunkt und f_soll.** w = thickness[S−1] (Arbeitsabstand; negativ bei einem virtuellen Bildpunkt), h_f = f_soll · tan θ_f mit dem Feldwinkel θ_f der kollimierten Quelle. f_soll ist `target.focal_length`, falls gesetzt, sonst die paraxiale Brennweite 1/φ (Abschnitt 9) bei `spectrum.reference_nm`. Ist sie nicht endlich (afokales System), meldet der Host einen Fehler. Bei der Punktquelle (Tests) ist **M** = (0, 0, w); für Quellen außerhalb der Achse gibt der Aufrufer die Bildpunkte explizit vor.
+
+**Quadratur pro Feld.** Standard N = 10, M = 8 (Abschnitt 8), konfigurierbar. Kollimiert: θ_f = 0 → `PupilMode::Axis` (N Stützstellen), sonst `Half` (N·M). Punktquelle: auf der Achse `Axis`, mit x = 0 `Half`, sonst `Full`. Ein vorgegebener Modus gilt für alle Felder.
+
+**Kolbenabzug und RMS** pro Tupel (Feld f, Wellenlänge l) über die Stützstellen k mit den Gewichten W_k = W_i V_j der Quadratur (Summe 1). Versagte Strahlen sind in M1 **hart** ausgeschlossen, die Gewichte der übrigen werden renormiert:
+
+$$W_{\mathrm{ok}} = \sum_{k\,\mathrm{ok}} W_k,\qquad \overline{\mathrm{OPL}} = \frac{1}{W_{\mathrm{ok}}}\sum_{k\,\mathrm{ok}} W_k\,\mathrm{OPL}_k,\qquad \mathrm{OPD}_k = \mathrm{OPL}_k - \overline{\mathrm{OPL}},\qquad \mathrm{RMS} = \sqrt{\frac{1}{W_{\mathrm{ok}}}\sum_{k\,\mathrm{ok}} W_k\,\mathrm{OPD}_k^2}$$
+
+Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug oben. Gemeldet werden zusätzlich die Zahl der versagten Strahlen und W_ok. Ohne gültigen Strahl ist der RMS ungültig (Host: NaN). In `opd_statistics` ist die OPD versagter Strahlen 0 (maskiert), in der Host-API NaN. Weiches Versagen (Abschnitt 11) folgt in M4-T2.
+
+**Summationsreihenfolge und Determinismus.** Zwei Durchläufe: (1) W_ok und Σ W_k OPL_k, daraus der Kolben; (2) Σ W_k OPD_k². Die Formel √(⟨OPL²⟩ − ⟨OPL⟩²) wäre bei OPL ≈ 100 mm und OPD ≈ 10⁻⁶ mm vollständig ausgelöscht. Die CPU summiert in aufsteigender Reihenfolge des Quadraturindex k (ringweise, innen nach außen). Der Kernel (M2-T2) bildet dieselben Summen als Baumreduktion im Block in fester Reihenfolge (ADR-0007): erst die Paare (W_k, W_k OPL_k), dann den Kolben per Shared Memory an alle Threads, dann W_k OPD_k². Er ist damit bitgleich reproduzierbar, weicht aber von der CPU um Rundungsfehler ab (`kCpuGpuFp64`).
+
+**Einheiten.** OPL, OPD und RMS in mm. In Wellen immer bei der Referenzwellenlänge (Abschnitt 1), auch für die anderen Wellenlängen des Spektrums: OPD [λ] = OPD [mm] / (λ_ref [nm] · 10⁻⁶).
+
+**Vorzeichen.** OPD = OPL − Kolben. Läuft die Wellenfront am Pupillenrand der Referenzsphäre voraus (Unterkorrektur, Randstrahlen schneiden die Achse vor dem paraxialen Fokus), ist die OPL dort kürzer und die OPD negativ. Gegenüber der Wellenaberration W nach Welford (W₀₄₀ = S_I/8 > 0 bei Unterkorrektur) gilt also OPD = −W + const. Der Test `Wavefront.SeidelSphericalAberrationOfSingleLens` prüft das über den Achsschnittpunkt des reellen Randstrahls.
+
+**Ergebnisse der Abnahme** (Tests in `tests/test_wavefront.cpp`):
+
+| Kriterium | Ergebnis |
+|---|---|
+| Aplanatische Punkte (n = 1,5 und 1,8, sin θ ≤ 0,95, Quelle auf und neben der Achse), Referenz im exakten virtuellen Bildpunkt | RMS-OPD ≤ 1,7·10⁻¹⁴ mm, max \|OPD\| ≤ 2,0·10⁻¹⁴ mm |
+| Einzellinse `einzellinse_bk7.json`, Feld 0, Bildebene im paraxialen Fokus, NA = 0,049 (a = 5 mm), drei Wellenlängen | RMS gegen \|W₀₄₀\|·√(4/45): ≤ 1,24·10⁻³ relativ; ρ⁴-Koeffizient des Fits gegen −W₀₄₀: ≤ 7,6·10⁻⁶ relativ |
+| dieselbe Linse, NA = 0,025 (a = 2,5 mm) | ≤ 3,1·10⁻⁴ bzw. ≤ 4,7·10⁻⁷ relativ |
+| Kugelwelle, Referenzzentrum axial um δz verschoben (konvergent, direkt konstruiert; divergent, über `evaluate_wavefront`) | max \|OPL − exakt\| = 1,4·10⁻¹⁴ mm, max \|OPD − exakt\| = 3,6·10⁻¹⁵ mm |
+
+Die Abweichung des RMS von der Seidel-Näherung ist der Anteil höherer Ordnung (W₀₆₀ ρ⁶ usw., relativ ∝ NA²: Faktor 4 zwischen NA 0,049 und 0,025); der Fit A ρ⁴ + B ρ⁶ + K trennt ihn ab. Die Lage der Referenzsphäre durch den Scheitel statt durch die Austrittspupille ändert auf der Achse nur Terme zweiter Ordnung in der Queraberration und ist darin enthalten.
+
 ## 8. Pupillenquadratur
 
 Mittelwert über die Kreispupille als Gauß-Quadratur (Forbes):
