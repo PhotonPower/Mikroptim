@@ -27,6 +27,7 @@ add_executable(mikroptim_tests
     test_load_system.cpp
     test_paraxial.cpp
     test_paraxial_residuals.cpp
+    test_petzval_optimization.cpp
     test_prefilter.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
@@ -51,6 +52,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_fd_jacobian.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
+        test_cuda_petzval_optimization.cpp
         test_cuda_prefilter.cpp
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp

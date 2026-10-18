@@ -1,6 +1,7 @@
-// Paraxiale Nebenbedingungen (M3-T3): ein Test pro Nebenbedingung gegen geschlossene Formeln
-// (Linsenmacherformel, Schnittweite, Summen der Dicken), einseitige Bedingungen, Geisterplatten,
-// Paraxialtrace aller Varianten parallel = seriell bitgleich, Fehlerfälle.
+// Paraxiale Nebenbedingungen (M3-T3, Petzval M4-T4): ein Test pro Nebenbedingung gegen
+// geschlossene Formeln (Linsenmacherformel, Schnittweite, Summen der Dicken, Petzvalsumme),
+// einseitige Bedingungen, Geisterplatten, Paraxialtrace aller Varianten parallel = seriell
+// bitgleich, Fehlerfälle.
 
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
@@ -8,11 +9,13 @@
 #include "mikroptim/optim/extra_residuals.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/trace/ghost_plate.hpp"
 #include "residual_test_systems.hpp"
 #include "tolerances.hpp"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -583,4 +586,264 @@ TEST(ParaxialResiduals, CheckAgainstTopology) {
     ParaxialConstraints focus;
     focus.items = {constraint(ConstraintType::ParaxialFocus, 0.0)};
     EXPECT_THROW(mko::check_paraxial_constraints(focus, point.topology()), std::invalid_argument);
+}
+
+// ---- Petzval (M4-T4) -------------------------------------------------------------------------
+
+namespace {
+
+// Zwei Linsen hintereinander: Blende, Linse 1 (n1; c1, c2), Luft, Linse 2 (n2; c3, c4), Bildraum
+// mit Brechzahl n_img (1 = Luft).
+struct TwoLenses {
+    double n1, c1, c2, n2, c3, c4, n_img;
+
+    // P = Σ c (n' − n)/(n n') über die Flächen
+    double petzval_sum() const {
+        return c1 * (n1 - 1.0) / n1 + c2 * (1.0 - n1) / n1 + c3 * (n2 - 1.0) / n2 +
+               c4 * (n_img - n2) / (n2 * n_img);
+    }
+    // Für Linsen in Luft: Σ φ_i/n_i mit der Dünnlinsenbrechkraft φ_i = (n_i − 1)(c_a − c_b),
+    // unabhängig von den Dicken.
+    double thin_lens_sum() const {
+        return (n1 - 1.0) * (c1 - c2) / n1 + (n2 - 1.0) * (c3 - c4) / n2;
+    }
+    double curvature() const { return -n_img * petzval_sum(); } // κ_P = −n'_L P
+};
+
+SystemBatchHost two_lens_batch(int variants) {
+    BatchTopology t;
+    t.surfaces = 5;
+    t.wavelengths = 1;
+    t.fields = 1;
+    t.type = {SurfaceKind::Stop, SurfaceKind::Sphere, SurfaceKind::Sphere, SurfaceKind::Sphere,
+              SurfaceKind::Sphere};
+    SystemBatchHost b(t, variants);
+    b.wavelength_nm(0) = 587.56;
+    b.wavelength_weight(0) = 1.0;
+    b.field_weight(0) = 1.0;
+    b.reference_wavelength_nm = 587.56;
+    return b;
+}
+
+void set_two_lenses(SystemBatchHost& b, int v, const TwoLenses& L, double thickness_scale = 1.0) {
+    const double c[5] = {0.0, L.c1, L.c2, L.c3, L.c4};
+    const double t[5] = {2.0, 4.0, 3.0, 2.0, 20.0};
+    const double n[5] = {1.0, L.n1, 1.0, L.n2, L.n_img};
+    for (int s = 0; s < 5; ++s) {
+        b.curvature(v, s) = c[s];
+        b.thickness(v, s) = thickness_scale * t[s];
+        b.index(v, s, 0) = n[s];
+        b.paraxial_index(v, s) = n[s];
+    }
+    b.pupil_radius(v) = 2.0;
+}
+
+ParaxialConstraint petzval(double kappa_max, double weight = 1.0) {
+    return constraint(ConstraintType::Petzval, kappa_max, weight, ConstraintMode::Max);
+}
+
+} // namespace
+
+// r = √w · max(0, |κ_P| − κ_max) mit κ_P = −n'_L P und der Petzvalsumme aus der geschlossenen
+// Formel; für Linsen in Luft P = Σ φ_i/n_i (dünne Linsen), unabhängig von den Dicken.
+TEST(ParaxialResiduals, PetzvalMatchesClosedForm) {
+    const TwoLenses systems[] = {
+        {1.8, 0.06, -0.01, 1.45, -0.05, 0.02, 1.0},   // Sammel- + Zerstreuungslinse
+        {1.5, 0.02, -0.015, 1.7, 0.05, 0.01, 1.0},    // zwei Sammellinsen
+        {1.6, -0.03, 0.02, 1.5, -0.04, 0.01, 1.0},    // zwei Zerstreuungslinsen (κ_P > 0)
+        {1.7, 0.05, -0.02, 1.52, 0.03, -0.01, 1.33}}; // Bildraum Wasser: κ_P = −1,33 P
+    SystemBatchHost b = two_lens_batch(8);
+    for (int v = 0; v < 8; ++v) {
+        set_two_lenses(b, v, systems[v % 4], v < 4 ? 1.0 : 2.5); // Dicken ändern nichts
+    }
+    constexpr double kWeight = 9.0;
+    for (int v = 0; v < 8; ++v) {
+        const TwoLenses& L = systems[v % 4];
+        const double kappa = L.curvature();
+        const ParaxialData p = mko::batch_paraxial(b, v);
+        EXPECT_NEAR(p.petzval_sum, L.petzval_sum(), kParaxialRelative * std::abs(L.petzval_sum()))
+            << v;
+        EXPECT_NEAR(p.petzval_curvature, kappa, kParaxialRelative * std::abs(kappa)) << v;
+        if (L.n_img == 1.0) {
+            EXPECT_NEAR(L.petzval_sum(), L.thin_lens_sum(),
+                        kParaxialRelative * std::abs(L.thin_lens_sum()))
+                << v;
+        }
+        // aktiv: κ_max halb so groß wie |κ_P|
+        const double kmax = 0.5 * std::abs(kappa);
+        EXPECT_NEAR(residual(petzval(kmax, kWeight), b, v), 3.0 * (std::abs(kappa) - kmax),
+                    3.0 * kParaxialRelative * std::abs(kappa))
+            << v;
+        // inaktiv: exakt 0
+        EXPECT_EQ(residual(petzval(2.0 * std::abs(kappa), kWeight), b, v), 0.0) << v;
+        // κ_max = 0: r = √w |κ_P|
+        EXPECT_NEAR(residual(petzval(0.0, kWeight), b, v), 3.0 * std::abs(kappa),
+                    3.0 * kParaxialRelative * std::abs(kappa))
+            << v;
+    }
+    EXPECT_LT(mko::batch_paraxial(b, 0).petzval_curvature, 0.0); // Sammelsystem
+    EXPECT_GT(mko::batch_paraxial(b, 2).petzval_curvature, 0.0); // Zerstreuungssystem
+}
+
+// Vorzeichen und Stetigkeit: |κ_P| geht ein (gespiegeltes System mit −κ_P liefert dasselbe
+// Residuum), r ist stetig an der Grenze (0 genau dort, linear darüber) und mit w = 0 aus.
+TEST(ParaxialResiduals, PetzvalOneSidedSignAndContinuity) {
+    const TwoLenses pos{1.8, 0.06, -0.01, 1.45, -0.05, 0.02, 1.0};
+    const TwoLenses neg{pos.n1, -pos.c1, -pos.c2, pos.n2, -pos.c3, -pos.c4, 1.0};
+    SystemBatchHost b = two_lens_batch(2);
+    set_two_lenses(b, 0, pos);
+    set_two_lenses(b, 1, neg);
+    const double k0 = mko::batch_paraxial(b, 0).petzval_curvature;
+    const double k1 = mko::batch_paraxial(b, 1).petzval_curvature;
+    ASSERT_NE(k0, 0.0);
+    EXPECT_TRUE(same_bits(k1, -k0)); // alle Krümmungen negiert: P exakt negiert
+    const double a = std::abs(k0);
+    for (const double kmax : {0.0, 0.25 * a, 0.999 * a, a, 1.001 * a, 4.0 * a}) {
+        const double r0 = residual(petzval(kmax, 2.0), b, 0);
+        EXPECT_TRUE(same_bits(r0, residual(petzval(kmax, 2.0), b, 1))) << kmax;
+        EXPECT_EQ(r0, std::sqrt(2.0) * std::max(0.0, a - kmax)) << kmax;
+        EXPECT_GE(r0, 0.0);
+        EXPECT_EQ(residual(petzval(kmax, 0.0), b, 0), 0.0);
+    }
+    // Stetig an der Grenze: r → 0, wenn κ_max von unten gegen |κ_P| geht
+    for (const double eps : {1e-3, 1e-6, 1e-9}) {
+        EXPECT_NEAR(residual(petzval(a * (1.0 - eps)), b, 0), a * eps, 1e-17) << eps;
+    }
+    EXPECT_EQ(residual(petzval(a), b, 0), 0.0);
+}
+
+// Geisterplatte im Medium n_m (Luft bzw. Wasser zwischen Blende und Bildebene): Beitrag
+// φ_G/(n_m n_G) zur Petzvalsumme mit φ_G = −2 (n_G − n_m) t₂, κ_P = −n_m P. In der Systemdatei
+// mit Linse und Geisterplatten addieren sich Linse und Σ φ_G/n_G.
+TEST(ParaxialResiduals, PetzvalWithGhostPlate) {
+    BatchTopology t;
+    t.surfaces = 3;
+    t.wavelengths = 1;
+    t.fields = 1;
+    t.ghost_plates = 1;
+    t.ghost_terms = 3;
+    t.type = {SurfaceKind::Stop, SurfaceKind::GhostPlate, SurfaceKind::Plane};
+    SystemBatchHost b(t, 2);
+    b.reference_wavelength_nm = 587.56;
+    b.ghost_norm_radius(0) = 5.0;
+    const double coeff[3] = {1e-3, -2e-4, 5e-5};
+    const double t2 = (coeff[0] * 2.0 - coeff[1] * 6.0 + coeff[2] * 12.0) / 25.0;
+    constexpr double kGlass = 1.5;
+    const double medium[2] = {1.0, 1.33};
+    for (int v = 0; v < 2; ++v) {
+        for (int k = 0; k < 3; ++k) {
+            b.ghost_coeff(v, 0, k) = coeff[k];
+        }
+        b.paraxial_ghost_index(v, 0) = kGlass;
+        for (int s = 0; s < 3; ++s) {
+            b.paraxial_index(v, s) = medium[v];
+            b.thickness(v, s) = 2.0 + s;
+        }
+        b.pupil_radius(v) = 2.0;
+    }
+    for (int v = 0; v < 2; ++v) {
+        const double nm = medium[v];
+        const double phi_g = -2.0 * (kGlass - nm) * t2;
+        const double P = phi_g / (nm * kGlass);
+        const double kappa = -nm * P;
+        const ParaxialData p = mko::batch_paraxial(b, v);
+        EXPECT_NEAR(p.petzval_sum, P, kParaxialRelative * std::abs(P)) << v;
+        EXPECT_NEAR(p.petzval_curvature, kappa, kParaxialRelative * std::abs(kappa)) << v;
+        const double kmax = 0.1 * std::abs(kappa);
+        EXPECT_NEAR(residual(petzval(kmax, 4.0), b, v), 2.0 * (std::abs(kappa) - kmax),
+                    2.0 * kParaxialRelative * std::abs(kappa))
+            << v;
+    }
+
+    // Systemdatei: Variante 0 mit den Koeffizienten der Datei, Variante 1 ohne (Linse allein)
+    const mko::LoadedSystem ls = mko::load_system(kSystems + "einzellinse_geisterplatte.json");
+    SystemBatchHost g = mko::make_system_batch(ls, 2);
+    double ghost_sum = 0.0; // Σ φ_G/(n_m n_G) der Variante 0
+    for (int p = 0; p < g.ghost_plates(); ++p) {
+        std::vector<double> a(static_cast<std::size_t>(g.ghost_terms()));
+        for (int k = 0; k < g.ghost_terms(); ++k) {
+            a[static_cast<std::size_t>(k)] = g.ghost_coeff(0, p, k);
+            g.ghost_coeff(1, p, k) = 0.0;
+        }
+        ghost_sum += mko::ghost_plate_petzval(a.data(), g.ghost_terms(), g.ghost_norm_radius(p),
+                                              g.paraxial_ghost_index(0, p),
+                                              g.paraxial_index(0, g.ghost_surface(p)));
+    }
+    ASSERT_NE(ghost_sum, 0.0);
+    const ParaxialData with = mko::batch_paraxial(g, 0);
+    const ParaxialData lens = mko::batch_paraxial(g, 1);
+    EXPECT_NEAR(with.petzval_sum, lens.petzval_sum + ghost_sum,
+                kParaxialRelative * std::abs(with.petzval_sum));
+    const ParaxialConstraint c = petzval(0.0);
+    EXPECT_EQ(residual(c, g, 0), std::abs(with.petzval_curvature));
+    EXPECT_EQ(residual(c, g, 1), std::abs(lens.petzval_curvature));
+    EXPECT_NE(residual(c, g, 0), residual(c, g, 1));
+}
+
+// Batch: Petzval-Residuen aller Varianten parallel = seriell bitgleich, gleich der Formel aus
+// batch_paraxial; die Bedingung ist in einigen Varianten aktiv, in anderen nicht.
+TEST(ParaxialResiduals, PetzvalParallelEqualsSerialBitwise) {
+    const mko::LoadedSystem ls = mko::load_system(kSystems + "testsystem_mehrlinser.json");
+    constexpr int kVariants = 131;
+    const SystemBatchHost b = mko::test::perturbed_batch(ls, kVariants, 20261019);
+    const double k0 = std::abs(mko::batch_paraxial(b, 0).petzval_curvature);
+    ParaxialConstraints cs;
+    cs.items = {petzval(k0, 250.0), constraint(ConstraintType::FocalLength, 20.6, 1e-2)};
+    const mko::ExtraResiduals extra = mko::make_paraxial_residuals(cs);
+    ASSERT_EQ(extra.count, 2);
+    std::vector<double> serial(static_cast<std::size_t>(kVariants * 2));
+    int active = 0;
+    for (int v = 0; v < kVariants; ++v) {
+        const auto i = static_cast<std::size_t>(v) * 2;
+        mko::paraxial_residuals(cs, b, v, std::span<double>(serial).subspan(i, 2));
+        const double kappa = std::abs(mko::batch_paraxial(b, v).petzval_curvature);
+        EXPECT_EQ(serial[i], std::sqrt(250.0) * std::max(0.0, kappa - k0)) << v;
+        active += serial[i] > 0.0 ? 1 : 0;
+    }
+    EXPECT_GT(active, 0);
+    EXPECT_LT(active, kVariants);
+    for (const int threads : {1, 2, 3, 8, 0}) {
+        std::vector<double> parallel(serial.size(), -1.0);
+        mko::evaluate_extra_residuals(extra, b, parallel, 0, -1, threads);
+        EXPECT_TRUE(same_bits(parallel, serial)) << threads << " Threads";
+    }
+}
+
+// Aus der Systemdatei: Grenze aus max_curvature, Modus Max, Gewicht; Residuum gegen
+// compute_paraxial(system, catalog) bei λ_ref; Prüfung gegen die Topologie.
+TEST(ParaxialResiduals, PetzvalFromFileAndChecks) {
+    const mko::LoadedSystem ls = mko::load_system(kSystems + "zweilinser_petzval.json");
+    const ParaxialConstraints cs = mko::make_paraxial_constraints(ls.system);
+    ASSERT_EQ(cs.size(), 2);
+    const ParaxialConstraint& c = cs.items[1];
+    EXPECT_EQ(c.type, ConstraintType::Petzval);
+    EXPECT_EQ(c.mode, ConstraintMode::Max);
+    EXPECT_EQ(c.target, 0.01);
+    EXPECT_EQ(c.weight, 1676769510.9367275); // 1.000 mm² · 1/(F·L·λ_ref²)
+    EXPECT_EQ(c.item, 1);
+    ParaxialConstraints only;
+    only.items = {c};
+    EXPECT_TRUE(only.needs_trace());
+
+    const SystemBatchHost b = mko::make_system_batch(ls, 1);
+    std::vector<double> r(2);
+    mko::evaluate_extra_residuals(mko::make_paraxial_residuals(cs), b, r);
+    const ParaxialData p = mko::compute_paraxial(ls.system, ls.catalog);
+    EXPECT_NEAR(p.petzval_curvature, -0.02676, 1e-5); // Startwert laut Dateibeschreibung
+    EXPECT_EQ(r[1], std::sqrt(c.weight) * (std::abs(p.petzval_curvature) - 0.01));
+
+    const auto rejected = [&](const ParaxialConstraint& bad) {
+        ParaxialConstraints one;
+        one.items = {bad};
+        EXPECT_THROW(mko::check_paraxial_constraints(one, b.topology()), std::invalid_argument);
+    };
+    rejected(constraint(ConstraintType::Petzval, 0.01, 1.0, ConstraintMode::Equal));
+    rejected(constraint(ConstraintType::Petzval, 0.01, 1.0, ConstraintMode::Min));
+    rejected(petzval(-0.01));
+    rejected(petzval(std::nan("")));
+    rejected(petzval(std::numeric_limits<double>::infinity()));
+    rejected(petzval(0.01, -1.0));
+    ParaxialConstraints ok;
+    ok.items = {petzval(0.0)};
+    EXPECT_NO_THROW(mko::check_paraxial_constraints(ok, b.topology()));
 }

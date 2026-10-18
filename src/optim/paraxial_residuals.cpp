@@ -1,4 +1,4 @@
-// Paraxiale Nebenbedingungen als Zusatzresiduen (docs/optimierung.md, Abschnitt 2.2).
+// Paraxiale Nebenbedingungen als Zusatzresiduen (docs/optimierung.md, Abschnitte 2.2 und 2.3).
 
 #include "mikroptim/optim/paraxial_residuals.hpp"
 
@@ -94,7 +94,8 @@ std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int t
 
 bool ParaxialConstraints::needs_trace() const {
     return std::any_of(items.begin(), items.end(), [](const ParaxialConstraint& c) {
-        return c.type == ConstraintType::FocalLength || c.type == ConstraintType::ParaxialFocus;
+        return c.type == ConstraintType::FocalLength || c.type == ConstraintType::ParaxialFocus ||
+               c.type == ConstraintType::Petzval;
     });
 }
 
@@ -115,7 +116,7 @@ ParaxialConstraints make_paraxial_constraints(const SystemDescription& system) {
         c.type = spec.type;
         c.mode = spec.mode_or_default();
         c.weight = spec.weight_or_default();
-        c.target = *constraint_target(system, spec.type); // von check_constraints garantiert
+        c.target = *constraint_bound(system, spec); // von check_constraints garantiert
         if (spec.type == ConstraintType::ParfocalLength) {
             c.reference_surface = map.table_surface(spec.reference_surface_or_default());
             c.offset = spec.offset_or_default();
@@ -174,6 +175,14 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
             break;
         case ConstraintType::WorkingDistance:
             break;
+        case ConstraintType::Petzval:
+            if (c.mode != ConstraintMode::Max) {
+                fail_constraint(i, c, "nur als Obergrenze definiert (Modus max)");
+            }
+            if (c.target < 0.0) {
+                fail_constraint(i, c, "Grenze κ_max muss mindestens 0 sein");
+            }
+            break;
         }
     }
 }
@@ -209,6 +218,11 @@ double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& bat
             (A + batch.thickness(v, S - 1) * C / batch.paraxial_index(v, S - 1));
         break;
     }
+    case ConstraintType::Petzval:
+        // |κ_P| − κ_max mit κ_P = −n'_L P einschließlich der Geisterplatten (batch_paraxial);
+        // Modus Max: aktiv nur oberhalb der Grenze.
+        q = std::abs(p.petzval_curvature) - c.target;
+        break;
     }
     return std::sqrt(c.weight) * apply_mode(c.mode, q);
 }

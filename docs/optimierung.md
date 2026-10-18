@@ -45,7 +45,7 @@ Die Merit ist F = ‖r‖². Der Residuenvektor einer Variante besteht aus:
 
 1. **Wellenfront:** √(ŵ_f · ŵ_λ · W_i · V_j) · OPD_ij / λ_ref für alle Felder f, Wellenlängen λ, Pupillenstützstellen (i, j), mit den auf Summe 1 normierten Gewichten ŵ_f = w_f/Σw_f, ŵ_λ = w_λ/Σw_λ (ab M4-T1, Definition und Begründung: [numerik.md, „Residuen pro Strahl“](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)). Die Residuen sind dimensionslos (Wellen bei λ_ref); ohne Versagen ist ihr Anteil an F der gewichtete mittlere RMS² Σ ŵ_f ŵ_λ (RMS_fλ/λ_ref)² in Wellen².
 2. **Paraxiale Nebenbedingungen:** √w · (Ist − Soll) für Brennweite (3,29 mm, über die Brechkraft formuliert), Abgleichlänge (45 mm), ggf. Arbeitsabstand (Gleichung oder Untergrenze); Definitionen in Abschnitt 2.2.
-3. **Petzval:** √w · max(0, |κ_P| − κ_max), inklusive Beiträgen der Geisterplatten.
+3. **Petzval:** √w · max(0, |κ_P| − κ_max), inklusive Beiträgen der Geisterplatten; Definition und Gewichtswahl in Abschnitt 2.3.
 4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°).
 5. **Weiches Versagen:** siehe numerik.md, Abschnitt 11.
 6. **Geisterplatten (L1, geglättet):** √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist.
@@ -117,6 +117,34 @@ void evaluate_extra_residuals(const ExtraResiduals&, const SystemBatchHost&, std
 ```
 
 Fehler: `FormatError` beim Auflösen aus der Datei (wie `check_constraints`), `std::invalid_argument` bei Bedingungen, die nicht zur Topologie passen (Referenzfläche außerhalb oder Geisterplatte, `paraxial_focus` bei Punktquelle, Modus, Gewicht), bei falscher Ausgabelänge und aus `compute_paraxial` (z. B. `paraxial_index` ≤ 0 in einem von Hand gebauten Batch); `std::out_of_range` bei ungültiger Variante bzw. ungültigem Bereich.
+
+### 2.3 Petzval-Nebenbedingung (ab M4-T4)
+
+Schema: Typ `petzval` in [dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3). Residuum
+
+$$r = \sqrt{w}\;\max\bigl(0,\ |\kappa_P| - \kappa_{\max}\bigr),\qquad \kappa_P = -\,n'_L\,P,\qquad P = \sum_i c_i\,\frac{n'_i - n_i}{n_i\,n'_i} + \sum_G \frac{\varphi_G}{n_m\,n_G}$$
+
+mit der Petzvalsumme P bei λ_ref aus `batch_paraxial` (Brechzahlen `paraxial_index`, Geisterplatten mit φ_G = −2 (n_G − n_m) t₂ und `paraxial_ghost_index`, numerik.md §6 und §9), n′_L der Brechzahl des Bildraums und κ_max = `max_curvature` aus dem Eintrag.
+
+- **Einheiten:** q = |κ_P| − κ_max in 1/mm, das Gewicht w daher in mm² (die übrigen paraxialen Bedingungen haben q in mm und w in 1/mm²); √w·q ist dimensionslos wie die Wellenfrontresiduen in Wellen. Nach der Faustregel aus Abschnitt 2.2 kostet eine Überschreitung δκ so viel wie ein RMS-Wellenfrontfehler ε bei w ≈ (ε/δκ)², z. B. δκ = 10⁻⁴/mm ↔ ε = 10⁻² Wellen: w ≈ 10⁴ mm².
+- **Grenze im Eintrag:** κ_max steht als `max_curvature` [1/mm] im Eintrag und nur dort (kein Gegenstück in `target`). Ein Mindest-Petzvalradius R_min entspricht κ_max = 1/R_min; die Spezifikation (R ≥ ca. 130 mm, spezifikation.md) ergibt κ_max = 1/130 mm ≈ 0,00769/mm. Die Krümmung statt des Radius ist die Quelle, weil das Ziel (ebenes Feld) bei κ = 0 liegt, wo der Radius unendlich ist, und weil P für feste Brechzahlen linear in den Krümmungen und Geisterkoeffizienten und unabhängig von den Dicken ist: Das Residuum ist stückweise linear in den Variablen.
+- **Betrag:** Eine Bildschale ist in beiden Richtungen schädlich; das Vorzeichen von κ_P hängt davon ab, ob sammelnde oder zerstreuende Glieder überwiegen. |κ_P| ist bei κ_P = 0 nicht differenzierbar, dort ist die Bedingung für κ_max > 0 aber inaktiv (r = 0 in einer Umgebung). Für κ_max = 0 ist r = √w |κ_P| und r² = w κ_P² glatt.
+- **Einseitig und glatt im Quadrat:** Nur Modus `max` (Standard). Inaktiv ist r exakt 0, an der Grenze ist r stetig (r = 0). Der Beitrag r² = w · max(0, g)² mit g = |κ_P| − κ_max ist an der Grenze C¹ (Ableitung 2 w g ∂g/∂x → 0), erst die zweite Ableitung springt.
+
+**Gewichtswahl.** Als Strafterm erreicht die Bedingung die Grenze nur asymptotisch. Ist sie im Optimum aktiv, gilt dort 2 w g* = λ mit dem Lagrange-Multiplikator λ (Abnahme des übrigen Merits pro Einheit |κ_P|), die Überschreitung ist also g* = λ/(2w) ∝ 1/w. Das Gewicht muss daher zur gewünschten Toleranz δ passen: w ≥ λ/(2δ). λ ist vorab unbekannt, deshalb wird w in Stufen erhöht (**Penalty-Fortsetzung**): Faktor 10 pro Stufe, jede Stufe startet am Ergebnis der vorigen, bis die Überschreitung klein genug ist. Das Produkt w · g* ist über die Stufen nahezu konstant und schätzt λ/2 (Abnahme: w · g* ≈ 0,13 bis 0,24 mm). Weil die Merit seit M4-T1 normiert in Wellen² gerechnet wird, bleibt dieses Verhältnis erhalten, wenn Felder oder Wellenlängen hinzukommen.
+
+Direkt mit großem Gewicht zu beginnen, ist ungünstig: Liegt die Überschreitung unter der Änderung von |κ_P| über die FD-Schrittweite (h = ε^{1/3} · max(|x|, x_typ), im Abnahmesystem rund 10⁻⁷/mm), überspannt das zentrale FD-Muster den Knick von max(0, ·). Die Jacobi-Zeile ist dann nur etwa halb so groß wie die einseitige Ableitung, das Gauß-Newton-Modell passt nicht, und LM kommt nur in kleinen Schritten voran. Beobachtet im Abnahmesystem (während der Entwicklung mit Residuen in mm; w = 1 mm² entspricht heute 1,7·10⁶ mm²): Start mit diesem Gewicht direkt vom Startsystem endet nach 500 Zyklen mit `max_iterations` 20 % über dem beschränkten Optimum, dieselbe Bedingung als Gleichung konvergiert in 147 Zyklen. Mit der Fortsetzung liegt der Punkt bei kleinem w im glatten aktiven Bereich (Überschreitung ≫ FD-Änderung), läuft dort zum beschränkten Optimum, und die späteren Stufen mit kleiner Überschreitung brauchen nur noch 8–18 Zyklen bis zur Konvergenz. Die Gewichtsstufen der Systemsynthese übernimmt später der Homotopie-Controller (Abschnitt 7).
+
+**Abnahme** (`tests/test_petzval_optimization.cpp`, GPU `tests/test_cuda_petzval_optimization.cpp`): frei erfundener Zweilinser `data/systems/zweilinser_petzval.json` (Sammellinse n = 1,8, Luftspalt, Zerstreuungslinse CaF₂, f = 20 mm, NA ≈ 0,1, zwei Felder, eine Wellenlänge), Variablen: vier Krümmungen, Luftspalt, Arbeitsabstand (mit Schranken); Merit = Wellenfront (Wellen²) + Brennweite (Gewicht 16.767,7/mm²) + Petzval mit κ_max = 0,01/mm (Petzvalradius ≥ 100 mm, Gewicht 1,677·10⁹ mm²) bei Start-κ_P = −0,0268/mm. Die Gewichte sind die zuerst für Residuen in mm gewählten 0,01/mm² und 1.000 mm², exakt umgerechnet mit 1/(F·L·λ_ref²) = 1/(2·(546,07 nm)²); das Problem ist damit bis auf einen konstanten Faktor dasselbe, und die Zahlen unten stimmen bis auf Rundung mit dem Lauf vor M4-T1 überein. Fortsetzung über sieben Stufen w = 1,677·10³ … 1,677·10⁹ mm² (Faktor 10 pro Stufe, das letzte ist das Gewicht der Datei), LM auf der CPU:
+
+| Kriterium | Ergebnis |
+|---|---|
+| alle Stufen konvergiert | ja (462, 18, 15, 15, 8, 18, 10 Zyklen; GPU (RTX 3090): 467, 18, 15, 17, 8, 14, 10 mit (\|κ_P\| − κ_max)/κ_max = 1,4·10⁻⁸ und F relativ 1,4·10⁻¹⁰ zur CPU) |
+| \|κ_P\| ≤ κ_max nach der Fortsetzung | (\|κ_P\| − κ_max)/κ_max = 1,4·10⁻⁸ (Toleranz `kPetzvalPenaltyRelative` = 10⁻⁶) |
+| Bedingung aktiv | Überschreitung > 0 in jeder Stufe, ∝ 1/w; ohne die Bedingung läuft LM vom Ergebnis weg zu κ_P = −0,01067/mm und kleinerem Merit |
+| Brennweite eingehalten | f − f_s = 4,8·10⁻⁷ mm (Toleranz `kPetzvalFocalLength` = 10⁻⁵ mm) |
+
+**API** (`include/mikroptim/model/constraints.hpp`, `include/mikroptim/optim/paraxial_residuals.hpp`): `ConstraintType::Petzval`, `ConstraintSpec::max_curvature`, `ConstraintSpec::mode_or_default()` liefert bei Petzval `Max`, `constraint_bound(system, spec)` (Grenze bzw. Sollwert eines Eintrags; `constraint_target` bleibt für Petzval leer). In `ParaxialConstraint` steht κ_max in `target`, der Modus ist `Max`; `check_paraxial_constraints` lehnt andere Modi und κ_max < 0 ab. Die Bedingung braucht den Paraxialtrace (`needs_trace()`) und läuft wie die übrigen über `make_paraxial_residuals` und `evaluate_extra_residuals`.
 
 ## 3. Warum L1 für Geisterplatten
 

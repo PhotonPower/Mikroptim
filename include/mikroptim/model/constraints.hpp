@@ -3,9 +3,10 @@
 // Nebenbedingungen der Systembeschreibung (Abschnitt `constraints` von `mikroptim.system/1`,
 // docs/dateiformat.md, ab M3-T3). Das Modell hält die Einträge so, wie sie in der Datei stehen
 // (fehlende Felder bleiben leer, damit das Schreiben die Form erhält). Die Sollwerte stehen
-// nicht hier, sondern in `target` (eine Quelle der Wahrheit). Residuen der paraxialen
+// nicht hier, sondern in `target` (eine Quelle der Wahrheit); nur reine Grenzwerte ohne
+// Gegenstück in `target` (κ_max der Petzval-Bedingung) stehen im Eintrag. Residuen der paraxialen
 // Bedingungen: mikroptim/optim/paraxial_residuals.hpp, Definitionen in docs/optimierung.md,
-// Abschnitt 2.
+// Abschnitte 2.2 und 2.3.
 
 #include <optional>
 #include <string>
@@ -17,13 +18,15 @@ namespace mko {
 struct SystemDescription;
 
 // Art einer Nebenbedingung. Erweiterbar: mechanische Bedingungen (Durchmesser, Mitten- und
-// Randdicke, Einfallswinkel) folgen in M4-T3, die Petzval-Bedingung in M4-T4. Unbekannte Typen
-// lehnt der Leser mit FormatError ab.
+// Randdicke, Einfallswinkel) folgen in M4-T3. Unbekannte Typen lehnt der Leser mit FormatError
+// ab.
 enum class ConstraintType {
     FocalLength,     // Brennweite bei λ_ref, Soll target.focal_length (nur Gleichung)
     ParfocalLength,  // Abgleichlänge, Soll target.parfocal_length
     WorkingDistance, // Arbeitsabstand = Dicke der letzten Fläche, Soll target.working_distance
     ParaxialFocus,   // Bildebene im paraxialen Brennpunkt bei λ_ref, Soll 0 (nur Gleichung)
+    Petzval,         // |κ_P| ≤ κ_max bei λ_ref (M4-T4), Grenze im Eintrag: max_curvature (nur
+                     // Obergrenze)
 };
 
 // Art der Bedingung: Gleichung Ist = Soll oder einseitig Ist ≥ Soll (Untergrenze) bzw.
@@ -49,10 +52,18 @@ struct ConstraintSpec {
     std::optional<int> reference_surface;
     std::optional<double> offset;
     std::optional<std::string> comment;
+    // Nur Petzval (Pflicht): größter zulässiger Betrag der Petzvalkrümmung κ_max [1/mm], ≥ 0.
+    // Einzige Quelle der Grenze (nicht in `target`); ein Mindest-Petzvalradius R_min entspricht
+    // κ_max = 1/R_min.
+    std::optional<double> max_curvature;
 
     friend bool operator==(const ConstraintSpec&, const ConstraintSpec&) = default;
 
-    ConstraintMode mode_or_default() const { return mode.value_or(ConstraintMode::Equal); }
+    // Fehlender Modus: Equal, bei Petzval Max (einzig erlaubter Modus).
+    ConstraintMode mode_or_default() const {
+        return mode.value_or(type == ConstraintType::Petzval ? ConstraintMode::Max
+                                                             : ConstraintMode::Equal);
+    }
     double weight_or_default() const { return weight.value_or(kDefaultConstraintWeight); }
     int reference_surface_or_default() const {
         return reference_surface.value_or(kDefaultParfocalReferenceSurface);
@@ -69,19 +80,25 @@ struct Constraints {
 
 // Prüft `system.constraints` nach den Regeln aus docs/dateiformat.md (Sollwert in `target`
 // vorhanden, Modus und Felder zum Typ passend, Gewicht endlich und >= 0, Referenzfläche
-// existiert, jeder Typ höchstens einmal, paraxial_focus nur bei kollimierter Quelle). Wirft
+// existiert, max_curvature bei petzval vorhanden, endlich und >= 0, jeder Typ höchstens einmal,
+// paraxial_focus nur bei kollimierter Quelle). Wirft
 // FormatError mit JSON-Pfad, z. B. `constraints.items[1].mode`. Wird von validate_system
 // aufgerufen; ohne Abschnitt `constraints` passiert nichts.
 void check_constraints(const SystemDescription& system);
 
-// Sollwert eines Typs aus `system.target` (Soll 0 bei ParaxialFocus); leer, wenn er fehlt.
+// Sollwert eines Typs aus `system.target` (Soll 0 bei ParaxialFocus); leer, wenn er fehlt, und
+// immer leer bei Petzval (die Grenze steht im Eintrag, siehe constraint_bound).
 std::optional<double> constraint_target(const SystemDescription& system, ConstraintType type);
 
-// Wahr für die paraxialen Typen (alle bisher definierten; M4-T3/M4-T4 kommen hinzu).
+// Soll- bzw. Grenzwert eines Eintrags: max_curvature bei Petzval, sonst
+// constraint_target(system, spec.type); leer, wenn er fehlt.
+std::optional<double> constraint_bound(const SystemDescription& system, const ConstraintSpec& spec);
+
+// Wahr für die paraxialen Typen (alle bisher definierten, auch Petzval; M4-T3 kommt hinzu).
 bool is_paraxial(ConstraintType type);
 
 // Namen für Meldungen und Dateiformat: "focal_length", "parfocal_length", "working_distance",
-// "paraxial_focus" bzw. "equal", "min", "max".
+// "paraxial_focus", "petzval" bzw. "equal", "min", "max".
 std::string_view to_string(ConstraintType type);
 std::string_view to_string(ConstraintMode mode);
 // Umkehrungen von to_string; leer bei unbekanntem Namen.
