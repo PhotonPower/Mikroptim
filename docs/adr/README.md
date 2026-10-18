@@ -13,3 +13,4 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0007](0007-deterministische-reduktionen.md) | Deterministische Reduktionen | angenommen |
 | [0008](0008-dateiformat-json.md) | Eigenes JSON-Systemformat, Raytatouille per Adapter | angenommen |
 | [0009](0009-ableitungen.md) | Erst finite Differenzen, dann Adjungierte | angenommen |
+| [0010](0010-normalgleichungen-ohne-cublas.md) | Normalgleichungen mit eigenem Kernel, Cholesky auf dem Host | vorgeschlagen |

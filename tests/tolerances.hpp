@@ -133,4 +133,17 @@ inline constexpr double kPrefilterMarginFp32VsFp64 = 1e-3;
 // CPU-Referenz, relativ; Unterschiede nur aus FMA-Kontraktion auf dem Gerät (einige u).
 inline constexpr double kPrefilterGpuCpuLengthRelative = 1e-4;
 
+// Gebündelter LM (M3-T4), Abnahme 1: Formfaktor der Einzellinse bei minimaler sphärischer
+// Aberration gegen den Planwert 0,74 (Dünnlinsentheorie 2(n² − 1)/(n + 2) = 0,7397). Modellfehler
+// der Dünnlinsentheorie (Mittendicke 6 mm bei f = 100 mm verschiebt das Optimum auf q ≈ 0,72),
+// kein Maß für die Rechengenauigkeit.
+inline constexpr double kLmShapeFactor = 0.05;
+// Abnahme 2: Merit nach Rückkehr aus 1 % Störung relativ über dem Optimum. Erreicht wird
+// typisch |ΔF|/F ≈ 1e-11 (Rauschgrenze der Merit aus der Rundung der OPD-Residuen ~1e-9).
+inline constexpr double kLmReturnRelative = 1e-6;
+// Formfaktor nach GPU- gegen CPU-Lauf derselben Aufgabe: Rundungsunterschiede (FMA) ändern den
+// Weg; am flachen Optimum (F ändert sich um ~1e-9 relativ, wenn q um ~1e-4 wandert) endet jeder
+// Lauf irgendwo in der Rauschzone der Merit.
+inline constexpr double kLmShapeAgreement = 1e-3;
+
 } // namespace mko::test
