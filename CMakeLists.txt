@@ -161,8 +161,17 @@ endif()
 # --------------------------------------------------------------------------
 # Kommandozeilenprogramm
 # --------------------------------------------------------------------------
+# Unterbefehle als Bibliothek, damit die Tests sie direkt aufrufen können (docs/cli.md)
+add_library(mikroptim_cli STATIC
+    src/cli/trace_command.cpp)
+target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(mikroptim_cli
+    PUBLIC mikroptim_core
+    PRIVATE mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
+            nlohmann_json::nlohmann_json mikroptim_warnings)
+
 add_executable(mikroptim src/cli/main.cpp)
-target_link_libraries(mikroptim PRIVATE mikroptim_core mikroptim_model mikroptim_warnings)
+target_link_libraries(mikroptim PRIVATE mikroptim_core mikroptim_cli mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     target_link_libraries(mikroptim PRIVATE mikroptim_cuda)
 endif()

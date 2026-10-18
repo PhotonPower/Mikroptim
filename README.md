@@ -46,6 +46,15 @@ ctest --preset release-cuda
 ./build/release-cuda/mikroptim --devices
 ```
 
+Ein System auswerten (Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge, versagte Strahlen; mit `--json` maschinenlesbar, siehe [docs/cli.md](docs/cli.md)):
+
+```bash
+./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json
+./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json --json
+```
+
+Mit Visual Studio liegt das Programm unter `build/<preset>/Release/mikroptim.exe` bzw. `Debug/`.
+
 ## Verzeichnisstruktur
 
 ```

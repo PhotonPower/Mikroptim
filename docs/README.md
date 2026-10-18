@@ -8,6 +8,7 @@
 | [optimierung.md](optimierung.md) | Merit, gebündelter Levenberg-Marquardt, Geisterplatten, Homotopie, Einfüge-Operatoren |
 | [hardware.md](hardware.md) | RTX 3090, Tesla P100, CUDA-Version, Durchsatzabschätzung |
 | [dateiformat.md](dateiformat.md) | Systembeschreibung und Glasdaten (JSON) |
+| [cli.md](cli.md) | Kommandozeilenprogramm `mikroptim` (`trace`, Text- und JSON-Ausgabe) |
 | [glossar.md](glossar.md) | Begriffe |
 | [benchmarks.md](benchmarks.md) | Gemessener Durchsatz (ab M2) |
 | [adr/](adr/README.md) | Architekturentscheidungen |
