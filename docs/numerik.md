@@ -41,6 +41,12 @@ Ohne diesen Term wäre die OPD für θ ≠ 0 um eine Kippung verfälscht.
 
 Punkt **q** im Medium vor einer Fläche, Richtungen über die Quadratur im Richtungsraum; OPL₀ = 0 am Quellpunkt. Wird für analytische Tests (aplanatische Punkte) benötigt.
 
+Festlegung (M1-T5, `point_source_ray` in `include/mikroptim/trace/trace.hpp`): **q** in lokalen Koordinaten von Fläche 0, Kegelachse +z, Richtungen gleichmäßig im Raum der Richtungskosinus mit denselben Pupillenkoordinaten (ρ, φ) wie bei der kollimierten Quelle:
+
+$$\mathbf{d}_0 = \left(sho\sinarphi,\; sho\cosarphi,\; \sqrt{1 - s^2ho^2}ight),\qquad s = \sinartheta_{\max} = \mathrm{NA}/n_0$$
+
+n₀ ist die Brechzahl des Startmediums, also des Mediums nach Fläche 0 (siehe Abschnitt 5, „Sequenzieller Trace“). Bei Systemen aus Dateien ist das Luft. Für eine Quelle im Glas (aplanatische Punkte) wird eine Flächentabelle benutzt, deren Fläche 0 eine Ebene mit Glas als Medium ist; das ist nur über die Tabellen-API möglich, weil die Systemdatei die Blende in Luft verlangt (ADR-0006).
+
 ## 5. Flächenoperationen
 
 Implementiert in `include/mikroptim/trace/surface_ops.hpp`.
@@ -62,6 +68,30 @@ $$\cos I = \mathbf{d}\cdot\mathbf{N},\qquad k = 1 - \mu^2(1-\cos^2 I),\qquad \ma
 k < 0 bedeutet Totalreflexion.
 
 **Optische Weglänge:** Transfer und Schnitt laufen im Medium vor der Fläche: OPL += n_vor · (s₀ + s).
+
+### Sequenzieller Trace (M1-T5)
+
+Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_surface`, `transfer_to_image_plane`).
+
+- **Start:** Der Strahl steht in lokalen Koordinaten von Fläche 0, im Medium **nach** Fläche 0 (Brechzahl index[0][l]). An Fläche 0 wird nicht gebrochen; bei Systemen aus Dateien ist sie die Blende in Luft, und die kollimierte Quelle startet in ihrer Ebene.
+- **Schritt** für s = 1 … S−1: Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l].
+- **Ende:** im Schnittpunkt mit der letzten Fläche S−1, in deren lokalen Koordinaten, Richtung nach der Brechung, OPL bis zu diesem Punkt. Hier setzt die Referenzsphäre an (Abschnitt 7, Mittelpunkt **M**_f in denselben Koordinaten).
+- **Bildebene:** `transfer_to_image_plane` transportiert um thickness[S−1] im Medium index[S−1][l] in die Ebene z = 0 der Bildebene (OPL += n_B · s₀).
+- **Versagen:** Der Trace kehrt bei der ersten versagenden Fläche mit deren Status und Nummer zurück (hartes Versagen, kein Werfen). Der Strahlzustand ist dann teilweise fortgeschrieben und wird nicht weiter verwendet. Weiches Versagen (Abschnitt 11) folgt in M4-T2.
+
+### Statusmaske
+
+`TraceStatus` (Werte stabil, als `unsigned` zwischen Host und Device ausgetauscht):
+
+| Wert | Name | Bedeutung |
+|---|---|---|
+| 0 | `Ok` | Strahl hat alle Flächen passiert |
+| 1 | `Missed` | Fläche verfehlt: B² − cH < 0 oder B + √(B² − cH) ≤ 0 |
+| 2 | `TIR` | Totalreflexion, k < 0 |
+| 3 | `Backward` | d_z ≤ 0 (oder NaN) vor einem Transfer; Abschnitt 11 |
+| 4 | `Unsupported` | Flächentyp vom Tracer nicht unterstützt (z. B. Geisterplatte vor M4-T5) |
+
+Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen).
 
 ## 6. Geisterplatte
 

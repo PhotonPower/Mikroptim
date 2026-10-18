@@ -9,11 +9,32 @@
 
 namespace mko {
 
+// Status eines Strahls (Statusmaske, docs/numerik.md, Abschnitte 5 und 11). Die Werte sind
+// stabil, weil sie als Zahl zwischen Host und Device ausgetauscht werden.
 enum class TraceStatus : unsigned {
     Ok = 0,
-    Missed = 1, // Fläche wird nicht getroffen (Diskriminante < 0)
-    TIR = 2,    // Totalreflexion
+    Missed = 1,      // Fläche wird nicht getroffen (Diskriminante < 0)
+    TIR = 2,         // Totalreflexion
+    Backward = 3,    // d_z <= 0 vor dem Transfer: Strahl läuft rückwärts (oder ist NaN)
+    Unsupported = 4, // Flächentyp wird vom Tracer (noch) nicht unterstützt
 };
+
+// Kurzname für Meldungen und Tests.
+MKO_HD constexpr const char* trace_status_name(TraceStatus s) {
+    switch (s) {
+    case TraceStatus::Ok:
+        return "Ok";
+    case TraceStatus::Missed:
+        return "Missed";
+    case TraceStatus::TIR:
+        return "TIR";
+    case TraceStatus::Backward:
+        return "Backward";
+    case TraceStatus::Unsupported:
+        return "Unsupported";
+    }
+    return "?";
+}
 
 // Verschiebt den Strahl in die Tangentialebene (z = 0) der nächsten Fläche,
 // deren Scheitel im Abstand t (entlang z) vom Scheitel der aktuellen Fläche liegt.

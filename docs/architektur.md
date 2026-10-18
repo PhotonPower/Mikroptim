@@ -31,7 +31,7 @@ flowchart TD
 | Pupillenquadratur | `include/mikroptim/pupil/` | header-only | M1 |
 | Paraxialoptik | `include/mikroptim/paraxial/` | `src/paraxial/` | M1 |
 | SystemBatch | `include/mikroptim/batch/` | `src/batch/` | M2 |
-| CPU-Tracer | `include/mikroptim/cpu/` | `src/cpu/` | M1 |
+| CPU-Tracer, Lader | `include/mikroptim/cpu/` | `src/cpu/` | M1 |
 | CUDA-Backend | `include/mikroptim/cuda/` (reines C++) | `src/cuda/` | M2–M8 |
 | Merit | `include/mikroptim/merit/` | `src/merit/` | M3, M4 |
 | Optimierer | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
@@ -57,10 +57,56 @@ Alle Rechnungen, die pro Strahl laufen, liegen header-only im Mathe-Kern, sind `
 
 ```cpp
 template <class R, class SurfaceTable>
-MKO_HD TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray, TraceRecord<R>* record);
+MKO_HD TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
+                             TraceRecord<R>* record, int* failed_surface = nullptr);
 ```
 
-`SurfaceTable` ist eine schlanke Sicht (Zeiger und Längen) auf die Flächendaten einer Variante, im Kernel auf Shared Memory. `record` ist optional und speichert Zwischenzustände für den adjungierten Modus und für Strahlhöhen-Reduktionen.
+`SurfaceTable` ist eine schlanke Sicht (Zeiger und Längen) auf die Flächendaten einer Variante, im Kernel auf Shared Memory. `record` ist optional und speichert Zwischenzustände für den adjungierten Modus und für Strahlhöhen-Reduktionen. Details im folgenden Abschnitt.
+
+## Sequenzieller Trace (M1-T5)
+
+Ablauf, Start- und Endzustand und Statuscodes: [numerik.md](numerik.md#sequenzieller-trace-m1-t5).
+
+### Mathe-Kern (header-only, `MKO_HD`)
+
+`include/mikroptim/trace/surface_table.hpp`:
+
+```cpp
+inline constexpr int kMaxSurfaces = 64;                     // inkl. Blende; Host prüft beim Aufbau
+enum class SurfaceKind : std::uint8_t { Stop = 0, Plane = 1, Sphere = 2, GhostPlate = 3 /* M4-T5 */ };
+template <class R> struct SurfaceTableView {                // trivial kopierbar
+    int surfaces, wavelengths;                              // S, L
+    const SurfaceKind* type; const R* curvature; const R* thickness;  // [S]
+    const R* index;                                         // [S·L], index[s·L + l] = Medium nach Fläche s
+};
+```
+
+`trace_ray` greift nur über die Namen `surfaces`, `wavelengths`, `type[s]`, `curvature[s]`, `thickness[s]` und `index[s * wavelengths + l]` auf die Tabelle zu. Jeder Typ mit diesen Namen ist eine gültige Tabelle, z. B. feste Felder im Shared Memory oder (M2) eine Batch-Sicht, deren Zeiger um v·S bzw. v·S·L versetzt sind. Der CUDA-Prüfkernel `src/cuda/trace_check.cu` lädt die Tabelle pro Block in den Shared Memory (dynamisch, (2S + S·L)·8 + S Byte) und baut die Sicht darauf.
+
+`include/mikroptim/trace/trace.hpp`:
+
+```cpp
+template <class R> struct TraceRecord {          // optional, z. B. Local Memory im Kernel
+    int count;                                   // gültige Einträge; bei Versagen an Fläche s: count = s
+    Vec3<R> p[kMaxSurfaces], d[kMaxSurfaces];    // Schnittpunkt (lokal) und Richtung nach Fläche s
+    R opl[kMaxSurfaces];                         // Eintrag 0 = Startzustand
+};
+template <class R> MKO_HD Ray<R> collimated_ray(R a, R theta, R rho, R phi);        // OPL₀ = p₀·d₀
+template <class R> MKO_HD Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi); // OPL₀ = 0
+template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after);
+template <class R, class T> MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr);
+template <class R, class T> MKO_HD TraceStatus transfer_to_image_plane(const T& sys, int l, Ray<R>&);
+```
+
+Erweiterungspunkte: Ein neuer Flächentyp (Geisterplatte, M4-T5) bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle. Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) folgen aus `p[s]`, `d[s − 1]` und der Flächennormale.
+
+### Host-Schicht (Bibliothek `Mikroptim::cpu`, `src/cpu/`)
+
+Statische Bibliothek `mikroptim_cpu`, linkt `Mikroptim::model` und `Mikroptim::glass`.
+
+- `include/mikroptim/cpu/host_surface_table.hpp`: `HostSurfaceTable` (FP64-Vektoren `type`, `curvature`, `thickness`, `index`, zusätzlich `semi_diameter`; `view()` liefert die `SurfaceTableView<double>`) und `make_surface_table(SystemDescription, IndexTable)`. Krümmungen von Stop und Plane werden 0; mehr als `kMaxSurfaces` Flächen oder unpassende Tabellen werfen `std::invalid_argument`.
+- `include/mikroptim/cpu/load_system.hpp`: `load_system(path)` verbindet `read_system_file`, `resolve_glass_catalogs` (relativ zum Verzeichnis der Datei), `GlassCatalog::from_file` + `merge`, `validate_materials`, `make_index_table` und `make_surface_table` zu einem `LoadedSystem { system, catalog_files, catalog, index, table, warnings }`. `prepare_system(description, base_dir)` macht dasselbe für eine bereits eingelesene Beschreibung.
+- `include/mikroptim/cpu/cpu_trace.hpp`: `trace_system_cpu(system, table, quadrature)` traced alle Felder × Wellenlängen × Pupillenstützstellen (eine Quadratur für alle Felder) und liefert `CpuTraceResult` mit Endzustand (Schnittpunkt der letzten Fläche), Status und versagender Fläche pro Strahl, abgelegt unter `(f · L + l) · N + k` wie die Blöcke und Threads im Kernel. `source_ray(system, table, f, l, sample)` erzeugt den Startstrahl (kollimiert mit a = Halbdurchmesser der Blende, Punktquelle mit sin ϑ_max = NA / index[0][l]); `source_field_count` liefert die Zahl der Felder (1 bei der Punktquelle).
 
 ## SystemBatch und Datenlayout
 

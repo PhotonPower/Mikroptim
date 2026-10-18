@@ -41,6 +41,14 @@ inline constexpr double kParaxialLimit = 1e-8;
 // Relative Abweichung vom Skalierungsgesetz Längsaberration ∝ h² (Verhältnis bei h und h/2
 // gleich 4) für h ≤ 0,5 mm; der Term höherer Ordnung (∝ h⁴) liefert dort ~1e-4.
 inline constexpr double kAberrationScaling = 1e-3;
+// Abstand eines gebrochenen Strahls (Gerade) vom analytischen (virtuellen) Bildpunkt [mm] in
+// FP64, aplanatische Punkte einer Kugelfläche (Abnahmekriterium M1-T5). Gemessen bis ca.
+// 5e-13 am Aperturrand (sin θ = 0,95), wo der Austritt nahezu streifend ist und
+// Rundungsfehler des Schnittpunkts (ca. 1e-14) in der Richtung verstärkt werden.
+inline constexpr double kRayPointFp64 = 1e-12;
+// Strahlumkehr: Vorwärts- und Rückwärtstrace durch ein mehrlinsiges System kehren zum Start
+// zurück [mm], auch für die OPL (Abnahmekriterium M1-T5).
+inline constexpr double kRayReversalFp64 = 1e-10;
 // df64 gegen FP64 (ab M7)
 inline constexpr double kDf64VsFp64 = 1e-9;
 
