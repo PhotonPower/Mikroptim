@@ -2,6 +2,7 @@
 // einbindbar (AGENTS.md, Abschnitt 5). Dieser Test läuft auch im CPU-Build; er braucht nur
 // die Typen, nicht die Implementierung (die gibt es nur mit MIKROPTIM_ENABLE_CUDA).
 
+#include "mikroptim/cuda/fd_jacobian.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 
 #include <gtest/gtest.h>
@@ -9,6 +10,8 @@
 #include <cstddef>
 #include <type_traits>
 
+using mko::cuda::DeviceFdJacobian;
+using mko::cuda::DeviceTranche;
 using mko::cuda::EngineOptions;
 using mko::cuda::TraceEngine;
 using mko::cuda::TraceMode;
@@ -18,6 +21,9 @@ using mko::cuda::TraceSettings;
 static_assert(!std::is_copy_constructible_v<TraceEngine>);
 static_assert(std::is_nothrow_move_constructible_v<TraceEngine>);
 static_assert(!std::is_default_constructible_v<TraceEngine>); // Gerät ist Pflicht
+// FD-Jacobi auf dem Gerät (M3-T2): ebenfalls reines C++, nur verschiebbar
+static_assert(!std::is_copy_constructible_v<DeviceFdJacobian>);
+static_assert(std::is_nothrow_move_constructible_v<DeviceFdJacobian>);
 
 TEST(TraceEngineHeader, DefaultsWithoutCuda) {
     const TraceSettings s;
@@ -38,4 +44,14 @@ TEST(TraceEngineHeader, DefaultsWithoutCuda) {
     EXPECT_EQ(out.residuals.variants, 0);
     EXPECT_EQ(out.merit.variants, 0);
     EXPECT_TRUE(out.merit.extrema.empty());
+}
+
+TEST(TraceEngineHeader, DeviceTrancheDefaults) {
+    const DeviceTranche t;
+    EXPECT_EQ(t.first, 0);
+    EXPECT_EQ(t.count, 0);
+    EXPECT_EQ(t.residuals, nullptr);
+    EXPECT_EQ(t.status, nullptr);
+    EXPECT_EQ(t.opd, nullptr);
+    EXPECT_EQ(t.extrema, nullptr);
 }

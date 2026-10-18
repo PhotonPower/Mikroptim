@@ -6,6 +6,7 @@
 // Alle Varianten sind Kopien der Vorlage, nur die Variablen unterscheiden sich.
 
 #include "mikroptim/batch/system_batch.hpp"
+#include "mikroptim/optim/fd_formula.hpp"
 #include "mikroptim/optim/variable_set.hpp"
 
 #include <cstdint>
@@ -93,8 +94,10 @@ int fd_minus_variant(int k); // nur Central
 // Tatsächlich verwendete Punkte und Schritte: Variante fd_plus_variant(k) hat x_k = x⁺_k
 // (point_plus, exakt der geschriebene Wert), step_plus[k] = d⁺_k = fl(x⁺_k − x₀_k); bei
 // Central entsprechend x⁻_k, d⁻_k (sonst leer). d ist exakt für |x₀| ≥ x_typ und für x₀ = 0
-// (Sterbenz-Lemma), sonst auf ½ ulp genau. Schätzung der Ableitung in M3-T2 z. B. (r(x⁺) − r(x⁻)) /
-// (d⁺ − d⁻) bzw. (r(x⁺) − r(x₀)) / d⁺.
+// (Sterbenz-Lemma), sonst auf ½ ulp genau. stencil[k] sagt, wie die Ableitung aus den Punkten
+// geschätzt wird (fd_derivative in fd_formula.hpp, M3-T2): Bei Central und Truncated gilt
+// d⁺ ≥ 0 ≥ d⁻, bei OneSided liegen beide Punkte auf derselben Seite (d⁺ ≈ σh, d⁻ ≈ 2σh;
+// „plus“ und „minus“ sind dann nur die Namen der ersten und zweiten Variante).
 struct FdPattern {
     FdScheme scheme = FdScheme::Central;
     std::vector<double> nominal;     // h_k
@@ -102,12 +105,19 @@ struct FdPattern {
     std::vector<double> point_minus; // x⁻_k (nur Central)
     std::vector<double> step_plus;   // d⁺_k
     std::vector<double> step_minus;  // d⁻_k (nur Central)
+    std::vector<FdStencil> stencil;  // Schablone pro Variable (Forward: immer Forward)
+
+    friend bool operator==(const FdPattern&, const FdPattern&) = default;
 };
 
-// Schritte an den Schranken (x₀ muss zulässig sein):
-//  Central: x⁺ = x₀ + h, falls ≤ upper, sonst upper; x⁻ = x₀ − h, falls ≥ lower, sonst lower.
-//           Liegt x₀ auf einer Schranke, ist der Schritt dorthin 0 (einseitige Differenz mit dem
-//           anderen Punkt); d⁺ − d⁻ > 0 gilt immer, weil lower < upper.
+// Schritte (x₀ muss zulässig sein; docs/optimierung.md, Abschnitt „Finite-Differenzen-Jacobi“):
+//  Central: (1) x₀ − h ≥ lower und x₀ + h ≤ upper: x⁺ = x₀ + h, x⁻ = x₀ − h (FdStencil::Central).
+//           (2) sonst σ = +1, wenn upper − x₀ ≥ x₀ − lower, sonst −1; liegt x₀ + 2σh in den
+//           Schranken: x⁺ = x₀ + σh, x⁻ = x₀ + 2σh (FdStencil::OneSided, zweite Ordnung).
+//           (3) sonst (Bereich kürzer als etwa 3h): x⁺ = min(x₀ + h, upper),
+//           x⁻ = max(x₀ − h, lower) (FdStencil::Truncated, erste Ordnung); liegt x₀ auf einer
+//           Schranke, ist der Schritt dorthin 0. d⁺ − d⁻ > 0 gilt bei (1) und (3) immer, weil
+//           lower < upper; bei (2) sind d⁺ und d⁻ ungleich null und verschieden.
 //  Forward: x⁺ = x₀ + h, falls ≤ upper; sonst x₀ − h, falls ≥ lower (Rückwärtsschritt, d⁺ < 0);
 //           sonst die Schranke mit dem größeren Abstand.
 FdPattern fd_pattern(const VariableSet& set, std::span<const double> x0, FdScheme scheme);

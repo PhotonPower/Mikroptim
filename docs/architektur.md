@@ -34,7 +34,7 @@ flowchart TD
 | CPU-Tracer, Lader | `include/mikroptim/cpu/` | `src/cpu/` | M1 |
 | CUDA-Backend | `include/mikroptim/cuda/` (reines C++) | `src/cuda/` | M2–M8 |
 | Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
-| Optimierer (ab M3-T1: Variablen, Variantengenerator) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
+| Optimierer (ab M3-T1: Variablen, Variantengenerator; M3-T2: FD-Jacobi) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
@@ -606,6 +606,9 @@ struct TraceSettings { ResidualSettings quadrature;   // N × M
                        bool extrema = false;                     // beide Modi (M2-T3)
                        std::span<const double> extra_merit; };  // nur MERIT: leer oder [V]
 struct TraceRunInfo { int variants, tranches, tranche_variants; size_t budget_bytes, device_bytes; };
+struct DeviceTranche { int first, count; int64_t rays_per_variant, stride;   // M3-T2
+                       const double* residuals; const uint8_t* status; const double *opd, *extrema; };
+using DeviceTrancheFn = std::function<void(const DeviceTranche&)>;
 struct TraceOutput { TraceMode mode; ResidualLayout layout;
                      ResidualResult residuals;   // Modus Residuals (sonst leer), Extrema in .extrema
                      MeritResult merit;          // Modus Merit (sonst leer), Extrema in .extrema
@@ -616,6 +619,10 @@ public:
     void run(const SystemBatchHost&, TraceMode, const TraceSettings&, TraceOutput& out);
     TraceOutput run(const SystemBatchHost&, TraceMode, const TraceSettings& = {});
     int max_variants(const BatchTopology&, TraceMode, const TraceSettings& = {}) const;
+    // Modus Residuals ohne Download (M3-T2): Rückruf pro Tranche mit Gerätezeigern,
+    // Tranchen als Vielfache von granularity
+    TraceRunInfo run_on_device(const SystemBatchHost&, const TraceSettings&, int granularity,
+                               const DeviceTrancheFn& consume);
     void release() noexcept;
     int device() const; const std::string& device_name() const; size_t device_bytes() const;
 };
@@ -643,6 +650,8 @@ Gegenüber der ursprünglichen Skizze (`upload(batch)`, dann `run(mode, settings
 **Fehler:** CUDA-Fehler und Speichermangel `CudaError`, ungültige Argumente (Index, Einstellungen, Werte im Batch, im Modus MERIT Länge von `extra_merit` und zu viele Stützstellen pro Feld) `std::invalid_argument`, bevor das Gerät angefasst wird. Nach einer Ausnahme bleibt die Engine benutzbar, der Inhalt von `out` ist unbestimmt. Ein leerer Batch (V = 0) liefert leere Vektoren und `tranches = 0` ohne Gerätearbeit.
 
 **Thread-Sicherheit:** Kein globaler Zustand; mehrere Engines (auch auf demselben Gerät, Test `TraceEngine.EnginesAreIndependent`) sind unabhängig. Eine Engine darf nicht gleichzeitig aus mehreren Threads benutzt werden. Für mehrere GPUs (M7-T3) bekommt jede GPU eine eigene Engine, sinnvollerweise in einem eigenen Host-Thread (`cudaSetDevice` gilt pro Thread; der Default-Stream und `cudaDeviceSynchronize` blockieren nur das eigene Gerät).
+
+**Ohne Download (`run_on_device`, M3-T2):** Für Folgekernel, deren Eingabe der Residuenpuffer ist (Differenzen der FD-Jacobi), läuft der Modus RESIDUALS wie oben, aber nach dem Kernel jeder Tranche ruft die Engine einen Rückruf mit den Gerätezeigern der Tranche (`DeviceTranche`: erste Variante, Anzahl, Residuen mit Stride R_v + E, Status, optional OPD und Max-Reduktionen) auf, statt herunterzuladen. Der Rückruf läuft mit dem Gerät der Engine als aktuellem Gerät; Arbeit, die er im Default-Stream startet, ist vor dem Upload der nächsten Tranche beendet. Die Tranchengröße wird auf ein Vielfaches von `granularity` abgerundet (zusammengehörige Varianten, z. B. die 2P + 1 eines FD-Laufs, liegen in derselben Tranche; nur die letzte Tranche ist kleiner, wenn V kein Vielfaches ist); passt nicht einmal `granularity` Varianten, `CudaError`. Tranchenrechnung und Puffer teilen sich `run` und `run_on_device` (`plan_tranches`). Speicher, den der Aufrufer vorher selbst belegt (z. B. J), sieht die Engine über `cudaMemGetInfo` als belegt. Test `TraceEngineOnDevice.TranchesAreMultiplesOfGranularity`.
 
 **Modus MERIT (M2-T3):** eigener Ausgabepuffer `DeviceMerit` neben `DeviceResiduals`, eigene `OutputRequest` in der Tranchenrechnung, Ergebnis in `TraceOutput::merit`; der Ablauf (Prüfen, Tranchen, Download an die Stelle `first`) ist derselbe wie bei RESIDUALS.
 
@@ -699,6 +708,47 @@ void evaluate_extra_residuals(const ExtraResiduals&, const SystemBatchHost&, std
 ```
 
 Der Paraxialtrace läuft auf dem Host (pro Variante ein y-nu-Trace über höchstens 64 Flächen, Felder auf dem Stack, keine Allokation), verteilt auf `std::thread`s in fester Aufteilung (intern `src/optim/parallel_variants.hpp`); Ergebnisse sind für jede Threadzahl bitgleich. Ein Paraxialtrace auf der GPU lohnt erst, wenn er neben dem Strahltrace ins Gewicht fällt (der Kern `ynu_trace.hpp` ist dafür schon `MKO_HD`).
+
+## Optimierer: Finite-Differenzen-Jacobi (M3-T2)
+
+Schablonen, Formeln, Genauigkeit und Ablage: [optimierung.md](optimierung.md#finite-differenzen-jacobi-ab-m3-t2). Host-Teil in `Mikroptim::optim` (`src/optim/fd_jacobian.cpp`), GPU-Teil in `Mikroptim::cuda` (`src/cuda/fd_jacobian.cu`; `Mikroptim::cuda` linkt dafür `Mikroptim::optim`).
+
+```cpp
+// Zusatzresiduen: ExtraResiduals und evaluate_extra_residuals aus M3-T3 (oben)
+// fd_formula.hpp (header-only, MKO_HD, CPU und Kernel)
+enum class FdStencil : uint8_t { Central, OneSided, Truncated, Forward };
+template <class R> R fd_derivative(FdStencil, R r0, R ra, R rb, R da, R db);
+// fd_jacobian.hpp (Host)
+struct JacobianShape { int runs, variables; int64_t ray_rows; int extra_rows; int64_t rows() const; };
+struct FdJacobianOptions { ResidualSettings quadrature; FdScheme scheme; ExtraResiduals extra;
+                           int extra_threads = 0; };   // Host-Threads für die Zusatzresiduen
+struct FdJacobianBatch { SystemBatchHost batch; std::vector<FdPattern> patterns; int runs, variants_per_run; };
+FdJacobianBatch make_fd_jacobian_batch(const VariableSet&, const SystemBatchHost& base,
+                                       std::span<const double> x0 /*[runs·P]*/, FdScheme = Central);
+struct FdJacobian { JacobianShape shape; FdScheme scheme;
+                    std::vector<double> jacobian /*[runs][P][R]*/, residuals /*[runs][R]*/;
+                    std::vector<int64_t> status_changes /*[runs][P]*/; std::vector<FdPattern> patterns;
+                    double at(run, row, p); std::span<const double> column(run, p), residual(run); };
+void fd_jacobian_from_residuals(const FdJacobianBatch&, const ResidualResult&, std::span<const double> extra,
+                                int extra_count, FdJacobian& out);
+FdJacobian fd_jacobian_cpu(const VariableSet&, const SystemBatchHost& base, std::span<const double> x0,
+                           const FdJacobianOptions& = {});
+// cuda/fd_jacobian.hpp (reines C++)
+class DeviceFdJacobian {                    // RAII, nur verschiebbar, J bleibt auf dem Gerät
+    void compute(TraceEngine&, const VariableSet&, const SystemBatchHost& base,
+                 std::span<const double> x0, const FdJacobianOptions& = {});
+    FdJacobian download() const; void release() noexcept; bool ready() const;
+    const double* device_jacobian() const; const double* device_residuals() const;
+    const int64_t* device_status_changes() const; const TraceRunInfo& run_info() const;
+    static size_t buffer_bytes(const JacobianShape&, int variants);
+};
+FdJacobian fd_jacobian_gpu(TraceEngine&, const VariableSet&, const SystemBatchHost& base,
+                           std::span<const double> x0, const FdJacobianOptions& = {});
+```
+
+**Kernel `fd_difference_kernel`** (pro Tranche der Engine): ein Block pro (Lauf, Spalte p) und ein Block pro Lauf, der r₀ kopiert, also Läufe·(P + 1) Blöcke mit `kFdJacobianThreads` = 128 Threads über die R Zeilen. Jedes Element J_i(r, p) = `fd_derivative`(Schablone, r₀, r_a, r_b, d_a, d_b) hängt nur von drei Residuen ab (Strahlzeilen aus dem Ausgabepuffer der Engine, Zusatzzeilen aus einem eigenen Puffer [V·E]); keine Gleitkomma-Reduktion. Die Status-Wechsel pro Spalte sind eine ganzzahlige Baumreduktion im Shared Memory (128 · 8 Byte). Schablonen und Schritte liegen als Felder [Läufe·P] im Gerätespeicher.
+
+**Speicher:** `DeviceFdJacobian` belegt einen Puffer (J 8·Läufe·P·R, r₀ 8·Läufe·R, Status-Wechsel 8·Läufe·P, Zusatzresiduen 8·V·E, Schablonen und Schritte 17·Läufe·P Byte, jeweils auf 256 Byte ausgerichtet; `buffer_bytes`). Er wird vor dem Lauf der Engine angelegt, damit deren Tranchenrechnung ihn als belegt sieht, und über Aufrufe wiederverwendet. J muss ganz in den Gerätespeicher passen (M3-T4 wählt die Zahl der Läufe pro Batch); der Residuenpuffer der Engine wird bei Bedarf in Tranchen aus ganzen Läufen aufgeteilt. Beispiel: 1.000 Läufe des Mehrlinsers, J = 70,7 MB.
 
 ## Mehrere GPUs (M7)
 

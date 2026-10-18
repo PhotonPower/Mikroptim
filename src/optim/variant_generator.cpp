@@ -176,6 +176,7 @@ FdPattern fd_pattern(const VariableSet& set, std::span<const double> x0, FdSchem
     pat.nominal.resize(p);
     pat.point_plus.resize(p);
     pat.step_plus.resize(p);
+    pat.stencil.resize(p);
     if (scheme == FdScheme::Central) {
         pat.point_minus.resize(p);
         pat.step_minus.resize(p);
@@ -188,10 +189,32 @@ FdPattern fd_pattern(const VariableSet& set, std::span<const double> x0, FdSchem
         const double up = x + h;
         const double down = x - h;
         if (scheme == FdScheme::Central) {
-            pat.point_plus[k] = up <= var.upper ? up : var.upper;
-            pat.point_minus[k] = down >= var.lower ? down : var.lower;
-            pat.step_plus[k] = pat.point_plus[k] - x;
-            pat.step_minus[k] = pat.point_minus[k] - x;
+            double xa = 0.0;
+            double xb = 0.0;
+            FdStencil stencil = FdStencil::Central;
+            if (up <= var.upper && down >= var.lower) {
+                xa = up; // (1) zentral
+                xb = down;
+            } else {
+                // (2) einseitig zur Seite mit mehr Platz, falls dort x₀ + 2σh zulässig ist
+                const bool towards_upper = var.upper - x >= x - var.lower;
+                const double far = towards_upper ? x + 2.0 * h : x - 2.0 * h;
+                if (towards_upper ? far <= var.upper : far >= var.lower) {
+                    stencil = FdStencil::OneSided;
+                    xa = towards_upper ? up : down;
+                    xb = far;
+                } else {
+                    // (3) Bereich kürzer als etwa 3h: gekürzt bis an die Schranken
+                    stencil = FdStencil::Truncated;
+                    xa = up <= var.upper ? up : var.upper;
+                    xb = down >= var.lower ? down : var.lower;
+                }
+            }
+            pat.stencil[k] = stencil;
+            pat.point_plus[k] = xa;
+            pat.point_minus[k] = xb;
+            pat.step_plus[k] = xa - x;
+            pat.step_minus[k] = xb - x;
         } else {
             double xp = 0.0;
             if (up <= var.upper) {
@@ -201,6 +224,7 @@ FdPattern fd_pattern(const VariableSet& set, std::span<const double> x0, FdSchem
             } else {
                 xp = var.upper - x >= x - var.lower ? var.upper : var.lower;
             }
+            pat.stencil[k] = FdStencil::Forward;
             pat.point_plus[k] = xp;
             pat.step_plus[k] = xp - x;
         }

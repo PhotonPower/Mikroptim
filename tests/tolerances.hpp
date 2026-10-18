@@ -81,6 +81,22 @@ inline constexpr double kGhostGradientFd = 1e-10;
 // RMS-OPD einer Geisterplatte mit gefitteter idealer Fokussierphase bei NA 0,3 [mm]
 // (Abnahmekriterium M4-T5). Fit- und Rundungsfehler liegen um Größenordnungen darunter.
 inline constexpr double kGhostFocusRms = 1e-6;
+// Finite-Differenzen-Jacobi (M3-T2) gegen Richardson-Extrapolation, relativ pro Spalte
+// ‖J_p − D_p‖₂/‖D_p‖₂ und in der Frobeniusnorm (Abnahmekriterium M3-T2). Gilt für die
+// Schablonen zweiter Ordnung (zentral, einseitig an Schranken). Erwartet: Abbruch h²/6·r‴ mit
+// h/x ≈ 6·10⁻⁶ und Rundung ≈ ε·|OPL|/h, zusammen ≈ 10⁻¹⁰ … 10⁻⁸.
+inline constexpr double kFdJacobianRichardson = 1e-6;
+// Dasselbe für die Schablonen erster Ordnung (vorwärts, gekürzt bei sehr engen Schranken):
+// Fehler ≈ (d_a + d_b)/2·r″/r′ ≈ h·|r″/r′|, also ≈ 6·10⁻⁶·|x·r″/r′|. Modellfehler des
+// Verfahrens, kein Maß für die Rechengenauigkeit.
+inline constexpr double kFdJacobianFirstOrder = 1e-4;
+// Konvergenz der Richardson-Referenz selbst: R₁(H/2) (Fehler O(H⁴)) gegen R₂ (O(H⁶)) mit
+// H = 10⁻³·max(|x|, x_typ), relativ pro Spalte; muss deutlich unter kFdJacobianRichardson
+// liegen, damit die Referenz die Abnahme nicht verfälscht.
+inline constexpr double kFdRichardsonReference = 1e-8;
+// Zentrale Differenz analytischer Zusatzresiduen (Polynome bis Grad 2 und 1/w) gegen die
+// exakte Ableitung, relativ: Abbruch (h/w)² ≈ 4·10⁻¹¹, Rundung ε·|e|/h ≲ 10⁻⁹.
+inline constexpr double kFdExtraAnalytic = 1e-8;
 // df64 gegen FP64 (ab M7)
 inline constexpr double kDf64VsFp64 = 1e-9;
 

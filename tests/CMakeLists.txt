@@ -17,6 +17,7 @@ add_executable(mikroptim_tests
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_dispersion.cpp
+    test_fd_jacobian.cpp
     test_ghost_plate.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
@@ -42,6 +43,7 @@ target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOU
 if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_dispersion.cpp
+        test_cuda_fd_jacobian.cpp
         test_cuda_merit.cpp
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp

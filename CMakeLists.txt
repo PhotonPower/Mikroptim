@@ -151,6 +151,7 @@ target_link_libraries(mikroptim_batch
 # --------------------------------------------------------------------------
 find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
+    src/optim/fd_jacobian.cpp
     src/optim/paraxial_residuals.cpp
     src/optim/variable_set.cpp
     src/optim/variant_generator.cpp)
@@ -168,6 +169,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_info.cu
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
+        src/cuda/fd_jacobian.cu
         src/cuda/merit.cu
         src/cuda/quadrature_check.cu
         src/cuda/residuals.cu
@@ -176,7 +178,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/trace_engine.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda
-        PUBLIC mikroptim_core mikroptim_batch
+        PUBLIC mikroptim_core mikroptim_batch mikroptim_optim
         PRIVATE CUDA::cudart mikroptim_warnings)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)
     target_compile_options(mikroptim_cuda PRIVATE
