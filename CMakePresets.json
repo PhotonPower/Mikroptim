@@ -1,0 +1,53 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "MIKROPTIM_BUILD_TESTS": "ON" }
+    },
+    {
+      "name": "debug-cpu",
+      "inherits": "base",
+      "displayName": "Debug, nur CPU",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MIKROPTIM_ENABLE_CUDA": "OFF" }
+    },
+    {
+      "name": "release-cpu",
+      "inherits": "base",
+      "displayName": "Release, nur CPU",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MIKROPTIM_ENABLE_CUDA": "OFF" }
+    },
+    {
+      "name": "debug-cuda",
+      "inherits": "base",
+      "displayName": "Debug, mit CUDA (sm_60 + sm_86)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "MIKROPTIM_ENABLE_CUDA": "ON" }
+    },
+    {
+      "name": "release-cuda",
+      "inherits": "base",
+      "displayName": "Release, mit CUDA (sm_60 + sm_86)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MIKROPTIM_ENABLE_CUDA": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug-cpu", "configurePreset": "debug-cpu", "configuration": "Debug" },
+    { "name": "release-cpu", "configurePreset": "release-cpu", "configuration": "Release" },
+    { "name": "debug-cuda", "configurePreset": "debug-cuda", "configuration": "Debug" },
+    { "name": "release-cuda", "configurePreset": "release-cuda", "configuration": "Release" }
+  ],
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "debug-cpu", "inherits": "test-base", "configurePreset": "debug-cpu", "configuration": "Debug" },
+    { "name": "release-cpu", "inherits": "test-base", "configurePreset": "release-cpu", "configuration": "Release" },
+    { "name": "debug-cuda", "inherits": "test-base", "configurePreset": "debug-cuda", "configuration": "Debug" },
+    { "name": "release-cuda", "inherits": "test-base", "configurePreset": "release-cuda", "configuration": "Release" }
+  ]
+}

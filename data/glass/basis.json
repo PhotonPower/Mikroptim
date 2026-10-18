@@ -1,0 +1,33 @@
+{
+  "format": "mikroptim.glass/1",
+  "description": "Basisgläser für Tests. Sellmeier-Koeffizienten aus öffentlich verfügbaren Quellen; lambda in µm, C in µm².",
+  "glasses": [
+    {
+      "name": "N-BK7",
+      "model": "sellmeier",
+      "B": [1.03961212, 0.231792344, 1.01046945],
+      "C": [0.00600069867, 0.0200179144, 103.560653],
+      "range_nm": [300, 2500],
+      "reference": { "n_d": 1.5168 },
+      "source": "Schott-Datenblatt N-BK7"
+    },
+    {
+      "name": "CAF2",
+      "model": "sellmeier",
+      "B": [0.5675888, 0.4710914, 3.8484723],
+      "C": [0.002526429987596025, 0.010078332802810001, 1200.5559729216],
+      "range_nm": [230, 9700],
+      "reference": { "n_d": 1.43385 },
+      "source": "I. H. Malitson, Applied Optics 2 (1963); C_i = (lambda_i)^2"
+    },
+    {
+      "name": "F_SILICA",
+      "model": "sellmeier",
+      "B": [0.6961663, 0.4079426, 0.8974794],
+      "C": [0.00467914825849, 0.013512063073959999, 97.93400253792099],
+      "range_nm": [210, 3710],
+      "reference": { "n_d": 1.45846 },
+      "source": "I. H. Malitson, JOSA 55 (1965); C_i = (lambda_i)^2"
+    }
+  ]
+}

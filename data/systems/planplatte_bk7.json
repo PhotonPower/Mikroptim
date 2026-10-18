@@ -1,0 +1,14 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Planplatte N-BK7",
+  "description": "Testsystem mit exakt bekannter optischer Weglänge.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0, 10.0], "field_weights": [1.0, 1.0] },
+  "surfaces": [
+    { "type": "stop", "semi_diameter": 5.0, "thickness": 2.0, "material": "AIR" },
+    { "type": "plane", "thickness": 10.0, "material": "N-BK7", "semi_diameter": 10.0 },
+    { "type": "plane", "thickness": 20.0, "material": "AIR", "semi_diameter": 10.0 }
+  ]
+}

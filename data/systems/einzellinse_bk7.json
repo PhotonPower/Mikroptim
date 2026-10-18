@@ -1,0 +1,22 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7",
+  "description": "Bikonvexe Testlinse, f ca. 101 mm bei 587,6 nm, Bildebene im paraxialen Fokus.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": {
+    "wavelengths_nm": [486.13, 587.56, 656.27],
+    "weights": [1.0, 1.0, 1.0],
+    "reference_nm": 587.56
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [0.0, 1.0, 2.0],
+    "field_weights": [1.0, 1.0, 1.0]
+  },
+  "surfaces": [
+    { "type": "stop", "semi_diameter": 10.0, "thickness": 5.0, "material": "AIR" },
+    { "type": "sphere", "curvature": 0.00967, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.00967, "thickness": 99.05, "material": "AIR", "semi_diameter": 12.5 }
+  ]
+}

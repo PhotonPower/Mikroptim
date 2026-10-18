@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu:
+    name: CPU (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Konfigurieren
+        run: cmake --preset release-cpu -DMIKROPTIM_WARNINGS_AS_ERRORS=ON
+      - name: Bauen
+        run: cmake --build --preset release-cpu --parallel
+      - name: Testen
+        run: ctest --preset release-cpu
+
+  cuda-compile:
+    # GitHub-Runner haben keine GPU: hier wird nur kompiliert (sm_60 + sm_86).
+    # GPU-Tests laufen lokal auf RTX 3090 und Tesla P100 (siehe AGENTS.md).
+    name: CUDA 12.9 kompilieren
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:12.9.1-devel-ubuntu24.04
+    steps:
+      - name: Werkzeuge installieren
+        run: apt-get update && apt-get install -y --no-install-recommends cmake g++ make git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Konfigurieren
+        run: cmake --preset release-cuda -DMIKROPTIM_WARNINGS_AS_ERRORS=ON
+      - name: Bauen
+        run: cmake --build --preset release-cuda --parallel
