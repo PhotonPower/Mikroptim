@@ -51,6 +51,7 @@ add_executable(mikroptim_tests
     test_variable_set.cpp
     test_variables_schema.cpp
     test_variant_generator.cpp
+    test_vector_psf.cpp
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
@@ -78,7 +79,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_soft_failure.cpp
         test_cuda_system_batch.cpp
         test_cuda_trace.cpp
-        test_cuda_trace_engine.cpp)
+        test_cuda_trace_engine.cpp
+        test_cuda_vector_psf.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()
 
@@ -106,6 +108,11 @@ add_test(NAME cli_eval_psf_json
     COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32 --psf)
 set_tests_properties(cli_eval_psf_json PROPERTIES
     PASS_REGULAR_EXPRESSION "\"psf\": {[\r\n]+    \"fft_size\": 128.*\"strehl_fft\": ")
+# `mikroptim eval --vector` (M8-T5)
+add_test(NAME cli_eval_vector_json
+    COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32 --vector --polarization circular)
+set_tests_properties(cli_eval_vector_json PROPERTIES
+    PASS_REGULAR_EXPRESSION "\"model\": \"vector\",[\r\n]+    \"polarization\": \"circular\".*\"fwhm_mm\": ")
 
 # `mikroptim trace --gpu` (M2-T5). Exit-Code 3 = GPU-Backend nicht verfügbar (kExitNoGpu).
 if(MIKROPTIM_ENABLE_CUDA)
