@@ -470,9 +470,10 @@ TEST(CliOptimize, GlassVariableAndHull) {
     EXPECT_EQ(x_file, x);
     std::vector<double> f(1);
     std::vector<std::int64_t> failed(1);
+    std::vector<std::int64_t> hard_failed(1);
     const int run = 0;
     mko::CpuLmBackend backend(set, base, options);
-    backend.merit(std::span<const int>(&run, 1), x_file, f, failed);
+    backend.merit(std::span<const int>(&run, 1), x_file, f, failed, hard_failed);
     EXPECT_TRUE(same_bits(f[0], j["result"]["merit"].get<double>()))
         << f[0] << " " << j["result"]["merit"];
 
