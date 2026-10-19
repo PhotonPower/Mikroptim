@@ -14,11 +14,13 @@ add_executable(mikroptim_tests
     test_batch_merit.cpp
     test_batch_residuals.cpp
     test_buchdahl_fit.cpp
+    test_cli_eval.cpp
     test_cli_optimize.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_df64.cpp
     test_dispersion.cpp
+    test_eval.cpp
     test_fd_jacobian.cpp
     test_ghost_plate.cpp
     test_glass_catalog.cpp
@@ -42,7 +44,7 @@ add_executable(mikroptim_tests
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-    mikroptim_batch mikroptim_optim mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
+    mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
@@ -50,6 +52,7 @@ if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
+        test_cuda_eval.cpp
         test_cuda_fd_jacobian.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
@@ -79,6 +82,11 @@ set_tests_properties(cli_trace_text PROPERTIES
 add_test(NAME cli_trace_missing_file
     COMMAND $<TARGET_FILE:mikroptim> trace ${PROJECT_SOURCE_DIR}/data/systems/gibt_es_nicht.json)
 set_tests_properties(cli_trace_missing_file PROPERTIES WILL_FAIL TRUE)
+# `mikroptim eval` (M8-T1)
+add_test(NAME cli_eval_json
+    COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32)
+set_tests_properties(cli_eval_json PROPERTIES
+    PASS_REGULAR_EXPRESSION "\"format\": \"mikroptim\\.eval/1\".*\"failed_rays\": 0,[\r\n]+  \"warnings\"")
 
 # `mikroptim trace --gpu` (M2-T5). Exit-Code 3 = GPU-Backend nicht verfügbar (kExitNoGpu).
 if(MIKROPTIM_ENABLE_CUDA)
@@ -86,6 +94,11 @@ if(MIKROPTIM_ENABLE_CUDA)
     add_test(NAME cli_trace_gpu_json
         COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_EINZELLINSE} --json --gpu)
     set_tests_properties(cli_trace_gpu_json PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"failed_rays\": 0,[\r\n]+  \"warnings\"")
+    add_test(NAME cli_eval_gpu_json
+        COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32 --gpu)
+    set_tests_properties(cli_eval_gpu_json PROPERTIES
         SKIP_RETURN_CODE 3
         PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"failed_rays\": 0,[\r\n]+  \"warnings\"")
     # Kein sichtbares Gerät (CUDA_VISIBLE_DEVICES=-1): Meldung statt Ausnahme.

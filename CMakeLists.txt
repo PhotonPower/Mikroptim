@@ -163,6 +163,17 @@ target_link_libraries(mikroptim_optim
     PRIVATE Threads::Threads mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# Auswertung (Host): Modus EVAL auf dem dichten Pupillenraster, CPU-Referenz, Kennzahlen
+# (M8-T1); der Kernel liegt in Mikroptim::cuda
+# --------------------------------------------------------------------------
+add_library(mikroptim_eval STATIC
+    src/eval/eval.cpp)
+add_library(Mikroptim::eval ALIAS mikroptim_eval)
+target_link_libraries(mikroptim_eval
+    PUBLIC mikroptim_core mikroptim_batch
+    PRIVATE mikroptim_optim mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # CUDA-Backend
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
@@ -172,6 +183,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/device_info.cu
         src/cuda/device_system_batch.cu
         src/cuda/dispersion_eval.cu
+        src/cuda/eval.cu
         src/cuda/fd_jacobian.cu
         src/cuda/levenberg_marquardt.cpp
         src/cuda/merit.cu
@@ -186,7 +198,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         src/cuda/trace_engine.cu)
     add_library(Mikroptim::cuda ALIAS mikroptim_cuda)
     target_link_libraries(mikroptim_cuda
-        PUBLIC mikroptim_core mikroptim_batch mikroptim_optim
+        PUBLIC mikroptim_core mikroptim_batch mikroptim_eval mikroptim_optim
         PRIVATE CUDA::cudart Threads::Threads mikroptim_warnings)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)
     target_compile_options(mikroptim_cuda PRIVATE
@@ -199,13 +211,14 @@ endif()
 # Unterbefehle als Bibliothek, damit die Tests sie direkt aufrufen können (docs/cli.md)
 add_library(mikroptim_cli STATIC
     src/cli/cli_util.cpp
+    src/cli/eval_command.cpp
     src/cli/optimize_command.cpp
     src/cli/trace_command.cpp)
 target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mikroptim_cli
     PUBLIC mikroptim_core
     PRIVATE mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-            mikroptim_batch mikroptim_optim nlohmann_json::nlohmann_json mikroptim_warnings)
+            mikroptim_batch mikroptim_eval mikroptim_optim nlohmann_json::nlohmann_json mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     # `mikroptim trace --gpu` (M2-T5) über die TraceEngine und `mikroptim optimize --gpu`
     # (M3-T5) über optimize_lm_gpu; setzt MIKROPTIM_HAS_CUDA

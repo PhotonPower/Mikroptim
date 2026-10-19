@@ -36,7 +36,7 @@ flowchart TD
 | Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
 | Optimierer (ab M3-T1: Variablen, Variantengenerator; M3-T2: FD-Jacobi) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
-| Auswertung | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
+| Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
 | Python | – | `python/` | M9 |
 
@@ -629,6 +629,60 @@ struct PrefilterResult   { PrefilterStats stats; vector<double> merit_lower, mer
 
 **Register** (`cuobjdump --dump-resource-usage`, CUDA 12.9): `prefilter_kernel` 72 Register, Stack 32 B auf sm_60 und sm_86 (sm_86: 7 Blöcke à 128 Threads pro SM, 28 von 48 Warps). Durchsatz: [benchmarks.md, „FP32-Vorfilterung“](benchmarks.md#fp32-vorfilterung-m7-t2).
 
+## Modus EVAL (M8-T1)
+
+Auswertung auf einem dichten kartesischen Pupillenraster: OPD-Karten, Spotdiagramme, Verzeichnung und Feldkrümmung pro Variante, Feld und Wellenlänge; jedes Versagen hart. Formeln (Raster, Referenzsphäre durch die Austrittspupille, Kennzahlen, Feldstrahlen, Rasterfehler) und Abnahme: [numerik.md, „Auswertung auf dem Raster“](numerik.md#auswertung-auf-dem-raster-m8-t1). Wie die Vorfilterung ist EVAL eine eigene Funktion der Engine (`TraceEngine::evaluate`) und kein Wert von `TraceMode`, weil Ausgabe und Ablage andere sind als bei RESIDUALS und MERIT.
+
+| Baustein | Ort | Inhalt |
+|---|---|---|
+| Pro Strahl | `include/mikroptim/eval/eval_ray.hpp` (header-only, `MKO_HD`) | `EvalReference`, `eval_source_ray`, `exit_pupil_sphere_step`, `eval_ray`, Feldstrahlen `eval_field_ray_point` |
+| Host, CPU-Referenz, Kennzahlen | `include/mikroptim/eval/eval.hpp`, `src/eval/eval.cpp` (Bibliothek `Mikroptim::eval`, linkt `batch` und privat `optim` für `batch_paraxial`) | `EvalSettings`, `EvalGrid`, `EvalResult`, `eval_reference_geometry`, `eval_cpu`, `eval_statistics`, `eval_opd_map`, `EvalOutputLayout`, `eval_device_bytes` |
+| Kernel | `src/cuda/eval.cu`, Header `include/mikroptim/cuda/eval.hpp` (reines C++) | `eval_kernel`, `DeviceEval`, `TraceEngine::evaluate` |
+| CLI | `src/cli/eval_command.cpp` | `mikroptim eval` ([cli.md](cli.md#mikroptim-eval)) |
+
+```cpp
+// include/mikroptim/eval/eval.hpp (Host, auch ohne CUDA)
+struct EvalSettings { int grid = 64; bool half_pupil = false;
+                      EvalReference reference = EvalReference::ExitPupil;   // oder Vertex
+                      double field_ray_offset = 1e-3; };                    // δ der Feldstrahlen
+struct EvalPoint { double x, y, weight; };
+struct EvalGrid { int size, full_count; bool half; vector<EvalPoint> points; vector<int32_t> column, row; };
+EvalGrid make_eval_grid(int size, bool half_pupil);                        // N ∈ [1, kMaxEvalGrid = 2048]
+struct EvalReferenceGeometry { vector<double> curvature /*[V·F] κ = σ/R*/, exit_pupil_position /*[V]*/; };
+EvalReferenceGeometry eval_reference_geometry(const SystemBatchHost&, EvalReference);
+struct EvalResult { int variants, fields, wavelengths; EvalSettings settings; EvalGrid grid; double reference_nm;
+    vector<double> image_height, reference_curvature /*[V·F]*/, exit_pupil_position /*[V]*/;
+    vector<double> opd, spot_x, spot_y; vector<uint8_t> status;       // [V·F·L·n], NaN bei Versagen
+    vector<double> field_rays /*[V·F·L·4·5]*/; vector<uint8_t> field_status /*[V·F·L·4]*/; ... };
+EvalResult eval_cpu(const SystemBatchHost&, const EvalSettings& = {});
+struct EvalTupleStats { rays, failed, valid_weight, rms_opd, pv_opd, rms_opd_tilt, rms_opd_defocus,
+    tilt_x, tilt_y, defocus, centroid_x, centroid_y, rms_spot, image_height, chief_x, chief_y,
+    distortion_chief, distortion_centroid /*[%]*/, focus_tangential, focus_sagittal; astigmatism(); };
+std::vector<EvalTupleStats> eval_statistics(const EvalResult&, int v);     // Ablage [f·L + l]
+EvalMap eval_opd_map(const EvalResult&, int v, int f, int l, OpdRemoval = Piston); // N×N, NaN außen
+// include/mikroptim/cuda/trace_engine.hpp
+TraceRunInfo TraceEngine::evaluate(const SystemBatchHost&, const EvalSettings&, EvalResult& out);
+EvalResult   TraceEngine::evaluate(const SystemBatchHost&, const EvalSettings& = {});
+```
+
+**Ablage.** Rasterpunkte zeilenweise (Zeile j aufsteigend in y, darin Spalte i aufsteigend in x), nur die Punkte in der Pupille (n = `grid.samples()`, für alle Felder dasselbe Raster); Strahl k des Tupels (v, f, l) unter ((v·F + f)·L + l)·n + k, Feldstrahl j (0 Hauptstrahl, 1/2 tangential ±δ, 3 sagittal) unter ((v·F + f)·L + l)·4 + j mit fünf Werten (x, y relativ zum idealen Bildpunkt, d_x, d_y, d_z). `eval_opd_map` legt die Karte wieder auf das volle N×N-Raster (halbe Pupille gespiegelt).
+
+**Ablauf im Block** (b = (v·F + f)·L + l, 128 Threads wie RESIDUALS, Rechentyp immer FP64):
+
+1. Flächentabelle mit den Brechzahlen der Wellenlänge l und die Geisterdaten in den Shared Memory (`load_block_table`, `load_block_ghosts` aus `wavefront_block.hpp`), `__syncthreads`; Thread 0 rechnet den Hauptstrahl als Bezugswert O₀ der OPL, `__syncthreads`.
+2. Durchlauf 1: Thread t bearbeitet die Rasterpunkte k = t, t + 128, … (Punkte aus einem Gerätefeld `EvalPoint[n]`), `eval_ray` (Startstrahl aus (x, y), `trace_ray`, d_z-Prüfung, Schnitt mit der Bildebene, Schritt auf die Referenzsphäre), schreibt Status und Spot (NaN bei Versagen) und OPL − O₀ vorläufig auf den OPD-Platz, Teilsummen (W, W·(OPL − O₀)) der gültigen Strahlen.
+3. Kolben mit `block_piston` (Baumreduktion im Warp, Warps in fester Reihenfolge, keine Atomics).
+4. Durchlauf 2: OPD = (OPL − O₀) − Kolben, NaN bei Versagen oder ohne gültigen Strahl.
+5. Threads 0 … 3 rechnen die vier Feldstrahlen.
+
+Versagte Strahlen laufen maskiert weiter. Die Krümmungen κ der Referenzsphären [V·F] rechnet der Host vor dem Lauf (`eval_reference_geometry`: Austrittspupille aus `batch_paraxial` bei λ_ref, κ = 0 im Unendlichen) und lädt sie mit dem Raster hoch. Kennzahlen (Fits, Schwerpunkt, Verzeichnung, Brennlinien) entstehen auf dem Host mit `eval_statistics` aus den heruntergeladenen Rohdaten, für CPU und GPU mit derselben Funktion. Shared Memory: statisch 1.968 Byte (Tabelle, Kolben, Bezugswert), dynamisch nur die Geisterdaten (≤ 17 KiB); die Rasterpunkte liegen im globalen Speicher, die Zahl der Rasterpunkte ist deshalb nicht durch das Shared Memory begrenzt. Register (`cuobjdump --dump-resource-usage`, CUDA 12.9): `eval_kernel` 114 Register, Stack 72 B auf sm_60; 96 Register, Stack 88 B auf sm_86.
+
+**Engine.** `evaluate` prüft Einstellungen und Werte (`check_eval_settings`, `validate_values`), legt die Host-Ausgabe an (`prepare_eval_result`) und rechnet die Referenzgeometrie, bevor das Gerät angefasst wird. Tranche T = größtes V mit `eval_device_bytes(V)` ≤ nutzbarer Speicher (Bisektion, V·F·L ≤ 2³¹ − 1); die Puffer von RESIDUALS, MERIT und der Vorfilterung bleiben erhalten, solange die Tranche dadurch nicht kleiner als V wird (wie bei der Vorfilterung), sonst werden sie freigegeben. Der Ausgabepuffer (`DeviceEval`) lebt nur während des Aufrufs: EVAL ist selten und seine Puffer sind groß, er soll den Optimierungsmodi danach nicht im Weg liegen. Pro Tranche Upload, Kernel, Download der Rohdaten an die Stelle `first` von `out`. Die Ergebnisse jeder Variante sind unabhängig von der Aufteilung bitgleich (Test `CudaEval.RepeatedRunsAndTranchesAreBitIdentical`: 5 Läufe und 50 Varianten in 5 Tranchen bitgleich zum Lauf in einer Tranche).
+
+**Speicher** (`make_eval_output_layout`, `eval_device_bytes`; Bereiche auf 256 Byte ausgerichtet): pro Rasterstrahl 25 Byte (OPD, Spot x, Spot y je 8, Status 1), pro Tupel 4 × 5 × 8 + 4 Byte Feldstrahlen, pro Variante und Feld 8 Byte κ, einmal pro Lauf das Raster (24 Byte pro Punkt), dazu der Batch. Beispiel Zielsystem-Topologie (S = 30, L = 7, F = 5, G = 6, K = 8) mit N = 128 (12.892 Punkte): ca. 11,3 MB pro Variante, also ca. 1.500 Varianten pro Tranche in 16 GiB (Test `EvalMemory.DeviceBytesFollowLayout`). Die Host-Ausgabe hat dieselbe Größe.
+
+**Durchsatz** (RTX 3090, Test `CudaEval.LargeGridThroughput`, Information, über die Engine mit Upload, Download und Puffern; Mehrlinser F = 3, L = 4): 1 Variante mit N = 512 (12 Blöcke, 2,5·10⁶ Strahlen) 64 ms, 10 Varianten mit N = 256 (120 Blöcke, 6,2·10⁶ Strahlen) 170–230 ms, 400 Varianten mit N = 64 (4.800 Blöcke, 1,5·10⁷ Strahlen, 388 MB Ausgabe) 284 ms, also 2,7–5,5·10⁷ Strahlen/s; der Download der Rohdaten (25 Byte pro Strahl) ist ein wesentlicher Teil. Bei wenigen Tupeln rechnen nur V·F·L Blöcke (ein Block pro Tupel, ADR-0004), also nur so viele SMs; die Pupille eines Tupels auf mehrere Blöcke zu verteilen (Kolben dann zweistufig) wäre eine spätere Optimierung (M7).
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
@@ -636,9 +690,9 @@ struct PrefilterResult   { PrefilterStats stats; vector<double> merit_lower, mer
 | `MERIT` | gewichtete Quadratsumme pro Variante | Liniensuche, Multistart-Screening | M2 |
 | `RESIDUALS` | Residuenvektor pro Variante | finite Differenzen, LM | M2 |
 | `ADJOINT` | Residuen plus Gradientenzeilen | analytische Jacobi-Matrix | M5 |
-| `EVAL` | OPD-Karten auf dichtem Raster, Spotdaten | PSF, MTF, Tolerierung | M8 |
+| `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, später PSF, MTF, Tolerierung | M8-T1 |
 
-Zusätzlich liefern alle Modi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2, oben) ist bewusst kein Modus, sondern eine eigene Funktion der Engine.
+Zusätzlich liefern die Optimierungsmodi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2) und EVAL (M8-T1) sind bewusst keine Werte von `TraceMode`, sondern eigene Funktionen der Engine.
 
 ## Reduktionen
 
@@ -696,6 +750,8 @@ public:
                                const DeviceTrancheFn& consume);
     // FP32-Vorfilterung (M7-T2), Abschnitt "FP32-Vorfilterung"
     TraceRunInfo prefilter_variants(const SystemBatchHost&, const PrefilterSettings&, PrefilterResult&);
+    // Modus EVAL (M8-T1), Abschnitt "Modus EVAL"
+    TraceRunInfo evaluate(const SystemBatchHost&, const EvalSettings&, EvalResult&);
     void release() noexcept;
     int device() const; const std::string& device_name() const; size_t device_bytes() const;
 };

@@ -14,10 +14,12 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
+#include "mikroptim/cuda/eval.hpp"
 #include "mikroptim/cuda/merit.hpp"
 #include "mikroptim/cuda/precision.hpp"
 #include "mikroptim/cuda/prefilter.hpp"
 #include "mikroptim/cuda/residuals.hpp"
+#include "mikroptim/eval/eval.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -180,6 +182,21 @@ public:
                                     PrefilterResult& out);
     PrefilterResult prefilter_variants(const SystemBatchHost& batch,
                                        const PrefilterSettings& settings = {});
+
+    // Modus EVAL (M8-T1): wertet alle Varianten von `batch` auf dem dichten kartesischen
+    // Pupillenraster aus (OPD nach Kolbenabzug, Spot in der Bildebene, Status, Feldstrahlen;
+    // jedes Versagen hart) und schreibt das Ergebnis nach `out` (Ablage wie eval_cpu; Kennzahlen
+    // mit eval_statistics). Ablauf wie run: Einstellungen und Werte prüfen, Referenzgeometrie
+    // auf dem Host (eval_reference_geometry), Tranchen nach dem freien Speicher
+    // (eval_device_bytes), pro Tranche Upload, Kernel, Download an die Stelle first. Der
+    // Ausgabepuffer lebt nur während des Aufrufs; die Puffer der anderen Modi werden nur
+    // freigegeben, wenn sie die Tranche verkleinern würden. Rechentyp immer FP64. Ergebnisse
+    // jeder Variante sind unabhängig von der Aufteilung bitgleich. Wirft wie run, zusätzlich
+    // std::invalid_argument bei ungültigen Einstellungen (check_eval_settings) oder einer nicht
+    // bestimmbaren Austrittspupille. Rückgabe: Statistik des Laufs.
+    TraceRunInfo evaluate(const SystemBatchHost& batch, const EvalSettings& settings,
+                          EvalResult& out);
+    EvalResult evaluate(const SystemBatchHost& batch, const EvalSettings& settings = {});
 
     // Größte Variantenzahl pro Tranche für Batches dieser Topologie: max_variants mit dem
     // freien Speicher des Geräts (zuzüglich der von der Engine schon belegten Puffer, die

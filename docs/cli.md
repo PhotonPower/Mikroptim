@@ -5,6 +5,8 @@ mikroptim [--version] [--devices]
 mikroptim trace <system.json> [--json] [--rings N] [--spokes M] [--gpu [--device N] [--precision fp64|df64]]
 mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet] [--max-iterations N]
                    [--rings N] [--spokes M] [--runs K [--perturbation s] [--seed n]] [--gpu [--device N]]
+mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex] [--json]
+               [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]] [--gpu [--device N]]
 ```
 
 | Aufruf | Wirkung |
@@ -13,6 +15,7 @@ mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet] [--max-
 | `mikroptim --devices` | CUDA-Geräte auflisten (nur mit `MIKROPTIM_ENABLE_CUDA=ON`) |
 | `mikroptim trace …` | System auswerten (M1-T8, mit `--gpu` M2-T5; [Abschnitt `trace`](#mikroptim-trace)) |
 | `mikroptim optimize …` | Variablen eines Systems optimieren, Ergebnis als neue Systemdatei (M3-T5; [Abschnitt `optimize`](#mikroptim-optimize)) |
+| `mikroptim eval …` | Auswertung auf dem dichten Pupillenraster (Modus EVAL, M8-T1; Abschnitt [`mikroptim eval`](#mikroptim-eval)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
 
@@ -740,3 +743,53 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
 ctest-Kommandos mit dem gebauten Programm: `cli_optimize_text` (schreibt `einzellinse_bk7_biegung_opt.json` ins Build-Verzeichnis), danach `cli_optimize_result_trace` (`mikroptim trace` auf dieser Ergebnisdatei, f′ = 100,0000 mm) und `cli_optimize_no_variables`; im CPU-Build `cli_optimize_gpu_unavailable` (Exit-Code 3), im CUDA-Build `cli_optimize_gpu_json` (übersprungen ohne Gerät) und `cli_optimize_gpu_no_device`.
 
 Implementierung: `src/cli/optimize_command.cpp` (interner Header `src/cli/optimize_command.hpp`, Bibliothek `mikroptim_cli`, gelinkt gegen `mikroptim_optim`, im CUDA-Build `mikroptim_cuda`); Exit-Codes, Zahlen aus Argumenten und Textformatierung teilen sich `trace` und `optimize` in `src/cli/cli_util.hpp`.
+
+## `mikroptim eval`
+
+Wertet ein System im Modus EVAL aus (M8-T1): dichtes kartesisches N×N-Raster über die Pupille, Referenzsphäre standardmäßig durch die paraxiale Austrittspupille, jedes Versagen hart; Definitionen: [numerik.md, „Auswertung auf dem Raster“](numerik.md#auswertung-auf-dem-raster-m8-t1), Bausteine: [architektur.md, „Modus EVAL“](architektur.md#modus-eval-m8-t1). Das System wird als Batch mit einer Variante aufgebaut (`make_system_batch`, ideale Bildhöhen h_f = f_soll tan θ_f wie bei `trace`; afokal ohne `target.focal_length`: h_f = 0, Verzeichnung nicht definiert), dann `eval_cpu` bzw. mit `--gpu` `TraceEngine::evaluate`, Kennzahlen mit `eval_statistics`. Gerechnet wird immer in FP64.
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `<system.json>` | Systemdatei | – |
+| `--grid N` | Raster N×N über das Quadrat der normierten Pupille, 1 ≤ N ≤ 2048 | 64 |
+| `--half` | nur die Hälfte x ≥ 0 rechnen (Symmetrie x → −x; nicht bei einer Punktquelle mit x ≠ 0) | aus |
+| `--reference R` | Referenzsphäre durch die Austrittspupille (`exit-pupil`) oder durch den Scheitel der letzten Fläche (`vertex`, wie `trace`) | `exit-pupil` |
+| `--json` | maschinenlesbare Ausgabe `mikroptim.eval/1` | aus |
+| `--map F,L` | OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben; verlangt `--map-file` | – |
+| `--map-file D` | Zieldatei der Karte (CSV) | – |
+| `--remove X` | vor der Karte abziehen: `piston`, `tilt` (Kolben und Kippung) oder `defocus` (Kolben, Kippung, Defokus) | `piston` |
+| `--gpu`, `--device N` | auf der GPU rechnen (Kernel EVAL), wie bei `trace` | aus, 0 |
+| `--help`, `-h` | Hilfe | – |
+
+Exit-Codes wie `mikroptim trace` (0 Erfolg, 1 Fehler beim Laden, Auswerten oder Schreiben der Karte, 2 ungültige Kommandozeile, 3 GPU-Backend nicht verfügbar).
+
+**Textausgabe:** Kopf (Raster, Lage der Referenzsphäre, Backend), dann pro Feld und Wellenlänge eine Zeile: versagte Strahlen, RMS-OPD und RMS nach Abzug der Kippung in Wellen bei λ_ref, Strehl nach Maréchal exp(−(2π σ/λ)²) mit dem RMS σ bei der Wellenlänge des Tupels (grobe Angabe für kleine Fehler; PSF und Strehl über die FFT folgen in M8-T2), RMS-Spotradius und Schwerpunkt ȳ relativ zum idealen Bildpunkt [mm], Verzeichnung des Hauptstrahls [%], Brennlinien z_t, z_s relativ zur Bildebene [mm]. Beispiel (`mikroptim eval data/systems/einzellinse_bk7.json --grid 128`):
+
+```
+System: Einzellinse N-BK7
+  Datei: data/systems/einzellinse_bk7.json
+  Raster: 128 x 128, 12892 Punkte in der Pupille
+  Referenzsphäre: durch die Austrittspupille (z = -9.515815 mm ab letzter Fläche)
+  Backend: CPU, FP64
+  OPD in Wellen bei 587.560 nm, Strehl nach Maréchal bei der Wellenlänge des Tupels, Längen in mm
+
+  Feld  Winkel   λ [nm] versagt    RMS-OPD ohne Kipp.  Strehl    RMS-Spot   Schwerp. y  Verz. [%]         z_t         z_s
+     0   0.000   486.13       0    4.52913    4.52913  0.0000   1.535e-01   2.2768e-18          - -1.0624e+00 -1.0624e+00
+     0   0.000   587.56       0    1.94831    1.94831  0.0000   7.874e-02  -1.8364e-18          -  2.0868e-03  2.0868e-03
+     0   0.000   656.27       0    0.87331    0.87331  0.0000   4.783e-02   8.1485e-19          -  4.8247e-01  4.8247e-01
+     1   1.000   486.13       0    4.63046    4.61519  0.0000   1.562e-01   7.8784e-03   -0.08631 -1.1084e+00 -1.0844e+00
+     1   1.000   587.56       0    2.09618    2.03658  0.0000   8.145e-02   9.1372e-03   -0.00553 -4.4518e-02 -2.0281e-02
+     1   1.000   656.27       0    1.10662    0.96035  0.0000   5.050e-02   9.6982e-03    0.03044  4.3559e-01  4.5997e-01
+     2   2.000   486.13       0    4.92728    4.87474  0.0000   1.642e-01   1.5401e-02   -0.09721 -1.2463e+00 -1.1506e+00
+     2   2.000   587.56       0    2.49476    2.30317  0.0000   8.956e-02   1.7922e-02   -0.01634 -1.8420e-01 -8.7355e-02
+     2   2.000   656.27       0    1.62438    1.22574  0.0000   5.850e-02   1.9045e-02    0.01966  2.9511e-01  3.9249e-01
+  Versagte Strahlen: 0 von 116028
+```
+
+Die Einzellinse ist bei voller Öffnung (a = 10 mm) weit von der Beugungsgrenze entfernt (RMS 1,9 Wellen, Strehl ≈ 0); der Farblängsfehler zeigt sich in den Brennlinien des Achsfeldes (−1,06 mm bei 486 nm, +0,48 mm bei 656 nm), die Feldkrümmung in z_t, z_s der Feldpunkte.
+
+**JSON** (`mikroptim.eval/1`): `format`, `mikroptim_version`, `system`, `file`, `reference_nm`, `backend`, `device`, `grid`, `half_pupil`, `grid_points` (Rasterpunkte n in der Pupille), `reference_sphere` (`"exit-pupil"`/`"vertex"`), `exit_pupil_position` (z_AP ab letzter Fläche, `null` bei `vertex` oder Austrittspupille im Unendlichen), `tuples` (pro Feld und Wellenlänge in der Reihenfolge f, l: `field`, `field_angle_deg`, `wavelength`, `wavelength_nm`, `image_height_mm`, `rays`, `failed_rays`, `rms_opd_mm`, `rms_opd_waves`, `pv_opd_waves`, `rms_opd_tilt_waves`, `rms_opd_defocus_waves`, `strehl_marechal`, `tilt_mm` [t_x, t_y], `defocus_mm` (ρ²-Koeffizient), `centroid_mm` [x̄, ȳ], `rms_spot_mm`, `chief_ray_mm` [x, y], `distortion_chief_percent`, `distortion_centroid_percent`, `focus_tangential_mm`, `focus_sagittal_mm`, `astigmatism_mm`), `rays`, `failed_rays`, `warnings`. Wellen immer bei λ_ref; nicht endliche Werte (z. B. die Verzeichnung auf der Achse) sind `null`.
+
+**OPD-Karte** (`--map F,L --map-file D`): CSV mit N Zeilen zu je N Werten, OPD in Wellen bei λ_ref nach dem gewählten Abzug, verlustfrei mit 17 Stellen; erste Zeile = größtes y (wie ein Bild der Pupille, x nach rechts), leere Felder außerhalb der Pupille und bei versagten Strahlen; bei `--half` gespiegelt (`eval_opd_map`).
+
+**Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).
