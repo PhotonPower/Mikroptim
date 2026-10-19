@@ -131,7 +131,9 @@ Ziel: Dieselben Ergebnisse wie die CPU, für viele Varianten gleichzeitig.
 
 ---
 
-## M3 – Batch-Varianten, finite-Differenzen-Jacobi, gebündelter LM
+## M3 – Batch-Varianten, finite-Differenzen-Jacobi, gebündelter LM ✅
+
+Umgesetzt mit den PRs #18, #20, #22, #26, #29 (Oktober 2026); JᵀJ mit eigenem Kernel statt cuBLAS (ADR-0010, vorgeschlagen).
 
 Ziel: Erste Ende-zu-Ende-Optimierung.
 
@@ -165,7 +167,9 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 
 ---
 
-## M4 – Vollständige Merit und Geisterplatten
+## M4 – Vollständige Merit und Geisterplatten ✅
+
+Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 
 ### M4-T1 – Gewichtete Wellenfrontresiduen
 - **Abhängig von:** M3-T4
@@ -223,7 +227,7 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 
 ## M6 – Systemsynthese
 
-### M6-T1 – Kontinuierliches Glas als Variable
+### M6-T1 – Kontinuierliches Glas als Variable ✅ (#36)
 - **Abhängig von:** M1-T3, M3-T4
 - **Inhalt:** (n₀, ν₁, ν₂) als Variablen, konvexe Hülle der Katalog-Gläser (normierte Koordinaten), Strafterm außerhalb.
 - **Abnahme:** Hüllentests; Optimierung bleibt innerhalb der Hülle.
@@ -243,7 +247,7 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 - **Inhalt:** Strahlsuche über Zweige (Sattelpunkt-Abstiege, Einfügungen), gemeinsame Batches pro Topologie.
 - **Abnahme:** Läufe sind mit festem Seed reproduzierbar; Protokoll zeigt den Stammbaum der Kandidaten.
 
-### M6-T5 – Glas-Einrasten
+### M6-T5 – Glas-Einrasten ✅ (#38)
 - **Abhängig von:** M6-T1
 - **Abnahme:** Nach dem Einrasten nur Katalog-Gläser; Merit-Verschlechterung wird berichtet.
 
@@ -256,15 +260,15 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 
 ## M7 – Performance
 
-### M7-T1 – Zahlentyp df64
+### M7-T1 – Zahlentyp df64 ✅ (#23)
 - **Abhängig von:** M2-T3
 - **Abnahme:** |df64 − FP64| ≤ `kDf64VsFp64` für alle Tests der Testsuite; Durchsatz auf der RTX 3090 gemessen.
 
-### M7-T2 – FP32-Vorfilterung
+### M7-T2 – FP32-Vorfilterung ✅ (#25)
 - **Inhalt:** schneller Pfad zum Aussortieren von Varianten mit massivem Strahlversagen oder schlechter Merit im Multistart.
 - **Abnahme:** keine falsch aussortierten Varianten in einem Testsatz (Vergleich mit FP64).
 
-### M7-T3 – Mehrere GPUs
+### M7-T3 – Mehrere GPUs ✅ (#30, nur mit einer GPU getestet)
 - **Abhängig von:** M2-T4
 - **Abnahme:** Ergebnisse pro Variante bitgleich zum Einzel-GPU-Lauf; Verteilung nach gemessenem Durchsatz.
 
@@ -276,11 +280,11 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 
 ## M8 – Auswertung und Tolerierung
 
-### M8-T1 – Modus `EVAL`
+### M8-T1 – Modus `EVAL` ✅ (#32)
 - **Abhängig von:** M4-T1
 - **Inhalt:** dichtes kartesisches Pupillenraster, OPD-Karten, Spotdiagramme, Feldkrümmung, Verzeichnung.
 
-### M8-T2 – PSF, MTF, Strehl
+### M8-T2 – PSF, MTF, Strehl ✅ (#34)
 - **Abhängig von:** M8-T1
 - **Inhalt:** skalare Beugung über cuFFT. Hinweis: Bei NA 0,95 ist die skalare Näherung ungenau; ein vektorielles Modell (Richards-Wolf) ist als M8-T5 vorgesehen.
 - **Abnahme:** Perfektes System bei kleiner NA: erste Nullstelle der PSF bei 0,61·λ/NA (< 1 %); Strehl gegen Maréchal-Näherung bei kleinen Aberrationen.
@@ -293,7 +297,7 @@ Ziel: Erste Ende-zu-Ende-Optimierung.
 - **Inhalt:** Toleranzsatz (Radien, Dicken, Brechzahlen, Dezentrierung, Verkippung), Stichproben als Varianten im Batch, Kompensatoren (z. B. Arbeitsabstand).
 - **Abnahme:** Verteilung von Strehl und RMS-Wellenfront über 10.000 Stichproben; Ergebnis reproduzierbar mit festem Seed.
 
-### M8-T5 – Vektorielle PSF (optional)
+### M8-T5 – Vektorielle PSF (optional) ✅ (#37)
 - **Inhalt:** Richards-Wolf für hohe NA.
 - **Abnahme (in der Umsetzung festgelegt):** kleine NA → skalare PSF mit Abweichung zweiter Ordnung in der NA; NA 0,95 aberrationsfrei gegen unabhängige Quadratur des Richards-Wolf-Integrals (Intensität und Komponenten, Halbwertsbreiten in x und y relativ < 10⁻³) und gegen die geschlossene Form der Energieanteile; Energieerhaltung, Symmetrien (Spiegelung, Drehung der Polarisation), GPU = CPU, Determinismus; Strehl bei kleinen Aberrationen gegen Maréchal (docs/numerik.md, „Vektorielle PSF“).
 
