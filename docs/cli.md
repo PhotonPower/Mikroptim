@@ -1251,4 +1251,119 @@ Mit `--gpu` (RTX 3090) dieselben Entscheidungen, RMS am Ende 0,01566 Wellen, 35 
 
 Nicht endliche Zahlen stehen als `null`; `seconds` ist der einzige nicht deterministische Wert.
 
-**Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`). Implementierung: `src/cli/synth_command.cpp`.
+### Strahlsuche (`--beam`, ab M6-T4)
+
+Mit `--beam B` läuft statt des einzweigigen Controllers die Strahlsuche ([optimierung.md, Abschnitt 8](optimierung.md#festlegungen-der-implementierung-m6-t4)): bis zu B Kandidaten im Gleichschritt am selben Homotopie-Punkt, Kandidaten gleicher Topologie in einem gemeinsamen LM-Aufruf; beim Einfügen entstehen Kinder (Varianten × Sattelzweige × gestörte Starts), behalten werden die besten B nach Rang (annehmbar, weniger Elemente, kleineres F), Duplikate fallen heraus. `--beam 1` trifft dieselben Entscheidungen wie der Lauf ohne `--beam`. Die übrigen Optionen gelten wie oben; `--max-steps` zählt die Optimierungen aller Kandidaten.
+
+| Option | Bedeutung |
+|---|---|
+| `--beam B` | Breite des Strahls (≥ 1) |
+| `--alternatives K` | Varianten pro Einfügen aus der Diagnose: Empfehlung, weitere Lagen, andere Gläser (Standard 1) |
+| `--starts N` | gestörte Starts pro Sattelzweig (Krümmungen der neuen Flächen ± S, Standard 0) |
+| `--start-perturbation S` | Störung S [1/mm] (Standard 0,01) |
+| `--seed N` | Startwert der Zufallszahlen der gestörten Starts (Standard 0); gleiche Eingabe und gleicher Startwert ergeben dasselbe Protokoll |
+| `--prefilter` | FP32-Vorfilter der Starts eines Einfügens (CPU `prefilter_cpu`, mit `--gpu` auf dem Gerät) |
+| `--dedup T` | Duplikat bei größter relativer Variablenabweichung ≤ T (Standard 10⁻⁴; negativ: aus) |
+| `--dot DATEI` | Stammbaum als Graphviz-DOT (`dot -Tsvg DATEI -o stammbaum.svg`) |
+
+Diese Optionen ohne `--beam` sind ein Fehler der Kommandozeile (Exit-Code 2).
+
+**Textausgabe.** Kopf mit der Zeile `Strahlsuche`, Schrittprotokoll mit zwei Spalten vorweg: Kandidat (`#n`) und Nummer des gemeinsamen LM-Aufrufs (`Gr`; gleiche Nummer = derselbe Aufruf, `-` ohne Optimierung). Am Ende Status, Kennzahlen der Strahlsuche (Kandidaten, Einfügungen, Optimierungen in Aufrufen), Ergebnis-Kandidat und Strahl, Endpunkt, RMS des realen Systems und der **Stammbaum**: ein Kandidat pro Zeile, eingerückt unter seinem Elternkandidaten, mit Herkunft (Operator, Variante, Zweig, Start), Punkt der Entstehung, letzter Merit F und F_B mit ihrem Punkt, Elementzahl, Zahl der Optimierungen und Status (`behalten`, `fertig`, `verworfen`, `expandiert`) mit Grund.
+
+**Beispiel** (Kurzlauf wie im Test, B = 2, ein gestörter Start pro Zweig, Vorfilter, Startwert 7; CPU, Release):
+
+```
+$ mikroptim synth data/systems/einzellinse_homotopie_start.json --target-na 0.31 --merit-factor 10 --max-elements 2 --max-iterations 40 --element-stages 2 --beam 2 --starts 1 --prefilter --seed 7 --dot stammbaum.dot
+mikroptim synth 0.1.0: data/systems/einzellinse_homotopie_start.json
+  System                                      Einzellinse NA 0,3 mit Geisterplatten, Start der Homotopie
+  Start                                       NA 0.3000, Feldanteil 1.000, 1 Glaselement(e)
+  Ziel                                        NA 0.3100, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-01
+  Backend                                     CPU
+  Strahlsuche                                 B = 2, Seed 7, Varianten 1, gestörte Starts 1, Vorfilter
+
+Kand  Gr    Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+  #0     0        0  penalty          0.3000  1.000   0  -        converged_merit       22  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×0.01
+  #0     1        1  penalty          0.3000  1.000   0  -        converged_merit        0  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×0.1
+  #0     2        2  penalty          0.3000  1.000   0  -        converged_merit        0  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×1
+  #0     3        3  aperture         0.3100  1.000   0  0.02000  converged_merit       27  1.262922e-01  1.262881e-01  0.05772   2.613e-03   1  grow (Delta 0.04000)
+  #0     4        4  smoothing        0.3100  1.000   0  -        max_iterations        40  1.264322e-01  1.264281e-01  0.05902   2.606e-03   1  ok: ε ×0.1
+  #0     -        5  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             1  -: Ziel verfehlt: größter RMS 1.65734 Wellen (Ziel 0.07143)
+  #0     5        6  ghost_weight     0.3100  1.000   0  -        converged_merit       15  1.139859e+00  1.139485e+00  0.34368   2.165e-03   1  ok: μ ×10
+  #0     -        7  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             1  -: Ziel verfehlt: größter RMS 1.67530 Wellen (Ziel 0.07143)
+  #0     6        8  ghost_weight     0.3100  1.000   0  -        converged_merit       14  3.124067e+00  3.115783e+00  1.76509   3.832e-07   1  ok: μ ×100
+  #0     -        9  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             1  -: Ziel verfehlt: größter RMS 1.76519 Wellen (Ziel 0.07143)
+  #0     -       10  insertion        0.3100  1.000   0  -        -                      -  -             -             -         -             1  ok: Operator A: Meniskus nach Fläche 0 bei 1 mm, c0 = 0.124016/mm, Glas buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138) (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+  #1     7       11  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.702664e-01  1.701149e-01  0.08005   3.475e-03   2  ok, Zweig 0, Stufe 0.25
+  #2     7       12  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.867512e-01  1.864512e-01  0.06943   3.855e-03   2  ok, Zweig 0, Stufe 0.25
+  #3     7       13  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.849765e-01  1.814322e-01  0.10296   3.626e-03   2  ok, Zweig 1, Stufe 0.25
+  #4     7       14  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.234804e-01  1.088021e-01  0.07241   2.201e-03   2  ok, Zweig 1, Stufe 0.25
+  #1     8       15  insertion_stage  0.3100  1.000   0  -        max_iterations        40  2.447021e-02  2.447005e-02  0.05528   4.592e-04   2  ok, Zweig 0, Stufe 0.5
+  #2     8       16  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.330009e-02  1.330009e-02  0.06637   1.938e-04   2  ok, Zweig 0, Stufe 0.5
+  #3     8       17  insertion_stage  0.3100  1.000   0  -        max_iterations        40  2.444814e-02  2.444799e-02  0.05538   4.585e-04   2  ok, Zweig 1, Stufe 0.5
+  #4     8       18  insertion_stage  0.3100  1.000   0  -        max_iterations        40  1.249154e-02  1.249142e-02  0.06554   1.789e-04   2  ok, Zweig 1, Stufe 0.5
+  #4     9       19  penalty          0.3100  1.000   0  -        max_iterations        40  1.243282e-02  1.243264e-02  0.06573   1.770e-04   2  ok: Kandidat #4 (Operator A, Zweig 1, Start 1) übernommen; Gewichte der einseitigen Bedingungen ×0.01
+  #2     9       20  penalty          0.3100  1.000   0  -        max_iterations        40  1.243282e-02  1.243264e-02  0.06573   1.770e-04   2  ok: Kandidat #2 (Operator A, Zweig 0, Start 1) übernommen; Gewichte der einseitigen Bedingungen ×0.01
+  #4    10       21  penalty          0.3100  1.000   0  -        max_iterations        40  1.243282e-02  1.243263e-02  0.06573   1.770e-04   2  ok: Gewichte der einseitigen Bedingungen ×0.1
+  #2    10       22  penalty          0.3100  1.000   0  -        max_iterations        40  1.243282e-02  1.243263e-02  0.06573   1.770e-04   2  ok: Gewichte der einseitigen Bedingungen ×0.1
+  #4    11       23  penalty          0.3100  1.000   0  -        converged_merit       13  1.243282e-02  1.243263e-02  0.06573   1.770e-04   2  ok: Gewichte der einseitigen Bedingungen ×1
+  #2    11       24  penalty          0.3100  1.000   0  -        converged_step        37  1.243282e-02  1.243263e-02  0.06573   1.770e-04   2  ok: Gewichte der einseitigen Bedingungen ×1
+  #2    12       25  smoothing        0.3100  1.000   0  -        max_iterations        40  1.254910e-02  1.254893e-02  0.06587   1.745e-04   2  ok: ε ×0.1
+  #2     -       26  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             2  -: Ziel verfehlt: größter RMS 0.13790 Wellen (Ziel 0.07143)
+  #2    13       27  ghost_weight     0.3100  1.000   0  -        max_iterations        40  1.272578e-02  1.272523e-02  0.11279   1.033e-07   2  ok: μ ×10
+  #2     -       28  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             2  -: Ziel verfehlt: größter RMS 0.11282 Wellen (Ziel 0.07143)
+  #2    14       29  ghost_weight     0.3100  1.000   0  -        max_iterations        40  9.259787e-03  9.259518e-03  0.09623   6.455e-09   2  ok: μ ×100
+  #2     -       30  goal             0.3100  1.000   0  -        -                      -  -             -             -         -             2  -: Ziel verfehlt: größter RMS 0.09623 Wellen (Ziel 0.07143)
+
+Status: max_elements (Ziel am Endpunkt verfehlt (größter RMS 0.09623 Wellen); Bedarf (Operator A), aber höchste Elementzahl 2 erreicht)
+Strahlsuche: B = 2, Seed 7, 5 Kandidaten, 1 Einfügungen, 24 Optimierungen in 15 Aufrufen
+Ergebnis: Kandidat #2, Strahl am Ende: #2
+Endpunkt: NA 0.3100, Feldanteil 1.000, Spektrumstufe 0, mu x100, eps x0.1 (Ziel NA 0.3100)
+Glaselemente: 1 -> 2, F_max = 5.102041e-01 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.09623 Wellen, versagt 0
+
+Stammbaum (Kandidat, Herkunft @ Punkt der Entstehung: letzte Merit @ Punkt, Elemente, Optimierungen [Status]):
+#0 start @ NA 0.3000, Feld 1.000, Sp 0: F 3.1241e+00, F_B 3.1158e+00 @ NA 0.3100, Feld 1.000, Sp 0, El 1, 7 Opt. [expandiert: 4 Kinder]
+|-- #1 Operator A, Zweig 0 @ NA 0.3100, Feld 1.000, Sp 0: F 2.4470e-02, F_B 2.4470e-02 @ NA 0.3100, Feld 1.000, Sp 0, El 2, 2 Opt. [verworfen: Rang hinter den besten 2]
+|-- #2 Operator A, Zweig 0, Start 1 @ NA 0.3100, Feld 1.000, Sp 0: F 9.2598e-03, F_B 9.2595e-03 @ NA 0.3100, Feld 1.000, Sp 0, El 2, 8 Opt. [behalten: Ziel am Endpunkt verfehlt (größter RMS 0.09623 Wellen); Bedarf (Operator A), aber höchste Elementzahl 2 erreicht; Ergebnis]
+|-- #3 Operator A, Zweig 1 @ NA 0.3100, Feld 1.000, Sp 0: F 2.4448e-02, F_B 2.4448e-02 @ NA 0.3100, Feld 1.000, Sp 0, El 2, 2 Opt. [verworfen: Rang hinter den besten 2]
+`-- #4 Operator A, Zweig 1, Start 1 @ NA 0.3100, Feld 1.000, Sp 0: F 1.2433e-02, F_B 1.2433e-02 @ NA 0.3100, Feld 1.000, Sp 0, El 2, 5 Opt. [verworfen: Duplikat von #2 (Abstand 1.67e-05)]
+
+  Laufzeit [s]                                1.0
+Stammbaum geschrieben: stammbaum.dot
+```
+
+Die vier Kinder des Einfügens (zwei Sattelzweige mit je einem gestörten Start) laufen in jeder Stufe der inneren Homotopie in **einem** LM-Aufruf (Gruppe 7, dann 8); die gestörten Starts #2 und #4 finden ein besseres Minimum als die Sattelzweige (F 1,2·10⁻² gegen 2,4·10⁻²) und werden behalten, nach der Penalty-Fortsetzung liegen beide im selben Minimum, #4 fällt als Duplikat heraus. Ohne gestörte Starts endet derselbe Kurzlauf mit RMS 0,227 Wellen. Die DOT-Datei:
+
+```
+digraph stammbaum {
+  rankdir=TB;
+  node [shape=box, fontname="Helvetica"];
+  n0 [label="#0 start\nNA 0.3000, Feld 1.000, Sp 0\nEl 1, F 3.124e+00\nexpandiert", style=filled, fillcolor=lightblue];
+  n1 [label="#1 Operator A, Zweig 0\nNA 0.3100, Feld 1.000, Sp 0\nEl 2, F 2.447e-02\nverworfen", style=filled, fillcolor=lightgray];
+  n2 [label="#2 Operator A, Zweig 0, Start 1\nNA 0.3100, Feld 1.000, Sp 0\nEl 2, F 9.260e-03\nbehalten", style=filled, fillcolor=khaki, penwidth=3];
+  n3 [label="#3 Operator A, Zweig 1\nNA 0.3100, Feld 1.000, Sp 0\nEl 2, F 2.445e-02\nverworfen", style=filled, fillcolor=lightgray];
+  n4 [label="#4 Operator A, Zweig 1, Start 1\nNA 0.3100, Feld 1.000, Sp 0\nEl 2, F 1.243e-02\nverworfen", style=filled, fillcolor=lightgray];
+  n0 -> n1;
+  n0 -> n2;
+  n0 -> n3;
+  n0 -> n4;
+}
+```
+
+Stammbaum des längeren Laufs NA 0,3 → 0,6 mit `--beam 2 --alternatives 2 --curvature-bound 1` (Startsystem der Abnahme von M6-T3; Ergebnis mit drei statt vier Elementen, Einordnung in [optimierung.md, Abschnitt 8](optimierung.md#festlegungen-der-implementierung-m6-t4)):
+
+```
+#0 start @ NA 0.3000, Feld 1.000, Sp 0: F 1.0966e-01, F_B 1.0966e-01 @ NA 0.3000, Feld 1.000, Sp 0, El 1, 3 Opt. [expandiert: 2 Kinder]
+|-- #1 Operator A, Zweig 0 @ NA 0.3000, Feld 1.000, Sp 0: F 2.0951e-02, F_B 2.0951e-02 @ NA 0.3000, Feld 1.000, Sp 0, El 2, 5 Opt. [verworfen: Duplikat von #2 (Abstand 1.27e-05)]
+`-- #2 Operator A, Zweig 1 @ NA 0.3000, Feld 1.000, Sp 0: F 1.8945e-02, F_B 1.8945e-02 @ NA 0.3000, Feld 1.000, Sp 0, El 2, 8 Opt. [expandiert: 4 Kinder]
+    |-- #3 Operator A, Variante 0, Zweig 0 @ NA 0.3000, Feld 1.000, Sp 0: F 3.0013e-04, F_B 2.7513e-04 @ NA 0.3000, Feld 1.000, Sp 0, El 3, 5 Opt. [verworfen: Rang hinter den besten 2]
+    |-- #4 Operator A, Variante 0, Zweig 1 @ NA 0.3000, Feld 1.000, Sp 0: F 1.9415e-02, F_B 1.9390e-02 @ NA 0.3000, Feld 1.000, Sp 0, El 3, 5 Opt. [verworfen: Rang hinter den besten 2]
+    |-- #5 Operator A, Variante 1, Zweig 0 @ NA 0.3000, Feld 1.000, Sp 0: F 1.4047e-03, F_B 1.4045e-03 @ NA 0.6000, Feld 1.000, Sp 0, El 3, 24 Opt. [fertig: Ziel erreicht]
+    `-- #6 Operator A, Variante 1, Zweig 1 @ NA 0.3000, Feld 1.000, Sp 0: F 1.3520e-03, F_B 1.3518e-03 @ NA 0.6000, Feld 1.000, Sp 0, El 3, 24 Opt. [fertig: Ziel erreicht; Ergebnis]
+```
+
+**JSON** (`--json`, `--log`): Format `mikroptim.synth/1`, kompatibel erweitert. `options.beam` (`width`, `seed`, `alternatives`, `perturbed_starts`, `start_perturbation`, `prefilter`, `dedup_tolerance`); `result` wie oben und zusätzlich `beam_search` mit `beam_width`, `seed`, `best` (Kandidat des Ergebnisses), `beam` (Kandidaten am Ende nach Rang), `groups` (LM-Aufrufe) und `candidates` (Stammbaum): pro Kandidat `id`, `parent` (`null` bei der Wurzel), `children`, `operation`, `operator`, `option`, `branch`, `start`, `created` (Punkt), `created_step`, `point`, `merit`, `evaluation` (F_B), `rms_waves`, `failed_rays`, `acceptable`, `elements`, `solves`, `goal`, `status` (`kept`, `finished`, `discarded`, `expanded`), `reason`, `final_step`. Jeder Schritt hat zusätzlich `candidate` und `group` (`null` ohne Optimierung). Ohne die Laufzeiten (`seconds`) ist die Ausgabe zweier Läufe mit gleicher Eingabe und gleichem Startwert bitgleich.
+
+**Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`; Strahlsuche: Optionen nur mit `--beam`, Kurzlauf mit JSON, Stammbaum, Protokoll- und DOT-Datei, Textausgabe mit Baum). Implementierung: `src/cli/synth_command.cpp`.

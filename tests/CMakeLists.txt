@@ -15,6 +15,8 @@ add_executable(mikroptim_tests
     test_batch_memory.cpp
     test_batch_merit.cpp
     test_batch_residuals.cpp
+    test_beam_search.cpp
+    test_beam_search_optimization.cpp
     test_buchdahl_fit.cpp
     test_cli_eval.cpp
     test_cli_insert.cpp
@@ -76,6 +78,7 @@ if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_adjoint.cpp
         test_cuda_adjoint_jacobian.cpp
+        test_cuda_beam_search.cpp
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
         test_cuda_eval.cpp

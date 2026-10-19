@@ -7,12 +7,15 @@
 // wendet die Einfüge-Operatoren A (Meniskus, innere Homotopie über seine Dicke, zwei Starts am
 // Sattelpunkt) und B (Kittglied mit freiem Glas) an und prüft das Ziel am realen System.
 
+#include "mikroptim/batch/batch_prefilter.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/optim/insertion.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -22,6 +25,22 @@ namespace mko {
 using HomotopyOptimizer =
     std::function<LmResult(const VariableSet& set, const SystemBatchHost& base,
                            std::span<const double> x0, const LmOptions& options)>;
+
+// FP32-Vorfilter der Strahlsuche (M7-T2): Grobbewertung aller Varianten von `batch` mit der
+// Quadratur `quadrature`, den Kriterien `options` und den Zusatzresiduen `extra_merit` (FP64,
+// eine Zahl pro Variante). Standard prefilter_cpu; GPU z. B. TraceEngine::prefilter_variants.
+using HomotopyPrefilterFn = std::function<PrefilterResult(
+    const SystemBatchHost& batch, const ResidualSettings& quadrature,
+    const PrefilterOptions& options, std::span<const double> extra_merit)>;
+
+// Kriterien des Vorfilters der Strahlsuche: mehr als die Hälfte der Strahlen versagt oder Merit
+// mehr als das Zehnfache der besten Variante desselben Einfügens.
+inline PrefilterOptions homotopy_prefilter_defaults() {
+    PrefilterOptions o;
+    o.criteria.max_failed_fraction = 0.5;
+    o.criteria.max_merit_factor = 10.0;
+    return o;
+}
 
 struct OpticalHomotopyOptions {
     // LM-Einstellungen jedes Schritts: Zyklen, Quadratur und Strahlversagen
@@ -66,6 +85,16 @@ struct OpticalHomotopyOptions {
     // die neuen Flächen (sonst bleiben sie bei den alten Flächen, renumber_surfaces).
     bool constrain_new_elements = true;
     GhostDiagnosisOptions diagnosis{};
+
+    // Strahlsuche (M6-T4, docs/optimierung.md, Abschnitt 8)
+    // Kandidaten gleicher Topologie gemeinsam in einem LM-Aufruf (solve_all); false: jeder
+    // Kandidat einzeln (gleiche Ergebnisse, nur zum Vergleich).
+    bool group_runs = true;
+    // Gestörte Starts: Krümmungen der neuen Flächen ± start_perturbation [1/mm] (gleichverteilt).
+    double start_perturbation = 0.01;
+    // Vorfilter der Starts eines Einfügens (leer: prefilter_cpu).
+    PrefilterOptions prefilter = homotopy_prefilter_defaults();
+    HomotopyPrefilterFn prefilter_fn;
 };
 
 class OpticalHomotopyModel final : public HomotopyModel {
@@ -102,6 +131,23 @@ public:
                       double target) override;
     int elements(const SystemDescription& system) const override;
     bool one_sided_constraints(const SystemDescription& system) const override;
+
+    // Strahlsuche (M6-T4): Gruppen gleicher Topologie, Varianten aus der Diagnose, Abstand,
+    // gestörte Starts, FP32-Vorfilter.
+    std::vector<HomotopySolve> solve_all(std::span<SystemDescription* const> systems,
+                                         const HomotopyPoint& point,
+                                         std::vector<int>* groups = nullptr) override;
+    std::vector<HomotopyNeed> insertion_options(const SystemDescription& system,
+                                                const HomotopyPoint& point,
+                                                const HomotopyNeed& need, int max) override;
+    double distance(const SystemDescription& a, const SystemDescription& b,
+                    const HomotopyPoint& point) override;
+    std::vector<SystemDescription> perturbed_starts(const SystemDescription& start,
+                                                    const HomotopyInsertion& insertion,
+                                                    const HomotopyPoint& point, int count,
+                                                    std::uint64_t seed) override;
+    std::vector<bool> prefilter(std::span<const SystemDescription* const> starts,
+                                const HomotopyPoint& point) override;
 
 private:
     LoadedSystem like_; // Kataloge

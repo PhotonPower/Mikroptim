@@ -177,6 +177,7 @@ target_link_libraries(mikroptim_optim
 # Einfüge-Operatoren (M6-T3); GPU über einen austauschbaren Optimierer (ohne CUDA-Abhängigkeit)
 # --------------------------------------------------------------------------
 add_library(mikroptim_synth STATIC
+    src/synth/beam_search.cpp
     src/synth/homotopy.cpp
     src/synth/optical_homotopy.cpp)
 add_library(Mikroptim::synth ALIAS mikroptim_synth)

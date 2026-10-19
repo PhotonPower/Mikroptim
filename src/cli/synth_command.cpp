@@ -1,10 +1,12 @@
 // Unterbefehl `mikroptim synth` (M6-T3): Startdatei laden, Homotopie-Controller mit dem
 // optischen Modell (CPU oder --gpu über optimize_lm_gpu), Protokoll als Text oder JSON, optional
-// als Datei, Ergebnis als Systemdatei. Formate: docs/cli.md.
+// als Datei, Ergebnis als Systemdatei. Mit --beam B die Strahlsuche (M6-T4) mit Stammbaum der
+// Kandidaten (Text, JSON, optional Graphviz-DOT). Formate: docs/cli.md.
 
 #include "cli/synth_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/synth/beam_search.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 #include "mikroptim/version.hpp"
@@ -19,9 +21,11 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -59,6 +63,15 @@ struct SynthArgs {
     int spokes = 8;
     HomotopyStepControl step{};
     OpticalHomotopyOptions optical{};
+    // Strahlsuche (M6-T4)
+    std::optional<int> beam;
+    std::optional<std::uint64_t> seed;
+    std::optional<int> alternatives;
+    std::optional<int> starts;
+    std::optional<double> start_perturbation;
+    bool prefilter = false;
+    std::optional<double> dedup;
+    std::string dot;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -161,6 +174,31 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             const double c = positive(arg, next_value(args, i, arg));
             a.optical.meniscus.curvature_variables.min = -c;
             a.optical.meniscus.curvature_variables.max = c;
+        } else if (arg == "--beam") {
+            a.beam = parse_int(arg, next_value(args, i, arg));
+            if (*a.beam < 1) {
+                throw UsageError("--beam muss >= 1 sein");
+            }
+        } else if (arg == "--seed") {
+            a.seed = parse_uint64(arg, next_value(args, i, arg));
+        } else if (arg == "--alternatives") {
+            a.alternatives = parse_int(arg, next_value(args, i, arg));
+            if (*a.alternatives < 1) {
+                throw UsageError("--alternatives muss >= 1 sein");
+            }
+        } else if (arg == "--starts") {
+            a.starts = parse_int(arg, next_value(args, i, arg));
+            if (*a.starts < 0) {
+                throw UsageError("--starts muss >= 0 sein");
+            }
+        } else if (arg == "--start-perturbation") {
+            a.start_perturbation = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--prefilter") {
+            a.prefilter = true;
+        } else if (arg == "--dedup") {
+            a.dedup = parse_double(arg, next_value(args, i, arg));
+        } else if (arg == "--dot") {
+            a.dot = std::string(next_value(args, i, arg));
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -179,7 +217,12 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.have_device && !a.gpu) {
         throw UsageError("--device verlangt --gpu");
     }
-    for (const std::string* f : {&a.output, &a.log}) {
+    if (!a.beam && (a.seed || a.alternatives || a.starts || a.start_perturbation || a.prefilter ||
+                    a.dedup || !a.dot.empty())) {
+        throw UsageError("--seed, --alternatives, --starts, --start-perturbation, --prefilter, "
+                         "--dedup und --dot verlangen --beam");
+    }
+    for (const std::string* f : {&a.output, &a.log, &a.dot}) {
         if (!f->empty() && same_file(fs::path(*f), fs::path(a.file))) {
             throw UsageError("Ausgabedatei " + *f +
                              " ist die Eingabedatei; die Eingabe wird nie überschrieben");
@@ -197,6 +240,7 @@ Json point_short(const HomotopyPoint& p) {
 void print_synth_usage(std::ostream& out) {
     out << "Aufruf: mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json]\n"
            "                        [--log <protokoll.json>] [--quiet] [--gpu [--device N]]\n"
+           "                        [--beam B [--seed N] [--dot <stammbaum.dot>] ...]\n"
            "Homotopie-Controller der Systemsynthese (docs/optimierung.md, Abschnitt 7): öffnet\n"
            "die Apertur (und den Feldanteil) schrittweise mit Schrittweitensteuerung, fügt bei\n"
            "Bedarf (Diagnose der Geisterplatten) Elemente ein und prüft am Ende das Beugungsziel\n"
@@ -222,7 +266,18 @@ void print_synth_usage(std::ostream& out) {
            "  --log <datei>             Protokoll als JSON (mikroptim.synth/1) in eine Datei\n"
            "  --json                    Ausgabe als JSON statt Text\n"
            "  --quiet                   ohne Schrittprotokoll (nur Zusammenfassung)\n"
-           "  --gpu [--device N]        LM auf einem CUDA-Gerät (optimize_lm_gpu)\n";
+           "  --gpu [--device N]        LM auf einem CUDA-Gerät (optimize_lm_gpu)\n"
+           "Strahlsuche (docs/optimierung.md, Abschnitt 8):\n"
+           "  --beam B                  bis zu B Kandidaten im Gleichschritt, Stammbaum im\n"
+           "                            Protokoll\n"
+           "  --alternatives K          Varianten pro Einfügen aus der Diagnose (Lagen, Gläser;\n"
+           "                            Standard 1)\n"
+           "  --starts N                gestörte Starts pro Zweig (Standard 0)\n"
+           "  --start-perturbation S    Störung der neuen Krümmungen [1/mm] (Standard 0.01)\n"
+           "  --seed N                  Startwert der gestörten Starts (Standard 0)\n"
+           "  --prefilter               FP32-Vorfilter der Starts eines Einfügens\n"
+           "  --dedup T                 Duplikat bei Abstand <= T (Standard 1e-4; < 0: aus)\n"
+           "  --dot <datei>             Stammbaum als Graphviz-DOT\n";
 }
 
 int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
@@ -286,11 +341,22 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                               std::span<const double> x0, const LmOptions& lm) {
                 return cuda::optimize_lm_gpu(*e, set, base, x0, lm);
             };
+            o.prefilter_fn = [e](const SystemBatchHost& batch, const ResidualSettings& quadrature,
+                                 const PrefilterOptions& options, std::span<const double> extra) {
+                cuda::PrefilterSettings settings;
+                settings.quadrature = quadrature;
+                settings.options = options;
+                settings.extra_merit = extra;
+                return e->prefilter_variants(batch, settings);
+            };
             backend = Json{{"gpu", true},
                            {"device", engine->device()},
                            {"device_name", engine->device_name()}};
         }
 #endif
+        if (a.start_perturbation) {
+            o.start_perturbation = *a.start_perturbation;
+        }
         OpticalHomotopyModel model(start, o);
         HomotopyPoint p0 = model.start_point();
         if (a.start_field) {
@@ -318,19 +384,57 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                    ", RMS <= " + fixed(a.rms_target, 5) + " Wellen");
             kv(out, "Schwelle F_max [Wellen²]", sci(homotopy_merit_threshold(h), 6));
             kv(out, "Backend", a.gpu ? "GPU" : "CPU");
+            if (a.beam) {
+                kv(out, "Strahlsuche",
+                   "B = " + std::to_string(*a.beam) + ", Seed " +
+                       std::to_string(a.seed.value_or(0)) + ", Varianten " +
+                       std::to_string(a.alternatives.value_or(1)) + ", gestörte Starts " +
+                       std::to_string(a.starts.value_or(0)) + (a.prefilter ? ", Vorfilter" : ""));
+            }
             out << '\n';
             if (stream) {
-                write_homotopy_step_header(out);
+                if (a.beam) {
+                    write_beam_step_header(out);
+                } else {
+                    write_homotopy_step_header(out);
+                }
             }
             out.flush();
         }
-        if (stream) {
-            h.on_step = [&out](const HomotopyStep& s) {
-                write_homotopy_step_line(s, out);
-                out.flush();
-            };
+        // Einzweigig (run_homotopy) oder Strahlsuche (run_beam_search)
+        std::optional<HomotopyResult> single;
+        std::optional<BeamResult> beam;
+        BeamOptions bo;
+        if (a.beam) {
+            bo.homotopy = h;
+            bo.beam_width = *a.beam;
+            bo.alternatives = a.alternatives.value_or(1);
+            bo.perturbed_starts = a.starts.value_or(0);
+            bo.seed = a.seed.value_or(0);
+            bo.prefilter = a.prefilter;
+            if (a.dedup) {
+                bo.dedup_tolerance = *a.dedup;
+            }
+            std::function<void(const BeamStep&)> on_beam;
+            if (stream) {
+                on_beam = [&out](const BeamStep& s) {
+                    write_beam_step_line(s, out);
+                    out.flush();
+                };
+            }
+            beam = run_beam_search(model, model.start_system(), p0, bo, on_beam);
+        } else {
+            if (stream) {
+                h.on_step = [&out](const HomotopyStep& s) {
+                    write_homotopy_step_line(s, out);
+                    out.flush();
+                };
+            }
+            single = run_homotopy(model, model.start_system(), p0, h);
         }
-        const HomotopyResult r = run_homotopy(model, model.start_system(), p0, h);
+        const SystemDescription& end_system = beam ? beam->system : single->system;
+        const HomotopyPoint& end_point = beam ? beam->point : single->point;
+        const double seconds = beam ? beam->seconds : single->seconds;
 
         if (!a.output.empty()) {
             const fs::path output(a.output);
@@ -339,26 +443,37 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
             if (ec) {
                 out_dir = output.parent_path();
             }
-            SystemDescription file_system = model.realize(r.system, r.point, false);
+            SystemDescription file_system = model.realize(end_system, end_point, false);
             file_system.glass_catalogs = catalogs_for(file_system, start.catalog_files, out_dir);
             write_system_file(file_system, output);
         }
 
+        Json options{{"target_na", a.target_na ? Json(*a.target_na) : Json(nullptr)},
+                     {"start", point_short(p0)},
+                     {"rms_target_waves", a.rms_target},
+                     {"merit_factor", a.merit_factor},
+                     {"max_elements", a.max_elements},
+                     {"max_iterations", a.max_iterations},
+                     {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
+                     {"element_thickness", o.element_thickness},
+                     {"element_max_thickness", o.element_max_thickness},
+                     {"saddle_delta", o.saddle_delta}};
+        if (beam) {
+            options["beam"] = Json{{"width", bo.beam_width},
+                                   {"seed", bo.seed},
+                                   {"alternatives", bo.alternatives},
+                                   {"perturbed_starts", bo.perturbed_starts},
+                                   {"start_perturbation", o.start_perturbation},
+                                   {"prefilter", bo.prefilter},
+                                   {"dedup_tolerance", bo.dedup_tolerance}};
+        }
         Json doc{{"format", kSynthFormat},
                  {"version", kVersion},
                  {"input", a.file},
                  {"backend", backend},
-                 {"options", Json{{"target_na", a.target_na ? Json(*a.target_na) : Json(nullptr)},
-                                  {"start", point_short(p0)},
-                                  {"rms_target_waves", a.rms_target},
-                                  {"merit_factor", a.merit_factor},
-                                  {"max_elements", a.max_elements},
-                                  {"max_iterations", a.max_iterations},
-                                  {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
-                                  {"element_thickness", o.element_thickness},
-                                  {"element_max_thickness", o.element_max_thickness},
-                                  {"saddle_delta", o.saddle_delta}}},
-                 {"result", Json::parse(homotopy_result_json(r, -1))},
+                 {"options", options},
+                 {"result", Json::parse(beam ? beam_result_json(*beam, -1)
+                                             : homotopy_result_json(*single, -1))},
                  {"output", a.output.empty() ? Json(nullptr) : Json(a.output)}};
         if (!a.log.empty()) {
             std::ofstream f{fs::path(a.log), std::ios::binary};
@@ -368,17 +483,35 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 return kExitError;
             }
         }
+        if (!a.dot.empty()) {
+            std::ofstream f{fs::path(a.dot), std::ios::binary};
+            write_beam_dot(*beam, f);
+            if (!f) {
+                err << "mikroptim synth: Fehler beim Schreiben von " << a.dot << '\n';
+                return kExitError;
+            }
+        }
         if (a.json) {
             out << doc.dump(2) << '\n';
         } else {
             out << '\n';
-            write_homotopy_summary(r, out);
-            kv(out, "Laufzeit [s]", fixed(r.seconds, 1));
+            if (beam) {
+                write_beam_summary(*beam, out);
+                out << '\n';
+                write_beam_tree(*beam, out);
+                out << '\n';
+            } else {
+                write_homotopy_summary(*single, out);
+            }
+            kv(out, "Laufzeit [s]", fixed(seconds, 1));
             if (!a.output.empty()) {
                 out << "Ergebnis geschrieben: " << a.output << '\n';
             }
             if (!a.log.empty()) {
                 out << "Protokoll geschrieben: " << a.log << '\n';
+            }
+            if (!a.dot.empty()) {
+                out << "Stammbaum geschrieben: " << a.dot << '\n';
             }
         }
         out.flush();

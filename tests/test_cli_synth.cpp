@@ -125,5 +125,65 @@ TEST(CliSynth, TextOutput) {
     EXPECT_NE(q.out.find("Status: max_elements"), std::string::npos);
 }
 
+// Strahlsuche (M6-T4): Optionen nur mit --beam.
+TEST(CliSynth, BeamUsageErrors) {
+    EXPECT_EQ(synth({kStart, "--seed", "3"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prefilter"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--beam", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--beam", "2", "--alternatives", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--beam", "2", "--starts", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--beam", "2", "--dot", kStart}).code, cli::kExitUsage);
+    EXPECT_NE(synth({"--help"}).out.find("--beam B"), std::string::npos);
+}
+
+// Kurzlauf mit --beam 2: JSON mit Stammbaum, Protokolldatei, DOT-Datei, Ergebnis.
+TEST(CliSynth, BeamShortRunJsonTreeAndDot) {
+    SynthTempDir dir("beam");
+    const std::string result = dir.file("ergebnis.json");
+    const std::string log = dir.file("protokoll.json");
+    const std::string dot = dir.file("stammbaum.dot");
+    const SynthCliResult r = synth({kStart, "--target-na",
+                                    "0.31", "--merit-factor",
+                                    "10",   "--max-elements",
+                                    "2",    "--max-iterations",
+                                    "40",   "--element-stages",
+                                    "2",    "--beam",
+                                    "2",    "--seed",
+                                    "5",    "-o",
+                                    result, "--log",
+                                    log,    "--dot",
+                                    dot,    "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_EQ(j["format"], "mikroptim.synth/1");
+    EXPECT_EQ(j["options"]["beam"]["width"], 2);
+    EXPECT_EQ(j["options"]["beam"]["seed"], 5);
+    EXPECT_EQ(j["result"]["status"], "max_elements");
+    const nlohmann::json& bs = j["result"]["beam_search"];
+    EXPECT_EQ(bs["beam_width"], 2);
+    ASSERT_GE(bs["candidates"].size(), 3U);
+    EXPECT_EQ(bs["candidates"][0]["operation"], "start");
+    EXPECT_EQ(bs["candidates"][0]["status"], "expanded");
+    EXPECT_EQ(bs["candidates"][1]["parent"], 0);
+    EXPECT_FALSE(j["result"]["steps"][0]["candidate"].is_null());
+    EXPECT_EQ(nlohmann::json::parse(read_file(log)), j);
+    const std::string d = read_file(dot);
+    EXPECT_EQ(d.rfind("digraph stammbaum {", 0), 0U);
+    EXPECT_NE(d.find("n0 -> n1;"), std::string::npos);
+    const LoadedSystem l = load_system(result);
+    EXPECT_EQ(l.system.surfaces.size(), 6U);
+}
+
+TEST(CliSynth, BeamTextOutput) {
+    const SynthCliResult r = synth({kStart, "--max-elements", "1", "--max-iterations", "40",
+                                    "--merit-factor", "10", "--beam", "2"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("Strahlsuche"), std::string::npos);
+    EXPECT_NE(r.out.find("Kand  Gr    Schritt  Art"), std::string::npos);
+    EXPECT_NE(r.out.find("Stammbaum"), std::string::npos);
+    EXPECT_NE(r.out.find("#0 start"), std::string::npos) << r.out;
+    EXPECT_NE(r.out.find("Status: max_elements"), std::string::npos) << r.out;
+}
+
 } // namespace
 } // namespace mko::test

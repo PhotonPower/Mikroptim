@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <functional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -145,6 +146,37 @@ public:
     virtual int elements(const SystemDescription& system) const = 0;
     // Hat das System einseitige Nebenbedingungen (Penalty-Fortsetzung nötig)?
     virtual bool one_sided_constraints(const SystemDescription& system) const = 0;
+
+    // ---- Strahlsuche (M6-T4, docs/optimierung.md, Abschnitt 8); Standards ohne Bündelung ----
+
+    // Optimiert mehrere Zustände am selben Punkt. Das Ergebnis jedes Systems muss dasselbe sein
+    // wie bei einem einzelnen solve (die Strahlsuche hängt nicht von der Gruppierung ab).
+    // `groups` (optional) erhält pro System die Nummer seines gemeinsamen Optimierer-Aufrufs
+    // (0, 1, … in der Reihenfolge des ersten Auftretens). Standard: solve nacheinander, jedes
+    // System eine eigene Gruppe.
+    virtual std::vector<HomotopySolve> solve_all(std::span<SystemDescription* const> systems,
+                                                 const HomotopyPoint& point,
+                                                 std::vector<int>* groups = nullptr);
+    // Varianten eines Einfügens: `need` selbst zuerst, dann höchstens max − 1 weitere
+    // Empfehlungen (z. B. andere Lagen oder Gläser der Diagnose). Standard: nur `need`.
+    virtual std::vector<HomotopyNeed> insertion_options(const SystemDescription& system,
+                                                        const HomotopyPoint& point,
+                                                        const HomotopyNeed& need, int max);
+    // Abstand zweier Zustände am Punkt für die Deduplizierung (dimensionslos, z. B. größte
+    // relative Abweichung der Variablen); +∞, wenn sie nicht vergleichbar sind (andere
+    // Topologie). Standard: +∞ (keine Deduplizierung).
+    virtual double distance(const SystemDescription& a, const SystemDescription& b,
+                            const HomotopyPoint& point);
+    // `count` gestörte Kopien des Startsystems `start` eines Zweigs von `insertion` (Multistart),
+    // Kopie j = 1 … count mit dem Zufallsstrom variant_seed(seed, j). Standard: keine.
+    virtual std::vector<SystemDescription> perturbed_starts(const SystemDescription& start,
+                                                            const HomotopyInsertion& insertion,
+                                                            const HomotopyPoint& point, int count,
+                                                            std::uint64_t seed);
+    // Vorfilter der Startsysteme eines Einfügens (Grobbewertung, z. B. FP32): true = behalten.
+    // Standard: alle behalten.
+    virtual std::vector<bool> prefilter(std::span<const SystemDescription* const> starts,
+                                        const HomotopyPoint& point);
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -283,6 +315,15 @@ HomotopyResult run_homotopy(HomotopyModel& model, SystemDescription system,
 
 // F_max aus den Optionen (merit_threshold bzw. (merit_factor · target_rms)²).
 double homotopy_merit_threshold(const HomotopyOptions& options);
+
+// Prüft die Optionen wie run_homotopy (Ziel, Schwelle, Stufen, Faktoren, Schrittweiten); wirft
+// std::invalid_argument.
+void check_homotopy_options(const HomotopyOptions& options);
+
+// Endpunkt aus Startpunkt und Optionen (target_aperture > 0, target_field ≥ 0,
+// target_spectrum ≥ 0 ersetzen die Werte des Starts); wirft std::invalid_argument, wenn die
+// Spektrumstufe vor der des Starts liegt oder ein Zielparameter nicht endlich ist.
+HomotopyPoint homotopy_target(const HomotopyPoint& start, const HomotopyOptions& options);
 
 // Protokoll als Text (eine Zeile pro Schritt, Zusammenfassung) bzw. JSON
 // (Format kSynthFormat, docs/cli.md; nicht endliche Zahlen als null).

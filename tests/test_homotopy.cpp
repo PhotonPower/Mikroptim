@@ -2,6 +2,7 @@
 // Rücknahme, Einfügen bei Δ < Δ_min und Bedarf, Fortsetzungen, Abbruch, Protokoll) und die
 // Bausteine des optischen Modells ohne lange Optimierung (docs/optimierung.md, Abschnitt 7).
 
+#include "homotopy_mock.hpp"
 #include "insertion_test_systems.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
@@ -22,150 +23,7 @@
 namespace mko::test {
 namespace {
 
-// ---------------------------------------------------------------------------------------------
-// Synthetisches Modell. Zustand in der Beschreibung: Zahl der Flächen = Elemente,
-// surfaces[0].thickness = Apertur der letzten Optimierung, surfaces.back().curvature = Zweig.
-
-struct MockSpec {
-    double threshold = 1.0;     // F_max, wie HomotopyOptions::merit_threshold
-    double capacity0 = 10.0;    // Apertur, die ein Element ohne Bedarf erreicht
-    double capacity_step = 0.0; // pro weiterem Element
-    double fast_delta = 0.05;   // Schritt bis hierher konvergiert schnell
-    double max_jump = 1e9;      // größere Schritte werden abgelehnt (F_B = 2·F_max)
-    bool need = true;           // Diagnose meldet Bedarf, wenn der Punkt über der Kapazität liegt
-    bool one_sided = false;
-    double goal_ghost_weight = 1.0; // Ziel erst ab diesem μ-Faktor
-    bool goal_never = false;
-    double start_merit = -1.0; // ≥ 0: F_B am Startpunkt (vor dem ersten Schritt)
-};
-
-struct MockCall {
-    HomotopyPoint point;
-    double from = 0.0; // Apertur der vorigen Optimierung (aus dem Zustand)
-    int elements = 0;
-};
-
-class MockModel final : public HomotopyModel {
-public:
-    explicit MockModel(MockSpec spec) : spec_(spec) {}
-
-    std::vector<MockCall> calls;
-    int finishes = 0;
-
-    static SystemDescription start(double aperture) {
-        SystemDescription d;
-        Surface s;
-        s.thickness = aperture;
-        d.surfaces.push_back(s);
-        return d;
-    }
-
-    double capacity(int elements) const {
-        return spec_.capacity0 + spec_.capacity_step * (elements - 1);
-    }
-
-    HomotopySolve solve(SystemDescription& system, const HomotopyPoint& p) override {
-        const int e = elements(system);
-        const double from = system.surfaces.front().thickness;
-        calls.push_back({p, from, e});
-        const double jump = std::abs(p.aperture - from);
-        HomotopySolve s;
-        s.status = LmStatus::ConvergedMerit;
-        s.iterations = jump <= spec_.fast_delta ? 10 : 100;
-        double fb =
-            p.aperture <= capacity(e) + 1e-12 ? 0.5 * spec_.threshold : 2.0 * spec_.threshold;
-        if (jump > spec_.max_jump + 1e-12) {
-            fb = 2.0 * spec_.threshold;
-        }
-        if (spec_.start_merit >= 0.0 && calls.size() == 1) {
-            fb = spec_.start_merit;
-        }
-        // Zweig 1 ist etwas besser
-        fb *= 1.0 - 0.1 * system.surfaces.back().curvature;
-        s.wavefront = fb;
-        s.merit = fb;
-        s.start_merit = fb;
-        s.rms = std::sqrt(fb);
-        system.surfaces.front().thickness = p.aperture;
-        return s;
-    }
-
-    HomotopyNeed diagnose(const SystemDescription& system, const HomotopyPoint& p) override {
-        HomotopyNeed n;
-        if (spec_.need && p.aperture > capacity(elements(system)) + 1e-12) {
-            n.recommendation = GhostOperator::A;
-            n.text = "Bedarf";
-        } else if (spec_.need && spec_.goal_never) {
-            n.recommendation = GhostOperator::A;
-            n.text = "Bedarf am Ziel";
-        } else {
-            n.text = "kein Bedarf";
-        }
-        return n;
-    }
-
-    HomotopyInsertion insert(const SystemDescription& system, const HomotopyPoint&,
-                             const HomotopyNeed& need) override {
-        HomotopyInsertion ins;
-        ins.op = need.recommendation;
-        for (int b = 0; b < 2; ++b) {
-            SystemDescription d = system;
-            Surface s;
-            s.curvature = b;
-            d.surfaces.push_back(s);
-            ins.branches.push_back(d);
-        }
-        ins.stages = {0.25, 0.5};
-        ins.text = "Mock A";
-        return ins;
-    }
-
-    void set_stage(SystemDescription& system, const HomotopyInsertion&, double v) override {
-        system.surfaces.back().thickness = v;
-    }
-
-    void finish_insertion(SystemDescription&, const HomotopyInsertion&) override { ++finishes; }
-
-    HomotopyGoal goal(const SystemDescription& system, const HomotopyPoint& p,
-                      double target) override {
-        HomotopyGoal g;
-        g.target = target;
-        g.max_rms = p.aperture <= capacity(elements(system)) + 1e-12 &&
-                            p.ghost_weight >= spec_.goal_ghost_weight && !spec_.goal_never
-                        ? 0.5 * target
-                        : 2.0 * target;
-        g.reached = g.max_rms <= target;
-        g.tuples.push_back({0, 0, 0.0, 546.07, g.max_rms, 0});
-        return g;
-    }
-
-    int elements(const SystemDescription& system) const override {
-        return static_cast<int>(system.surfaces.size());
-    }
-
-    bool one_sided_constraints(const SystemDescription&) const override { return spec_.one_sided; }
-
-private:
-    MockSpec spec_;
-};
-
-HomotopyOptions mock_options(double target) {
-    HomotopyOptions o;
-    o.target_aperture = target;
-    o.merit_threshold = 1.0;
-    o.fast_iterations = 50;
-    o.aperture_step = {0.02, 0.004, 0.1, 2.0, 0.5};
-    o.penalty_stages = 3;
-    o.smoothing_stages = 1;
-    o.ghost_weight_stages = 2;
-    return o;
-}
-
-HomotopyPoint mock_point(double aperture) {
-    HomotopyPoint p;
-    p.aperture = aperture;
-    return p;
-}
+// Synthetisches Modell: tests/homotopy_mock.hpp (MockModel).
 
 std::vector<const HomotopyStep*> steps_of(const HomotopyResult& r, HomotopyStepKind kind) {
     std::vector<const HomotopyStep*> out;

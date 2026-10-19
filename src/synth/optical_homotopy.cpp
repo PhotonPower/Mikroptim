@@ -12,12 +12,14 @@
 #include "mikroptim/optim/mechanical_constraints.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
+#include "mikroptim/optim/variant_generator.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -140,6 +142,82 @@ double max_rms(const std::vector<HomotopyTupleRms>& t) {
         m = std::max(m, r.rms);
     }
     return m;
+}
+
+// Zustand am Punkt, vorbereitet für den LM: geladenes System, Vorlage mit einer Variante,
+// Variablen und Startwerte.
+struct Prepared {
+    LoadedSystem l;
+    SystemBatchHost base;
+    VariableSet set;
+    std::vector<double> x0;
+};
+
+Prepared prepare(const OpticalHomotopyModel& m, const SystemDescription& system,
+                 const HomotopyPoint& p) {
+    Prepared r;
+    r.l = m.load(m.realize(system, p));
+    r.base = make_system_batch(r.l, 1);
+    r.set = VariableSet(r.l.system, r.base.topology());
+    r.x0 = r.set.extract(r.base, 0);
+    return r;
+}
+
+// Gleiche Topologie (gemeinsamer LM-Aufruf, Vergleich der Variablen): gleiche Batch-Topologie
+// und Variablen (Flächen, Schranken, typische Größen, Versätze), gleiche realisierte Beschreibung,
+// wenn in beide die Variablenwerte von b geschrieben werden (Nebenbedingungen, Gewichte,
+// Gläser, Dicken außerhalb der Variablen), und die Vorlage von a mit den Werten von b bitgleich
+// zur Vorlage von b. Dann sieht der LM für b mit der Vorlage von a dieselben Batches und
+// Zusatzresiduen wie allein.
+bool same_topology(const Prepared& a, const Prepared& b) {
+    if (a.base.topology() != b.base.topology() ||
+        a.l.system.surfaces.size() != b.l.system.surfaces.size() ||
+        a.l.system.ghost_plates.size() != b.l.system.ghost_plates.size() ||
+        !std::ranges::equal(a.set.variables(), b.set.variables())) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.l.system.surfaces.size(); ++i) {
+        if (a.l.system.surfaces[i].type != b.l.system.surfaces[i].type) {
+            return false;
+        }
+    }
+    for (std::size_t g = 0; g < a.l.system.ghost_plates.size(); ++g) {
+        if (a.l.system.ghost_plates[g].coefficients.size() !=
+            b.l.system.ghost_plates[g].coefficients.size()) {
+            return false;
+        }
+    }
+    SystemDescription da = a.l.system;
+    a.set.apply_to_description(da, b.x0);
+    SystemDescription db = b.l.system;
+    b.set.apply_to_description(db, b.x0);
+    if (!(da == db)) {
+        return false;
+    }
+    const int run0 = 0;
+    const std::span<const int> one(&run0, 1);
+    return lm_point_batch(a.set, a.base, one, b.x0) == lm_point_batch(b.set, b.base, one, b.x0);
+}
+
+// Ergebnis eines Laufs in die Beschreibung und Bericht (Status, F, Anteile, RMS, Σ|a|).
+HomotopySolve finish_solve(const Prepared& pr, SystemDescription& system, const LmRunResult& run,
+                           const ResidualSettings& quadrature, int threads) {
+    pr.set.apply_to_description(system, run.x);
+    HomotopySolve s;
+    s.status = run.status;
+    s.iterations = run.iterations;
+    s.start_merit =
+        run.history.empty() ? std::numeric_limits<double>::quiet_NaN() : run.history.front();
+    s.merit = run.merit;
+    s.failed_rays = run.failed_rays;
+    s.ghost_sum = ghost_abs_sum(system);
+    const int run0 = 0;
+    const SystemBatchHost at =
+        lm_point_batch(pr.set, pr.base, std::span<const int>(&run0, 1), run.x);
+    s.rms = max_rms(tuple_rms(pr.l, at, quadrature));
+    s.wavefront = make_cpu_merit(quadrature, {}, threads)(at).at(0);
+    s.ghost_penalty = ghost_penalty_merit(make_ghost_penalty(pr.l.system), at, 0);
+    return s;
 }
 
 } // namespace
@@ -286,39 +364,69 @@ LoadedSystem OpticalHomotopyModel::load(const SystemDescription& realized) const
 }
 
 HomotopySolve OpticalHomotopyModel::solve(SystemDescription& system, const HomotopyPoint& p) {
-    const LoadedSystem l = load(realize(system, p));
-    const SystemBatchHost base = make_system_batch(l, 1);
-    const VariableSet set(l.system, base.topology());
-    const std::vector<double> x0 = set.extract(base, 0);
-    GlassHull hull;
-    const bool need_hull =
-        has_glass_variables(l.system) && has_constraint(l.system, ConstraintType::GlassHull);
-    if (need_hull) {
-        hull = make_glass_hull(like_.catalog);
-    }
-    LmOptions o = options_.lm;
-    Extras e = make_extras(l, base, set, need_hull ? &hull : nullptr);
-    o.jacobian.extra = std::move(e.extra);
-    o.jacobian.trace_extra = std::move(e.traced);
-    const LmResult res = options_.optimizer ? options_.optimizer(set, base, x0, o)
-                                            : optimize_lm_cpu(set, base, x0, o);
-    const LmRunResult& run = res.runs.at(0);
-    set.apply_to_description(system, run.x);
+    SystemDescription* one = &system;
+    return solve_all(std::span<SystemDescription* const>(&one, 1), p).at(0);
+}
 
-    HomotopySolve s;
-    s.status = run.status;
-    s.iterations = run.iterations;
-    s.start_merit =
-        run.history.empty() ? std::numeric_limits<double>::quiet_NaN() : run.history.front();
-    s.merit = run.merit;
-    s.failed_rays = run.failed_rays;
-    s.ghost_sum = ghost_abs_sum(system);
-    const int run0 = 0;
-    const SystemBatchHost at = lm_point_batch(set, base, std::span<const int>(&run0, 1), run.x);
-    s.rms = max_rms(tuple_rms(l, at, o.jacobian.quadrature));
-    s.wavefront = make_cpu_merit(o.jacobian.quadrature, {}, options_.lm.threads)(at).at(0);
-    s.ghost_penalty = ghost_penalty_merit(make_ghost_penalty(l.system), at, 0);
-    return s;
+std::vector<HomotopySolve>
+OpticalHomotopyModel::solve_all(std::span<SystemDescription* const> systems, const HomotopyPoint& p,
+                                std::vector<int>* groups) {
+    const std::size_t n = systems.size();
+    std::vector<Prepared> prep;
+    prep.reserve(n);
+    for (SystemDescription* const s : systems) {
+        prep.push_back(prepare(*this, *s, p));
+    }
+    // Gruppen: jedes System gehört zur ersten Gruppe, deren Leiter dieselbe Topologie hat
+    std::vector<int> group(n, -1);
+    std::vector<std::size_t> leaders;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (options_.group_runs) {
+            for (std::size_t k = 0; k < leaders.size(); ++k) {
+                if (same_topology(prep[leaders[k]], prep[i])) {
+                    group[i] = static_cast<int>(k);
+                    break;
+                }
+            }
+        }
+        if (group[i] < 0) {
+            group[i] = static_cast<int>(leaders.size());
+            leaders.push_back(i);
+        }
+    }
+    std::vector<HomotopySolve> out(n);
+    for (std::size_t k = 0; k < leaders.size(); ++k) {
+        const Prepared& lead = prep[leaders[k]];
+        std::vector<std::size_t> members;
+        std::vector<double> x0;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (group[i] == static_cast<int>(k)) {
+                members.push_back(i);
+                x0.insert(x0.end(), prep[i].x0.begin(), prep[i].x0.end());
+            }
+        }
+        GlassHull hull;
+        const bool need_hull = has_glass_variables(lead.l.system) &&
+                               has_constraint(lead.l.system, ConstraintType::GlassHull);
+        if (need_hull) {
+            hull = make_glass_hull(like_.catalog);
+        }
+        LmOptions o = options_.lm;
+        Extras e = make_extras(lead.l, lead.base, lead.set, need_hull ? &hull : nullptr);
+        o.jacobian.extra = std::move(e.extra);
+        o.jacobian.trace_extra = std::move(e.traced);
+        const LmResult res = options_.optimizer ? options_.optimizer(lead.set, lead.base, x0, o)
+                                                : optimize_lm_cpu(lead.set, lead.base, x0, o);
+        for (std::size_t j = 0; j < members.size(); ++j) {
+            const std::size_t i = members[j];
+            out[i] = finish_solve(prep[i], *systems[i], res.runs.at(j), o.jacobian.quadrature,
+                                  options_.lm.threads);
+        }
+    }
+    if (groups != nullptr) {
+        *groups = std::move(group);
+    }
+    return out;
 }
 
 HomotopyNeed OpticalHomotopyModel::diagnose(const SystemDescription& system,
@@ -538,6 +646,206 @@ bool OpticalHomotopyModel::one_sided_constraints(const SystemDescription& system
         }
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Strahlsuche (M6-T4)
+// ---------------------------------------------------------------------------------------------
+
+std::vector<HomotopyNeed> OpticalHomotopyModel::insertion_options(const SystemDescription&,
+                                                                  const HomotopyPoint&,
+                                                                  const HomotopyNeed& need,
+                                                                  int max) {
+    std::vector<HomotopyNeed> out{need};
+    const GhostDiagnosis& d = need.diagnosis;
+    const int rec = d.recommended_position;
+    if (max <= 1 || need.recommendation == GhostOperator::None || rec < 0 ||
+        rec >= static_cast<int>(d.positions.size())) {
+        return out;
+    }
+    // Übrige Lagen mit Empfehlung nach Merit-Gewinn (ohne Merit-Werte: Σ|a|) absteigend
+    std::vector<int> order;
+    bool gains = true;
+    for (int i = 0; i < static_cast<int>(d.positions.size()); ++i) {
+        const GhostPositionReport& pr = d.positions[static_cast<std::size_t>(i)];
+        if (i != rec && pr.recommendation != GhostOperator::None) {
+            order.push_back(i);
+            gains = gains && std::isfinite(pr.merit_gain);
+        }
+    }
+    const auto score = [&](int i) {
+        const GhostPositionReport& pr = d.positions[static_cast<std::size_t>(i)];
+        return gains ? pr.merit_gain : pr.sum_abs;
+    };
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return score(a) > score(b); });
+    const auto option = [&](int pos, int plate) {
+        HomotopyNeed n = need;
+        GhostPositionReport& pr = n.diagnosis.positions[static_cast<std::size_t>(pos)];
+        n.diagnosis.recommended_position = pos;
+        n.diagnosis.recommendation = pr.recommendation;
+        n.recommendation = pr.recommendation;
+        if (plate >= 0) {
+            pr.active_plates = {plate};
+        }
+        n.text = "Variante: Operator " + std::string(to_string(pr.recommendation)) +
+                 " nach Fläche " + std::to_string(pr.after_surface) + " bei " +
+                 number(pr.distance) + " mm" +
+                 (plate >= 0 ? ", Glas der Platte " + std::to_string(plate) : std::string()) +
+                 " (" + pr.finding + ")";
+        return n;
+    };
+    // 1. Standardwahl der übrigen Lagen
+    for (const int pos : order) {
+        if (static_cast<int>(out.size()) >= max) {
+            return out;
+        }
+        out.push_back(option(pos, -1));
+    }
+    // 2. Andere Gläser derselben Lage (nur Operator A: Glas der aktivsten Platte): die übrigen
+    //    aktiven Platten nach Σ|a| absteigend
+    std::vector<int> all{rec};
+    all.insert(all.end(), order.begin(), order.end());
+    for (const int pos : all) {
+        const GhostPositionReport& pr = d.positions[static_cast<std::size_t>(pos)];
+        if (pr.recommendation != GhostOperator::A || pr.active_plates.size() < 2) {
+            continue;
+        }
+        const auto sum = [&](int g) { return d.plates[static_cast<std::size_t>(g)].sum_abs; };
+        int best = pr.active_plates.front(); // wie meniscus_from_diagnosis
+        for (const int g : pr.active_plates) {
+            if (sum(g) > sum(best)) {
+                best = g;
+            }
+        }
+        std::vector<int> others;
+        for (const int g : pr.active_plates) {
+            if (g != best) {
+                others.push_back(g);
+            }
+        }
+        std::stable_sort(others.begin(), others.end(),
+                         [&](int a, int b) { return sum(a) > sum(b); });
+        for (const int g : others) {
+            if (static_cast<int>(out.size()) >= max) {
+                return out;
+            }
+            out.push_back(option(pos, g));
+        }
+    }
+    return out;
+}
+
+double OpticalHomotopyModel::distance(const SystemDescription& a, const SystemDescription& b,
+                                      const HomotopyPoint& p) {
+    if (a.surfaces.size() != b.surfaces.size() || a.ghost_plates.size() != b.ghost_plates.size()) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const Prepared pa = prepare(*this, a, p);
+    const Prepared pb = prepare(*this, b, p);
+    if (!same_topology(pa, pb)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double d = 0.0;
+    const std::span<const double> typ = pa.set.typical();
+    for (std::size_t k = 0; k < pa.x0.size(); ++k) {
+        const double scale = std::max({std::abs(pa.x0[k]), std::abs(pb.x0[k]), typ[k]});
+        d = std::max(d, std::abs(pa.x0[k] - pb.x0[k]) / scale);
+    }
+    return d;
+}
+
+std::vector<SystemDescription>
+OpticalHomotopyModel::perturbed_starts(const SystemDescription& start, const HomotopyInsertion& ins,
+                                       const HomotopyPoint& p, int count, std::uint64_t seed) {
+    std::vector<SystemDescription> out;
+    if (count <= 0 || ins.new_surfaces <= 0 || !(options_.start_perturbation > 0.0)) {
+        return out;
+    }
+    // Schranken der Krümmungsvariablen der neuen Flächen (falls vorhanden)
+    const Prepared pr = prepare(*this, start, p);
+    const auto first = static_cast<std::size_t>(ins.first_surface);
+    const auto last = first + static_cast<std::size_t>(ins.new_surfaces);
+    std::vector<double> lower(last - first, -std::numeric_limits<double>::infinity());
+    std::vector<double> upper(last - first, std::numeric_limits<double>::infinity());
+    for (int k = 0; k < pr.set.size(); ++k) {
+        const Variable& v = pr.set[k];
+        const auto f = static_cast<std::size_t>(v.file_surface);
+        if (v.type == VariableType::Curvature && f >= first && f < last) {
+            lower[f - first] = v.lower;
+            upper[f - first] = v.upper;
+        }
+    }
+    for (int j = 1; j <= count; ++j) {
+        std::mt19937_64 rng(variant_seed(seed, static_cast<std::uint64_t>(j)));
+        SystemDescription d = start;
+        for (std::size_t f = first; f < last; ++f) {
+            const double xi = 2.0 * unit_uniform(rng()) - 1.0;
+            double& c = d.surfaces.at(f).curvature;
+            c = std::clamp(std::fma(options_.start_perturbation, xi, c), lower[f - first],
+                           upper[f - first]);
+        }
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+std::vector<bool> OpticalHomotopyModel::prefilter(std::span<const SystemDescription* const> starts,
+                                                  const HomotopyPoint& p) {
+    const std::size_t n = starts.size();
+    std::vector<bool> keep(n, true);
+    std::vector<Prepared> prep;
+    prep.reserve(n);
+    for (const SystemDescription* s : starts) {
+        prep.push_back(prepare(*this, *s, p));
+    }
+    std::vector<int> group(n, -1);
+    std::vector<std::size_t> leaders;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t k = 0; k < leaders.size(); ++k) {
+            if (same_topology(prep[leaders[k]], prep[i])) {
+                group[i] = static_cast<int>(k);
+                break;
+            }
+        }
+        if (group[i] < 0) {
+            group[i] = static_cast<int>(leaders.size());
+            leaders.push_back(i);
+        }
+    }
+    const ResidualSettings& quadrature = options_.lm.jacobian.quadrature;
+    for (std::size_t k = 0; k < leaders.size(); ++k) {
+        const Prepared& lead = prep[leaders[k]];
+        std::vector<std::size_t> members;
+        std::vector<int> runs;
+        std::vector<double> xs;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (group[i] == static_cast<int>(k)) {
+                runs.push_back(static_cast<int>(members.size()));
+                members.push_back(i);
+                xs.insert(xs.end(), prep[i].x0.begin(), prep[i].x0.end());
+            }
+        }
+        const SystemBatchHost batch = lm_point_batch(lead.set, lead.base, runs, xs);
+        // Zusatzresiduen in FP64 (ohne die trace-abhängigen: L_v bleibt eine untere Schranke)
+        GlassHull hull;
+        const bool need_hull = has_glass_variables(lead.l.system) &&
+                               has_constraint(lead.l.system, ConstraintType::GlassHull);
+        if (need_hull) {
+            hull = make_glass_hull(like_.catalog);
+        }
+        const Extras e = make_extras(lead.l, lead.base, lead.set, need_hull ? &hull : nullptr);
+        const std::vector<double> extra =
+            extra_merit_values(e.extra, batch, options_.lm.jacobian.extra_threads);
+        const PrefilterResult res =
+            options_.prefilter_fn
+                ? options_.prefilter_fn(batch, quadrature, options_.prefilter, extra)
+                : prefilter_cpu(batch, ResidualLayout(batch.topology(), quadrature),
+                                options_.prefilter, extra);
+        for (std::size_t j = 0; j < members.size(); ++j) {
+            keep[members[j]] = res.keep(static_cast<int>(j));
+        }
+    }
+    return keep;
 }
 
 } // namespace mko
