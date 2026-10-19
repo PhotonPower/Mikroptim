@@ -159,6 +159,7 @@ add_library(mikroptim_optim STATIC
     src/optim/ghost_penalty.cpp
     src/optim/glass_snap.cpp
     src/optim/glass_variables.cpp
+    src/optim/insertion.cpp
     src/optim/levenberg_marquardt.cpp
     src/optim/mechanical_constraints.cpp
     src/optim/paraxial_residuals.cpp
@@ -231,6 +232,7 @@ endif()
 add_library(mikroptim_cli STATIC
     src/cli/cli_util.cpp
     src/cli/eval_command.cpp
+    src/cli/insert_command.cpp
     src/cli/optimize_command.cpp
     src/cli/snap_command.cpp
     src/cli/trace_command.cpp)

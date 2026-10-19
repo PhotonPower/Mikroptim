@@ -344,5 +344,20 @@ inline constexpr double kGlassSnapDistance = 1e-13;
 // bis auf das Rauschen der Merit (Rundung der OPD-Residuen ~1e-9 relativ, Konvergenz des LM
 // ~1e-10, vgl. kLmReturnRelative).
 inline constexpr double kGlassSnapMeritSlack = 1e-6;
+// Einfüge-Operatoren (M6-T2): relative Änderung der Merit durch das Einfügen. Plan
+// (docs/plan/meilensteine.md): 1e-12. Nicht bitgleich: Spalt- und Glasdicken werden in
+// Teilstücke zerlegt, und die Brechung an zwei identischen Flächen im Abstand 0 bzw. an einer
+// Kittfläche mit μ = 1 stellt die Richtung nur bis auf Rundung her. Die Änderung liegt am
+// Rundungsboden des sequenziellen FP64-Traces: Bei gut korrigierten Systemen (OPD-RMS ≈ 1e-4 mm
+// gegen optische Längen ≈ 100 mm) ändert schon das Teilen eines Luftspalts durch zwei Ebenen
+// mit n = 1 (optisch nichts) die Merit um bis zu 1,1e-12 relativ (Test
+// InsertionMerit.RoundingFloorControl); gemessen beim Operator A bis 3,5e-12, beim Operator B
+// bis 4,7e-12 (Abnahmesystem B, CPU). Gelockert auf 1e-11, Frage an den Maintainer im PR; wie
+// viele Fälle 1e-12 einhalten, geben die Tests aus.
+inline constexpr double kInsertionMeritPlan = 1e-12;
+inline constexpr double kInsertionMeritRelative = 1e-11;
+// Abnahme Operator B: Brennweite des Kittglieds gegen die der Einzellinse [mm]; beide über die
+// gewichtete Gleichung (Gewicht 10⁴/mm²) auf f = 50 mm gehalten.
+inline constexpr double kAchromatFocalLength = 1e-3;
 
 } // namespace mko::test

@@ -16,6 +16,7 @@ add_executable(mikroptim_tests
     test_batch_residuals.cpp
     test_buchdahl_fit.cpp
     test_cli_eval.cpp
+    test_cli_insert.cpp
     test_cli_optimize.cpp
     test_cli_snap.cpp
     test_cli_trace.cpp
@@ -36,6 +37,8 @@ add_executable(mikroptim_tests
     test_glass_snap.cpp
     test_glass_variables.cpp
     test_index_table.cpp
+    test_insertion.cpp
+    test_insertion_optimization.cpp
     test_levenberg_marquardt.cpp
     test_load_system.cpp
     test_mechanical_constraints.cpp
@@ -74,6 +77,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_ghost_optimization.cpp
         test_cuda_glass_optimization.cpp
         test_cuda_glass_snap.cpp
+        test_cuda_insertion.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_mechanical.cpp
         test_cuda_merit.cpp
