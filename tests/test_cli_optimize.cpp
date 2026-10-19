@@ -9,6 +9,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
@@ -128,10 +129,10 @@ FileMerit file_merit(const std::string& file, int rings = 10, int spokes = 8) {
     mko::LmOptions options;
     options.jacobian.quadrature.rings = rings;
     options.jacobian.quadrature.spokes = spokes;
-    const mko::ParaxialConstraints c = mko::make_paraxial_constraints(loaded.system);
-    if (c.size() > 0) {
-        options.jacobian.extra = mko::make_paraxial_residuals(c);
-    }
+    // wie mikroptim optimize: paraxiale Nebenbedingungen, dahinter die L1-Strafe (M4-T6)
+    options.jacobian.extra = mko::concat_extra_residuals(
+        {mko::make_paraxial_residuals(mko::make_paraxial_constraints(loaded.system)),
+         mko::make_ghost_penalty_residuals(mko::make_ghost_penalty(loaded.system))});
     FileMerit r;
     r.x = set.extract(base, 0);
     std::vector<double> f(1);
@@ -343,6 +344,70 @@ TEST(CliOptimize, GhostPlateResultReproducesMerit) {
     const mko::SystemDescription written = mko::read_system_file(fs::path(out_file));
     ASSERT_EQ(written.glass_catalogs.size(), 1U);
     EXPECT_EQ(written.glass_catalogs[0], fs::path(kBasisGlas).generic_string());
+}
+
+// L1-Strafe und Diagnosebericht (M4-T6): Geisterkoeffizienten als Variablen, Strafe als
+// Zusatzresiduen (Ergebnisdatei reproduziert die Merit einschließlich Strafe bitgleich),
+// Abschnitt ghost_diagnosis im JSON; ohne Geisterplatten null.
+TEST(CliOptimize, GhostPenaltyAndDiagnosis) {
+    const TempDir dir("ghost_penalty");
+    const std::string in_file = dir.file("exakt.json");
+    json in = json::parse(read_file(kSystems + "einzellinse_geisterplatten_exakt.json"));
+    in["glass_catalogs"] = json::array({fs::path(kBasisGlas).generic_string()});
+    write_file(in_file, in.dump(2));
+    const std::string out_file = dir.file("exakt_opt.json");
+    const RunResult r =
+        optimize({in_file, "-o", out_file, "--json", "--quiet", "--max-iterations", "1000"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_TRUE(j["result"]["converged"].get<bool>());
+    // Variablen: Geisterkoeffizienten mit Platte und Ordnung, alle |a| < 1e-8 (Abnahme
+    // Exaktheit auch über die Kommandozeile)
+    int ghosts = 0;
+    for (const json& v : j["variables"]) {
+        if (v["type"] == "ghost_coefficient") {
+            ++ghosts;
+            EXPECT_TRUE(v["surface"].is_null());
+            EXPECT_TRUE(v["plate"].is_number_integer());
+            EXPECT_GE(v["order"].get<int>(), 1);
+            EXPECT_LT(std::abs(v["result"].get<double>()), mko::test::kGhostExactCoefficient)
+                << v["name"];
+        } else {
+            EXPECT_TRUE(v["plate"].is_null());
+        }
+    }
+    EXPECT_EQ(ghosts, 16);
+    // Diagnose: vier Platten, keine aktiv, keine Empfehlung
+    const json& d = j["ghost_diagnosis"];
+    ASSERT_TRUE(d.is_object());
+    EXPECT_EQ(d["plates"].size(), 4U);
+    EXPECT_EQ(d["positions"].size(), 3U);
+    EXPECT_EQ(d["recommendation"], "none");
+    EXPECT_TRUE(d["recommended_position"].is_null());
+    EXPECT_TRUE(same_bits(d["merit"].get<double>(), j["result"]["merit"].get<double>()));
+    for (const json& p : d["plates"]) {
+        EXPECT_FALSE(p["active"].get<bool>());
+    }
+    // Ergebnisdatei: Koeffizienten verlustfrei, Merit mit Strafe bitgleich
+    const FileMerit reloaded = file_merit(out_file);
+    EXPECT_TRUE(same_bits(reloaded.merit, j["result"]["merit"].get<double>()))
+        << reloaded.merit << " " << j["result"]["merit"];
+    EXPECT_EQ(reloaded.x, doubles(j["runs"][0]["x"]));
+
+    // Text: Abschnitt der Diagnose mit Empfehlung (Bedarf bei NA 0,5)
+    const RunResult t = optimize({kSystems + "einzellinse_na05_geisterplatten.json", "--quiet"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    for (const char* s : {"Geisterplatten                              9 (L1-Strafe: 54",
+                          "\nGeisterplatten (Diagnose", "  a[8,2]  mm", "Lagen:",
+                          "Empfehlung: Operator A (Meniskus ohne Brechkraft) nach Fläche 2"}) {
+        EXPECT_NE(t.out.find(s), std::string::npos) << s << "\n" << t.out;
+    }
+    // Ohne Geisterplatten kein Abschnitt
+    const RunResult n = optimize({kBiegung, "--json", "--quiet", "--max-iterations", "2"});
+    ASSERT_EQ(n.code, mko::cli::kExitOk) << n.err;
+    EXPECT_TRUE(json::parse(n.out)["ghost_diagnosis"].is_null());
+    const RunResult nt = optimize({kBiegung, "--quiet", "--max-iterations", "2"});
+    EXPECT_EQ(nt.out.find("Geisterplatten"), std::string::npos);
 }
 
 // Ohne target.focal_length mit Feldwinkeln ≠ 0 hängen die Feldziele von der Brennweite des

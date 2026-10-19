@@ -61,8 +61,14 @@ std::string variable_name(VariableType type, int file_surface) {
         return "t[" + std::to_string(file_surface) + "]";
     case VariableType::WorkingDistance:
         return "w";
+    case VariableType::GhostCoefficient:
+        break; // Name aus ghost_variable_name
     }
     return "?";
+}
+
+std::string ghost_variable_name(int plate, int order) {
+    return "a[" + std::to_string(plate) + "," + std::to_string(order) + "]";
 }
 
 VariableSet::VariableSet(const SystemDescription& system, const BatchTopology& topology)
@@ -74,6 +80,9 @@ VariableSet::VariableSet(const SystemDescription& system, const BatchTopology& t
     file_types_.reserve(system.surfaces.size());
     for (const Surface& s : system.surfaces) {
         file_types_.push_back(s.type);
+    }
+    for (const GhostPlate& g : system.ghost_plates) {
+        ghost_orders_.push_back(static_cast<int>(g.coefficients.size()));
     }
 
     variables_.reserve(resolved.size());
@@ -108,6 +117,19 @@ VariableSet::VariableSet(const SystemDescription& system, const BatchTopology& t
             // Arbeitsabstand = thickness[S−1] (einzige Quelle, docs/architektur.md); nach der
             // letzten Fläche liegen keine Geisterplatten (validate_system).
             var.batch_surface = topology_.surfaces - 1;
+            break;
+        case VariableType::GhostCoefficient:
+            // ghost_coeff[v][g][k − 1]; K der Topologie ist die größte Ordnung aller Platten
+            // (kürzere Profile mit 0 ergänzt), also k ≤ ghost_terms.
+            if (r.order > topology_.ghost_terms) {
+                invalid("Ordnung " + std::to_string(r.order) + " der Geisterplatte " +
+                        std::to_string(r.plate) + " größer als K = " +
+                        std::to_string(topology_.ghost_terms) + " der Topologie");
+            }
+            var.ghost_plate = r.plate;
+            var.ghost_order = r.order;
+            var.batch_surface = map.table_of_ghost[static_cast<std::size_t>(r.plate)];
+            var.name = ghost_variable_name(r.plate, r.order);
             break;
         }
         lower_.push_back(var.lower);
@@ -147,6 +169,14 @@ void VariableSet::check_description(const SystemDescription& system) const {
         invalid("Systembeschreibung mit anderen Flächen als bei der Erzeugung der "
                 "Variablenmenge");
     }
+    same = system.ghost_plates.size() == ghost_orders_.size();
+    for (std::size_t g = 0; same && g < ghost_orders_.size(); ++g) {
+        same = static_cast<int>(system.ghost_plates[g].coefficients.size()) == ghost_orders_[g];
+    }
+    if (!same) {
+        invalid("Systembeschreibung mit anderen Geisterplatten als bei der Erzeugung der "
+                "Variablenmenge");
+    }
 }
 
 std::vector<double> VariableSet::extract(const SystemBatchHost& batch, int v) const {
@@ -162,6 +192,8 @@ void VariableSet::extract(const SystemBatchHost& batch, int v, std::span<double>
         const Variable& var = variables_[k];
         if (var.type == VariableType::Curvature) {
             x[k] = batch.curvature(v, var.batch_surface);
+        } else if (var.type == VariableType::GhostCoefficient) {
+            x[k] = batch.ghost_coeff(v, var.ghost_plate, var.ghost_order - 1);
         } else {
             const double t = batch.thickness(v, var.batch_surface);
             x[k] = var.split ? var.offset + t : t;
@@ -182,6 +214,8 @@ void VariableSet::apply(SystemBatchHost& batch, int v, std::span<const double> x
         const Variable& var = variables_[k];
         if (var.type == VariableType::Curvature) {
             batch.curvature(v, var.batch_surface) = x[k];
+        } else if (var.type == VariableType::GhostCoefficient) {
+            batch.ghost_coeff(v, var.ghost_plate, var.ghost_order - 1) = x[k];
         } else {
             // derselbe Ausdruck wie in make_surface_table (Ende des Spalts − distance)
             batch.thickness(v, var.batch_surface) = var.split ? x[k] - var.offset : x[k];
@@ -194,6 +228,11 @@ std::vector<double> VariableSet::extract(const SystemDescription& system) const 
     std::vector<double> x(variables_.size());
     for (std::size_t k = 0; k < variables_.size(); ++k) {
         const Variable& var = variables_[k];
+        if (var.type == VariableType::GhostCoefficient) {
+            x[k] = system.ghost_plates[static_cast<std::size_t>(var.ghost_plate)]
+                       .coefficients[static_cast<std::size_t>(var.ghost_order - 1)];
+            continue;
+        }
         const Surface& s = system.surfaces[static_cast<std::size_t>(var.file_surface)];
         x[k] = var.type == VariableType::Curvature ? s.curvature : s.thickness;
     }
@@ -210,6 +249,11 @@ void VariableSet::apply_to_description(SystemDescription& system, std::span<cons
     }
     for (std::size_t k = 0; k < variables_.size(); ++k) {
         const Variable& var = variables_[k];
+        if (var.type == VariableType::GhostCoefficient) {
+            system.ghost_plates[static_cast<std::size_t>(var.ghost_plate)]
+                .coefficients[static_cast<std::size_t>(var.ghost_order - 1)] = x[k];
+            continue;
+        }
         Surface& s = system.surfaces[static_cast<std::size_t>(var.file_surface)];
         (var.type == VariableType::Curvature ? s.curvature : s.thickness) = x[k];
     }

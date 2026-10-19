@@ -1,0 +1,35 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7 mit Geisterplatten, Exaktheit",
+  "description": "Testsystem (frei erfunden) für die Abnahme Exaktheit der L1-Strafe (M4-T6): Biegung der Einzellinse wie einzellinse_bk7_biegung.json (f = 100 mm, NA 0,025, eine Wellenlänge); das reale System erreicht am Optimum RMS ≈ 1e-3 Wellen alleine. Dazu ein Wörterbuch aus vier Geisterplatten an drei Lagen (zwei vor der Linse, eine dahinter vor einer Hilfsebene) mit Startkoeffizienten ungleich 0; Strafgewicht μ = 13,6 aus dem Beugungsziel RMS λ/14 (wie einzellinse_na05_geisterplatten.json), etwa 40-fach über der Schwelle dieses Systems, Glättung ε = 1e-7 mm (docs/optimierung.md, Abschnitt 3).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 100.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 5.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.00967, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.00967, "thickness": 20.0, "material": "AIR", "semi_diameter": 12.5 },
+    { "type": "plane", "thickness": 79.05, "material": "AIR", "semi_diameter": 12.5, "comment": "Hilfsebene, damit eine Geisterplatte hinter der Linse liegen kann" }
+  ],
+  "ghost_plates": [
+    { "after_surface": 0, "distance": 1.0, "glass": "CAF2", "norm_radius": 2.5, "order": 4, "coefficients": [2e-05, -1e-05, 5e-06, -2e-06] },
+    { "after_surface": 0, "distance": 1.0, "glass": { "model": "buchdahl", "n0": 1.76, "nu": [-0.18, 0.112] }, "norm_radius": 2.5, "order": 4, "coefficients": [-1e-05, 2e-05, -4e-06, 1e-06] },
+    { "after_surface": 0, "distance": 4.0, "glass": "N-BK7", "norm_radius": 2.5, "order": 4, "coefficients": [0.0, 1e-05, 3e-06, 0.0] },
+    { "after_surface": 2, "distance": 10.0, "glass": "N-BK7", "norm_radius": 2.3, "order": 4, "coefficients": [5e-06, -5e-06, 2e-06, 1e-06] }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.05, "max": 0.05 },
+      { "type": "working_distance", "min": 30.0, "max": 130.0, "typical": 10.0 },
+      { "type": "ghost_coefficient", "plates": "all" }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 0.029 },
+      { "type": "ghost_penalty", "weight": 13.6, "order_weight": 1.0, "order_factor": 2.0, "smoothing": 1e-07, "comment": "μ aus dem Beugungsziel wie einzellinse_na05_geisterplatten.json; Restkoeffizienten ≈ ε |g_k|/(μ w_k), daher ε = 1e-7" }
+    ]
+  }
+}

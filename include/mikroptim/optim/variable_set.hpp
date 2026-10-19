@@ -19,10 +19,12 @@ namespace mko {
 // Eine Variable mit ihrer Lage im Batch.
 struct Variable {
     VariableType type = VariableType::Curvature;
-    int file_surface = 0; // Dateifläche (SystemDescription::surfaces[i])
+    // Dateifläche (SystemDescription::surfaces[i]); bei Geisterkoeffizienten after_surface der
+    // Platte (nur zur Information).
+    int file_surface = 0;
     // Tabellenfläche im Batch: Krümmung → die Dateifläche selbst; Dicke → das letzte Teilstück
     // des Spalts (vor der nächsten Dateifläche, also nach der letzten Geisterplatte im Spalt);
-    // Arbeitsabstand → S − 1.
+    // Arbeitsabstand → S − 1; Geisterkoeffizient → Fläche der Geisterplatte (ghost_surface).
     int batch_surface = 0;
     // Nur Dicke eines Spalts mit Geisterplatten (split): Abstand `distance` der letzten Platte
     // vom Scheitel der Dateifläche. Batch-Element = x − offset, x = offset + Batch-Element.
@@ -31,7 +33,10 @@ struct Variable {
     double lower = 0.0;   // untere Schranke, -∞ wenn offen (bei split mindestens offset)
     double upper = 0.0;   // obere Schranke, +∞ wenn offen
     double typical = 0.0; // x_typ > 0
-    std::string name;     // für Berichte: "c[3]", "t[2]", "w" (Index = Dateifläche)
+    std::string name;     // für Berichte: "c[3]", "t[2]", "w", "a[1,2]" (Platte 1, Ordnung 2)
+    // Nur Geisterkoeffizient: Platte g und Ordnung k (1 … K), Batch-Element ghost_coeff[v][g][k−1].
+    int ghost_plate = -1;
+    int ghost_order = 0;
 
     friend bool operator==(const Variable&, const Variable&) = default;
 };
@@ -44,6 +49,8 @@ SurfaceMap checked_surface_map(const SystemDescription& system, const BatchTopol
 
 // Name einer Variable für Berichte, z. B. "c[3]" (Krümmung der Dateifläche 3), "t[2]", "w".
 std::string variable_name(VariableType type, int file_surface);
+// Name eines Geisterkoeffizienten: "a[g,k]" (Platte g, Ordnung k).
+std::string ghost_variable_name(int plate, int order);
 
 // Feste Liste von P Variablen für Batches einer Topologie. Komponente k des Vektors x ist die
 // Variable k in der Reihenfolge von resolve_variables.
@@ -68,7 +75,7 @@ public:
 
     // x aus Variante v des Batches: Krümmung bzw. Dicke, bei einem Spalt mit Geisterplatten
     // fl(offset + letztes Teilstück) (gleich der Dateidicke, wenn der Batch aus der Datei stammt
-    // und x − offset exakt ist).
+    // und x − offset exakt ist); Geisterkoeffizient ghost_coeff[v][g][k − 1].
     std::vector<double> extract(const SystemBatchHost& batch, int v) const;
     void extract(const SystemBatchHost& batch, int v, std::span<double> x) const;
     // Schreibt x in Variante v; alle übrigen Felder bleiben unverändert. Bei einem Spalt mit
@@ -78,9 +85,10 @@ public:
     // endlichen Werten oder anderer Topologie, std::out_of_range bei ungültigem v.
     void apply(SystemBatchHost& batch, int v, std::span<const double> x) const;
 
-    // Dasselbe für die Systembeschreibung (Dateiflächen), z. B. zum Schreiben eines
-    // optimierten Systems (M3-T5). Die Beschreibung muss zu der passen, aus der die Menge
-    // gebaut wurde (gleiche Flächenzahl und -typen), sonst std::invalid_argument.
+    // Dasselbe für die Systembeschreibung (Dateiflächen, Koeffizienten der Geisterplatten), z. B.
+    // zum Schreiben eines optimierten Systems (M3-T5). Die Beschreibung muss zu der passen, aus
+    // der die Menge gebaut wurde (gleiche Flächenzahl und -typen, gleiche Zahl und Ordnungen
+    // der Geisterplatten), sonst std::invalid_argument.
     std::vector<double> extract(const SystemDescription& system) const;
     void apply_to_description(SystemDescription& system, std::span<const double> x) const;
 
@@ -97,6 +105,7 @@ private:
     BatchTopology topology_;
     int file_surfaces_ = 0;
     std::vector<SurfaceType> file_types_;
+    std::vector<int> ghost_orders_; // K jeder Geisterplatte der Datei
     std::vector<Variable> variables_;
     std::vector<double> lower_;
     std::vector<double> upper_;

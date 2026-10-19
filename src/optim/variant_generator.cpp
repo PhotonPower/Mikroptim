@@ -84,6 +84,8 @@ const PerturbationScale& PerturbationOptions::scale(VariableType type) const {
         return thickness;
     case VariableType::WorkingDistance:
         return working_distance;
+    case VariableType::GhostCoefficient:
+        return ghost_coefficient;
     }
     return curvature;
 }
@@ -94,6 +96,7 @@ std::vector<double> perturbed_vector(const VariableSet& set, std::span<const dou
     check_scale(options.curvature, "curvature");
     check_scale(options.thickness, "thickness");
     check_scale(options.working_distance, "working_distance");
+    check_scale(options.ghost_coefficient, "ghost_coefficient");
 
     std::vector<double> y(x0.begin(), x0.end());
     if (options.first_is_base && j == 0) {

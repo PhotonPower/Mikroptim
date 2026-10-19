@@ -153,6 +153,8 @@ target_link_libraries(mikroptim_batch
 find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
     src/optim/fd_jacobian.cpp
+    src/optim/ghost_diagnosis.cpp
+    src/optim/ghost_penalty.cpp
     src/optim/levenberg_marquardt.cpp
     src/optim/paraxial_residuals.cpp
     src/optim/variable_set.cpp
@@ -160,7 +162,7 @@ add_library(mikroptim_optim STATIC
 add_library(Mikroptim::optim ALIAS mikroptim_optim)
 target_link_libraries(mikroptim_optim
     PUBLIC mikroptim_core mikroptim_model mikroptim_batch mikroptim_paraxial
-    PRIVATE Threads::Threads mikroptim_warnings)
+    PRIVATE Threads::Threads nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
 # Auswertung (Host): Modus EVAL auf dem dichten Pupillenraster, CPU-Referenz, Kennzahlen

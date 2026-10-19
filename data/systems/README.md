@@ -9,6 +9,8 @@
 | `planplatte_bk7.json` | exakt bekannte optische Weglänge |
 | `testsystem_mehrlinser.json` | frei erfundenes Mehrlinsensystem (kein reales Objektiv): vier Gläser, drei Felder, vier Wellenlängen; CPU/GPU-Abgleich der Residuen (M2-T2) |
 | `einzellinse_geisterplatte.json` | frei erfundenes Testsystem: Einzellinse wie `einzellinse_bk7.json` mit zwei Geisterplatten im Luftspalt hinter der Blende (Abbildung Datei- ↔ Tabellenflächen, Paraxial, CPU/GPU, M4-T5) |
+| `einzellinse_geisterplatten_exakt.json` | frei erfundenes Testsystem: Biegung der Einzellinse (NA 0,025) mit vier Geisterplatten (Startkoeffizienten ≠ 0), Geisterkoeffizienten als Variablen und L1-Strafe `ghost_penalty`; Abnahme Exaktheit (alle \|a\| < 10⁻⁸ mm, M4-T6) |
+| `einzellinse_na05_geisterplatten.json` | frei erfundenes Testsystem: Einzellinse N-BK7 f = 2 mm bei NA 0,5 mit Geisterplatten-Wörterbuch (CaF₂, N-BK7, Flint als Buchdahl-Modell an drei Lagen), μ aus dem Beugungsziel λ/14; Abnahme Bedarf und Beispiel für den Diagnosebericht (M4-T6) |
 | `zweilinser_petzval.json` | frei erfundener Zweilinser (Sammellinse n = 1,8, Zerstreuungslinse CaF₂, f = 20 mm) mit Variablen, Brennweiten- und Petzval-Bedingung (κ_max = 0,01/mm); Abnahme der Petzval-Nebenbedingung (M4-T4) |
 
 Geplante Start- und Referenzsysteme (Linsendaten trägt der Maintainer ein, Agenten erfinden keine Daten realer Objektive):

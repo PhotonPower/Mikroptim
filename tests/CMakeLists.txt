@@ -23,6 +23,10 @@ add_executable(mikroptim_tests
     test_eval.cpp
     test_fd_jacobian.cpp
     test_ghost_plate.cpp
+    test_ghost_diagnosis.cpp
+    test_ghost_optimization.cpp
+    test_ghost_penalty.cpp
+    test_ghost_schema.cpp
     test_glass_catalog.cpp
     test_index_table.cpp
     test_levenberg_marquardt.cpp
@@ -54,6 +58,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_dispersion.cpp
         test_cuda_eval.cpp
         test_cuda_fd_jacobian.cpp
+        test_cuda_ghost_optimization.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
         test_cuda_multi_trace_engine.cpp

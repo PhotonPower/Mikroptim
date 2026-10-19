@@ -204,4 +204,20 @@ inline constexpr double kPetzvalPenaltyRelative = 1e-6;
 // beobachtet ~5e-7.
 inline constexpr double kPetzvalFocalLength = 1e-5;
 
+// L1-Strafe der Geisterkoeffizienten (M4-T6), Abnahme Exaktheit: größter Betrag der
+// Geisterkoeffizienten am Ende [mm] (Abnahmekriterium). Mit der Glättung bleiben die
+// Koeffizienten bei a ≈ −ε g_k/(μ w_k) (docs/optimierung.md, Abschnitt 3); im Abnahmesystem
+// (ε = 1e-7 mm, μ etwa 40-fach über der Schwelle) beobachtet ~3e-9.
+inline constexpr double kGhostExactCoefficient = 1e-8;
+// Stationarität der geglätteten Strafe am Ende, in Einheiten von ε: |a_k − a_k,Vorhersage| / ε
+// mit a_Vorhersage = −ε s/√(1 − s²), s = g_k/(μ w_k) und g_k = ∂F_rest/∂a_k aus der FD-Jacobi
+// am Endpunkt. Fehler aus dem Abbruch des LM (Schritt ≤ 1e-14 mm) und der FD-Jacobi der
+// Wellenfrontspalten (h = 6e-10 mm, relativ ~1e-4 des kleinen Gradienten); beobachtet ≤ 5e-7.
+inline constexpr double kGhostStationarity = 1e-4;
+// Gewinn der geglätteten Strafe gegenüber dem realen System allein, F_allein − F, gegen die
+// Vorhersage Σ_k ε g_k²/(2 μ w_k) mit g_k am Endpunkt, relativ. Die Vorhersage vernachlässigt
+// die Kopplung über die übrigen Variablen (die Restkoeffizienten korrigieren z. B. zusätzlich
+// die Brennweite); beobachtet 0,3 %.
+inline constexpr double kGhostSmoothingGain = 0.05;
+
 } // namespace mko::test

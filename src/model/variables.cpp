@@ -31,10 +31,112 @@ std::string at(const std::string& path, std::size_t i) {
     throw FormatError(path, message);
 }
 
-// JSON-Pfad des Werts einer Variable in der Systembeschreibung, z. B. `surfaces[2].thickness`.
-std::string value_path(VariableType type, int surface) {
-    return at("surfaces", static_cast<std::size_t>(surface)) +
-           (type == VariableType::Curvature ? ".curvature" : ".thickness");
+// JSON-Pfad des Werts einer Variable in der Systembeschreibung, z. B. `surfaces[2].thickness`
+// oder `ghost_plates[1].coefficients[0]`.
+std::string value_path(const ResolvedVariable& v) {
+    if (v.type == VariableType::GhostCoefficient) {
+        return at(at("ghost_plates", static_cast<std::size_t>(v.plate)) + ".coefficients",
+                  static_cast<std::size_t>(v.order - 1));
+    }
+    return at("surfaces", static_cast<std::size_t>(v.surface)) +
+           (v.type == VariableType::Curvature ? ".curvature" : ".thickness");
+}
+
+// Geisterkoeffizienten eines Eintrags: (Platte, Ordnung) mit dem JSON-Pfad für Fehler.
+struct GhostRef {
+    int plate;
+    int order;
+    std::string path;
+};
+
+std::vector<GhostRef> ghost_targets_of(const VariableSpec& spec, const std::string& path,
+                                       const std::vector<GhostPlate>& ghosts) {
+    if (spec.selection != SurfaceSelection::None) {
+        fail(path + (spec.selection == SurfaceSelection::One ? ".surface" : ".surfaces"),
+             "ghost_coefficient bezieht sich auf Geisterplatten; \"plate\" bzw. \"plates\" "
+             "statt Flächen angeben");
+    }
+    const int g_count = static_cast<int>(ghosts.size());
+    struct PlateRef {
+        int plate;
+        std::string path;
+    };
+    std::vector<PlateRef> plates;
+    switch (spec.plate_selection) {
+    case SurfaceSelection::None:
+        fail(path + ".plate", "Pflichtfeld fehlt (\"plate\" oder \"plates\" angeben)");
+    case SurfaceSelection::One:
+        if (spec.plates.size() != 1) {
+            fail(path + ".plate", "genau eine Geisterplatte erwartet");
+        }
+        plates.push_back({spec.plates[0], path + ".plate"});
+        break;
+    case SurfaceSelection::List:
+        if (spec.plates.empty()) {
+            fail(path + ".plates", "mindestens eine Geisterplatte nötig");
+        }
+        for (std::size_t j = 0; j < spec.plates.size(); ++j) {
+            plates.push_back({spec.plates[j], at(path + ".plates", j)});
+        }
+        break;
+    case SurfaceSelection::All:
+        if (!spec.plates.empty()) {
+            fail(path + ".plates", "bei \"all\" keine einzelnen Geisterplatten");
+        }
+        for (int g = 0; g < g_count; ++g) {
+            plates.push_back({g, path + ".plates"});
+        }
+        if (plates.empty()) {
+            fail(path + ".plates", "\"all\" findet keine Geisterplatte (Abschnitt "
+                                   "ghost_plates fehlt oder ist leer)");
+        }
+        break;
+    }
+
+    std::vector<GhostRef> out;
+    for (const PlateRef& p : plates) {
+        if (p.plate < 0 || p.plate >= g_count) {
+            fail(p.path, "Geisterplatte " + std::to_string(p.plate) + " existiert nicht" +
+                             (g_count == 0
+                                  ? std::string(" (keine Geisterplatten)")
+                                  : " (Geisterplatten 0 bis " + std::to_string(g_count - 1) + ")"));
+        }
+        const int k_count =
+            static_cast<int>(ghosts[static_cast<std::size_t>(p.plate)].coefficients.size());
+        switch (spec.order_selection) {
+        case SurfaceSelection::None:
+        case SurfaceSelection::All:
+            if (spec.order_selection == SurfaceSelection::All && !spec.orders.empty()) {
+                fail(path + ".orders", "bei \"all\" keine einzelnen Ordnungen");
+            }
+            for (int k = 1; k <= k_count; ++k) {
+                out.push_back({p.plate, k, p.path});
+            }
+            break;
+        case SurfaceSelection::One:
+        case SurfaceSelection::List: {
+            const bool one = spec.order_selection == SurfaceSelection::One;
+            if (one && spec.orders.size() != 1) {
+                fail(path + ".order", "genau eine Ordnung erwartet");
+            }
+            if (spec.orders.empty()) {
+                fail(path + ".orders", "mindestens eine Ordnung nötig");
+            }
+            for (std::size_t j = 0; j < spec.orders.size(); ++j) {
+                const int k = spec.orders[j];
+                const std::string kpath = one ? path + ".order" : at(path + ".orders", j);
+                if (k < 1 || k > k_count) {
+                    fail(kpath, "Ordnung " + std::to_string(k) + " existiert bei Geisterplatte " +
+                                    std::to_string(p.plate) + " nicht (Ordnungen 1 bis " +
+                                    std::to_string(k_count) + ")");
+                }
+                out.push_back({p.plate, k, kpath});
+            }
+            break;
+        }
+        }
+    }
+    return out;
 }
 
 // Flächen eines Eintrags mit dem JSON-Pfad, unter dem Fehler zu einer Fläche gemeldet werden.
@@ -47,6 +149,14 @@ std::vector<SurfaceRef> targets_of(const VariableSpec& spec, const std::string& 
                                    const std::vector<Surface>& surfaces) {
     const int n = static_cast<int>(surfaces.size());
     std::vector<SurfaceRef> out;
+    if (spec.plate_selection != SurfaceSelection::None) {
+        fail(path + (spec.plate_selection == SurfaceSelection::One ? ".plate" : ".plates"),
+             "nur bei ghost_coefficient erlaubt");
+    }
+    if (spec.order_selection != SurfaceSelection::None) {
+        fail(path + (spec.order_selection == SurfaceSelection::One ? ".order" : ".orders"),
+             "nur bei ghost_coefficient erlaubt");
+    }
     if (spec.type == VariableType::WorkingDistance) {
         if (spec.selection == SurfaceSelection::One) {
             fail(path + ".surface", "working_distance ist immer die Dicke der letzten Fläche; "
@@ -134,6 +244,8 @@ double default_typical(VariableType type) {
         return kDefaultTypicalThickness;
     case VariableType::WorkingDistance:
         return kDefaultTypicalWorkingDistance;
+    case VariableType::GhostCoefficient:
+        return kDefaultTypicalGhostCoefficient;
     }
     return 1.0;
 }
@@ -146,13 +258,15 @@ std::string_view to_string(VariableType type) {
         return "thickness";
     case VariableType::WorkingDistance:
         return "working_distance";
+    case VariableType::GhostCoefficient:
+        return "ghost_coefficient";
     }
     return "?";
 }
 
 std::optional<VariableType> variable_type_from_string(std::string_view name) {
-    for (const VariableType t :
-         {VariableType::Curvature, VariableType::Thickness, VariableType::WorkingDistance}) {
+    for (const VariableType t : {VariableType::Curvature, VariableType::Thickness,
+                                 VariableType::WorkingDistance, VariableType::GhostCoefficient}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -161,6 +275,10 @@ std::optional<VariableType> variable_type_from_string(std::string_view name) {
 }
 
 double variable_value(const SystemDescription& system, const ResolvedVariable& variable) {
+    if (variable.type == VariableType::GhostCoefficient) {
+        return system.ghost_plates.at(static_cast<std::size_t>(variable.plate))
+            .coefficients.at(static_cast<std::size_t>(variable.order - 1));
+    }
     const Surface& s = system.surfaces.at(static_cast<std::size_t>(variable.surface));
     return variable.type == VariableType::Curvature ? s.curvature : s.thickness;
 }
@@ -193,6 +311,45 @@ std::vector<ResolvedVariable> resolve_variables(const SystemDescription& system)
                  "typische Größe muss endlich und größer als 0 sein, ist " + num(*spec.typical));
         }
 
+        // Startwert innerhalb der Schranken, sonst Fehler unter `min` bzw. `max`.
+        const auto check_start = [&](const ResolvedVariable& v) {
+            const double x = variable_value(system, v);
+            if (x < v.lower) {
+                fail(path + ".min", "Startwert " + num(x) + " (" + value_path(v) +
+                                        ") liegt unter der unteren Schranke " + num(v.lower));
+            }
+            if (x > v.upper) {
+                fail(path + ".max", "Startwert " + num(x) + " (" + value_path(v) +
+                                        ") liegt über der oberen Schranke " + num(v.upper));
+            }
+        };
+        ResolvedVariable base;
+        base.type = spec.type;
+        base.lower = spec.min.value_or(-kInf);
+        base.upper = spec.max.value_or(kInf);
+        base.typical = spec.typical.value_or(default_typical(spec.type));
+        base.item = static_cast<int>(i);
+
+        if (spec.type == VariableType::GhostCoefficient) {
+            for (const GhostRef& t : ghost_targets_of(spec, path, system.ghost_plates)) {
+                for (const ResolvedVariable& prev : out) {
+                    if (prev.type == spec.type && prev.plate == t.plate && prev.order == t.order) {
+                        fail(t.path, "Variable doppelt: ghost_coefficient der Geisterplatte " +
+                                         std::to_string(t.plate) + ", Ordnung " +
+                                         std::to_string(t.order) + " steht schon in " +
+                                         at("variables.items", prev.item));
+                    }
+                }
+                ResolvedVariable v = base;
+                v.plate = t.plate;
+                v.order = t.order;
+                v.surface = system.ghost_plates[static_cast<std::size_t>(t.plate)].after_surface;
+                check_start(v);
+                out.push_back(v);
+            }
+            continue;
+        }
+
         for (const SurfaceRef& t : targets_of(spec, path, system.surfaces)) {
             check_target(spec.type, t, system.surfaces);
             for (const ResolvedVariable& prev : out) {
@@ -204,23 +361,9 @@ std::vector<ResolvedVariable> resolve_variables(const SystemDescription& system)
                                      " steht schon in " + at("variables.items", prev.item));
                 }
             }
-            ResolvedVariable v;
-            v.type = spec.type;
+            ResolvedVariable v = base;
             v.surface = t.surface;
-            v.lower = spec.min.value_or(-kInf);
-            v.upper = spec.max.value_or(kInf);
-            v.typical = spec.typical.value_or(default_typical(spec.type));
-            v.item = static_cast<int>(i);
-
-            const double x = variable_value(system, v);
-            if (x < v.lower) {
-                fail(path + ".min", "Startwert " + num(x) + " (" + value_path(v.type, v.surface) +
-                                        ") liegt unter der unteren Schranke " + num(v.lower));
-            }
-            if (x > v.upper) {
-                fail(path + ".max", "Startwert " + num(x) + " (" + value_path(v.type, v.surface) +
-                                        ") liegt über der oberen Schranke " + num(v.upper));
-            }
+            check_start(v);
             out.push_back(v);
         }
     }
