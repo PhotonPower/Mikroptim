@@ -1,20 +1,22 @@
 # ADR-0011: Dezentrierung und Verkippung einzelner Flächen
 
-- **Status:** vorgeschlagen (Entscheidung des Maintainers, AGENTS.md §9: Erweiterung der Koordinatenkonventionen)
+- **Status:** angenommen (Maintainer, 2026-10-20)
 - **Datum:** 2026-10-20
 
 ## Kontext
 
 M8-T3 verlangt allgemeine Flächentransformationen (Dezentrierung, Verkippung) als Grundlage der Monte-Carlo-Tolerierung (M8-T4). Bisher ist das System koaxial (numerik.md §2): Jede Fläche hat lokale Koordinaten mit Scheitel im Ursprung, die Achsen aller Flächen fallen zusammen, und die Pupillenquadratur nutzt die Spiegelsymmetrie x → −x (halbe Pupille). Für Toleranzanalysen genügen kleine Starrkörperbewegungen einzelner Flächen bzw. Elemente; eine allgemeine nicht-sequenzielle Geometrie ist nicht nötig.
 
-## Entscheidung (Vorschlag)
+## Entscheidung
 
 1. **Transformation pro Fläche** relativ zur nominellen (koaxialen) Lage ihres Scheitels: Dezentrierung (Δx, Δy) in mm und Verkippung um die lokale x- und y-Achse (α, β) in Grad (Datei) bzw. Bogenmaß (intern). Reihenfolge beim Eintritt: erst verschieben, dann drehen (R = R_y(β)·R_x(α), aktiv, rechtshändig, positiver Winkel gegen den Uhrzeigersinn mit Blick entgegen der Drehachse). Eine Drehung um z ist bei sphärischen Flächen wirkungslos und entfällt.
-2. **Kein Koordinatenbruch für Folgeflächen:** Die Transformation betrifft nur die Fläche selbst („Dezentrieren und zurück“). Der Strahl wird vor dem Schnitt in das gekippte/verschobene lokale System transformiert und nach der Brechung zurück in das nominelle System der Fläche; Dicken bleiben Abstände der nominellen Scheitel entlang +z. Elementweise Bewegungen (eine Linse als Ganzes) entstehen, indem beide Flächen dieselbe Transformation um einen gemeinsamen Drehpunkt erhalten (Drehpunkt-Angabe pro Element, Standard: Scheitel der ersten Fläche).
+2. **Kein Koordinatenbruch für Folgeflächen:** Die Transformation betrifft nur die Fläche selbst („Dezentrieren und zurück“). Der Strahl wird vor dem Schnitt in das gekippte/verschobene lokale System transformiert und nach der Brechung zurück in das nominelle System der Fläche; Dicken bleiben Abstände der nominellen Scheitel entlang +z. Drehpunkt ist immer der Scheitel der jeweiligen Fläche (Entscheidung des Maintainers). Elementweise Bewegungen (eine Linse als Ganzes um einen anderen Punkt) setzt die Tolerierung (M8-T4) aus Verkippung und der zugehörigen Dezentrierung der Einzelflächen zusammen: Eine Drehung R um den Punkt P bewegt den Scheitel V der Fläche nach P + R(V − P), also Dezentrierung = Lateralanteil von (P + R(V − P) − V) und dieselbe Verkippung R; der axiale Anteil ändert die Dicken (Abstände) entsprechend.
 3. **Pupille:** Sobald eine Transformation ≠ 0 vorliegt, entfällt die Symmetrie; die Quadratur verwendet `PupilMode::Full` (M1-T4) für alle Felder, auch auf der Achse.
 4. **Dateiformat:** optionale Felder `decenter: [Δx, Δy]` und `tilt_deg: [α, β]` an Flächen (Standard 0); kompatible Erweiterung von `mikroptim.system/1` (keine neue Hauptversion). Für Toleranzsätze (M8-T4) ein eigener Abschnitt; das Schema legt M8-T4 fest.
 5. **Referenzsphäre und Bildpunkt** bleiben im nominellen System der letzten Fläche (numerik.md §7); Verzeichnung und Kippung durch Toleranzen werden damit sichtbar und nicht wegdefiniert.
 6. **Numerik:** Die Transformation ist Teil des gemeinsamen Mathe-Kerns (ADR-0005), FP64/df64, ohne Einfluss auf koaxiale Systeme (Transformation 0 ⇒ bitgleiche Ergebnisse, Test-Pflicht).
+
+Entscheidungen des Maintainers zu den offenen Fragen: (1) „dezentrieren und zurück“ pro Fläche reicht, keine globalen Koordinatenbrüche; (2) Drehreihenfolge und Vorzeichen wie oben; (3) Drehpunkt ist der Scheitel der Fläche.
 
 ## Konsequenzen
 
