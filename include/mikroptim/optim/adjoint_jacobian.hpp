@@ -69,9 +69,18 @@ struct AdjointJacobianOptions {
     ExtraResiduals extra{};            // Zusatzresiduen (count = 0: keine)
     TraceExtraResiduals trace_extra{}; // trace-abhängige Zusatzresiduen (M4-T3), hinter `extra`
     int extra_threads = 0;             // Host-Threads für die Zusatzresiduen (<= 0: Hardware)
+    // Host-Threads der CPU-Referenz für die Trace-Zeilen (Paare aus Variante und Feld, M5-T3;
+    // <= 0: Hardware). Das Ergebnis ist für jede Zahl bitgleich (jedes Paar schreibt nur seine
+    // eigenen Zeilen). Der GPU-Pfad ignoriert den Wert.
+    int threads = 0;
 
     int extra_count() const { return extra.count + trace_extra.count; }
 };
+
+// Optionen der adjungierten Jacobi mit Quadratur, Zusatzresiduen und extra_threads der
+// FD-Optionen (das Schema gilt nur für die FD-Jacobi; die Zusatzzeilen sind immer zentral). Für
+// den LM mit JacobianMethod::Adjoint (M5-T3).
+AdjointJacobianOptions adjoint_options_of(const FdJacobianOptions& options);
 
 // Jacobi-Matrizen und Residuen mehrerer Läufe. Ablage wie FdJacobian:
 //     J_i(r, p) = jacobian[(i·P + p)·R + r],   r₀_i(r) = residuals[i·R + r],
@@ -128,7 +137,19 @@ FdJacobianOptions fd_options_of(const AdjointJacobianOptions& options);
 ExtraRowsJacobian extra_rows_from_fd(const FdJacobianBatch& fd, std::span<const double> extra,
                                      int extra_count);
 
-// Zusatzzeilen auf der CPU: make_fd_jacobian_batch, bei trace-abhängigen Residuen
+// Zusatzzeilen ohne trace-abhängige Residuen (options.trace_extra.count == 0, sonst
+// std::invalid_argument), parallel über die Läufe auf options.extra_threads Host-Threads (M5-T3):
+// pro Lauf fd_pattern (zentral) und eine Variante als Arbeitsfläche (Kopie der Vorlage des Laufs),
+// in die nacheinander x₀ und die 2P FD-Punkte geschrieben werden (VariableSet::apply wie
+// write_fd_variants), jeweils ExtraResiduals::evaluate, dann fd_derivative wie
+// extra_rows_from_fd. Bitgleich zum Weg über den FD-Batch aller Läufe, aber ohne ihn aufzubauen
+// (die Auswertung pro Punkt bleibt). Ohne Zusatzresiduen (E = 0) leer.
+ExtraRowsJacobian extra_rows_untraced(const VariableSet& set, const SystemBatchHost& base,
+                                      std::span<const double> x0,
+                                      const AdjointJacobianOptions& options);
+
+// Zusatzzeilen auf der CPU: ohne trace-abhängige Residuen extra_rows_untraced, sonst
+// make_fd_jacobian_batch, bei trace-abhängigen Residuen
 // surface_extrema_cpu jeder FD-Variante, fd_extra_residuals, extra_rows_from_fd. Ohne
 // Zusatzresiduen (E = 0) leer, ohne Batch. Wirft wie fd_jacobian_cpu (u. a. bei x₀ außerhalb der
 // Schranken).

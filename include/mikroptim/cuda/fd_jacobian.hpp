@@ -53,9 +53,11 @@ public:
     // Tranche im Gerätepuffer ersetzt, bevor der Differenzkernel läuft.
     // Wirft wie make_fd_jacobian_batch, evaluate_extra_residuals und TraceEngine::run_on_device;
     // CudaError, wenn J nicht in den Gerätespeicher passt. Nach einer Ausnahme ist der Inhalt
-    // unbestimmt (ready() == false).
+    // unbestimmt (ready() == false). `precision`: Rechentyp der Trace-Kernel (M7-T1; ab M5-T3
+    // für den Vergleich mit der adjungierten Jacobi, Benchmark jacobian_throughput), Ausgaben FP64.
     void compute(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
-                 std::span<const double> x0, const FdJacobianOptions& options = {});
+                 std::span<const double> x0, const FdJacobianOptions& options = {},
+                 Precision precision = Precision::Fp64);
 
     // Lädt J, r₀ und Status-Wechsel herunter (Ablage wie FdJacobian, Muster vom Host).
     // Wirft std::logic_error ohne erfolgreiches compute.

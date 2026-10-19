@@ -11,6 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
     test_adjoint_jacobian.cpp
+    test_adjoint_lm.cpp
     test_adjoint_record.cpp
     test_batch_memory.cpp
     test_batch_merit.cpp
@@ -78,6 +79,7 @@ if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_adjoint.cpp
         test_cuda_adjoint_jacobian.cpp
+        test_cuda_adjoint_lm.cpp
         test_cuda_beam_search.cpp
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
@@ -232,6 +234,16 @@ if(TARGET trace_throughput)
     set_tests_properties(bench_trace_throughput_smoke PROPERTIES
         SKIP_RETURN_CODE 3
         PASS_REGULAR_EXPRESSION "Versagte Strahlen insgesamt: 0 von 40800")
+endif()
+
+# Benchmark jacobian_throughput (M5-T3) als kurzer Smoke-Lauf; Exit-Code 3 = kein CUDA-Gerät.
+if(TARGET jacobian_throughput)
+    add_test(NAME bench_jacobian_throughput_smoke
+        COMMAND $<TARGET_FILE:jacobian_throughput> --surfaces 10 --runs 2 --repeat 1 --warmup 0
+                --type fp64 --extra none,paraxial)
+    set_tests_properties(bench_jacobian_throughput_smoke PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "Kleinster Faktor der Jacobi")
 endif()
 
 include(GoogleTest)

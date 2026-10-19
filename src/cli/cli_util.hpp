@@ -15,6 +15,7 @@
 
 namespace mko {
 struct SystemDescription;
+enum class JacobianMethod; // mikroptim/optim/levenberg_marquardt.hpp
 } // namespace mko
 
 namespace mko::cli {
@@ -55,6 +56,9 @@ std::string pad_left(std::string_view s, std::size_t width);
 
 // Zeile "  <Schlüssel auf 44 Zeichen><Wert>".
 void kv(std::ostream& out, std::string_view key, const std::string& value);
+
+// Beschreibung des Jacobi-Verfahrens für die Textausgabe (optimize, snap; M5-T3).
+std::string jacobian_text(JacobianMethod method);
 
 // Werte mit fixed(·, decimals), durch ", " getrennt.
 std::string join_fixed(const std::vector<double>& values, int decimals);

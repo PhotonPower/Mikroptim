@@ -590,6 +590,50 @@ TEST(CliOptimize, TextOutput) {
     EXPECT_NE(q.out.find("- (ohne -o)"), std::string::npos);
 }
 
+// Adjungierte Jacobi (M5-T3): --jacobian adjoint setzt LmOptions::jacobian_method; Ergebnis
+// bitgleich zur Bibliothek mit diesem Verfahren, Optimum wie mit finiten Differenzen (Standard
+// fd), Verfahren in Text und JSON.
+TEST(CliOptimize, AdjointJacobian) {
+    const RunResult r = optimize({kBiegung, "--jacobian", "adjoint", "--json", "--quiet"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["settings"]["jacobian"], "adjoint");
+    EXPECT_TRUE(j["result"]["converged"].get<bool>()) << j["result"]["status"];
+
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(kBiegung));
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::LmOptions options;
+    options.jacobian.extra =
+        mko::make_paraxial_residuals(mko::make_paraxial_constraints(loaded.system));
+    options.jacobian_method = mko::JacobianMethod::Adjoint;
+    const mko::LmResult lib = mko::optimize_lm_cpu(set, base, set.extract(base, 0), options);
+    const std::vector<double> x = doubles(j["runs"][0]["x"]);
+    ASSERT_EQ(x.size(), lib.runs[0].x.size());
+    for (std::size_t k = 0; k < x.size(); ++k) {
+        EXPECT_TRUE(same_bits(x[k], lib.runs[0].x[k])) << k;
+    }
+    const double f_ad = j["result"]["merit"].get<double>();
+    EXPECT_TRUE(same_bits(f_ad, lib.runs[0].merit));
+
+    const RunResult fd = optimize({kBiegung, "--json", "--quiet"});
+    ASSERT_EQ(fd.code, mko::cli::kExitOk) << fd.err;
+    const json jf = json::parse(fd.out);
+    EXPECT_EQ(jf["settings"]["jacobian"], "fd");
+    const double f_fd = jf["result"]["merit"].get<double>();
+    EXPECT_LE(std::abs(f_ad / f_fd - 1.0), mko::test::kLmReturnRelative) << f_ad << " " << f_fd;
+    EXPECT_NEAR(shape_factor(x), shape_factor(doubles(jf["runs"][0]["x"])),
+                mko::test::kLmShapeAgreement);
+
+    const RunResult t = optimize({kBiegung, "--jacobian", "adjoint", "--max-iterations", "1"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("Jacobi-Matrix"), std::string::npos) << t.out;
+    EXPECT_NE(t.out.find("adjungiert (Zusatzzeilen per finiter Differenzen)"), std::string::npos);
+    const RunResult tf = optimize({kBiegung, "--jacobian", "fd", "--max-iterations", "1"});
+    ASSERT_EQ(tf.code, mko::cli::kExitOk) << tf.err;
+    EXPECT_NE(tf.out.find("finite Differenzen (zentral)"), std::string::npos);
+}
+
 // Weiches Strahlversagen (M4-T2): Das Startsystem mit 30 % versagenden Strahlen wird ohne
 // Eingriff versagensfrei; Ergebnis bitgleich zu optimize_lm_cpu (äußeres Strafverfahren mit
 // w_fail ab 1e6, x10 pro Runde); Protokoll mit fortlaufenden Zyklen und hart versagten
@@ -711,6 +755,8 @@ TEST(CliOptimize, Errors) {
                                                {kBiegung, "--fail-weight", "-1"},
                                                {kBiegung, "--fail-weight", "x"},
                                                {kBiegung, "--fail-weight", "1e8", "--hard-failure"},
+                                               {kBiegung, "--jacobian"},
+                                               {kBiegung, "--jacobian", "adjungiert"},
                                                {kBiegung, "--device", "0"}}) {
         r = optimize(args);
         EXPECT_EQ(r.code, mko::cli::kExitUsage) << (args.empty() ? "" : args.back());
@@ -815,6 +861,31 @@ TEST(CliOptimizeGpu, SoftFailureStartBecomesFailureFree) {
     std::cout << "[          ] GPU: Runden " << j["result"]["penalty_rounds"] << ", w_fail "
               << j["result"]["fail_weight"] << ", Zyklen " << j["result"]["iterations"]
               << ", Merit " << j["result"]["merit"] << '\n';
+    EXPECT_EQ(optimize(args).out, r.out);
+}
+
+// Adjungierte Jacobi auf der GPU (M5-T3): dasselbe Optimum wie auf der CPU, Ausgabe
+// deterministisch.
+TEST(CliOptimizeGpu, AdjointJacobianMatchesCpu) {
+    if (mko::cuda::device_count() == 0) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const std::vector<std::string> args{kBiegung,  "--gpu",  "--jacobian",
+                                        "adjoint", "--json", "--quiet"};
+    const RunResult r = optimize(args);
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["backend"], "gpu");
+    EXPECT_EQ(j["settings"]["jacobian"], "adjoint");
+    EXPECT_TRUE(j["result"]["converged"].get<bool>());
+    const RunResult cpu = optimize({kBiegung, "--jacobian", "adjoint", "--json", "--quiet"});
+    ASSERT_EQ(cpu.code, mko::cli::kExitOk) << cpu.err;
+    const json jc = json::parse(cpu.out);
+    const double f_gpu = j["result"]["merit"].get<double>();
+    const double f_cpu = jc["result"]["merit"].get<double>();
+    EXPECT_LE(std::abs(f_gpu / f_cpu - 1.0), mko::test::kLmReturnRelative);
+    EXPECT_NEAR(shape_factor(doubles(j["runs"][0]["x"])), shape_factor(doubles(jc["runs"][0]["x"])),
+                mko::test::kLmShapeAgreement);
     EXPECT_EQ(optimize(args).out, r.out);
 }
 

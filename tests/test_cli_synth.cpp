@@ -79,6 +79,8 @@ TEST(CliSynth, HelpAndUsageErrors) {
     EXPECT_EQ(synth({kStart, "--step", "0.02,0.002"}).code, cli::kExitUsage);
     EXPECT_EQ(synth({kStart, "-o", kStart}).code, cli::kExitUsage);
     EXPECT_EQ(synth({kStart, kStart}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--jacobian", "xyz"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--jacobian"}).code, cli::kExitUsage);
     const SynthCliResult missing = synth({kResidualSystems + "gibt_es_nicht.json"});
     EXPECT_EQ(missing.code, cli::kExitError);
     EXPECT_NE(missing.err.find("Fehler"), std::string::npos);
@@ -108,6 +110,33 @@ TEST(CliSynth, ShortRunJsonLogAndResult) {
     const LoadedSystem l = load_system(result);
     EXPECT_DOUBLE_EQ(l.system.surfaces[0].semi_diameter, 3.1);
     EXPECT_EQ(l.system.surfaces.size(), 6U); // Meniskus eingefügt
+}
+
+// Adjungierte Jacobi (M5-T3): derselbe Kurzlauf mit --jacobian adjoint endet wie mit FD
+// (Status, Einfügungen, Endpunkt der Homotopie); das Verfahren steht in den Optionen.
+TEST(CliSynth, AdjointJacobian) {
+    const std::vector<std::string> args{kStart, "--target-na",      "0.31", "--merit-factor",
+                                        "10",   "--max-elements",   "2",    "--max-iterations",
+                                        "40",   "--element-stages", "2",    "--json"};
+    std::vector<std::string> adjoint = args;
+    adjoint.push_back("--jacobian");
+    adjoint.push_back("adjoint");
+    const SynthCliResult fd = synth(args);
+    const SynthCliResult ad = synth(adjoint);
+    ASSERT_EQ(fd.code, cli::kExitOk) << fd.err;
+    ASSERT_EQ(ad.code, cli::kExitOk) << ad.err;
+    const nlohmann::json jf = nlohmann::json::parse(fd.out);
+    const nlohmann::json ja = nlohmann::json::parse(ad.out);
+    EXPECT_EQ(jf["options"]["jacobian"], "fd");
+    EXPECT_EQ(ja["options"]["jacobian"], "adjoint");
+    EXPECT_EQ(ja["result"]["status"], jf["result"]["status"]);
+    EXPECT_EQ(ja["result"]["insertions"], jf["result"]["insertions"]);
+    EXPECT_EQ(ja["result"]["elements"], jf["result"]["elements"]);
+    EXPECT_EQ(ja["result"]["point"]["aperture"], jf["result"]["point"]["aperture"]);
+    const SynthCliResult t = synth({kStart, "--max-elements", "1", "--max-iterations", "5",
+                                    "--quiet", "--jacobian", "adjoint"});
+    ASSERT_EQ(t.code, cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("adjungiert"), std::string::npos) << t.out;
 }
 
 TEST(CliSynth, TextOutput) {

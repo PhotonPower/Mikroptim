@@ -66,6 +66,8 @@ struct SnapArgs {
     bool hard_failure = false;
     bool have_fail_weight = false;
     double fail_weight = kDefaultFailWeight;
+    // Verfahren der Jacobi-Matrix (M5-T3): --jacobian fd|adjoint
+    JacobianMethod jacobian = LmOptions{}.jacobian_method;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -132,6 +134,14 @@ SnapArgs parse_args(std::span<const std::string_view> args) {
             a.have_fail_weight = true;
         } else if (arg == "--hard-failure") {
             a.hard_failure = true;
+        } else if (arg == "--jacobian") {
+            const std::string_view v = next_value(args, i, arg);
+            const std::optional<JacobianMethod> m = jacobian_method_from_string(v);
+            if (!m) {
+                throw UsageError("--jacobian erwartet fd oder adjoint, nicht '" + std::string(v) +
+                                 "'");
+            }
+            a.jacobian = *m;
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -220,6 +230,7 @@ void write_text(const SnapReport& r, std::ostream& out) {
        a.hard_failure ? std::string("hart (versagte Strahlen maskiert)")
                       : "weich, w_fail ab " + sci(a.fail_weight, 3) +
                             " Wellen² (Strafverfahren x10 bis 1e14)");
+    kv(out, "Jacobi-Matrix", jacobian_text(a.jacobian));
     kv(out, "Glaselemente", std::to_string(s.elements.size()));
     kv(out, "Glas-Hülle",
        std::to_string(r.hull_glasses) + " Gläser, Dimension " + std::to_string(r.hull_dimension));
@@ -377,6 +388,7 @@ void write_json(const SnapReport& r, std::ostream& out) {
     settings["max_iterations"] = a.max_iterations;
     settings["failure"] = a.hard_failure ? "hard" : "soft";
     settings["fail_weight"] = a.hard_failure ? Json(nullptr) : number(a.fail_weight);
+    settings["jacobian"] = to_string(a.jacobian);
     settings["distance_weights"] = Json::array({1.0, 1.0, 1.0});
     j["settings"] = std::move(settings);
     j["hull"] = Json{{"glasses", r.hull_glasses}, {"dimension", r.hull_dimension}};
@@ -471,7 +483,7 @@ void print_snap_usage(std::ostream& out) {
     out << "Aufruf: mikroptim snap <system.json> [-o <ergebnis.json>] [--json]\n"
            "                      [--neighbors k] [--max-combinations N] [--max-iterations N]\n"
            "                      [--rings N] [--spokes M] [--fail-weight w | --hard-failure]\n"
-           "                      [--gpu [--device N]]\n"
+           "                      [--jacobian fd|adjoint] [--gpu [--device N]]\n"
            "  Rastet die Glasvariablen (Typ glass) auf Katalog-Gläser ein: pro Glaselement die k\n"
            "  nächsten Gläser im normierten (n0, nu1, nu2)-Raum der Glas-Hülle, jede Kombination\n"
            "  ein Lauf des gebündelten Levenberg-Marquardt (übrige Variablen reoptimiert, FP64);\n"
@@ -499,6 +511,8 @@ void print_snap_usage(std::ostream& out) {
         << sci(kDefaultFailWeight, 0)
         << "; je Runde x10 bis 1e14)\n"
            "  --hard-failure       hartes Strahlversagen (ohne Strafresiduen)\n"
+           "  --jacobian V         Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
+           "                       adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --gpu                auf der GPU rechnen statt auf der CPU\n"
            "  --device N           CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help               diese Hilfe\n"
@@ -589,6 +603,7 @@ int run_snap_command(std::span<const std::string_view> args, std::ostream& out, 
         options.lm.jacobian.quadrature.failure =
             a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
         options.lm.jacobian.quadrature.fail_weight = a.fail_weight;
+        options.lm.jacobian_method = a.jacobian;
         options.lm.jacobian.extra = concat_extra_residuals({make_paraxial_residuals(constraints),
                                                             make_ghost_penalty_residuals(penalty),
                                                             std::move(mechanical.geometric)});

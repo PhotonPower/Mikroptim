@@ -6,3 +6,8 @@ add_executable(trace_throughput trace_throughput.cpp)
 target_link_libraries(trace_throughput PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
     mikroptim_batch mikroptim_cuda CUDA::cudart nlohmann_json::nlohmann_json mikroptim_warnings)
+
+add_executable(jacobian_throughput jacobian_throughput.cpp)
+target_link_libraries(jacobian_throughput PRIVATE
+    mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
+    mikroptim_batch mikroptim_optim mikroptim_cuda CUDA::cudart mikroptim_warnings)

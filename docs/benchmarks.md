@@ -367,6 +367,53 @@ Synthese-Konfiguration (5 Felder × 7 Wellenlängen, Feld 0 auf der Achse: 2.310
 - **ADJOINT** (M5-T1/M5-T2) nutzt noch die alte Abbildung; die Pakete lassen sich übernehmen, wenn der Rückwärtsdurchlauf steht (gleiche Reduktionsreihenfolge, also bitgleiche Residuen wie RESIDUALS).
 - **Download** der Residuen im Modus RESIDUALS über die Engine (bei S = 40, V = 10.000 in df64 ca. 25 ms außerhalb des Kernels, fast alles Download) bleibt der größte Posten außerhalb des Kernels; der Optimierer nutzt für die Jacobi-Matrix `run_on_device` ohne Download.
 
+## Adjungierte Jacobi im LM (M5-T3)
+
+Jacobi-Matrix des gebündelten LM: finite Differenzen (`DeviceFdJacobian`, 2P + 1 Varianten pro Lauf über die TraceEngine, RESIDUALS seit M7-T4 mit Tupelpaketen) gegen adjungiert (`DeviceAdjointJacobian`, ein Kernelstart). Messprogramm `bench/jacobian_throughput` ([bench/README.md](../bench/README.md#jacobian_throughput-m5-t3)): Systeme wie oben mit P = 2S − 1 Variablen (alle Krümmungen und Dicken, Arbeitsabstand), 3 Felder × 3 Wellenlängen, Quadratur 10 × 8, weiches Versagen (R = 2 · 510 Strahl- und Strafzeilen), Startpunkte 1 % gestört. RTX 3090, Treiber 610.88 (CUDA 13.3), Toolkit 12.9, Release, Branch `m5/t3-adjoint-lm` auf 00f1bd0, 2026-10-20, Median aus 5 Läufen.
+
+```text
+jacobian_throughput --runs 1,10,100,1000 --repeat 5
+```
+
+**Ohne Zusatzresiduen** (nur Strahl- und Strafzeilen, Maß der Abnahme), Zeiten in ms; „J“ = `compute`, „ges.“ = J plus Normalgleichungen und Download von A und g:
+
+| S | P | Typ | Läufe | FD J | adj. J | Faktor J | FD ges. | adj. ges. | Faktor ges. |
+|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 31 | 61 | FP64 | 1 | 1,38 | 0,73 | 1,9 | 1,52 | 0,88 | 1,7 |
+| 31 | 61 | FP64 | 10 | 9,74 | 1,18 | 8,3 | 10,01 | 1,45 | 6,9 |
+| 31 | 61 | FP64 | 100 | 89,2 | 4,38 | **20,4** | 91,5 | 6,73 | 13,6 |
+| 31 | 61 | FP64 | 1.000 | 903 | 37,0 | **24,4** | 932 | 59,7 | 15,6 |
+| 31 | 61 | df64 | 10 | 4,64 | 1,01 | 4,6 | 4,95 | 1,32 | 3,8 |
+| 31 | 61 | df64 | 100 | 55,6 | 1,88 | **29,5** | 57,9 | 4,18 | 13,8 |
+| 31 | 61 | df64 | 1.000 | 464 | 16,4 | **28,2** | 488 | 40,9 | 11,9 |
+| 41 | 81 | FP64 | 1 | 1,63 | 0,81 | 2,0 | 1,76 | 0,94 | 1,9 |
+| 41 | 81 | FP64 | 10 | 15,5 | 1,28 | **12,1** | 16,0 | 1,64 | 9,7 |
+| 41 | 81 | FP64 | 100 | 151 | 5,63 | **26,7** | 155 | 9,71 | 15,9 |
+| 41 | 81 | FP64 | 1.000 | 1.566 | 49,0 | **32,0** | 1.608 | 91,3 | 17,6 |
+| 41 | 81 | df64 | 10 | 7,27 | 0,70 | **10,4** | 7,78 | 1,06 | 7,3 |
+| 41 | 81 | df64 | 100 | 70,4 | 2,46 | **28,6** | 74,8 | 6,86 | 10,9 |
+| 41 | 81 | df64 | 1.000 | 726 | 19,5 | **37,3** | 772 | 62,4 | 12,4 |
+
+(df64 mit einem Lauf: 1,2–1,6.) Abweichung von A zwischen beiden Verfahren 6·10⁻⁸ … 1,6·10⁻⁷ (FP64) bzw. 7·10⁻⁷ … 3,3·10⁻⁶ (df64, Rundung von df64 in der FD-Jacobi).
+
+**Mit Zusatzresiduen** (Faktor J, FP64 / df64):
+
+| S | Zusatz | 1 Lauf | 10 | 100 | 1.000 | Anteil der Zusatzzeilen an adj. J (100 Läufe) |
+|---:|---|---:|---:|---:|---:|---|
+| 31 | paraxial (Brennweite) | 1,3 / 1,0 | 2,8 / 1,7 | 2,7 / 1,9 | 6,0 / 3,8 | 91 % (43 von 47 ms) |
+| 41 | paraxial | 1,4 / 1,1 | 3,0 / 1,7 | 3,7 / 2,3 | 9,2 / 6,1 | 88 % |
+| 31 | mechanisch (trace-abhängig) | 0,7 / 0,7 | 0,8 / 0,9 | 0,9 / 0,9 | 1,0 / 1,0 | 97 % (181 von 187 ms) |
+| 41 | mechanisch | 0,7 / 0,8 | 1,0 / 0,9 | 1,0 / 1,0 | 1,0 / 1,0 | 98 % |
+
+**Auswertung.**
+
+- **Abnahme „mindestens 10× für P ≥ 60“ (Jacobi der Strahlresiduen):** erfüllt für den gebündelten LM ab etwa 10 (P = 81) bzw. 100 Läufen (P = 61) pro Aufruf: 20–37-mal (J) bzw. 11–18-mal einschließlich der Normalgleichungen. Mit 10 Läufen 4,6–12-mal, mit einem Lauf 1,2–2-mal: Ein Lauf sind 9 Blöcke (F · L) für 82 SMs; die Zeit ist dann die Latenz eines Strahls durch Vorwärts- und Rückwärtsdurchlauf (≈ 0,7 ms, auch in df64 nicht kürzer), während die FD-Jacobi mit 123–163 Varianten die GPU füllt. Erst ab ≈ 30 Läufen (≥ 246 Blöcke = 3 Blöcke pro SM bei 168 Registern) ist die GPU voll belegt.
+- **Normalgleichungen:** Mit der adjungierten Jacobi wird der Gram-Kernel und der Download von A, g sichtbar (bei 1.000 Läufen 23 ms von 60 ms in FP64, P = 61); der Faktor „ges.“ ist deshalb kleiner als der von J.
+- **Zusatzzeilen bleiben FD (hybrid, M5-T2):** Paraxiale Bedingungen kosten 2P + 1 Auswertungen pro Lauf auf dem Host (≈ 2 µs pro Auswertung: `VariableSet::apply` ≈ 0,9 µs, paraxiale Residuen ≈ 1,1 µs bei S = 31); bei 100 Läufen sind das 43 ms gegen 4 ms für den Kernel. Seit M5-T3 entfällt dafür der FD-Batch (`extra_rows_untraced`, eine Variante als Arbeitsfläche, Läufe auf Host-Threads); der Start eines Host-Threads kostet auf diesem Rechner aber mehrere Millisekunden, sodass `lm_host_threads` erst ab 4.096 Auswertungen pro Thread parallelisiert. Trace-abhängige mechanische Bedingungen brauchen die Extrema aller 2P + 1 FD-Varianten (MERIT-Lauf über den FD-Batch), damit ist die adjungierte Jacobi so teuer wie die FD-Jacobi (Faktor 0,7–1,0; bei wenigen Läufen etwas langsamer, weil Batch und Kernel dazukommen).
+- **Folgerungen** (Notizen im PR): adjungierte Ableitung der Extrema (Strahl, der das Maximum stellt, mit eigenem Seed im Rückwärtsdurchlauf) und analytische Ableitung der paraxialen Residuen (y-nu-Trace rückwärts) würden die Zusatzzeilen von 2P + 1 Auswertungen auf eine bringen; ein dauerhafter Host-Threadpool würde die Parallelisierung schon bei kleinen Aufrufen erlauben.
+
+Gemessen und behalten: Projektion des Kolbenabzugs mit einem Warp pro Variable statt einer Blockreduktion pro Variable (keine `__syncthreads` pro Variable), 5–15 % schneller. Nicht weiter verfolgt (Latenz statt Durchsatz begrenzt den Fall weniger Läufe): Registergrenze, kleinere Kapazitätsklassen, Checkpoints (in df64 laut M5-T1 langsamer).
+
 ## P100-Messung nachholen
 
 Auf dem P100-Rechner (Linux, CUDA 12.x):
@@ -393,6 +440,14 @@ cmake -S . -B build/minblocks5 -DCMAKE_BUILD_TYPE=Release -DMIKROPTIM_ENABLE_CUD
       -DCMAKE_CUDA_FLAGS="-DMKO_KERNEL_MIN_BLOCKS=5" && cmake --build build/minblocks5 --target trace_throughput
 ./build/minblocks5/bench/trace_throughput --device <P100-Index> --surfaces 10,30,40 --variants 441,10000 \
       --mode residuals,merit,merit+extrema --type fp64 --repeat 20 --warmup 3 --csv p100_minblocks5.csv
+```
+
+Zu M5-T3 (adjungierte Jacobi, Abnahme „mindestens 10× für P ≥ 60 auf beiden GPUs“):
+
+```bash
+cmake --build --preset release-cuda --target jacobian_throughput
+./build/release-cuda/bench/jacobian_throughput --device <P100-Index> --runs 1,10,100,1000 --repeat 5 --csv p100_jacobian.csv
+ctest --preset release-cuda -R "CudaAdjointLm|CudaAdjointJacobian|AdjointLm" --output-on-failure
 ```
 
 Lohnt die Registergrenze auf der P100 (mehr als einige Prozent), sollte sie pro Architektur voreingestellt werden (Frage an den Maintainer; die Bits sind mit `MultiTraceEngine.ResultFingerprint` zu prüfen).

@@ -128,12 +128,37 @@ void DeviceNormalEquations::release() noexcept {
     capacity_ = 0;
 }
 
-void DeviceNormalEquations::compute(const DeviceFdJacobian& jacobian) {
+DeviceJacobianRef device_jacobian_ref(const DeviceFdJacobian& jacobian) {
     if (!jacobian.ready()) {
         throw std::logic_error("DeviceNormalEquations::compute: keine Jacobi-Matrix berechnet");
     }
+    return DeviceJacobianRef{jacobian.device(), jacobian.shape(), jacobian.device_jacobian(),
+                             jacobian.device_residuals()};
+}
+
+DeviceJacobianRef device_jacobian_ref(const DeviceAdjointJacobian& jacobian) {
+    if (!jacobian.ready()) {
+        throw std::logic_error("DeviceNormalEquations::compute: keine Jacobi-Matrix berechnet");
+    }
+    return DeviceJacobianRef{jacobian.device(), jacobian.shape(), jacobian.device_jacobian(),
+                             jacobian.device_residuals()};
+}
+
+void DeviceNormalEquations::compute(const DeviceFdJacobian& jacobian) {
+    compute(device_jacobian_ref(jacobian));
+}
+
+void DeviceNormalEquations::compute(const DeviceAdjointJacobian& jacobian) {
+    compute(device_jacobian_ref(jacobian));
+}
+
+void DeviceNormalEquations::compute(const DeviceJacobianRef& jacobian) {
     ready_ = false;
-    const JacobianShape& shape = jacobian.shape();
+    const JacobianShape& shape = jacobian.shape;
+    if (jacobian.device < 0 || shape.runs < 0 || shape.variables < 1 || shape.rows() < 0 ||
+        (shape.runs > 0 && (jacobian.jacobian == nullptr || jacobian.residuals == nullptr))) {
+        throw std::invalid_argument("DeviceNormalEquations::compute: ungültige Jacobi-Matrix");
+    }
     const int P = shape.variables;
     const int n = P + 1;
     const int tiles = (n + kGramTile - 1) / kGramTile;
@@ -143,10 +168,10 @@ void DeviceNormalEquations::compute(const DeviceFdJacobian& jacobian) {
     }
     const std::size_t bytes = static_cast<std::size_t>(shape.runs) * static_cast<std::size_t>(n) *
                               static_cast<std::size_t>(n) * sizeof(double);
-    if (buffer_ != nullptr && device_ != jacobian.device()) {
+    if (buffer_ != nullptr && device_ != jacobian.device) {
         release();
     }
-    device_ = jacobian.device();
+    device_ = jacobian.device;
     const detail::DeviceGuard guard(device_);
     if (bytes > capacity_) {
         if (buffer_ != nullptr) {
@@ -158,8 +183,8 @@ void DeviceNormalEquations::compute(const DeviceFdJacobian& jacobian) {
         capacity_ = bytes;
     }
     GramArgs args{};
-    args.jacobian = jacobian.device_jacobian();
-    args.r0 = jacobian.device_residuals();
+    args.jacobian = jacobian.jacobian;
+    args.r0 = jacobian.residuals;
     args.rows = shape.rows();
     args.variables = P;
     args.tiles = tiles;
@@ -167,9 +192,11 @@ void DeviceNormalEquations::compute(const DeviceFdJacobian& jacobian) {
     args.gram = static_cast<double*>(buffer_);
     const dim3 block(kGramTile, kGramTile);
     const auto blocks = static_cast<unsigned>(static_cast<std::int64_t>(shape.runs) * pairs);
-    gram_kernel<<<blocks, block>>>(args);
-    MKO_CUDA_CHECK(cudaGetLastError());
-    MKO_CUDA_CHECK(cudaDeviceSynchronize());
+    if (blocks > 0) {
+        gram_kernel<<<blocks, block>>>(args);
+        MKO_CUDA_CHECK(cudaGetLastError());
+        MKO_CUDA_CHECK(cudaDeviceSynchronize());
+    }
     runs_ = shape.runs;
     variables_ = P;
     ready_ = true;
