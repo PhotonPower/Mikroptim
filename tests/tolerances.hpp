@@ -318,4 +318,12 @@ inline constexpr double kGlassHullReference = 1e-9;
 // Datei (10⁸) beobachtet ~2e-9. 1e-6 normiert entspricht ~4e-7 in n₀ und ~2e-7 in ν₁.
 inline constexpr double kGlassHullPenaltyDistance = 1e-6;
 
+// Glas-Einrasten (M6-T5): Abstand im normierten Glasraum gegen die unabhängige Bruteforce-Suche
+// (Koordinaten bis ~2, Rundung weniger Operationen).
+inline constexpr double kGlassSnapDistance = 1e-13;
+// Merit nach dem Einrasten und Reoptimieren relativ zum kontinuierlichen Optimum: nicht kleiner
+// bis auf das Rauschen der Merit (Rundung der OPD-Residuen ~1e-9 relativ, Konvergenz des LM
+// ~1e-10, vgl. kLmReturnRelative).
+inline constexpr double kGlassSnapMeritSlack = 1e-6;
+
 } // namespace mko::test

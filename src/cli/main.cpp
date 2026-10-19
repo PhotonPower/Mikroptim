@@ -1,5 +1,6 @@
 #include "cli/eval_command.hpp"
 #include "cli/optimize_command.hpp"
+#include "cli/snap_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
@@ -21,11 +22,14 @@ void print_usage() {
               "        mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
               "                        [--max-iterations N] [--runs K ...] [--gpu [--device N]]\n"
               "        mikroptim eval <system.json> [--grid N] [--json] [--gpu]\n"
+              "        mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k]\n"
+              "                       [--max-combinations N] [--gpu [--device N]]\n"
               "  --version   Version ausgeben\n"
               "  --devices   CUDA-Geräte auflisten\n"
               "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
               "  optimize    Variablen optimieren (Hilfe: mikroptim optimize --help)\n"
-              "  eval        Auswertung auf dem Pupillenraster (Hilfe: mikroptim eval --help)");
+              "  eval        Auswertung auf dem Pupillenraster (Hilfe: mikroptim eval --help)\n"
+              "  snap        auf Katalog-Gläser einrasten (Hilfe: mikroptim snap --help)");
 }
 
 } // namespace
@@ -55,6 +59,10 @@ int main(int argc, char** argv) {
     if (arg == "optimize") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_optimize_command(args, std::cout, std::cerr);
+    }
+    if (arg == "snap") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_snap_command(args, std::cout, std::cerr);
     }
     if (arg == "eval") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

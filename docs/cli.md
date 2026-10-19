@@ -7,6 +7,8 @@ mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet] [--max-
                    [--rings N] [--spokes M] [--runs K [--perturbation s] [--seed n]] [--gpu [--device N]]
 mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex] [--json]
                [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]] [--gpu [--device N]]
+mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--max-combinations N]
+               [--max-iterations N] [--rings N] [--spokes M] [--gpu [--device N]]
 ```
 
 | Aufruf | Wirkung |
@@ -16,6 +18,7 @@ mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex]
 | `mikroptim trace …` | System auswerten (M1-T8, mit `--gpu` M2-T5; [Abschnitt `trace`](#mikroptim-trace)) |
 | `mikroptim optimize …` | Variablen eines Systems optimieren, Ergebnis als neue Systemdatei (M3-T5; [Abschnitt `optimize`](#mikroptim-optimize)) |
 | `mikroptim eval …` | Auswertung auf dem dichten Pupillenraster (Modus EVAL, M8-T1; Abschnitt [`mikroptim eval`](#mikroptim-eval)) |
+| `mikroptim snap …` | Glasvariablen auf Katalog-Gläser einrasten, übrige Variablen reoptimieren (M6-T5; Abschnitt [`mikroptim snap`](#mikroptim-snap)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
 
@@ -491,7 +494,7 @@ Die Ergebnisdatei ist die Eingabe mit den Variablenwerten des besten Laufs (`Var
 
 - **Glaskataloge:** Ein Eintrag von `glass_catalogs` bleibt unverändert, wenn er vom Verzeichnis der Ergebnisdatei aus (mit der Suche in den Elternverzeichnissen, [dateiformat.md](dateiformat.md)) dieselbe Datei findet; sonst wird er durch den relativen Pfad dorthin ersetzt (bzw. den absoluten, wenn es keinen relativen gibt, z. B. anderes Laufwerk).
 - **Eingabedatei:** Ist `-o` die Eingabedatei (auch über einen anderen Pfad oder eine Verknüpfung), bricht der Befehl vor dem Laden mit Exit-Code 2 ab; die Eingabe wird nie überschrieben, eine Option zum Erzwingen gibt es bewusst nicht. Eine andere vorhandene Datei wird überschrieben.
-- **Glas:** Das Material jeder Glasvariable steht als `{"model": "buchdahl", "n0": …, "nu": [ν₁, ν₂, ν₃]}` in der Ergebnisdatei (auch wenn die Eingabe ein Katalogglas nannte); ν₃ ist der des Startglases. Den Namen eines realen Glases ordnet erst das Glas-Einrasten (M6-T5) wieder zu.
+- **Glas:** Das Material jeder Glasvariable steht als `{"model": "buchdahl", "n0": …, "nu": [ν₁, ν₂, ν₃]}` in der Ergebnisdatei (auch wenn die Eingabe ein Katalogglas nannte); ν₃ ist der des Startglases. Den Namen eines Katalogglases ordnet erst das Glas-Einrasten wieder zu ([`mikroptim snap`](#mikroptim-snap), M6-T5).
 - **Feldziele:** Die idealen Bildpunkte h_f = f_soll · tan θ_f bleiben während der Optimierung fest (Batch des Startsystems). Ohne `target.focal_length` ist f_soll die paraxiale Brennweite des *Startsystems*; beim Laden des Ergebnisses ergeben sich dann andere Feldziele und, bei Feldwinkeln ≠ 0, eine andere Merit. Der Befehl warnt in diesem Fall (`mikroptim optimize: Warnung: Feldziele aus der paraxialen Brennweite des Startsystems …`, auch im JSON-Feld `warnings`); für reproduzierbare Ergebnisse `target.focal_length` setzen.
 
 ### Exit-Codes und Fehler
@@ -901,3 +904,128 @@ In JSON steht pro Tupel `psf.vector` mit `fwhm_mm` [x, y], `energy_fraction` [x,
 **PSF-Datei** (`--psf-file D`): CSV mit M Zeilen zu je M Werten, normiert auf das Maximum der ungestörten PSF (Strehl-Einheiten), 17 Stellen; erste Zeile = größtes y, Spalte i bei x = (i − M/2)·Δx, Zeile von unten j bei y = (j − M/2)·Δy relativ zum idealen Bildpunkt. **MTF-Datei** (`--mtf-file D`): Kopfzeile `k,nu,f_sagittal_lpmm,mtf_sagittal,f_tangential_lpmm,mtf_tangential`, dann N + 1 Zeilen für ν = k/N.
 
 **Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, mit `--psf` Kennzahlen bitgleich zu `psf_cpu`, PSF- und MTF-Datei, mit `--vector` Kennzahlen bitgleich zu `vector_psf_cpu` und Komponentendateien, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu`, `CliEvalGpu.PsfMatchesCpu`, `CliEvalGpu.VectorPsfMatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json`, `cli_eval_psf_json`, `cli_eval_vector_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).
+
+## `mikroptim snap`
+
+Glas-Einrasten (M6-T5, [optimierung.md, Abschnitt 9](optimierung.md#9-glas-einrasten)): Ersetzt die Glasvariablen (Typ `glass`, kontinuierliche Buchdahl-Koordinaten n₀, ν₁, ν₂) einer Systemdatei durch Katalog-Gläser. Für jedes Glaselement werden die k nächsten Gläser im normierten (n₀, ν₁, ν₂)-Raum der Glas-Hülle gesucht, jede Kombination (kartesisches Produkt, höchstens N mit der kleinsten Summe der quadrierten Abstände) wird ein Lauf des gebündelten Levenberg-Marquardt: Glas fest auf das Katalogglas (Brechzahlen aus der Sellmeier-Formel des Katalogs), übrige Variablen ab den Werten der Datei reoptimiert. Die beste Kombination (Regel des Multistarts von `optimize`) wird das Ergebnis; die Ergebnisdatei nennt Katalognamen und hat keine Glasvariablen mehr.
+
+Eingabe ist typischerweise die Ergebnisdatei von `mikroptim optimize` mit Glasvariablen (Materialien als `{"model": "buchdahl", …}`, Werte = kontinuierliches Optimum). Eine Datei mit Katalog- oder konstanten Startgläsern wird wie in `optimize` zuerst in Buchdahl-Materialien umgewandelt; „kontinuierlich“ ist dann der Startpunkt. Als eigener Befehl (statt einer Option von `optimize`) lässt sich das Einrasten mit anderen Einstellungen wiederholen, ohne die kontinuierliche Optimierung neu zu rechnen, und das kontinuierliche Ergebnis bleibt als Datei erhalten.
+
+**Merit:** wie bei `optimize` (Wellenfront, Strafresiduen beim weichen Versagen, paraxiale Nebenbedingungen, L1-Strafe der Geisterkoeffizienten) ohne die Glas-Hülle; dieselben Einstellungen für das kontinuierliche und die eingerasteten Systeme. Einheit Wellen² bei λ_ref, FP64.
+
+### Optionen
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `<system.json>` | Systemdatei mit mindestens einer Variable `glass` und mindestens einer weiteren Variable | – |
+| `-o DATEI`, `--output DATEI` | Ergebnis als neue Systemdatei (Glaskataloge wie bei `optimize`, nie die Eingabedatei) | keine Datei |
+| `--json` | maschinenlesbare Ausgabe `mikroptim.snap/1` statt Text | aus |
+| `--neighbors k` | Katalog-Gläser pro Glaselement, k ≥ 1 | 3 |
+| `--max-combinations N` | höchstens N Kombinationen = Läufe, N ≥ 1; bei mehr die N mit der kleinsten Summe d² | 64 |
+| `--max-iterations N` | Zyklen der Reoptimierung pro Lauf, N ≥ 0 (0 = nur einrasten und auswerten) | 100 |
+| `--rings N`, `--spokes M` | Pupillenquadratur wie bei `trace` | 10, 8 |
+| `--fail-weight w`, `--hard-failure` | Strahlversagen wie bei `optimize` | weich, 10⁶ |
+| `--gpu`, `--device N` | Reoptimierung auf der GPU (`cuda::optimize_lm_gpu`); Kandidaten und Kombinationen entstehen immer auf dem Host | CPU |
+| `--help`, `-h` | Hilfe | – |
+
+Kandidaten sind die Gläser der Glas-Hülle aller `glass_catalogs` (Gültigkeitsbereich deckt 400–700 nm ab), deren Gültigkeitsbereich zusätzlich alle Wellenlängen des Spektrums und λ_ref abdeckt. Der Abstand ist euklidisch in den normierten Koordinaten u = (x − m)/s der Hülle (Gewichte 1; die Bibliothek erlaubt Gewichte pro Koordinate, `GlassSnapOptions::distance_weights`).
+
+### Exit-Codes und Fehler
+
+Wie bei `optimize`: 0 Erfolg; 1 Fehler beim Laden, System ohne Glasvariablen (`keine Glasvariablen`) oder ohne weitere Variablen, kein Katalogglas deckt das Spektrum ab, Rechenfehler, Schreiben der Ergebnisdatei; 2 ungültige Kommandozeile (auch `-o` gleich der Eingabedatei); 3 GPU-Backend nicht verfügbar.
+
+### Textausgabe und Beispiel
+
+Kopf (Datei, Backend, Quadratur, Strahlversagen, Glaselemente, Hülle, k, Kombinationen „gerechnet von insgesamt“), pro Element die kontinuierlichen Koordinaten, der Abstand zur Hülle und die Kandidaten mit Abstand, die Tabelle der Läufe (Gläser, Summe d², Merit eingerastet ohne Reoptimierung, Merit reoptimiert, Zyklen, Status, versagte Strahlen, Markierung `bester`), das Ergebnis (gewählte Gläser, Merit kontinuierlich / eingerastet / reoptimiert, Verschlechterung absolut und relativ), die Variablen ohne Glas vorher/nachher und die RMS-Wellenfront pro Feld und Wellenlänge vorher (kontinuierliches System) und nachher (Ergebnis). Zahlenformat wie bei `optimize`.
+
+Beispiel: Achromat mit zwei freien Gläsern (`data/systems/achromat_glasvariablen.json`, frei erfunden, Testgläser `data/glass/synthetisch.json`), erst kontinuierlich optimieren, dann einrasten (aus dem Repository-Wurzelverzeichnis):
+
+```
+mikroptim optimize data/systems/achromat_glasvariablen.json -o build/achromat_opt.json --max-iterations 5000 --quiet
+mikroptim snap build/achromat_opt.json -o build/achromat_snap.json
+```
+
+```
+Glas-Einrasten: Achromat mit zwei Glasvariablen
+  Datei                                       build/achromat_opt.json
+  Ergebnisdatei                               build/achromat_snap.json
+  Backend                                     CPU, FP64
+  Quadratur                                   10 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Glaselemente                                2
+  Glas-Hülle                                  39 Gläser, Dimension 3
+  Nachbarn je Element                         3
+  Kombinationen (Läufe)                       9 von 9 (alle)
+  Zyklen höchstens                            100
+
+Kandidaten (nächste Katalog-Gläser, Abstand im normierten (n0, nu1, nu2)-Raum der Glas-Hülle)
+  Fläche 1: kontinuierlich n0 = 1.5186688, nu1 = -4.991144e-02, nu2 = 1.872511e-02, Abstand zur Hülle 0.000e+00
+       0  SYN-10        3.685541e-02
+       1  N-BK7         6.339631e-02
+       2  SYN-07        6.632414e-02
+  Fläche 2: kontinuierlich n0 = 1.6617284, nu1 = -1.223474e-01, nu2 = 6.229057e-02, Abstand zur Hülle 0.000e+00
+       0  SYN-21        2.905891e-03
+       1  SYN-19        3.503752e-02
+       2  SYN-24        4.447560e-02
+
+Kombinationen (sortiert nach Summe d²; Merit in Wellen² bei 546.070 nm)
+  Lauf  Gläser                          Summe d²      eingerastet      reoptimiert  Zyklen  Status             versagt
+     0  SYN-10, SYN-21                 1.367e-03  2.277735998e+03  4.108101971e-05     100  max_iterations           0
+     1  SYN-10, SYN-19                 2.586e-03  4.155345530e+03  3.795836885e-05      85  converged_merit          0  bester
+     2  SYN-10, SYN-24                 3.336e-03  2.989592464e+04  4.219076322e-05     100  max_iterations           0
+     3  N-BK7, SYN-21                  4.028e-03  5.152928918e+00  6.545068082e-05      50  converged_merit          0
+     4  SYN-07, SYN-21                 4.407e-03  3.045461661e+01  6.417879792e-05     100  max_iterations           0
+     5  N-BK7, SYN-19                  5.247e-03  3.613318686e+02  6.524554915e-05     100  max_iterations           0
+     6  SYN-07, SYN-19                 5.627e-03  1.259033855e+02  6.625337978e-05     100  max_iterations           0
+     7  N-BK7, SYN-24                  5.997e-03  1.624782387e+04  7.033398599e-05     100  max_iterations           0
+     8  SYN-07, SYN-24                 6.377e-03  1.432368438e+04  7.108641123e-05     100  max_iterations           0
+
+Ergebnis
+  Gewählte Gläser                             Fläche 1: SYN-10, Fläche 2: SYN-19
+  Bester Lauf                                 1
+  Status                                      converged_merit
+  Merit kontinuierlich [Wellen²]              9.169341762e-06
+  Merit eingerastet, ohne Reopt. [Wellen²]    4.155345530e+03
+  Merit eingerastet, reoptimiert [Wellen²]    3.795836885e-05
+  Verschlechterung [Wellen²]                  2.878903e-05
+  Verschlechterung relativ                    3.139705e+00
+  Versagte Strahlen kontinuierlich/Ergebnis   0 / 0
+
+Variablen (ohne Glas)
+  Name    Einheit            vorher          nachher
+  c[1]    1/mm      4.179137718e-02  4.271858629e-02
+  c[2]    1/mm     -4.184124394e-02 -4.472039306e-02
+  c[3]    1/mm     -6.492629399e-03 -5.889697692e-03
+  w       mm              46.175926        46.097040
+
+Wellenfront (Quadratur 10 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm; vorher = kontinuierlich, nachher = eingerastet)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           486.130        10      0.002110      0.004522                   0 / 0
+     0         0.000           546.070        10      0.003893      0.008682                   0 / 0
+     0         0.000           656.270        10      0.002810      0.004248                   0 / 0
+
+Ergebnis geschrieben: build/achromat_snap.json
+```
+
+Die Merit „eingerastet, ohne Reoptimierung“ ist groß, weil die Brechzahlen der Katalog-Gläser um bis zu 10⁻² von den kontinuierlichen abweichen: Brennweite (Nebenbedingung mit Gewicht 10⁴/mm²) und Fokus verschieben sich. Die nächste Kombination (Lauf 0) ist nicht die beste; mit `--max-iterations 500` konvergieren mehr Läufe (die Abnahme verwendet 500), die Auswahl bleibt SYN-10/SYN-19. Die Ergebnisdatei lädt mit `mikroptim trace` (f′ = 50,000 mm, RMS wie „nachher“) und liefert mit `mikroptim optimize build/achromat_snap.json --max-iterations 0` die berichtete Merit bitgleich (dasselbe Backend vorausgesetzt; Feldziele ohne `target.focal_length` wie bei `optimize`, der Befehl warnt dann).
+
+### JSON-Ausgabe (`--json`), Format `mikroptim.snap/1`
+
+Zahlen verlustfrei, nicht endliche Werte `null` (wie `mikroptim.optimize/1`).
+
+| Feld | Inhalt |
+|---|---|
+| `format`, `mikroptim_version`, `system`, `file`, `output`, `backend`, `device`, `precision`, `merit_unit`, `quadrature` | wie bei `optimize` |
+| `settings` | `neighbors`, `max_combinations`, `max_iterations`, `failure` (`"soft"`/`"hard"`), `fail_weight`, `distance_weights` |
+| `hull` | `glasses` (Zahl der Gläser der Hülle), `dimension` |
+| `elements[]` | pro Glaselement: `surface` (Dateifläche), `coordinates` {`n0`, `nu1`, `nu2`} des kontinuierlichen Ergebnisses, `hull_distance`, `candidates[]` mit `name`, `distance`, `coordinates` (aufsteigend nach Abstand) |
+| `total_combinations`, `truncated` | Größe des kartesischen Produkts, ob begrenzt wurde |
+| `runs[]` | pro Lauf: `run`, `glasses` (pro Element), `choice` (Kandidatenindex pro Element), `cost` (Σ d²), `snapped_merit`, `snapped_failed_rays` (eingerastet ohne Reoptimierung), `merit`, `failed_rays`, `hard_failed_rays`, `status`, `iterations`, `penalty_rounds`, `fail_weight`, `x` (Variablen ohne Glas) |
+| `best_run` | Index des besten Laufs |
+| `variables[]` | Variablen ohne Glas: `name`, `type`, `surface`, `start` (kontinuierliches Ergebnis), `result` |
+| `result` | `glasses[]` ({`surface`, `glass`}), `status`, `converged`, `continuous_merit`, `snapped_merit`, `merit`, `degradation` (= `merit` − `continuous_merit`), `relative_degradation`, `continuous_failed_rays`, `failed_rays`, `hard_failed_rays` |
+| `reference_nm`, `wavefront` {`start`, `result`} oder `null` mit `wavefront_error`, `warnings` | wie bei `optimize` (`start` = kontinuierliches System) |
+
+### Tests
+
+`tests/test_cli_snap.cpp`: `CliSnap.OptimizeThenSnapReproducesMerit` (Achromat über `optimize` kontinuierlich optimiert, dann eingerastet: 9 Läufe, nur Katalog-Gläser und keine Glasvariablen in der Ergebnisdatei, Verschlechterung = Merit − kontinuierlich, bester Lauf mit der kleinsten Merit, Ergebnis bitgleich zu `snap_glasses`, Merit der neu geladenen Datei und RMS von `mikroptim trace` bitgleich; erneutes Einrasten scheitert mit „keine Glasvariablen“), `CliSnap.TextOutputAndLimit` (Abschnitte, „3 von 4 (kleinste Summe d²)“), `CliSnap.Errors`, `CliSnap.GpuUnavailableWithoutCuda` bzw. im CUDA-Build `CliSnapGpu.MatchesCpuSelection` (gleiche Auswahl, Merit relativ ≤ 10⁻⁶). ctest-Kommandos: `cli_snap_optimize` → `cli_snap_text` → `cli_snap_result_trace` (Beispiel oben). Implementierung: `src/cli/snap_command.cpp`; `same_file`, `utf8` und `catalogs_for` teilen sich `optimize` und `snap` in `src/cli/cli_util.hpp`.

@@ -6,11 +6,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace mko {
+struct SystemDescription;
+} // namespace mko
 
 namespace mko::cli {
 
@@ -53,5 +58,22 @@ void kv(std::ostream& out, std::string_view key, const std::string& value);
 
 // Werte mit fixed(·, decimals), durch ", " getrennt.
 std::string join_fixed(const std::vector<double>& values, int decimals);
+
+// ---- Dateien (optimize, snap) ------------------------------------------------------------
+
+// Dieselbe Datei? Existieren beide, entscheidet das Dateisystem (auch Verknüpfungen), sonst
+// der Vergleich der normalisierten absoluten Pfade.
+bool same_file(const std::filesystem::path& a, const std::filesystem::path& b);
+
+// UTF-8-Text eines Pfads (das Dateiformat speichert Pfade als UTF-8).
+std::string utf8(const std::filesystem::path& p);
+
+// Einträge von glass_catalogs für eine Systemdatei im Verzeichnis `out_dir` (`resolved`: die
+// aufgelösten Kataloge der Eingabedatei, LoadedSystem::catalog_files): Ein Eintrag bleibt
+// unverändert, wenn er von dort aus auf dieselbe Datei führt, sonst wird er durch den relativen
+// und, wenn es keinen gibt, durch den absoluten Pfad ersetzt.
+std::vector<std::string> catalogs_for(const SystemDescription& system,
+                                      const std::vector<std::filesystem::path>& resolved,
+                                      const std::filesystem::path& out_dir);
 
 } // namespace mko::cli
