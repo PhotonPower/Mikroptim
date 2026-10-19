@@ -20,6 +20,7 @@
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "residual_test_systems.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -77,7 +78,7 @@ RunResult optimize(const std::vector<std::string>& args) {
 class TempDir {
 public:
     explicit TempDir(const std::string& name)
-        : path_(fs::temp_directory_path() / ("mikroptim_cli_optimize_" + name)) {
+        : path_(mko::test::temp_dir() / ("mikroptim_cli_optimize_" + name)) {
         std::error_code ec;
         fs::remove_all(path_, ec);
         fs::create_directories(path_);

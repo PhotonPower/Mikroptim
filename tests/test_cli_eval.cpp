@@ -11,6 +11,7 @@
 #include "mikroptim/eval/eval.hpp"
 #include "mikroptim/eval/psf.hpp"
 #include "mikroptim/eval/vector_psf.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -122,8 +123,7 @@ TEST(CliEval, JsonMatchesLibrary) {
 }
 
 TEST(CliEval, OpdMapCsvMatchesLibrary) {
-    const std::filesystem::path file =
-        std::filesystem::temp_directory_path() / "mikroptim_test_eval_map.csv";
+    const std::filesystem::path file = mko::test::temp_dir() / "mikroptim_test_eval_map.csv";
     const std::string path = file.string();
     const RunResult r =
         run({kEinzellinse, "--grid", "16", "--map", "2,1", "--map-file", path, "--remove", "tilt"});
@@ -176,7 +176,7 @@ TEST(CliEval, TextOutputAndErrors) {
     EXPECT_EQ(missing.code, mko::cli::kExitError);
     EXPECT_NE(missing.err.find("mikroptim eval: Fehler"), std::string::npos);
     const RunResult bad_map = run({kEinzellinse, "--grid", "8", "--map", "7,0", "--map-file",
-                                   (std::filesystem::temp_directory_path() / "x.csv").string()});
+                                   (mko::test::temp_dir() / "x.csv").string()});
     EXPECT_EQ(bad_map.code, mko::cli::kExitError);
 }
 
@@ -219,7 +219,7 @@ TEST(CliEval, PsfJsonMatchesLibrary) {
 }
 
 TEST(CliEval, PsfAndMtfFilesMatchLibrary) {
-    const auto dir = std::filesystem::temp_directory_path();
+    const auto dir = mko::test::temp_dir();
     const std::string psf_path = (dir / "mikroptim_test_eval_psf.csv").string();
     const std::string mtf_path = (dir / "mikroptim_test_eval_mtf.csv").string();
     const RunResult r = run({kEinzellinse, "--grid", "16", "--psf-tuple", "1,2", "--psf-file",
@@ -318,7 +318,7 @@ TEST(CliEval, VectorPsfJsonMatchesLibrary) {
 }
 
 TEST(CliEval, VectorComponentFilesAndErrors) {
-    const auto dir = std::filesystem::temp_directory_path();
+    const auto dir = mko::test::temp_dir();
     const std::string prefix = (dir / "mikroptim_test_eval_vpsf").string();
     const std::string psf_path = prefix + "_total.csv";
     const RunResult r = run({kEinzellinse, "--grid", "16", "--psf-tuple", "1,2", "--polarization",
