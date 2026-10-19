@@ -104,6 +104,18 @@ struct SoftFailure {
     }
 };
 
+// Zweig einer Flächenoperation im Vorwärtsdurchlauf (M5-T1, Bitmaske in einem Byte): welche
+// Fortsetzung des weichen Versagens (numerik.md §11) an einer Fläche genommen wurde. Die
+// Aufzeichnung für den adjungierten Modus (adjoint_record.hpp) legt sie pro Fläche ab, damit
+// der Rückwärtsdurchlauf die Ableitung desselben Zweigs bildet. Beide Bits können zugleich
+// gesetzt sein (Fläche verfehlt, danach Totalreflexion am fortgesetzten Punkt).
+inline constexpr unsigned char kBranchRegular = 0;    // kein weiches Ereignis
+inline constexpr unsigned char kBranchSoftMissed = 1; // Schnitt fortgesetzt: D < 0, s = B/c,
+                                                      // Normale normiert (bzw. Referenzsphäre:
+                                                      // b² − g < 0, s_ref = b)
+inline constexpr unsigned char kBranchSoftTIR = 2;    // Brechung fortgesetzt: k < 0 bzw.
+                                                      // Radikand der Geisterplatte < 0
+
 // Verschiebt den Strahl in die Tangentialebene (z = 0) der nächsten Fläche,
 // deren Scheitel im Abstand t (entlang z) vom Scheitel der aktuellen Fläche liegt.
 // Gibt die geometrische Weglänge zurück.
@@ -161,7 +173,8 @@ intersect_sphere(Ray<R>& r, R c, R& s,
 // Weiches Versagen (`soft` gesetzt): Bei k < 0 wird −k addiert und mit k := 0 fortgesetzt,
 // d' = μ (d − cos I N), normiert auf |d'| = 1 (mit k := 0 allein wäre |d'|² = 1 − k > 1). Der
 // Strahl läuft dann tangential zur Fläche (d'·N = 0); ist dabei d'_z <= 0, versagt er an der
-// nächsten Prüfung hart (Backward). `off_surface`: Der Punkt liegt nicht auf der Sphäre
+// nächsten Prüfung hart (Backward). Rückgabe dann SoftTIR (fortgesetzt, Strahl gültig; seit
+// M5-T1, damit der Aufrufer den Zweig kennt). `off_surface`: Der Punkt liegt nicht auf der Sphäre
 // (Fortsetzung von intersect_sphere); N = (−c x, −c y, 1 − c z) wird dann normiert
 // (|N| = |c|·|p − Mittelpunkt| > 1, stetig zu |N| = 1 an der Grenze D = 0). Dort ist
 // cos I = d·N = 0.
@@ -183,7 +196,7 @@ refract_sphere(Ray<R>& r, R c, R mu,
         soft->add(-k, TraceStatus::SoftTIR);
         const Vec3<R> t = r.d - cosI * N; // |t|² = 1 − cos² I > 1/μ² > 0
         r.d = (R(1) / norm(t)) * t;
-        return TraceStatus::Ok;
+        return TraceStatus::SoftTIR;
     }
     r.d = mu * r.d + (msqrt(k) - mu * cosI) * N;
     return TraceStatus::Ok;

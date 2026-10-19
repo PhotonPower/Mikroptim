@@ -123,7 +123,8 @@ MKO_HD inline R ghost_plate_petzval(const R* coeff, int terms, R norm_radius, R 
 // Status TIR, wenn der Radikand 1 − |d'_⊥|² negativ ist (evaneszente Welle wie bei der
 // Totalreflexion); der Strahl ist dann teilweise fortgeschrieben (OPL) und nicht zu verwenden.
 // Weiches Versagen (`soft` gesetzt, numerik.md §11): −Radikand wird addiert und mit
-// Radikand := 0 fortgesetzt, d' = (d'_x, d'_y, 0)/|d'_⊥| (Status Ok). Wegen d'_z = 0 versagt der
+// Radikand := 0 fortgesetzt, d' = (d'_x, d'_y, 0)/|d'_⊥| (Status SoftTIR: fortgesetzt, Strahl
+// gültig; seit M5-T1, damit der Aufrufer den Zweig kennt). Wegen d'_z = 0 versagt der
 // Strahl an der nächsten Prüfung von d_z hart (Backward); das Strafresiduum enthält dann
 // −Radikand und den festen Anteil des harten Versagens.
 template <class R>
@@ -141,7 +142,7 @@ phase_surface_step(Ray<R>& ray, R phase, R grad_x, R grad_y, R n_before, R n_aft
         soft->add(-radicand, TraceStatus::SoftTIR);
         const R inv = R(1) / msqrt(dx * dx + dy * dy); // |d'_⊥|² = 1 − Radikand > 1
         ray.d = Vec3<R>{dx * inv, dy * inv, R(0)};
-        return TraceStatus::Ok;
+        return TraceStatus::SoftTIR;
     }
     ray.d = Vec3<R>{dx, dy, msqrt(radicand)};
     return TraceStatus::Ok;

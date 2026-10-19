@@ -93,16 +93,27 @@ template <class R> struct SurfaceTableView {                // trivial kopierbar
 `include/mikroptim/trace/trace.hpp`:
 
 ```cpp
-template <class R> struct TraceRecord {          // optional, z. B. Local Memory im Kernel
+template <class R> struct TraceRecord {          // optional (Tests, Diagnose)
     int count;                                   // gültige Einträge; bei Versagen an Fläche s: count = s
     Vec3<R> p[kMaxSurfaces], d[kMaxSurfaces];    // Schnittpunkt (lokal) und Richtung nach Fläche s
     R opl[kMaxSurfaces];                         // Eintrag 0 = Startzustand
+    unsigned char branch[kMaxSurfaces];          // Zweig an Fläche s (M5-T1, kBranch…)
+    R image_s; unsigned char image_branch;       // Schritt auf die Referenzsphäre (M5-T1)
 };
+struct TraceProgress { int surface, ghost, soft_surface; };   // M5-T1, Zustand zwischen Flächen
+struct NoTraceRecorder;                          // Aufzeichnung ohne Wirkung (Recorder-Schnittstelle)
+template <class R, class T, class Rec, class Obs = NoSurfaceObserver>   // einzige Flächenschleife (M5-T1)
+MKO_HD TraceStatus trace_segment(const T& sys, int l, Ray<R>&, TraceProgress& at, int end, Rec*,
+                                 int* failed_surface = nullptr, Obs* = nullptr, SoftFailure<R>* = nullptr);
+template <class R, class T, class Rec, class Obs = NoSurfaceObserver>   // trace_ray mit beliebigem Recorder
+MKO_HD TraceStatus trace_ray_recorded(const T& sys, int l, Ray<R>&, Rec*, int* = nullptr, Obs* = nullptr,
+                                      SoftFailure<R>* = nullptr);
 template <class R> MKO_HD Ray<R> collimated_ray(R a, R theta, R rho, R phi);        // OPL₀ = p₀·d₀
 template <class R> MKO_HD Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi); // OPL₀ = 0
 template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after,
                                                         const GhostPlateParams<R>* ghost = nullptr,
-                                                        SoftFailure<R>* soft = nullptr);
+                                                        SoftFailure<R>* soft = nullptr,
+                                                        unsigned char* branch = nullptr);  // M5-T1
 template <class R, class T, class Obs = NoSurfaceObserver>
 MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr,
                              Obs* observer = nullptr,    // Beobachter: surface_extrema.hpp (M2-T3)
@@ -116,7 +127,9 @@ enum class FailureMode : unsigned char { Soft = 0, Hard = 1 };
 
 **Weiches Versagen (M4-T2):** Ein Zeiger auf `SoftFailure<R>` (Start {0, Ok}) schaltet die Fortsetzungsregeln aus [numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen) ein; ohne ihn (nullptr, Standard) bleibt jede Funktion bitgleich zum harten Versagen. Der Zeiger reicht von `batch_ray_opl` über `trace_to_reference_sphere`, `trace_ray`, `propagate_surface` bis zu `intersect_sphere`, `refract_sphere`, `phase_surface_step` und `reference_sphere_step`; alle Parameter dieser Art sind nicht ableitbar (`detail::NonDeduced`), damit `nullptr` übergeben werden kann.
 
-Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5). Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) liefert der Beobachter `RaySurfaceRecord` ohne `TraceRecord` (Abschnitt [Max-Reduktionen](#max-reduktionen-m2-t3)); dieselben Werte folgen aus `p[s]`, `d[s − 1]` und der Flächennormale (Test `SurfaceExtrema.ObserverMatchesTraceRecord`).
+**Aufzeichnung (M5-T1):** `trace_segment` ist die einzige Schleife über die Flächen; `trace_ray` (mit `TraceRecord`), `trace_ray_recorded` (beliebiger Recorder) und das Neu-Vorwärtsrechnen aus Checkpoints (`replay_segment`) rufen sie auf. Ein Recorder ist jeder Typ mit `start(ray, at, soft)`, `surface(ray, at, branch, soft)` und `image(s_ref, branch, ray)`; `trace_to_reference_sphere` und `batch_ray_opl` nehmen ihn als letzten, optionalen Parameter (Standardtyp `NoTraceRecorder`). Die Aufrufe lesen nur den Strahlzustand, den der Trace ohnehin hält: Ergebnisse mit und ohne Aufzeichnung sind bitgleich (Abschnitt [Modus ADJOINT: Vorwärtsdurchlauf mit Aufzeichnung](#modus-adjoint-vorwärtsdurchlauf-mit-aufzeichnung-m5-t1)).
+
+Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5); für den adjungierten Modus zusätzlich seine Zwischengrößen in `recompute_surface_step` und einen Zweig im Rückwärtsdurchlauf. Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus der Aufzeichnung (`AdjointRecord` bzw. `CheckpointRecord`; die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) liefert der Beobachter `RaySurfaceRecord` ohne `TraceRecord` (Abschnitt [Max-Reduktionen](#max-reduktionen-m2-t3)); dieselben Werte folgen aus `p[s]`, `d[s − 1]` und der Flächennormale (Test `SurfaceExtrema.ObserverMatchesTraceRecord`).
 
 ### Host-Schicht (Bibliothek `Mikroptim::cpu`, `src/cpu/`)
 
@@ -798,13 +811,158 @@ class VectorPsfEngine { explicit VectorPsfEngine(int device, const EngineOptions
 
 **Host-Speicher.** `VectorPsfResult` hält 4·M² Werte pro Tupel; `mikroptim eval --vector` behält PSF und Komponenten nur für das Tupel der Ausgabedateien.
 
+## Modus ADJOINT: Vorwärtsdurchlauf mit Aufzeichnung (M5-T1)
+
+Grundlage des adjungierten Modus (ADR-0009): Pro Strahl speichert der Vorwärtsdurchlauf die Zwischenzustände, aus denen der Rückwärtsdurchlauf (M5-T2) die lokalen Ableitungen jeder Flächenoperation bildet. Pro-Strahl-Teil header-only in `include/mikroptim/trace/adjoint_record.hpp` (`MKO_HD`, über R templatisiert, feste Größe), Grundgerüst des Kernels in `src/cuda/adjoint.cu`, Host-API `include/mikroptim/cuda/adjoint.hpp` (reines C++). Welche Größen der Rückwärtsdurchlauf nutzt: [numerik.md, Abschnitt 5](numerik.md#zwischengrößen-für-den-rückwärtsdurchlauf-vorschau-m5-t1).
+
+### Minimaler Satz
+
+Gespeichert werden pro Strahl und Fläche s nur der Zustand nach der Fläche – Schnittpunkt **p**_s und Richtung **d**_s (6 Zahlen) – und der genommene Zweig des weichen Versagens (1 Byte, `kBranchRegular`, `kBranchSoftMissed`, `kBranchSoftTIR`), dazu einmal pro Strahl s_ref und Zweig der Referenzsphäre. Alle lokalen Zwischengrößen (s₀, s, H, B, √D, Normale, cos I, k, √k; an Geisterplatten u, t(u), dt/du, Φ, ∇Φ, Radikand; an der Referenzsphäre b, g, √(b² − g), σ) folgen in O(1) aus dem Eingangszustand (**p**_{s−1}, **d**_{s−1}) und der Flächentabelle: `recompute_surface_step` und `recompute_reference_step` liefern sie als `SurfaceStepState` bzw. `ReferenceStepState`, mit Ausgang, Status und Zweig aus derselben `propagate_surface` bzw. `reference_sphere_step` (bitgleich zur Aufzeichnung). Gründe gegen das Speichern der ca. 20 Zwischengrößen pro Fläche:
+
+- **Speicher und Bandbreite:** 49 statt ca. 170 Byte pro Strahl und Fläche (FP64). Der Rückwärtsdurchlauf rechnet ohnehin pro Fläche; die Neuberechnung kostet etwa einen zusätzlichen Flächenschritt, also einen weiteren Vorwärtsdurchlauf, und ändert die Größenordnung „zwei bis drei Traces“ der Adjungierten nicht.
+- **Numerik:** Zwischengrößen im Vorwärtsdurchlauf abzugreifen hieße, Produkte wie Φ = (n_G − n)·t oder ∇Φ zusätzlich zu verwenden; das kann ihre FMA-Kontraktion in OPL += Φ bzw. n d_⊥ + ∇Φ verhindern und damit die OPL ändern. Die Aufzeichnung liest nur den Strahlzustand, den der Trace ohnehin hält.
+- **Nicht gespeichert** wird die OPL (geht linear ein, die Adjungierte ist konstant) und die Normale (aus **p**_s und c).
+
+### Recorder und Flächenschleife
+
+`trace_segment(sys, l, ray, at, end, recorder, failed, observer, soft)` ist die einzige Schleife über die Flächen (`trace.hpp`): Sie setzt den Trace vom Zustand nach Fläche `at.surface` (Strahl, `TraceProgress` mit Zahl der passierten Geisterplatten und Fläche des ersten weichen Ereignisses, Akkumulator `SoftFailure`) bis vor `end` fort und ruft nach jeder Fläche den Recorder mit Strahl, Fortschritt, Zweig und Akkumulator auf. `trace_ray`, `trace_ray_recorded`, `trace_to_reference_sphere` (Recorder als letzter optionaler Parameter, zusätzlich `image(s_ref, Zweig, Strahl)`) und `batch_ray_opl` bauen darauf auf; ohne Recorder (`NoTraceRecorder`) entfallen die Aufrufe zur Übersetzungszeit. Den Zweig liefert `propagate_surface` über den neuen optionalen Ausgabeparameter `branch`; dafür melden `refract_sphere` und `phase_surface_step` die Fortsetzung jetzt mit `SoftTIR` statt `Ok`.
+
+### Datenstrukturen
+
+```cpp
+// include/mikroptim/trace/adjoint_record.hpp
+inline constexpr int kRecordCapacitySmall = 16, kRecordCapacityMedium = 32,
+                     kRecordCapacityLarge = kMaxSurfaces;          // Kapazitätsklassen
+constexpr int record_capacity_class(int surfaces);                // kleinste Klasse >= S
+inline constexpr int kCheckpointInterval = 8;
+template <class R, int C = kMaxSurfaces> struct AdjointRecord {   // alle Zustände
+    int count; bool soft_mode;                 // gültige Zustände; Trace mit Akkumulator
+    Vec3<R> p[C], d[C]; unsigned char branch[C];
+    R image_s; unsigned char image_branch;     // Referenzsphäre
+};
+template <class R> struct TraceCheckpoint { Ray<R> ray; TraceProgress at; SoftFailure<R> soft; };
+template <class R, int C = kMaxSurfaces, int k = kCheckpointInterval> struct CheckpointRecord {
+    int count; bool soft_mode;
+    TraceCheckpoint<R> checkpoint[C / k];      // Zustand nach Fläche c·k
+    unsigned char branch[C]; R image_s; unsigned char image_branch;
+};
+template <class R, int k> struct SegmentStates { int first, count; Vec3<R> p[k], d[k]; };
+TraceStatus replay_segment(sys, l, const CheckpointRecord&, int segment, SegmentStates&,
+                           TraceCheckpoint<R>* end_state = nullptr);   // bitgleich
+void for_each_state_reverse(sys, l, const Record&, fn);   // fn(s, p, d, branch), s = count−1 … 0
+int ghost_index_before(sys, s);
+SurfaceStepState<R> recompute_surface_step(sys, l, s, ghost, p_in, d_in, soft_mode);
+ReferenceStepState<R> recompute_reference_step(p_in, d_in, center, n_image, soft_mode);
+```
+
+Eintrag s ist der Zustand nach Fläche s (Eintrag 0 der Startzustand, Richtung vor der Brechung an Fläche s ist `d[s − 1]`); bei hartem Versagen an Fläche s ist count = s, der Rückwärtsdurchlauf braucht dann nur die Zustände davor (Gradient der Strafen weicher Ereignisse). Flächen ab der Kapazität werden nicht aufgezeichnet; der Host wählt C ≥ S.
+
+**Speicher pro Strahl** (`sizeof`, R = double; df64 gleich groß; Test `AdjointRecord.MemoryPerRay`):
+
+| Form | C = 16 | C = 32 | C = 64 |
+|---|---:|---:|---:|
+| `AdjointRecord` (49 Byte pro Fläche + 24) | 808 B | 1.592 B | 3.160 B |
+| `CheckpointRecord`, k = 8 (88 Byte pro Checkpoint, 1 Byte pro Fläche) | 216 B | 408 B | 792 B |
+| dazu beim Lesen `SegmentStates<R, 8>` | 392 B | 392 B | 392 B |
+
+### Wo die Aufzeichnung liegt
+
+CUDA kennt kein zur Laufzeit bemessenes Local Memory. Erwogen wurden:
+
+1. **Local Memory mit fester Kapazität** (Felder mit Index zur Laufzeit liegen dort): Local Memory ist ein Bereich des globalen Speichers, verschränkt pro Thread, sodass gleiche Indizes eines Warps koaleszieren; Zugriffe laufen über L1/L2. Der Treiber reserviert die Größe pro Thread für alle gleichzeitig möglichen Threads (RTX 3090: 82 SMs × 1.536 Threads, P100: 56 × 2.048), unabhängig von S und V.
+2. **Kapazitätsklassen** 16, 32, 64 als Template-Instanzen (gewählt): Die Reservierung folgt der tatsächlichen Flächenzahl; der Verkehr ohnehin (nur geschriebene Einträge).
+3. **Checkpoints** (gewählt als Option): Zustand nur alle k = 8 Flächen, beim Lesen jeder Abschnitt einmal neu vorwärts; spart Speicher und Bandbreite gegen einen zusätzlichen Vorwärtsdurchlauf.
+4. **Globaler Arbeitspuffer pro Strahl** (verworfen): wächst mit V·F·L·N statt mit der Zahl gleichzeitig laufender Threads (z. B. 1.000 Varianten × 2.310 Strahlen × 30 Flächen × 49 B = 3,4 GB) und braucht eine eigene Ablage; Local Memory ist derselbe Speicher, nur automatisch verschränkt.
+5. **Shared Memory** (verworfen): 48 KB / 128 Threads = 384 B pro Strahl, nicht einmal 8 Flächen.
+
+**Register und Local Memory** (`cuobjdump --dump-resource-usage`, CUDA 12.9; Stack = Local Memory pro Thread; Test `CudaAdjoint.KernelResources` liest dasselbe über `adjoint_kernel_info`):
+
+| Kernel `adjoint_forward_kernel<R, Form, C>` | sm_60 | sm_86 |
+|---|---|---|
+| double, ohne Aufzeichnung | 122 Register, Stack 88 B | 96 Register, Stack 104 B |
+| double, vollständig, C = 16 / 32 / 64 | 122 Register, Stack 896 / 1.680 / 3.248 B | 96 Register, Stack 936 / 1.720 / 3.288 B |
+| double, Checkpoints, C = 16 / 32 / 64 | 128 Register, Stack 816 / 1.008 / 1.392 B | 120 Register, Stack 784 / 976 / 1.360 B |
+| df64, ohne Aufzeichnung | 121 Register, Stack 48 B | 96 Register, Stack 48 B |
+| df64, vollständig, C = 16 / 32 / 64 | 126 Register, Stack 848 / 1.632 / 3.200 B | 117 Register, Stack 848 / 1.632 / 3.200 B |
+| df64, Checkpoints, C = 16 / 32 / 64 | 119 Register, Stack 712 / 888 / 1.240 B | 96 Register, Stack 736 / 912 / 1.264 B |
+
+Die vollständige Aufzeichnung kostet auf sm_86 keine Register (96 wie ohne; 5 Blöcke à 128 Threads pro SM), die Checkpoints wegen der Neuberechnung 120 (4 Blöcke). **Laufzeitreserve** des Local Memory: Stack × Threads pro SM × SMs, für C = 64 vollständig ca. 3,3 KB × 125.952 = 414 MB (RTX 3090) bzw. 3,3 KB × 114.688 = 373 MB (P100), für C = 16 ca. 118 bzw. 103 MB, Checkpoints C = 64 ca. 171 bzw. 160 MB. Sie liegt innerhalb der Standardreserve (max(256 MiB, 5 % des freien Speichers), auf der RTX 3090 ca. 1,1 GiB, auf der P100 ca. 0,8 GiB; [hardware.md](hardware.md#speicherreserve-und-tranchen)).
+
+### Bitgleichheit und FMA-Kontraktion
+
+Auf der CPU (keine Kontraktion) sind Trace mit und ohne Aufzeichnung und das Neu-Vorwärtsrechnen aus Checkpoints bitgleich, weil alle denselben `trace_segment`-Aufruf mit denselben Werten ausführen. Auf dem Gerät reicht das nicht: nvcc verschmilzt mit `--fmad=true` (Standard) Multiplikation und Addition zu FMA abhängig vom umgebenden Code (Grundblöcke, weitere Verwendungen eines Produkts). Gemessen mit einer ersten Fassung: Mit Aufzeichnung wichen 91 von 37.440 Strahlen des gestörten Mehrlinsers im harten Modus um 1 ulp der OPL vom Lauf ohne Aufzeichnung ab (im weichen Modus 1.222 Strahlen, tief im Versagensbereich bis 7·10⁻¹⁰ relativ), und das Neu-Vorwärtsrechnen aus Checkpoints wich vom ursprünglichen Durchlauf ab; ein gezieltes `__dmul_rn` für reine Produkte im Strahlzustand (Startstrahlen, normierte Richtungen) änderte daran nichts. df64 war immer bitgleich (dessen Operationen sind explizite FP32-Intrinsics und werden nie kontrahiert). Deshalb wird `src/cuda/adjoint.cu` mit **`--fmad=false`** übersetzt (CMake, nur diese Datei): Jede Operation ist dann einzeln IEEE-gerundet (Division und Wurzel ohnehin korrekt gerundet), das Ergebnis hängt nur von der Reihenfolge im Quelltext ab, und alle Speicherformen sowie das Neu-Vorwärtsrechnen sind bitgleich (Tests `CudaAdjoint.RecordingLeavesResultsBitIdentical`, `CudaAdjoint.CheckpointsAndCapacityClassesBitIdentical`). Das ist strenger als der Standard (keine fast-math-Option, AGENTS.md §6). Folgen:
+
+- ADJOINT rechnet in FP64 nicht bitgleich zu RESIDUALS (mit FMA), sondern innerhalb der Toleranzen CPU/GPU: OPD gültiger Strahlen ≤ 0,1·`kCpuGpuFp64`-Schranke, weich versagter ≤ 0,003·`kCpuGpuSoftTuple`, Strafresiduen relativ ≤ 1,5·10⁻¹²; Status gleich. In df64 bitgleich zu RESIDUALS. Gegen die CPU-Referenz liegt FP64 ohne Kontraktion näher als mit (Abweichung der Zustände ≤ 0,008 der Toleranz).
+- Für M5-T3 (LM mit adjungierter Jacobi) heißt das: Residuen und Jacobi-Zeilen kommen aus demselben Kernel ADJOINT; ob RESIDUALS und MERIT ebenfalls ohne Kontraktion rechnen sollen (dann alle Optimierungsmodi untereinander bitgleich), ist eine Frage an den Maintainer (PR M5-T1).
+
+### Kernel-Grundgerüst
+
+`adjoint_forward_kernel<R, Form, C>` (R = double oder df64, Form = keine, vollständig, Checkpoints, C = 16, 32, 64; 14 Instanzen): Block-Abbildung, Flächentabelle und Geisterdaten im Shared Memory, Kolben per Baumreduktion und Residuen wie RESIDUALS (dieselben Bausteine aus `wavefront_block.hpp`, deterministisch nach ADR-0007). Pro Stützstelle: `batch_ray_opl` mit der Aufzeichnung im Local Memory, danach `for_each_state_reverse` – genau das Zugriffsmuster des Rückwärtsdurchlaufs, bei Checkpoints mit dem Neu-Vorwärtsrechnen jedes Abschnitts –, daraus eine Prüfsumme pro Strahl (FNV-1a über die Bitmuster, `record_checksum_step`) und auf Wunsch die Ablage der Aufzeichnung im Gerätespeicher (Tests). In M5-T2 tritt an die Stelle der Prüfsumme der Rückwärtsdurchlauf (Gradient der OPL und der Strafe pro Strahl), danach die Blockreduktion der Gradienten für den Kolbenabzug; M5-T3 bindet den Modus in die TraceEngine ein.
+
+```cpp
+// include/mikroptim/cuda/adjoint.hpp (reines C++)
+enum class RecordStorage { None = 0, Full = 1, Checkpoint = 2 };
+struct AdjointForwardOptions { RecordStorage storage = Full; int capacity = 0;   // 0: automatisch
+                               Precision precision = Fp64; bool opd = false; bool states = false; };
+struct AdjointForwardResult { ResidualResult residuals; RecordStorage storage; int capacity, surfaces;
+    std::vector<double> opl; std::vector<uint64_t> checksum;           // [V · rays]
+    std::vector<int32_t> count; std::vector<double> states;           // nur mit states: [ray][S][6]
+    std::vector<uint8_t> branch; std::vector<double> image_s; std::vector<uint8_t> image_branch; };
+class DeviceAdjointForward { void run(const DeviceSystemBatch&, const ResidualLayout&,
+                                      const AdjointForwardOptions& = {});
+                             AdjointForwardResult download() const; void release() noexcept; };
+AdjointForwardResult run_adjoint_forward(const DeviceSystemBatch&, const ResidualLayout&,
+                                         const AdjointForwardOptions& = {});
+AdjointKernelInfo adjoint_kernel_info(RecordStorage, int capacity, Precision = Fp64, int device = -1);
+constexpr uint64_t record_checksum_step(uint64_t h, uint64_t word);
+```
+
+Ein `cudaMalloc` pro Puffergröße (wiederverwendet): Residuen, Status, OPD wie `make_output_layout`, dahinter Feldablage, OPL und Prüfsumme (je 8 Byte pro Strahl), mit `states` zusätzlich 4 + 49·S + 9 Byte pro Strahl. Jeder CUDA-Aufruf geprüft, nach dem Kernelstart `cudaGetLastError()`.
+
+### Durchsatz und Wahl der Speicherform
+
+`trace_throughput --mode residuals,adjoint --type fp64,df64 --surfaces 16,30,60 --variants 10000` (RTX 3090, 510 Strahlen pro Variante, Kernelzeit, Median aus 20 Läufen; die GPU wurde während der Messungen zeitweise von Tests anderer Arbeitsbäume mitbenutzt, die Absolutwerte streuen deshalb um bis zu 30 %, die Verhältnisse innerhalb eines Laufs sind belastbar; Messreihe und Wiederholung in [benchmarks.md](benchmarks.md#adjoint-grundgerüst-m5-t1)):
+
+| S | Zahlentyp | RESIDUALS | ADJOINT ohne Aufzeichnung | vollständig | Checkpoints (k = 8) |
+|---:|---|---:|---:|---:|---:|
+| 16 | FP64 | 59,2 ms | 56,6 ms | 55,6 ms (−2 %) | 105,8 ms (+87 %) |
+| 30 | FP64 | 77,3 ms | 94,2 ms | 100,6 ms (+7 %) | 158,9 ms (+69 %) |
+| 60 | FP64 | 158,3 ms | 158,7 ms | 159,6 ms (+1 %) | 304,5 ms (+92 %) |
+| 16 | df64 | 12,9 ms | 13,2 ms | 22,5 ms (+71 %) | 36,4 ms (+177 %) |
+| 30 | df64 | 21,3 ms | 17,7 ms | 49,3 ms (+179 %) | 81,2 ms (+360 %) |
+| 60 | df64 | 34,2 ms | 34,2 ms | 57,0 ms (+67 %) | 90,1 ms (+163 %) |
+
+(Prozent gegen ADJOINT ohne Aufzeichnung, in dem die Aufzeichnung samt Lesen in absteigender Reihenfolge der einzige Unterschied ist.)
+
+- **FP64 auf der RTX 3090** ist durch die FP64-Rechenleistung begrenzt: Schreiben und Lesen von 49 Byte pro Strahl und Fläche kosten 0–7 %; die Checkpoints verdoppeln dagegen fast die Zeit (das Neu-Vorwärtsrechnen ist ein zweiter Trace). Ohne FMA-Kontraktion (`--fmad=false`) ist ADJOINT ohne Aufzeichnung im Rahmen der Streuung so schnell wie RESIDUALS (S = 16 und 60 gleich; der Ausreißer bei S = 30 ist Messrauschen der geteilten GPU).
+- **df64** rechnet viermal so schnell und wird mit vollständiger Aufzeichnung durch den Speicherverkehr begrenzt (+67 … +180 %); Checkpoints sind trotzdem langsamer, weil das Neu-Vorwärtsrechnen mehr kostet als der gesparte Verkehr.
+- **Tesla P100** (FP64 mit halber FP32-Rate, ca. 9-mal so schnell wie die RTX 3090 in FP64, 732 GB/s): dort wird FP64 ähnlich wie df64 auf der 3090 verkehrsbegrenzt sein; nicht gemessen (keine P100 am Arbeitsplatz).
+
+**Wahl:** vollständige Aufzeichnung (`AdjointRecord`) mit der kleinsten Kapazitätsklasse als Standard (`AdjointForwardOptions::storage = Full`, `capacity = 0`). Sie ist in allen Messungen die schnellere Form, braucht keine zusätzlichen Register und kostet höchstens ca. 0,4 GB Reserve. Checkpoints bleiben als Option für den Fall, dass Local Memory knapp wird (z. B. wenn der Rückwärtsdurchlauf in M5-T2 selbst viel Local Memory für P Gradientenkomponenten braucht) – sie senken den Stack von 3,3 KB auf 1,4 KB bei C = 64. Die Neuberechnung der Zwischengrößen im Rückwärtsdurchlauf (M5-T2) kommt in beiden Formen hinzu.
+
+### Abnahmetests (M5-T1)
+
+Im Plan hat M5-T1 kein eigenes Kriterium; festgelegt wurden:
+
+| Kriterium | Test | Ergebnis |
+|---|---|---|
+| Aufzeichnung ändert den Trace nicht (Status, versagende Fläche, Ort, Richtung, OPL, Strafe), alle Formen und Kapazitäten, hart und weich | `AdjointRecord.RecordingLeavesTraceBitIdentical` | 46.068 Strahlen (623 weich, 5.135 hart versagt) bitgleich |
+| Jeder gespeicherte Zustand gegen einen unabhängigen Trace Fläche für Fläche (eigene Schleife über `propagate_surface`, dann `reference_sphere_step`) | `AdjointRecord.StatesMatchIndependentStepByStepTrace` | 304.863 Zustände bitgleich (Plane, Sphere, GhostPlate; Zweige SoftMissed 2.284, SoftTIR 2.859, beide 39; Referenzsphäre weich verfehlt 155) |
+| Zweige an bekannten Flächen (verfehlte Sphäre, Totalreflexion, beides, Radikand der Geisterplatte, Referenzsphäre) | `AdjointRecord.SoftBranchesAtKnownSurfaces` | erfüllt |
+| Neu-Vorwärtsrechnen aus Checkpoints (k = 4, 8, 64; C = 32, 64) bitgleich, Endzustand eines Abschnitts setzt bitgleich bis zum nächsten Checkpoint fort | `AdjointRecord.CheckpointReplayIsBitIdentical` | 248.117 Abschnitte bitgleich |
+| Lokale Zwischengrößen aus dem minimalen Satz | `AdjointRecord.RecomputedLocalQuantitiesFromMinimalSet` | Ausgänge bitgleich; Sphärengleichung ≤ 1,8·10⁻¹⁴ mm, Snellius ≤ 4,4·10⁻¹⁶, \|p − M\| − R ≤ 3·10⁻¹⁶ relativ |
+| GPU: mit und ohne Aufzeichnung bitgleich (FP64, df64), gegen RESIDUALS innerhalb der Toleranzen (df64 bitgleich) | `CudaAdjoint.RecordingLeavesResultsBitIdentical` | 202.404 Strahlen |
+| GPU-Aufzeichnung gegen CPU | `CudaAdjoint.RecordMatchesCpu` | 1,84·10⁶ Zustände, ≤ 0,008 der Toleranz `kCpuGpuFp64` |
+| GPU: Checkpoints und Kapazitätsklassen untereinander bitgleich | `CudaAdjoint.CheckpointsAndCapacityClassesBitIdentical` | erfüllt |
+| Determinismus, Prüfsumme gegen heruntergeladene Aufzeichnung | `CudaAdjoint.RepeatedRunsBitIdenticalAndChecksumMatchesRecord` | erfüllt |
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
 |---|---|---|---|
 | `MERIT` | gewichtete Quadratsumme pro Variante | Liniensuche, Multistart-Screening | M2 |
 | `RESIDUALS` | Residuenvektor pro Variante | finite Differenzen, LM | M2 |
-| `ADJOINT` | Residuen plus Gradientenzeilen | analytische Jacobi-Matrix | M5 |
+| `ADJOINT` | Residuen plus Gradientenzeilen; Grundgerüst seit M5-T1: Residuen wie RESIDUALS plus Aufzeichnung pro Strahl (`DeviceAdjointForward`, unten) | analytische Jacobi-Matrix | M5 |
 | `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, Eingabe der PSF und MTF (M8-T2, `PsfEngine`; vektoriell M8-T5, `VectorPsfEngine`), später Tolerierung | M8-T1 |
 
 Zusätzlich liefern die Optimierungsmodi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2) und EVAL (M8-T1) sind bewusst keine Werte von `TraceMode`, sondern eigene Funktionen der Engine.

@@ -93,14 +93,22 @@ reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n_image,
 // verfehlte Flächen, Totalreflexion und eine verfehlte Referenzsphäre fort. Rückgabe: hartes
 // Versagen wie oben (Strafe bis dahin in `soft`), sonst soft->first (Ok, SoftMissed, SoftTIR)
 // mit *failed_surface = Fläche des ersten weichen Ereignisses (S für die Referenzsphäre).
-template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
+//
+// Aufzeichnung (`recorder`, optional, M5-T1; Schnittstelle in trace.hpp, z. B. AdjointRecord):
+// sieht Startzustand und Flächen wie bei trace_ray_recorded und, wenn der Schritt auf die
+// Referenzsphäre nicht hart versagt, recorder->image(s_ref, Zweig, Strahl auf der Sphäre) mit
+// dem Zweig kBranchSoftMissed für die fortgesetzte verfehlte Sphäre. Ergebnisse bitgleich mit
+// und ohne Aufzeichnung.
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver,
+          class Recorder = NoTraceRecorder>
 MKO_HD inline TraceStatus
 trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
                           Vec3<R> center, int* failed_surface = nullptr,
                           Observer* observer = nullptr,
-                          typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
+                          typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
+                          Recorder* recorder = nullptr) {
     const TraceStatus st =
-        trace_ray(sys, wavelength_index, ray, nullptr, failed_surface, observer, soft);
+        trace_ray_recorded(sys, wavelength_index, ray, recorder, failed_surface, observer, soft);
     if (is_hard_failure(st)) {
         return st;
     }
@@ -113,12 +121,17 @@ trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>&
     }
     const int last = sys.surfaces - 1;
     const R n_image = R(sys.index[last * sys.wavelengths + wavelength_index]);
-    const TraceStatus ref = reference_sphere_step(ray, center, n_image, nullptr, soft);
+    R s_ref = R(0);
+    const TraceStatus ref = reference_sphere_step(ray, center, n_image, &s_ref, soft);
     if (is_hard_failure(ref)) {
         if (failed_surface != nullptr) {
             *failed_surface = sys.surfaces;
         }
         return ref;
+    }
+    if (recorder != nullptr) {
+        recorder->image(s_ref, ref == TraceStatus::SoftMissed ? kBranchSoftMissed : kBranchRegular,
+                        ray);
     }
     if (st != TraceStatus::Ok) {
         return st; // erstes weiches Ereignis vor der Referenzsphäre (failed_surface gesetzt)

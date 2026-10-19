@@ -199,6 +199,27 @@ Kein Strahl versagt. V = 10.000, 510 Strahlen pro Variante, Median aus 20 Läufe
 
 Durchsatz mit versagten Strahlen (Multistart-Varianten des Mehrlinsers, 10.000 Varianten, 8,5 % versagte Strahlen, GPU-Test `CudaPrefilter.Throughput`, über die Engine): Vorfilterung 4,9–5,2 ms, MERIT FP64 26–29 ms, df64 8,2–8,9 ms.
 
+## ADJOINT-Grundgerüst (M5-T1)
+
+Vorwärtsdurchlauf mit Aufzeichnung pro Strahl (Modi `adjoint-none`, `adjoint-full`, `adjoint-checkpoint`, [architektur.md, „Modus ADJOINT“](architektur.md#modus-adjoint-vorwärtsdurchlauf-mit-aufzeichnung-m5-t1)) gegen RESIDUALS. Messumgebung wie oben (Treiber unterstützt CUDA 13.3, Toolkit 12.9), Branch `m5/t1-trace-record`, Datum 2026-10-19. **Einschränkung:** Während der Messungen liefen auf derselben GPU zeitweise Tests anderer Arbeitsbäume; die Absolutwerte streuen zwischen drei Läufen um bis zu 30 % (FP64 RESIDUALS bei S = 16: 30,9 / 59,2 / 100,1 ms), die Verhältnisse innerhalb eines Laufs sind stabiler. Die Tabelle zeigt den ruhigsten Lauf; eine Wiederholung auf einer freien GPU (und auf der P100) steht aus.
+
+```text
+trace_throughput --type fp64,df64 --surfaces 16,30,60 --variants 10000 --mode residuals,adjoint --repeat 20 --warmup 5
+```
+
+Kernelzeit [ms], V = 10.000, 510 Strahlen pro Variante, kein Strahl versagt:
+
+| S | Typ | RESIDUALS | adjoint-none | adjoint-full | adjoint-checkpoint |
+|---:|---|---:|---:|---:|---:|
+| 16 | FP64 | 59,24 | 56,59 | 55,65 | 105,82 |
+| 30 | FP64 | 77,27 | 94,18 | 100,57 | 158,91 |
+| 60 | FP64 | 158,34 | 158,68 | 159,57 | 304,46 |
+| 16 | df64 | 12,94 | 13,16 | 22,48 | 36,42 |
+| 30 | df64 | 21,30 | 17,66 | 49,28 | 81,23 |
+| 60 | df64 | 34,19 | 34,23 | 57,00 | 90,09 |
+
+Auswertung: In FP64 kostet die vollständige Aufzeichnung auf der RTX 3090 0–7 % (der Kernel ist durch FP64 begrenzt), Checkpoints 70–90 % (Neu-Vorwärtsrechnen). In df64 ist die vollständige Aufzeichnung durch den Speicherverkehr begrenzt (+67 … +180 %), Checkpoints sind noch langsamer. Gewählt ist daher die vollständige Aufzeichnung mit Kapazitätsklassen; Register und Local Memory pro Variante in architektur.md. Die „Engine“-Spalten der Modi `adjoint-*` (Upload, Lauf, Download ohne die Aufzeichnung) sind wegen der geteilten GPU nicht aussagekräftig und hier weggelassen.
+
 ## P100-Messung nachholen
 
 Auf dem P100-Rechner (Linux, CUDA 12.x):
