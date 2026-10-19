@@ -459,6 +459,10 @@ Das ist das Spaltenformat mit führender Dimension R und Abstand R·P zwischen d
 
 GPU gegen CPU (Test `CudaFdJacobian.MatchesCpu`): Die Formel ist linear in den Residuen, J = Σ_x c_x·r_x, also |J_GPU − J_CPU| ≤ Σ_x |c_x|·δ(r_x) mit der Residuen-Toleranz δ(r) = max(u·`kCpuGpuFp64`, `kCpuGpuFp64Relative`·|r|) aus M2-T2 (die Toleranz der OPD, seit M4-T1 mit u = s_{f,l}√W der Zeile in Wellen umgerechnet; 0 für Zusatzresiduen) plus 8ε·Σ|c_x·r_x| für die Rundung der Formel. Gemessen höchstens 2,9·10⁻³ dieser Schranke, relativ pro Spalte 5,9·10⁻⁸. Mehrere Läufe in einem Batch, Tranchen und wiederholte Rechnungen sind bitgleich (ADR-0007; keine Gleitkomma-Reduktion im Differenzkernel, die Status-Wechsel sind eine ganzzahlige Baumreduktion). Laufzeit (RTX 3090, Test `CudaFdJacobian.LargeBatch`, kein Benchmark): 1.000 Läufe des Mehrlinsers (27.000 Varianten, 680 Strahlen, J = 70,7 MB) in 85–125 ms für `compute` einschließlich Batchaufbau auf dem Host.
 
+### Adjungierte Jacobi (ab M5-T2)
+
+Dieselbe Ablage und Form (`JacobianShape`) wie die FD-Jacobi, aber die Zeilen des Traces (Strahl- und Strafresiduen) aus dem Rückwärtsdurchlauf pro Strahl mit dem Kolbenabzug als Projektion: `adjoint_jacobian_cpu` (`include/mikroptim/optim/adjoint_jacobian.hpp`), GPU `cuda::DeviceAdjointJacobian` / `adjoint_jacobian_gpu` (`include/mikroptim/cuda/adjoint_jacobian.hpp`, gleiche Signatur von `compute` wie `DeviceFdJacobian`). Die Zusatzzeilen bleiben zentrale finite Differenzen mit denselben Mustern (hybrider Ansatz, bitgleich zu den Zeilen der FD-Jacobi); trace-abhängige Zusatzresiduen kosten dafür weiter 2P + 1 Traces pro Lauf. Es gibt keine Schrittweite und keine Schablonen an Schranken: Die Ableitung ist an jedem Punkt exakt bis auf Rundung, auch auf einer aktiven Schranke. Formeln und Messungen: [numerik.md, „Rückwärtsdurchlauf (M5-T2)“](numerik.md#rückwärtsdurchlauf-m5-t2); Einbindung in den LM: M5-T3.
+
 ## 5. Geisterplatten
 
 ### Platzierung

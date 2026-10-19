@@ -115,6 +115,102 @@ Der adjungierte Modus (M5-T2) differenziert jede Flächenoperation lokal und ver
 
 Seit M5-T1 melden `refract_sphere` und `phase_surface_step` (also auch `ghost_plate_step`) die Fortsetzung des weichen Versagens mit `SoftTIR` statt `Ok` (wie `intersect_sphere` mit `SoftMissed`); `propagate_surface` liefert weiterhin Ok und den Zweig über den optionalen Ausgabeparameter `branch`.
 
+### Rückwärtsdurchlauf (M5-T2)
+
+Implementiert in `include/mikroptim/trace/adjoint_backward.hpp` (lokale Ableitungen jeder Operation, `backward_ray`; header-only, `MKO_HD`, über R templatisiert) und `include/mikroptim/merit/ray_jacobian.hpp` (Spaltenzuordnung `AdjointParameterMap`, Zeilen `JacobianRowWriter`, `ray_gradient_rows`); CPU-Referenz `adjoint_jacobian_cpu` (`include/mikroptim/optim/adjoint_jacobian.hpp`), Kernel und Host-API in [architektur.md](architektur.md#modus-adjoint-jacobi-matrix-m5-t2).
+
+**Spuren.** Pro Strahl ist die Ausgabe einer Spur der Skalar Φ = ō·OPL + π̄·π mit konstanten Gewichten (ō, π̄) = (1, 0) für die optische Weglänge bis zur Referenzsphäre und (0, 1) für die Strafgröße π des weichen Versagens (Abschnitt 11). Beide wachsen nur additiv (OPL += …, π += …), ihre Adjungierten sind auf jeder Fläche dieselben Konstanten. Jede Operation ist eine Abbildung (**p**, **d**; θ) → (**p**′, **d**′, ΔOPL, Δπ) mit den Parametern θ der Fläche; der Rückwärtsschritt bildet aus der Adjungierten (**p̄**′, **d̄**′) des Ausgangs
+
+$$\bar{\mathbf p} = J_{\mathbf p}^{\mathsf T}\,(\bar{\mathbf p}', \bar{\mathbf d}') + \bar o\,\partial_{\mathbf p}\Delta\mathrm{OPL} + \bar\pi\,\partial_{\mathbf p}\Delta\pi,\qquad \bar\theta = J_\theta^{\mathsf T}\,(\bar{\mathbf p}', \bar{\mathbf d}') + \bar o\,\partial_\theta\Delta\mathrm{OPL} + \bar\pi\,\partial_\theta\Delta\pi$$
+
+und ebenso **d̄**. Start an der Referenzsphäre mit **p̄** = **d̄** = 0 (der Zustand auf der Sphäre geht nicht weiter ein), Ende am Startstrahl. Notation: x̄ = ∂Φ/∂x; „x̄ += a“ heißt, ein Beitrag wird addiert.
+
+**Neuberechnung.** Die lokalen Größen jeder Operation entstehen aus dem aufgezeichneten Eingangszustand (Abschnitt „Zwischengrößen“ oben) mit denselben Formeln wie im Vorwärtsdurchlauf, aber für den **aufgezeichneten Zweig** (`branch[s]`, `image_branch`) statt eines neu entschiedenen. Abgeleitet werden die berechneten Formeln selbst, nicht ihre geometrische Bedeutung (z. B. wird |**d**| = 1 oder |**N**| = 1 auf der Sphäre nirgends benutzt); daher stimmen die Ableitungen auch für einzeln gestörte Richtungskomponenten mit finiten Differenzen der Implementierung überein. Die Funktionen rechnen die Zwischengrößen selbst (ein lokaler Vorwärtsschritt) statt `recompute_surface_step` zu rufen, das zusätzlich `propagate_surface` ausführt; jene bleibt Prüfwerkzeug der Tests.
+
+**Transfer** (x, y in der Tangentialebene, z := 0):
+
+$$s_0 = \frac{t - z}{d_z},\quad x = p_x + s_0 d_x,\quad y = p_y + s_0 d_y:\qquad \bar p_x \mathrel{+}= \bar x,\ \bar p_y \mathrel{+}= \bar y,\ \bar s_0 \mathrel{+}= \bar x d_x + \bar y d_y,\ \bar d_{x,y} \mathrel{+}= \bar x s_0,\ \bar y s_0,\quad \bar t \mathrel{+}= \frac{\bar s_0}{d_z},\ \bar p_z \mathrel{-}= \frac{\bar s_0}{d_z},\ \bar d_z \mathrel{-}= \frac{\bar s_0 s_0}{d_z}$$
+
+**Schnitt** (Spencer und Murty): s = H/(B + √D) ist die Nullstelle von c s² − 2Bs + H (für jedes **d**, die Identität gilt algebraisch), also
+
+$$ds = \frac{s^2\,dc - 2s\,dB + dH}{2\sqrt D}:\qquad \bar H = \frac{\bar s}{2\sqrt D},\quad \bar B = -\frac{s\,\bar s}{\sqrt D},\quad \bar c \mathrel{+}= \frac{s^2\bar s}{2\sqrt D}$$
+
+mit H = c(x² + y²) (c̄ += H̄(x² + y²), x̄ += 2cx H̄, ȳ += 2cy H̄) und B = d_z − c(x d_x + y d_y) (d̄_z += B̄, c̄ −= B̄(x d_x + y d_y), x̄ −= c d_x B̄, d̄_x −= c x B̄, y analog). Schnittpunkt **q** = (x + s d_x, y + s d_y, s d_z): x̄ += q̄_x, ȳ += q̄_y, s̄ += **q̄**·**d**, **d̄** += s **q̄**. OPL += n(s₀ + s): s̄ += ō n, s̄₀ += ō n, n̄ += ō (s₀ + s). Die Ableitung ist bei D → 0 (streifender Strahl) singulär wie die Funktion selbst (Hölder ½, Abschnitt 11).
+
+**Brechung** mit **N** = (−c q_x, −c q_y, 1 − c q_z), cos I = **d**·**N**, k = 1 − μ²(1 − cos² I), **d**′ = μ**d** + a**N**, a = √k − μ cos I, μ = n/n′:
+
+$$\bar{\mathbf d} \mathrel{+}= \mu\,\bar{\mathbf d}',\quad \bar{\mathbf N} \mathrel{+}= a\,\bar{\mathbf d}',\quad \bar a = \bar{\mathbf d}'\cdot\mathbf N,\quad \bar\mu \mathrel{+}= \bar{\mathbf d}'\cdot\mathbf d - \bar a\cos I,\quad \bar k \mathrel{+}= \frac{\bar a}{2\sqrt k},\quad \overline{\cos I} \mathrel{-}= \mu\,\bar a$$
+
+dann k: μ̄ −= 2μ(1 − cos² I) k̄, cos̄ I += 2μ² cos I k̄; cos I: **d̄** += cos̄ I **N**, **N̄** += cos̄ I **d**; μ: n̄ += μ̄/n′, n̄′ −= μ̄ μ/n′; Normale: **q̄** −= c **N̄**, c̄ −= **q**·**N̄**.
+
+**Weiche Fortsetzungen** (Zweige aus der Aufzeichnung, Strafen aus Abschnitt 11):
+
+| Zweig | Vorwärts | Rückwärts |
+|---|---|---|
+| Fläche verfehlt (`kBranchSoftMissed`) | s = B/c, **N̂** = **N**/\|**N**\|, π += −D | B̄ += s̄/c, c̄ −= s̄ s/c; D̄ = −π̄: B̄ += 2B D̄, c̄ −= H D̄, H̄ −= c D̄; **N̄**_roh = (**N̄** − **N̂**(**N̂**·**N̄**))/\|**N**\| |
+| Totalreflexion (`kBranchSoftTIR`) | **τ** = **d** − cos I **N**, **d**′ = **τ**/\|**τ**\|, π += −k | **τ̄** = (**d̄**′ − **d**′(**d**′·**d̄**′))/\|**τ**\|; **d̄** += **τ̄**, cos̄ I −= **τ̄**·**N**, **N̄** −= cos I **τ̄**; k̄ = −π̄ (k geht nur in die Strafe ein) |
+| beides | beide Zeilen nacheinander | beide Zeilen in umgekehrter Reihenfolge |
+
+**Geisterplatte** (Transfer wie oben, s = 0, OPL += n s₀ + Φ). Mit u = (x² + y²)/r_g², ξ = 2u − 1, t = Σ a_k P_k(ξ), t_u = 2 Σ a_k P′_k(ξ), t_uu = 4 Σ a_k P″_k(ξ) (Rekursion P″_{k+1} = P″_{k−1} + (2k + 1) P′_k, die Ableitung der Rekursion für P′), Δn = n_G − n, ρ = Δn t_u · 2/r_g², Φ = Δn t, d′_x = (n d_x + ρ x)/n′, d′_y analog, R = 1 − d′_x² − d′_y², **d**′ = (d′_x, d′_y, √R):
+
+- d̄′_x, d̄′_y aus **d̄**′ direkt, R̄ = d̄′_z/(2√R); im Zweig `kBranchSoftTIR` (**d**′ = (d′_x, d′_y, 0)/m, m = \|**d**′_⊥\|): (d̄′_x, d̄′_y) = (**d̄**′_⊥ − **e**(**e**·**d̄**′_⊥))/m mit **e** = **d**′_⊥/m und R̄ = −π̄ (Strafe −R),
+- d̄′_x −= 2 d′_x R̄ (y analog); d̄_x += n d̄′_x/n′; n̄ += (d̄′_x d_x + d̄′_y d_y)/n′; n̄′ −= (d̄′_x d′_x + d̄′_y d′_y)/n′; ρ̄ = (d̄′_x x + d̄′_y y)/n′; x̄ += q̄_x + ρ d̄′_x/n′,
+- Φ: t̄ = ō Δn, Δn̄ = ō t + ρ̄ t_u · 2/r_g², t̄_u = ρ̄ Δn · 2/r_g², n̄ −= Δn̄ (n_G und r_g sind feste Daten),
+- Koeffizienten und Ort: ā_k = t̄ P_k(ξ) + 2 t̄_u P′_k(ξ), ū = t̄ t_u + t̄_u t_uu, x̄ += 2x ū/r_g², ȳ += 2y ū/r_g².
+
+**Referenzsphäre**: s_ref = g/(b + σ√(b² − g)) ist die Nullstelle von s² − 2bs + g, also ds = σ (dg − 2s db)/(2√(b² − g)):
+
+$$\bar s = \bar o\,n_B,\quad \bar n_B \mathrel{+}= \bar o\,s,\quad \bar g = \frac{\sigma\,\bar s}{2\sqrt{b^2-g}},\quad \bar b = -\frac{\sigma\,s\,\bar s}{\sqrt{b^2-g}}$$
+
+b = −(**p** − **M**)·**d**: **p̄** −= b̄ **d**, **d̄** −= b̄ (**p** − **M**), **M̄** += b̄ **d**; g = **p**·(**p** − 2**M**): **p̄** += 2ḡ(**p** − **M**), **M̄** −= 2ḡ **p**. Zweig `kBranchSoftMissed` (s = b, Strafe −(b² − g)/\|**M**\|²): b̄ = s̄ − 2bπ̄/\|**M**\|², ḡ = π̄/\|**M**\|², **M̄** += 2π̄ (b² − g) **M**/\|**M**\|⁴. Mit **M** = (0, h_f, w) ist w̄ = M̄_z die Ableitung nach dem Arbeitsabstand w = thickness[S − 1]; der Trace bis zur letzten Fläche benutzt thickness[S − 1] nicht.
+
+**Startstrahl.** Die kollimierte Quelle (Abschnitt 4) hängt nur von Pupillenradius und Feldwinkel ab, beide keine Variablen. Bei der Punktquelle hängt **d**₀ über sin_max = NA/n₀ von der Brechzahl n₀ = index[0] des Startmediums ab: ∂**d**₀/∂sin_max = (d_x, d_y, −(d_x² + d_y²)/d_z)/sin_max, also n̄₀ += −**d̄**·(d_x, d_y, −(d_x² + d_y²)/d_z)/n₀ (OPL₀ = 0, Quellpunkt fest).
+
+**Parameter und Variablen** (`AdjointParameterMap`, aus `VariableSet` gebaut von `AdjointParameters`). Jede Variable ist genau ein Parameter der Flächentabelle; `backward_ray` meldet jeden Parameter pro Spur höchstens einmal, sodass jedes Element der Jacobi-Zeile genau einmal geschrieben wird:
+
+| Variable | Parameter | Kettenregel |
+|---|---|---|
+| Krümmung c der Dateifläche i | curvature[m(i)] (nur Typ Sphere) | 1 |
+| Dicke t_i | thickness[j] des letzten Teilstücks des Spalts (j = m(i + 1) − 1; Spalt mit Geisterplatten: Batch-Element = x − d_m) | 1 |
+| Arbeitsabstand w | thickness[S − 1], nur über M_z | 1 |
+| Geisterkoeffizient a_{g,k} | ghost_coeff[g][k − 1] | 1 |
+| Glas (n₀, ν₁, ν₂) nach Dateifläche i | index[m(i)][l] bei jeder Wellenlänge l | ∂n/∂(n₀, ν₁, ν₂) = (1, ω_l, ω_l²), ω_l = `buchdahl_omega`(λ_l) (Abschnitt 10; ν₃ fest) |
+
+Die Brechzahl index[s] geht an Fläche s (n′), an Fläche s + 1 (n), für s = S − 1 an der Referenzsphäre (n_B) und für s = 0 im Startstrahl der Punktquelle ein; die Beiträge werden über einen Übertrag zusammengefasst und einmal gemeldet. Nicht gemeldete Parameter (Flächen hinter einer hart versagenden) haben die Ableitung 0. Das **Feldziel** h_f = `field_target[v][f]` ist feste Batch-Größe: `VariableSet::apply` ändert es nicht (es kommt beim Aufbau aus `target.focal_length` oder der paraxialen Brennweite und wird von der Feld-Homotopie gesetzt), daher ist ∂h_f/∂x = 0 in der adjungierten wie in der FD-Jacobi. Sollte das Feldziel später der paraxialen Brennweite der Variante folgen, käme der Term h̄_f = M̄_y · ∂h_f/∂x über die Paraxialoptik hinzu. Pupillenradius und Feldwinkel sind keine Variablen.
+
+**Kolbenabzug als Projektion.** Die Menge K der Strahlen im Kolben (`in_piston`) und damit W_ok = Σ_{j∈K} W_j hängen vom Status ab, nicht stetig von x; sie sind für die Ableitung fest. Mit g_k = ∂OPL_k/∂x:
+
+$$r_k = s_{f,l}\sqrt{W_k}\Big(\mathrm{OPL}_k - \frac{1}{W_{\mathrm{ok}}}\sum_{j\in K} W_j\,\mathrm{OPL}_j\Big)\quad\Rightarrow\quad \frac{\partial r_k}{\partial x} = s_{f,l}\sqrt{W_k}\,\big(g_k - \bar g\big),\qquad \bar g = \frac{1}{W_{\mathrm{ok}}}\sum_{j\in K} W_j\,g_j$$
+
+für k ∈ K, sonst 0 (hart versagt, ebenso alle Strahlen eines Tupels ohne Strahl im Kolben). Pro Tupel und Variable ist ḡ eine Reduktion über die Strahlen in derselben Struktur wie der Kolben: CPU aufsteigend in k, Kernel als Baumreduktion fester Reihenfolge (ADR-0007). Daraus folgt Σ_{k∈K} √W_k ∂r_k/∂x = 0 (Test `AdjointJacobian.PistonProjectionAndZeroWeights`). Die Gradienten ∂OPL/∂x selbst enthalten den großen, über die Pupille fast gleichen Anteil (z. B. ≈ n − 1 für die Dicke einer Linse); die Differenz g_k − ḡ ist in FP64 auf etwa ε·|g|/|g_k − ḡ| relativ genau, also viel genauer als eine finite Differenz der rundungsbehafteten OPL (optimierung.md, „Finite-Differenzen-Jacobi“, Rundung).
+
+**Strafzeilen.** p_k = s_p √W_k π_k (Abschnitt 11) ergibt ∂p_k/∂x = s_p √W_k ∂π_k/∂x aus der Strafspur, nur für Strahlen mit mindestens einem weichen Ereignis (auch wenn sie danach hart versagen: Der Festanteil 1 ist konstant, die Strafen der weichen Ereignisse davor nicht; die Spur läuft dann über die aufgezeichneten Zustände bis vor die versagende Fläche, ohne Referenzsphäre). Strahlen ohne Ereignis haben Strafzeile 0. Weich versagte Strahlen haben zusätzlich eine Wellenfrontzeile aus der OPL-Spur über ihre Fortsetzung.
+
+**Zusatzzeilen (hybrider Ansatz).** Die Zusatzresiduen (`ExtraResiduals`: paraxiale Nebenbedingungen, Petzval, Geisterstrafe, Glas-Hülle, geometrische Mechanik) und die trace-abhängigen (`TraceExtraResiduals`: Strahlhöhen und Einfallswinkel aus den Max-Reduktionen) werden nicht adjungiert, sondern mit denselben zentralen finiten Differenzen wie in der FD-Jacobi gebildet (Muster `fd_pattern` mit Schablonen an Schranken, `fd_derivative`): Ihre Zeilen sind bitgleich zu denen der FD-Jacobi. Begründung: Die Zusatzresiduen brauchen keine Strahlen (Paraxialtrace, geschlossene Formeln; 2P + 1 Auswertungen pro Lauf auf Host-Threads kosten wenig gegen den Trace), und eigene Ableitungen für jede Art wären neuer Code ohne Orakel. Die trace-abhängigen Zeilen brauchen die Extrema jeder FD-Variante aus ihrem eigenen Trace (CPU `surface_extrema_cpu`, GPU ein MERIT-Lauf der Engine mit `extrema`), also 2P + 1 Traces pro Lauf, aber nur, wenn es solche Residuen gibt; ein Maximum über Strahlen ist nur stückweise glatt (optimierung.md, Abschnitt 2.1), seine adjungierte Ableitung wäre die des Strahls, der das Maximum stellt (möglich, aber nicht Teil von M5-T2). Ohne Zusatzresiduen entfällt der FD-Batch ganz. Die Genauigkeit der Zusatzzeilen ist die der FD-Jacobi; bei der geglätteten L1-Strafe mit kleinem ε (z. B. 10⁻⁷ mm in `einzellinse_geisterplatten_exakt.json`) liegt der Abbruchfehler der zentralen Differenz bei a = 0 bei ≈ (h/ε)²/6 ≈ 6·10⁻⁶ relativ, unabhängig vom adjungierten Teil.
+
+**Maß der Abnahme.** Wie in M3-T2 (optimierung.md, „Finite-Differenzen-Jacobi“): relative Abweichung pro Spalte ‖J_p − D_p‖₂/‖D_p‖₂ und spaltenskaliert in der Frobeniusnorm ‖(J − D)S‖_F/‖DS‖_F, S = diag(max(\|x₀\|, x_typ)). Referenz D ist die Richardson-Extrapolation (H, H/2, H/4, Fehler O(H⁶)) mit **adaptiver** Schrittweite: Stufen H/x = 10⁻¹ … 10⁻⁵, nur mit unverändertem Strahlstatus bei x₀ ± H, pro Spalte die Stufe mit der besten Konvergenz ‖R₁ − R₂‖/‖R₂‖ (Test-Hilfe `adaptive_reference`). Die feste Stufe 10⁻³ aus M3-T2 genügt hier nicht: Bei schwach empfindlichen Spalten mit kleinem x_typ (ν₂, Geisterkoeffizienten bei a ≈ 0) ist sie rundungsbegrenzt (Konvergenz 3·10⁻⁷), nahe weicher Versagensgrenzen abbruchbegrenzt (8·10⁻⁵ im System mit weichem Versagen). Die FD-Jacobi selbst hat gegen diese Referenz Fehler von 10⁻⁸ bis 1,4·10⁻⁶ (weiches Versagen); deshalb ist der Vergleich mit ihr als ‖J_adj − J_FD‖ ≤ 10⁻⁶ + ‖J_FD − D‖ formuliert (Dreiecksungleichung). Gemessen ist ‖J_adj − J_FD‖ in allen Fällen gleich dem Fehler der FD-Jacobi, die adjungierte liegt um 2–4 Größenordnungen näher an der Referenz.
+
+**Ergebnisse** (CPU: Tests `AdjointLocal.*`, `AdjointRay.*`, `AdjointJacobian.*`, MSVC; GPU: `CudaAdjointJacobian.*`, RTX 3090; Toleranzen `kAdjoint…` in tests/tolerances.hpp):
+
+| Kriterium | Ergebnis |
+|---|---|
+| Brechender Schritt gegen Richardson, regulär / verfehlt / Totalreflexion / beides (je 200, 200, 200, 50 Zufallsfälle, Sphäre und Ebene) | ≤ 8,7·10⁻¹¹ / 2,6·10⁻¹¹ / 1,0·10⁻¹⁰ / 5,1·10⁻¹¹ relativ |
+| Geisterplatte, regulär (300, K = 1 … 8, bis 1,5 r_g, auch n ≠ n′) / Radikand < 0 (100) | ≤ 8,4·10⁻⁹ / 5,1·10⁻¹² |
+| Referenzsphäre, reell / virtuell / verfehlt (je 200) | ≤ 4,6·10⁻¹¹ / 6,9·10⁻¹² / 6,8·10⁻¹² |
+| Startstrahl der Punktquelle (∂/∂n₀) | ≤ 7,9·10⁻¹⁰ |
+| ∂OPL/∂x einzelner Strahlen, alle Testsysteme (40 Strahlen) | ≤ 1,8·10⁻⁸ |
+| ∂π/∂x einzelner Strahlen mit weichem Ereignis (286 Strahlen, davon 255 danach hart versagt: Geisterplatte mit Radikand < 0) | ≤ 5,5·10⁻⁹ |
+| **Abnahme:** Jacobi (Trace-Zeilen) gegen Richardson, größte Spalte pro Variablentyp über 7 Testsysteme (Einzellinse, Mehrlinser, Geisterplatten im geteilten Spalt, Geisterplatten mit L1-Strafe, Glasvariablen, Punktquelle, weiches Versagen) | Krümmung 2,1·10⁻¹⁰, Dicke 2,0·10⁻⁹, Arbeitsabstand 6,5·10⁻¹⁰, Geisterkoeffizient 2,2·10⁻⁸, Glas 6,6·10⁻⁸ (ν₂; Referenz rundungsbegrenzt); spaltenskaliert ≤ 5,1·10⁻¹⁰ |
+| Weiches Versagen (27 von 90 Strahlen): Straf- und Wellenfrontzeilen gegen Richardson | ≤ 2,6·10⁻¹¹ bzw. 5,9·10⁻¹¹ |
+| Harter Modus (27 versagte Strahlen ausgeschlossen) gegen Richardson | ≤ 3,5·10⁻¹¹ |
+| Gegen die FD-Jacobi (8 Systeme, auch mit trace-abhängigen Zusatzresiduen): r₀ und Zusatzzeilen bitgleich, spaltenskaliert | ≤ 2,7·10⁻⁷ (= Fehler der FD-Jacobi; weiches Versagen 1,4·10⁻⁶, ebenfalls deren Fehler) |
+| Kolbenprojektion Σ √W_k J(k, p) relativ; Tupel mit Gewicht 0 | 1,3·10⁻¹²; Zeilen exakt 0 |
+| Mehrere Läufe, Vorlage pro Lauf | bitgleich zu Einzelläufen |
+| GPU (FP64) gegen CPU, Trace-Zeilen / r₀ | ≤ 1,7·10⁻¹¹ / 1,5·10⁻¹¹ relativ, Status gleich, Zusatzzeilen bitgleich |
+| GPU gegen Richardson (Abnahme auf der GPU) | wie CPU (größte Spalte 6,6·10⁻⁸) |
+| df64 gegen FP64 (GPU) | ≤ 1,6·10⁻¹⁰ relativ pro Spalte |
+| Determinismus: fünf Wiederholungen, Lage im Batch | bitgleich (FP64 und df64) |
+
 ## 6. Geisterplatte
 
 Virtuelle dünne Glasplatte in einem **Luftspalt**, modelliert als Ebene mit Phasenfunktion. Normierungsradius r_g, u = (r/r_g)², radiales Dickenprofil als Summe rotationssymmetrischer Zernike-Polynome (äquivalent zu Legendre-Polynomen in u):
