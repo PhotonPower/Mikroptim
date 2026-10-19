@@ -46,7 +46,11 @@ public:
     // hochladen, dann engine.run_on_device mit Tranchen aus ganzen Läufen; pro Tranche bildet der
     // Differenzkernel die Spalten ihrer Läufe. Synchron: Bei der Rückkehr sind J, r₀ und die
     // Status-Wechsel fertig. Die Zusatzresiduen gehen nicht durch den Ausgabepuffer der
-    // Engine (extra_residuals = 0), sondern liegen in einem eigenen Gerätepuffer.
+    // Engine (extra_residuals = 0), sondern liegen in einem eigenen Gerätepuffer [V · E] mit
+    // E = options.extra_count(). Trace-abhängige Zusatzresiduen (options.trace_extra, M4-T3):
+    // die Engine liefert die Max-Reduktionen (extrema), pro Tranche werden sie heruntergeladen,
+    // auf dem Host ausgewertet (evaluate_trace_extra_residuals) und die Zeilen der Varianten der
+    // Tranche im Gerätepuffer ersetzt, bevor der Differenzkernel läuft.
     // Wirft wie make_fd_jacobian_batch, evaluate_extra_residuals und TraceEngine::run_on_device;
     // CudaError, wenn J nicht in den Gerätespeicher passt. Nach einer Ausnahme ist der Inhalt
     // unbestimmt (ready() == false).

@@ -185,7 +185,13 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
             break;
         case ConstraintType::GhostPenalty:
         case ConstraintType::GlassHull:
-            break; // oben abgelehnt (kein paraxialer Typ, ghost_penalty.hpp, glass_variables.hpp)
+        case ConstraintType::MaxSemiDiameter:
+        case ConstraintType::MinCenterThickness:
+        case ConstraintType::MaxCenterThickness:
+        case ConstraintType::MinEdgeThickness:
+        case ConstraintType::MaxIncidenceAngle:
+            break; // oben abgelehnt (kein paraxialer Typ: ghost_penalty.hpp,
+                   // glass_variables.hpp, mechanical_constraints.hpp)
         }
     }
 }
@@ -228,6 +234,11 @@ double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& bat
         break;
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
+    case ConstraintType::MaxSemiDiameter:
+    case ConstraintType::MinCenterThickness:
+    case ConstraintType::MaxCenterThickness:
+    case ConstraintType::MinEdgeThickness:
+    case ConstraintType::MaxIncidenceAngle:
         throw std::invalid_argument("Paraxial-Nebenbedingungen: " + std::string(to_string(c.type)) +
                                     " ist kein paraxialer Typ");
     }

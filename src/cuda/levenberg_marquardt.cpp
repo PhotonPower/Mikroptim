@@ -27,13 +27,14 @@ GpuLmBackend::GpuLmBackend(TraceEngine& engine, const VariableSet& set, const Sy
         (options.jacobian.extra.count > 0 && !options.jacobian.extra.evaluate)) {
         throw std::invalid_argument("Levenberg-Marquardt (GPU): ungültige Zusatzresiduen");
     }
+    check_trace_extra_residuals(options.jacobian.trace_extra, "Levenberg-Marquardt (GPU)");
 }
 
 int GpuLmBackend::max_jacobian_runs() const {
     const ResidualLayout layout(base_.topology(), options_.jacobian.quadrature);
     const int P = set_.size();
     const int n = fd_variant_count(options_.jacobian.scheme, P);
-    const JacobianShape one{1, P, layout.trace_rows(), options_.jacobian.extra.count};
+    const JacobianShape one{1, P, layout.trace_rows(), options_.jacobian.extra_count()};
     // Ausrichtung der Regionen: großzügig 7 · 256 Byte pro Lauf zusätzlich
     const std::size_t per_run = DeviceFdJacobian::buffer_bytes(one, n) + 7 * kBatchAlignment;
     std::size_t available =
@@ -84,12 +85,22 @@ void GpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
     const std::vector<double> extra = extra_merit_values(
         options_.jacobian.extra, batch,
         lm_host_threads(options_.jacobian.extra_threads, batch.variants(), kLmExtraPerThread));
+    const TraceExtraResiduals& traced = options_.jacobian.trace_extra;
     TraceSettings settings;
     settings.quadrature = options_.jacobian.quadrature;
     settings.extra_merit = extra;
+    settings.extrema = traced.count > 0; // Max-Reduktionen für trace-abhängige Residuen
     engine_.run(batch, TraceMode::Merit, settings, output_);
+    // Trace-abhängige Residuen aus den Extrema desselben Laufs, zur Merit des Kernels (Strahlen,
+    // Strafen, Σ e²) addiert
+    const std::vector<double> traced_merit = trace_extra_merit_values(
+        traced, batch, output_.merit.extrema,
+        lm_host_threads(options_.jacobian.extra_threads, batch.variants(), kLmExtraPerThread));
     for (std::size_t j = 0; j < runs.size(); ++j) {
         merit[j] = output_.merit.merit[j];
+        if (!traced_merit.empty()) {
+            merit[j] += traced_merit[j];
+        }
         failed[j] = output_.merit.failed[j];
         hard_failed[j] = output_.merit.hard_failed[j];
     }

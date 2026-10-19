@@ -285,6 +285,25 @@ inline constexpr double kGhostStationarity = 1e-4;
 // die Brennweite); beobachtet 0,3 %.
 inline constexpr double kGhostSmoothingGain = 0.05;
 
+// Mechanische Nebenbedingungen (M4-T3), Abnahme: Restverletzung g nach der Penalty-Fortsetzung
+// (Gewichte 10² … 10⁶) für Längen in mm (Strahlhöhe, Dicken, Randdicke) bzw. für cos I beim
+// Einfallswinkel. Die Strafe √w·max(0, g) erreicht die Grenze nur asymptotisch (g ≈ λ/(2w)); ab
+// w ≈ 10⁶ liegt g in der Größe der Änderung von g über die FD-Schrittweite (≈ 10⁻⁵ mm bzw. 10⁻⁶
+// in cos), das zentrale Muster überspannt dann den Knick von max(0, ·) und höhere Gewichte
+// verkleinern g kaum noch (docs/optimierung.md, Abschnitt 2.5). Beobachtet ≤ 9,4·10⁻⁵ mm und
+// 2,4·10⁻⁵ (cos, entspricht 0,003°).
+inline constexpr double kMechanicalPenaltyLength = 2e-4;
+inline constexpr double kMechanicalPenaltyCos = 1e-4;
+// Brennweite nach der Optimierung mit mechanischen Bedingungen, |f − f_s| in mm: Gleichgewicht
+// der Brennweitenstrafe (10⁴/mm²) gegen Wellenfront und mechanische Strafen, beobachtet ~4e-4.
+inline constexpr double kMechanicalFocalLength = 2e-3;
+// Merit des CPU-Backends gegen Σ r² über den Residuenvektor der FD-Jacobi: gleiche Residuen,
+// andere Summationsreihenfolge (Tupel, Zusatz- und Trace-Zusatzresiduen getrennt summiert).
+inline constexpr double kMechanicalMeritRelative = 1e-12;
+// Merit des GPU-Backends gegen das CPU-Backend (mit trace-abhängigen Residuen), relativ: Residuen
+// GPU/CPU auf kCpuGpuFp64Relative (Strahlen, Extrema), die Merit summiert ihre Quadrate.
+inline constexpr double kMechanicalMeritCpuGpu = 1e-9;
+
 // Weiches Versagen (M4-T2), Stetigkeit der Merit entlang einer Geraden durch eine
 // Versagensgrenze (10⁴ Punkte): größtes Verhältnis eines Nachbarsprungs |F_{i+1} − F_i| zum
 // größeren seiner beiden Nachbarn. Eine stetige Merit mit Knick oder Wurzelsingularität

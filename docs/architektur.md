@@ -953,6 +953,42 @@ void evaluate_extra_residuals(const ExtraResiduals&, const SystemBatchHost&, std
 
 Der Paraxialtrace läuft auf dem Host (pro Variante ein y-nu-Trace über höchstens 64 Flächen, Felder auf dem Stack, keine Allokation), verteilt auf `std::thread`s in fester Aufteilung (intern `src/optim/parallel_variants.hpp`); Ergebnisse sind für jede Threadzahl bitgleich. Ein Paraxialtrace auf der GPU lohnt erst, wenn er neben dem Strahltrace ins Gewicht fällt (der Kern `ynu_trace.hpp` ist dafür schon `MKO_HD`).
 
+## Optimierer: Trace-abhängige Zusatzresiduen und mechanische Nebenbedingungen (M4-T3)
+
+Formeln, Vorzeichen und Glattheit: [optimierung.md, Abschnitte 2.1 und 2.5](optimierung.md#25-mechanische-nebenbedingungen-ab-m4-t3); Schema: [dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3). Beide Header in `Mikroptim::optim`.
+
+`ExtraResiduals` sieht nur den Batch einer Variante, keinen Trace. Strahlhöhen und Einfallswinkel entstehen aber im Trace; sie kommen aus den Max-Reduktionen (`SurfaceExtremaResult`, [Max-Reduktionen](#max-reduktionen-m2-t3)) **derselben** Auswertung, die auch die Strahlresiduen liefert. Dafür gibt es eine zweite Art Zusatzresiduen:
+
+```cpp
+// trace_extra_residuals.hpp
+struct VariantExtrema { int surfaces; const double* values;          // [S][2] einer Variante
+                        double max_height(int s) const; double min_cos_incidence(int s) const; };
+using TraceExtraResidualFn = std::function<void(const SystemBatchHost&, int v,
+                                                const VariantExtrema&, std::span<double> out)>;
+struct TraceExtraResiduals { int count = 0; TraceExtraResidualFn evaluate; };
+void evaluate_trace_extra_residuals(const TraceExtraResiduals&, const SystemBatchHost&,
+                                    const SurfaceExtremaResult&, int extrema_first,
+                                    std::span<double> out, int first = 0, int count = -1, int threads = 0);
+std::vector<double> trace_extra_merit_values(const TraceExtraResiduals&, const SystemBatchHost&,
+                                             const SurfaceExtremaResult&, int threads = 0);
+// mechanical_constraints.hpp
+double sag(double c, double h); double edge_thickness(double t, double c1, double c2, double h);
+MechanicalConstraints make_mechanical_constraints(const SystemDescription&);
+struct MechanicalResiduals { ExtraResiduals geometric; TraceExtraResiduals traced; … };
+MechanicalResiduals make_mechanical_residuals(const MechanicalConstraints&);
+```
+
+Im Residuenvektor einer Variante stehen sie hinter allen übrigen Zusatzresiduen: R = R_v + E + E_t (`FdJacobianOptions::trace_extra`, `extra_count()` = E + E_t; `JacobianShape::extra_rows` zählt beide). Wege der Extrema:
+
+| Pfad | Extrema | Auswertung |
+|---|---|---|
+| FD-Jacobi CPU (`fd_jacobian_cpu`, `CpuLmBackend::normal_equations`) | `surface_extrema_cpu` jeder FD-Variante (zweiter Trace auf dem Host) | `fd_extra_residuals`: Zusatzresiduen, dahinter die trace-abhängigen, `join_extra_rows` |
+| FD-Jacobi GPU (`DeviceFdJacobian::compute`) | Engine im Modus RESIDUALS mit `extrema = true` (`run_on_device`); pro Tranche Download [count][S][2] | Host wertet die Varianten der Tranche aus, lädt ihre Zeilen des Zusatzpuffers [V·E] neu hoch, danach der Differenzkernel (alle Varianten eines Laufs liegen in einer Tranche) |
+| Merit CPU (`CpuLmBackend::merit`, `make_cpu_merit`) | `merit_cpu(…, extrema = true)` | F = Strahl- und Strafresiduen + Σ e² + Σ t² (in dieser Reihenfolge) |
+| Merit GPU (`GpuLmBackend::merit`) | Engine im Modus MERIT mit `extrema = true` | F = Kernel (Strahlen, Strafen, `extra_merit` = Σ e²) + Σ t² auf dem Host |
+
+Damit gilt F = ‖r‖² auch mit diesen Residuen (bis auf die Summationsreihenfolge, Test `MechanicalLm.MeritIsSumOfSquares`), und jede FD-Variante bekommt die Residuen ihres eigenen Traces. Determinismus: Download und Auswertung pro Variante, keine Reduktion über Varianten; das Ergebnis hängt nicht von der Aufteilung in Tranchen ab (Test `CudaMechanical.FdJacobianMatchesCpuAndTranches`). Kosten: auf der GPU ein Download von 16·S Byte pro Variante und Tranche und die Host-Auswertung; auf der CPU ein zweiter Trace pro Variante (wie `merit_cpu` mit Extrema). Ohne trace-abhängige Residuen (E_t = 0) laufen alle Pfade unverändert ohne Extrema. Die Zuordnung Datei- zu Tabellenflächen (Geisterplatten) übernimmt `make_mechanical_constraints` mit der `SurfaceMap`.
+
 ## Optimierer: Finite-Differenzen-Jacobi (M3-T2)
 
 Schablonen, Formeln, Genauigkeit und Ablage: [optimierung.md](optimierung.md#finite-differenzen-jacobi-ab-m3-t2). Host-Teil in `Mikroptim::optim` (`src/optim/fd_jacobian.cpp`), GPU-Teil in `Mikroptim::cuda` (`src/cuda/fd_jacobian.cu`; `Mikroptim::cuda` linkt dafür `Mikroptim::optim`).
@@ -965,6 +1001,7 @@ template <class R> R fd_derivative(FdStencil, R r0, R ra, R rb, R da, R db);
 // fd_jacobian.hpp (Host)
 struct JacobianShape { int runs, variables; int64_t ray_rows; int extra_rows; int64_t rows() const; };
 struct FdJacobianOptions { ResidualSettings quadrature; FdScheme scheme; ExtraResiduals extra;
+                           TraceExtraResiduals trace_extra;   // aus den Extrema (M4-T3)
                            int extra_threads = 0; };   // Host-Threads für die Zusatzresiduen
 struct FdJacobianBatch { SystemBatchHost batch; std::vector<FdPattern> patterns; int runs, variants_per_run; };
 FdJacobianBatch make_fd_jacobian_batch(const VariableSet&, const SystemBatchHost& base,
@@ -990,7 +1027,7 @@ FdJacobian fd_jacobian_gpu(TraceEngine&, const VariableSet&, const SystemBatchHo
                            std::span<const double> x0, const FdJacobianOptions& = {});
 ```
 
-**Kernel `fd_difference_kernel`** (pro Tranche der Engine): ein Block pro (Lauf, Spalte p) und ein Block pro Lauf, der r₀ kopiert, also Läufe·(P + 1) Blöcke mit `kFdJacobianThreads` = 128 Threads über die R Zeilen. Jedes Element J_i(r, p) = `fd_derivative`(Schablone, r₀, r_a, r_b, d_a, d_b) hängt nur von drei Residuen ab (Strahlzeilen aus dem Ausgabepuffer der Engine, Zusatzzeilen aus einem eigenen Puffer [V·E]); keine Gleitkomma-Reduktion. Die Status-Wechsel pro Spalte sind eine ganzzahlige Baumreduktion im Shared Memory (128 · 8 Byte). Schablonen und Schritte liegen als Felder [Läufe·P] im Gerätespeicher.
+**Kernel `fd_difference_kernel`** (pro Tranche der Engine): ein Block pro (Lauf, Spalte p) und ein Block pro Lauf, der r₀ kopiert, also Läufe·(P + 1) Blöcke mit `kFdJacobianThreads` = 128 Threads über die R Zeilen. Jedes Element J_i(r, p) = `fd_derivative`(Schablone, r₀, r_a, r_b, d_a, d_b) hängt nur von drei Residuen ab (Strahlzeilen aus dem Ausgabepuffer der Engine, Zusatzzeilen aus einem eigenen Puffer [V·E]; die trace-abhängigen Zeilen darin ersetzt der Host vor dem Kernel jeder Tranche, M4-T3); keine Gleitkomma-Reduktion. Die Status-Wechsel pro Spalte sind eine ganzzahlige Baumreduktion im Shared Memory (128 · 8 Byte). Schablonen und Schritte liegen als Felder [Läufe·P] im Gerätespeicher.
 
 **Speicher:** `DeviceFdJacobian` belegt einen Puffer (J 8·Läufe·P·R, r₀ 8·Läufe·R, Status-Wechsel 8·Läufe·P, Zusatzresiduen 8·V·E, Schablonen und Schritte 17·Läufe·P Byte, jeweils auf 256 Byte ausgerichtet; `buffer_bytes`). Er wird vor dem Lauf der Engine angelegt, damit deren Tranchenrechnung ihn als belegt sieht, und über Aufrufe wiederverwendet. J muss ganz in den Gerätespeicher passen (M3-T4 wählt die Zahl der Läufe pro Batch); der Residuenpuffer der Engine wird bei Bedarf in Tranchen aus ganzen Läufen aufgeteilt. Beispiel: 1.000 Läufe des Mehrlinsers, J = 70,7 MB.
 
@@ -1000,8 +1037,8 @@ Verfahren, Kriterien und Messungen: [optimierung.md](optimierung.md#verfahren-ab
 
 - **Steuerlogik** `levenberg_marquardt` (`src/optim/levenberg_marquardt.cpp`, `Mikroptim::optim`): Zustand pro Lauf auf dem Host, Schritte (Cholesky mit aktiver Menge) pro Lauf unabhängig auf Host-Threads. Rechnungen an Punkten über die Schnittstelle `LmBackend` (`normal_equations`, `merit` mit versagten und hart versagten Strahlen seit M4-T2; virtuell, nur Host-Code).
 - **Optische Treiber** `optimize_lm_cpu`, `cuda::optimize_lm_gpu`, `cuda::optimize_lm_multi_gpu`: gemeinsamer Ablauf `optimize_lm_rounds` mit einer Fabrik für das Backend einer Runde; im weichen Modus das äußere Strafverfahren (M4-T2): Läufe mit versagten Strahlen starten an ihrem Endpunkt mit w_fail · `fail_weight_factor` neu (eigener Backend-Aufbau pro Runde, Vorlagen per `lm_template_batch`), bis kein Strahl mehr versagt oder `max_fail_weight` erreicht ist; die GPU-Backends summieren ihre Statistik (pro Slot) über die Runden.
-- **CPU-Backend** `CpuLmBackend`: FD-Batch wie `fd_jacobian_cpu` (Varianten auf Host-Threads, bitgleich), `normal_equations_host`, `merit_cpu` plus Σ e².
-- **GPU-Backend** `cuda::GpuLmBackend` (`src/cuda/levenberg_marquardt.cpp`, reines Host-C++ in `Mikroptim::cuda`): Teilstücke aus ganzen Läufen nach dem Speicher (J höchstens die Hälfte des nutzbaren Speichers), pro Teilstück `DeviceFdJacobian::compute` → `DeviceNormalEquations::compute` → Download von A und g; Merit über `TraceEngine::run` im Modus MERIT mit `extra_merit`.
+- **CPU-Backend** `CpuLmBackend`: FD-Batch wie `fd_jacobian_cpu` (Varianten auf Host-Threads, bitgleich), `normal_equations_host`, `merit_cpu` plus Σ e² (plus Σ t² der trace-abhängigen Zusatzresiduen aus den Extrema desselben Laufs, M4-T3).
+- **GPU-Backend** `cuda::GpuLmBackend` (`src/cuda/levenberg_marquardt.cpp`, reines Host-C++ in `Mikroptim::cuda`): Teilstücke aus ganzen Läufen nach dem Speicher (J höchstens die Hälfte des nutzbaren Speichers), pro Teilstück `DeviceFdJacobian::compute` → `DeviceNormalEquations::compute` → Download von A und g; Merit über `TraceEngine::run` im Modus MERIT mit `extra_merit` (mit trace-abhängigen Zusatzresiduen zusätzlich `extrema = true` und Σ t² auf dem Host, M4-T3).
 - **Kernel `gram_kernel`** (`src/cuda/normal_equations.cu`): G = [J r₀]ᵀ[J r₀] pro Lauf, (P + 1) × (P + 1) spaltenweise, Abstand (P + 1)². Grid: Läufe · T(T + 1)/2 Blöcke (T = ⌈(P + 1)/16⌉ Kacheln, nur Kachelpaare tp ≤ tq), Block 16 × 16 Threads, Shared Memory 2 · 16 · 17 · 8 = 4.352 Byte. Thread (ty, tx) lädt Zeile r₀ + tx der Spalten 16·tp + ty und 16·tq + ty (zusammenhängend über tx) und führt die FMA-Kette für G(16·tp + ty, 16·tq + tx) über die Zeilen in aufsteigender Reihenfolge fort; die letzte Kachel endet bei R − 1 (kein Polster in der Summe). Keine Reduktion über Threads, keine Atomics; bitgleich zu `normal_equations_host`. Puffer in `DeviceNormalEquations` (8·Läufe·(P + 1)² Byte), wiederverwendet.
 - **Host-Threads** (`lm_host_threads`): nur, wenn die Arbeit eines Aufrufs es lohnt (Zusatzresiduen ab 4.096 Varianten pro Thread, CPU-Strahlen ab 2·10⁵ Strahl-Flächen, Schritte ab 2·10⁶ Gleitkommaoperationen); sonst im aufrufenden Thread.
 

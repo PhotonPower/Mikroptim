@@ -210,12 +210,25 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
     if (options.extra.count < 0) {
         throw std::invalid_argument("DeviceFdJacobian: negative Zahl von Zusatzresiduen");
     }
-    std::vector<double> extra(static_cast<std::size_t>(fd.batch.variants()) *
-                              static_cast<std::size_t>(options.extra.count));
-    evaluate_extra_residuals(options.extra, fd.batch, extra, 0, -1, options.extra_threads);
+    check_trace_extra_residuals(options.trace_extra, "DeviceFdJacobian");
+    // Zusatzresiduen [V · E] mit E = E_extra + E_trace; die trace-abhängigen (Spalten ab
+    // E_extra) entstehen erst pro Tranche aus deren Extrema und sind bis dahin 0.
+    const int V = fd.batch.variants();
+    const int e_extra = options.extra.count;
+    const int e_trace = options.trace_extra.count;
+    const int E = e_extra + e_trace;
+    std::vector<double> extra_only(static_cast<std::size_t>(V) * static_cast<std::size_t>(e_extra));
+    evaluate_extra_residuals(options.extra, fd.batch, extra_only, 0, -1, options.extra_threads);
+    std::vector<double> extra =
+        e_trace == 0 ? std::move(extra_only)
+                     : join_extra_rows(extra_only, e_extra,
+                                       std::vector<double>(static_cast<std::size_t>(V) *
+                                                               static_cast<std::size_t>(e_trace),
+                                                           0.0),
+                                       e_trace, V);
     const int P = set.size();
     const int n = fd.variants_per_run;
-    const JacobianShape shape{fd.runs, P, layout.trace_rows(), options.extra.count};
+    const JacobianShape shape{fd.runs, P, layout.trace_rows(), E};
     if (static_cast<std::int64_t>(fd.runs) * (P + 1) > std::numeric_limits<int>::max()) {
         throw std::invalid_argument("DeviceFdJacobian: zu viele Läufe und Variablen für ein Grid");
     }
@@ -274,8 +287,45 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
     args.changes = at<std::int64_t>(buffer_, l.changes);
     TraceSettings settings;
     settings.quadrature = options.quadrature;
-    settings.extra_residuals = 0; // Zusatzresiduen liegen im eigenen Puffer
+    settings.extra_residuals = 0;   // Zusatzresiduen liegen im eigenen Puffer
+    settings.extrema = e_trace > 0; // Max-Reduktionen für trace-abhängige Residuen
+    const int S = fd.batch.surfaces();
+    SurfaceExtremaResult tranche_extrema; // Extrema der aktuellen Tranche (Host)
+    std::vector<double> tranche_traced;
     const auto consume = [&](const DeviceTranche& t) {
+        if (e_trace > 0) {
+            // Extrema der Tranche herunterladen, trace-abhängige Residuen ihrer Varianten auf
+            // dem Host auswerten und deren Zeilen im Gerätepuffer der Zusatzresiduen ersetzen.
+            // Alle Varianten eines Laufs liegen in derselben Tranche (Granularität n), der
+            // Differenzkernel sieht also nur fertige Zeilen.
+            tranche_extrema.variants = t.count;
+            tranche_extrema.surfaces = S;
+            tranche_extrema.values.resize(static_cast<std::size_t>(t.count) *
+                                          static_cast<std::size_t>(S) * 2);
+            MKO_CUDA_CHECK(cudaMemcpy(tranche_extrema.values.data(), t.extrema,
+                                      tranche_extrema.values.size() * sizeof(double),
+                                      cudaMemcpyDeviceToHost));
+            tranche_traced.resize(static_cast<std::size_t>(t.count) *
+                                  static_cast<std::size_t>(e_trace));
+            evaluate_trace_extra_residuals(options.trace_extra, fd.batch, tranche_extrema, t.first,
+                                           tranche_traced, t.first, t.count, options.extra_threads);
+            for (int j = 0; j < t.count; ++j) {
+                const std::size_t row =
+                    static_cast<std::size_t>(t.first + j) * static_cast<std::size_t>(E);
+                for (int i = 0; i < e_trace; ++i) {
+                    extra[row + static_cast<std::size_t>(e_extra + i)] =
+                        tranche_traced[static_cast<std::size_t>(j) *
+                                           static_cast<std::size_t>(e_trace) +
+                                       static_cast<std::size_t>(i)];
+                }
+            }
+            const std::size_t first_row =
+                static_cast<std::size_t>(t.first) * static_cast<std::size_t>(E);
+            MKO_CUDA_CHECK(cudaMemcpy(
+                at<double>(buffer_, l.extra) + first_row, extra.data() + first_row,
+                static_cast<std::size_t>(t.count) * static_cast<std::size_t>(E) * sizeof(double),
+                cudaMemcpyHostToDevice));
+        }
         FdKernelArgs a = args;
         a.residuals = t.residuals;
         a.status = t.status;
