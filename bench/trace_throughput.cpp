@@ -8,10 +8,14 @@
 //     DeviceSystemBatch (Kernelstart(s) mit Feldablage und Synchronisation, ohne Upload des
 //     Batches und ohne Download), gemessen mit der Host-Uhr um den synchronen Aufruf.
 // Jeweils Median und Minimum aus --repeat Läufen nach --warmup Aufwärmläufen.
+// Modi adjoint-* (M5-T1): Grundgerüst ADJOINT (Vorwärtsdurchlauf mit Aufzeichnung, noch nicht in
+// der Engine): "Engine" = Upload, DeviceAdjointForward::run und Download, "Kernel" = run auf dem
+// hochgeladenen Batch.
 
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/cuda/adjoint.hpp"
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/device_system_batch.hpp"
@@ -88,13 +92,27 @@ void configure_number_type(NumberType type, mko::cuda::TraceSettings& settings) 
     settings.precision = precision_of(type);
 }
 
-// Ein zu messender Modus: Kernel-Modus der Engine, optional mit Max-Reduktionen.
+// Ein zu messender Modus: Kernel-Modus der Engine, optional mit Max-Reduktionen, oder das
+// Grundgerüst ADJOINT (M5-T1) mit einer Speicherform der Aufzeichnung.
 struct ModeSpec {
     TraceMode mode = TraceMode::Merit;
     bool extrema = false;
+    bool adjoint = false;
+    mko::cuda::RecordStorage storage = mko::cuda::RecordStorage::None;
 };
 
+ModeSpec trace_mode(TraceMode mode, bool extrema) {
+    return ModeSpec{mode, extrema, false, mko::cuda::RecordStorage::None};
+}
+
+ModeSpec adjoint_mode(mko::cuda::RecordStorage storage) {
+    return ModeSpec{TraceMode::Residuals, false, true, storage};
+}
+
 std::string mode_name(const ModeSpec& m) {
+    if (m.adjoint) {
+        return std::string("adjoint-") + mko::cuda::to_string(m.storage);
+    }
     std::string name = m.mode == TraceMode::Merit ? "merit" : "residuals";
     if (m.extrema) {
         name += "+extrema";
@@ -113,7 +131,8 @@ struct Options {
     std::vector<int> surfaces{10, 20, 30, 40};
     std::vector<int> variants{1, 10, 100, 1000, 10000};
     std::vector<NumberType> types{NumberType::Fp64};
-    std::vector<ModeSpec> modes{{TraceMode::Residuals, false}, {TraceMode::Merit, false}};
+    std::vector<ModeSpec> modes{trace_mode(TraceMode::Residuals, false),
+                                trace_mode(TraceMode::Merit, false)};
     int fields = 3;
     int wavelengths = 3;
     int rings = 10;
@@ -139,7 +158,9 @@ void print_usage() {
         "  --surfaces LISTE    Flächenzahlen S, je 4 ... %d (Standard 10,20,30,40)\n"
         "  --variants LISTE    Variantenzahlen V >= 1 (Standard 1,10,100,1000,10000)\n"
         "  --mode LISTE        residuals, merit, residuals+extrema, merit+extrema, all\n"
-        "                      (Standard residuals,merit; all = alle vier)\n"
+        "                      (Standard residuals,merit; all = alle vier); adjoint-none,\n"
+        "                      adjoint-full, adjoint-checkpoint, adjoint (alle drei;\n"
+        "                      Grundgerüst ADJOINT, M5-T1)\n"
         "  --type LISTE        Zahlentyp: fp64 (Standard), df64, fp32prefilter "
         "(FP32-Vorfilterung,\n"
         "                      einmal pro S und V, unabhängig von --mode)\n"
@@ -206,18 +227,28 @@ std::vector<ModeSpec> parse_modes(std::string_view text) {
     std::vector<ModeSpec> modes;
     for (const std::string_view item : split_list(text)) {
         if (item == "residuals") {
-            modes.push_back({TraceMode::Residuals, false});
+            modes.push_back(trace_mode(TraceMode::Residuals, false));
         } else if (item == "merit") {
-            modes.push_back({TraceMode::Merit, false});
+            modes.push_back(trace_mode(TraceMode::Merit, false));
         } else if (item == "residuals+extrema") {
-            modes.push_back({TraceMode::Residuals, true});
+            modes.push_back(trace_mode(TraceMode::Residuals, true));
         } else if (item == "merit+extrema") {
-            modes.push_back({TraceMode::Merit, true});
+            modes.push_back(trace_mode(TraceMode::Merit, true));
         } else if (item == "all") {
-            modes.push_back({TraceMode::Residuals, false});
-            modes.push_back({TraceMode::Merit, false});
-            modes.push_back({TraceMode::Residuals, true});
-            modes.push_back({TraceMode::Merit, true});
+            modes.push_back(trace_mode(TraceMode::Residuals, false));
+            modes.push_back(trace_mode(TraceMode::Merit, false));
+            modes.push_back(trace_mode(TraceMode::Residuals, true));
+            modes.push_back(trace_mode(TraceMode::Merit, true));
+        } else if (item == "adjoint-none") {
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::None));
+        } else if (item == "adjoint-full") {
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::Full));
+        } else if (item == "adjoint-checkpoint") {
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::Checkpoint));
+        } else if (item == "adjoint") {
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::None));
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::Full));
+            modes.push_back(adjoint_mode(mko::cuda::RecordStorage::Checkpoint));
         } else {
             throw UsageError("--mode: unbekannter Modus \"" + std::string(item) + "\"");
         }
@@ -483,8 +514,50 @@ double rays_per_s(const Result& r, double seconds) {
     return static_cast<double>(r.rays) / seconds;
 }
 
+// Grundgerüst ADJOINT (M5-T1): "Engine" = Upload, DeviceAdjointForward::run (Kernel mit
+// Aufzeichnung und Lesen in absteigender Reihenfolge) und Download der Ergebnisse (ohne die
+// Aufzeichnung selbst); "Kernel" = run auf dem hochgeladenen Batch.
+Result run_adjoint_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType type,
+                        const ModeSpec& mode, const mko::SystemBatchHost& batch) {
+    Result r;
+    r.type = type;
+    r.mode = mode;
+    r.surfaces = batch.surfaces();
+    r.variants = batch.variants();
+    const mko::ResidualLayout layout(batch.topology(), mko::ResidualSettings{o.rings, o.spokes});
+    mko::cuda::AdjointForwardOptions opt;
+    opt.storage = mode.storage;
+    opt.precision = precision_of(type);
+    r.rays_per_variant = layout.rays_per_variant();
+    r.rays = static_cast<std::int64_t>(r.variants) * r.rays_per_variant;
+    r.tranches = 1;
+    try {
+        engine.release();
+        mko::cuda::DeviceAdjointForward adjoint;
+        mko::cuda::AdjointForwardResult out;
+        r.engine = measure(o.warmup, o.repeat, [&] {
+            const mko::cuda::DeviceSystemBatch device_batch(batch, engine.device());
+            adjoint.run(device_batch, layout, opt);
+            adjoint.download(out);
+        });
+        r.failed = static_cast<std::int64_t>(out.residuals.failed_count());
+        if (o.kernel) {
+            const mko::cuda::DeviceSystemBatch device_batch(batch, engine.device());
+            r.kernel = measure(o.warmup, o.repeat, [&] { adjoint.run(device_batch, layout, opt); });
+        }
+    } catch (const mko::cuda::CudaError& e) {
+        std::fprintf(stderr, "Hinweis: ADJOINT für S = %d, V = %d nicht gemessen: %s\n", r.surfaces,
+                     r.variants, e.what());
+        r.tranches = 0;
+    }
+    return r;
+}
+
 Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType type,
                 const ModeSpec& mode, const mko::SystemBatchHost& batch) {
+    if (mode.adjoint) {
+        return run_adjoint_case(engine, o, type, mode, batch);
+    }
     mko::cuda::TraceSettings settings;
     settings.quadrature = mko::ResidualSettings{o.rings, o.spokes};
     settings.status = true;
@@ -551,7 +624,7 @@ Result run_prefilter_case(mko::cuda::TraceEngine& engine, const Options& o,
 
     Result r;
     r.type = NumberType::Fp32Prefilter;
-    r.mode = {TraceMode::Merit, false};
+    r.mode = trace_mode(TraceMode::Merit, false);
     r.surfaces = batch.surfaces();
     r.variants = batch.variants();
 

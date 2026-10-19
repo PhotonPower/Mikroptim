@@ -170,7 +170,7 @@ TEST(SoftFailure, TotalReflectionContinuation) {
                 Ray<double> hard = r;
                 EXPECT_EQ(mko::refract_sphere(hard, c, mu), TraceStatus::TIR);
                 SoftFailure<double> soft = fresh();
-                ASSERT_EQ(mko::refract_sphere(r, c, mu, &soft), TraceStatus::Ok);
+                ASSERT_EQ(mko::refract_sphere(r, c, mu, &soft), TraceStatus::SoftTIR);
                 EXPECT_TRUE(same_bits(soft.penalty, -k));
                 EXPECT_EQ(soft.first, TraceStatus::SoftTIR);
                 EXPECT_NEAR(mko::norm(r.d), 1.0, kUnitFp64);
@@ -188,7 +188,7 @@ TEST(SoftFailure, TotalReflectionContinuation) {
         SoftFailure<double> soft = fresh();
         ASSERT_EQ(mko::refract_sphere(below, 0.0, mu, &soft), TraceStatus::Ok);
         EXPECT_EQ(soft.penalty, 0.0);
-        ASSERT_EQ(mko::refract_sphere(above, 0.0, mu, &soft), TraceStatus::Ok);
+        ASSERT_EQ(mko::refract_sphere(above, 0.0, mu, &soft), TraceStatus::SoftTIR);
         EXPECT_GT(soft.penalty, 0.0);
         EXPECT_LT(soft.penalty, 10.0 * delta);
         // Richtungen nähern sich wie √|k|
@@ -216,7 +216,7 @@ TEST(SoftFailure, GhostPlateContinuation) {
     Ray<double> hard = r;
     EXPECT_EQ(mko::phase_surface_step(hard, 0.01, gx, gy, 1.0, 1.0), TraceStatus::TIR);
     SoftFailure<double> soft = fresh();
-    ASSERT_EQ(mko::phase_surface_step(r, 0.01, gx, gy, 1.0, 1.0, &soft), TraceStatus::Ok);
+    ASSERT_EQ(mko::phase_surface_step(r, 0.01, gx, gy, 1.0, 1.0, &soft), TraceStatus::SoftTIR);
     EXPECT_TRUE(same_bits(soft.penalty, -radicand));
     EXPECT_EQ(soft.first, TraceStatus::SoftTIR);
     EXPECT_EQ(r.d.z, 0.0);

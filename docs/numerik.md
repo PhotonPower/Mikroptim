@@ -96,6 +96,25 @@ Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_su
 
 Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen; bei weichem Versagen die Fläche des ersten weichen Ereignisses, S für die Referenzsphäre). `in_piston(s)` (Ok oder weich versagt) entscheidet, ob ein Strahl in Kolben und Wellenfrontresiduen eingeht; alle anderen Werte sind hartes Versagen. Die Werte 5 und 6 kommen nur im weichen Modus vor.
 
+### Zwischengrößen für den Rückwärtsdurchlauf (Vorschau, M5-T1)
+
+Der adjungierte Modus (M5-T2) differenziert jede Flächenoperation lokal und verkettet die Ableitungen rückwärts von der Referenzsphäre bis Fläche 1. Der Vorwärtsdurchlauf mit Aufzeichnung (M5-T1, `include/mikroptim/trace/adjoint_record.hpp`, Datenstruktur und Speicher in [architektur.md](architektur.md#modus-adjoint-vorwärtsdurchlauf-mit-aufzeichnung-m5-t1)) legt pro Strahl nur den **minimalen Satz** ab; alles andere folgt in O(1) aus dem Eingangszustand der Operation und der Flächentabelle (`recompute_surface_step`, `recompute_reference_step`):
+
+| Operation an Fläche s | Eingang (gespeichert) | neu berechnet (Formeln oben, Abschnitte 6 und 7) | Zweig (gespeichert) |
+|---|---|---|---|
+| Transfer | **p**_{s−1}, **d**_{s−1}; t = thickness[s−1] | s₀ = −(z − t)/d_z, **p**_T (Punkt in der Tangentialebene) | – |
+| Schnitt (Stop, Plane, Sphere) | wie oben; c | H, B, D, √D, s = H/(B + √D) bzw. B/c; Schnittpunkt = **p**_s | `kBranchSoftMissed` (D < 0, s = B/c) |
+| Brechung | **d**_{s−1}, Schnittpunkt **p**_s; μ = n_vor/n_nach | **N** (normiert: Faktor 1/\|**N**\| im Zweig SoftMissed), cos I, k, √k; Ausgang = **d**_s | `kBranchSoftTIR` (k < 0, tangentiale Fortsetzung) |
+| Geisterplatte | **p**_s (= **p**_T), **d**_{s−1}; a_k, r_g, n_G | u, t(u), dt/du, Φ, ∇Φ, d′_x, d′_y, Radikand, √Radikand | `kBranchSoftTIR` (Radikand < 0) |
+| Referenzsphäre | **p**_{S−1}, **d**_{S−1}; **M**_f, n_B | **q**, b, g, b² − g, √(b² − g), σ; s_ref (zusätzlich gespeichert, 1 Zahl pro Strahl) | `kBranchSoftMissed` (b² − g < 0, s_ref = b) |
+
+- **Nicht gebraucht** wird die OPL selbst: Sie geht additiv ein (OPL += n_vor (s₀ + s), += Φ, += n_B s_ref), ihre Adjungierte ist pro Strahl konstant (∂r/∂OPL). Ebenso ist der Kolbenabzug linear: ∂r_k/∂x = s_{f,l} √(W_iV_j) (∂OPL_k/∂x − Σ_j W_j ∂OPL_j/∂x / W_ok) über die Strahlen im Kolben (Projektion nach der Blockreduktion der Gradienten, M5-T2).
+- **Zweige:** Pro Fläche ein Byte (Bitmaske `kBranchRegular` = 0, `kBranchSoftMissed` = 1, `kBranchSoftTIR` = 2; beide Bits zugleich, wenn eine fortgesetzte verfehlte Fläche anschließend totalreflektiert). Der Rückwärtsdurchlauf differenziert damit genau die Fortsetzung, die der Vorwärtsdurchlauf genommen hat, auch wenn die Neuberechnung nahe einer Grenze um eine Rundung abwiche. Die Strafgrößen (−D, −k, −Radikand, −(b² − g)/R_ref²) hängen an diesen Flächen; ihr Gradient verwendet dieselben Zwischengrößen.
+- **Hart versagte Strahlen** haben Zustände bis vor die versagende Fläche (count = s); der Festanteil der Strafe hat keinen Gradienten, die Strafen der weichen Ereignisse davor schon (Abschnitt 11).
+- **Bitgleichheit:** Die Aufzeichnung liest nur Werte, die der Trace ohnehin speichert (Strahlzustand nach jeder Fläche); die Zwischengrößen werden nicht im Vorwärtsdurchlauf abgegriffen, weil ein zusätzlicher Gebrauch eines Produkts dessen FMA-Kontraktion verhindern und damit die OPL ändern könnte (z. B. Φ in OPL += Φ, ∇Φ in n d_⊥ + ∇Φ). Ausgang, Status und Zweig der Neuberechnung kommen aus derselben `propagate_surface` bzw. `reference_sphere_step` und sind bitgleich zur Aufzeichnung; die übrigen Zwischengrößen werden mit denselben Formeln gerechnet (auf der CPU bitgleich, auf dem Gerät bis auf Rundungen durch FMA-Kontraktion, für Ableitungen ohne Belang).
+
+Seit M5-T1 melden `refract_sphere` und `phase_surface_step` (also auch `ghost_plate_step`) die Fortsetzung des weichen Versagens mit `SoftTIR` statt `Ok` (wie `intersect_sphere` mit `SoftMissed`); `propagate_surface` liefert weiterhin Ok und den Zweig über den optionalen Ausgabeparameter `branch`.
+
 ## 6. Geisterplatte
 
 Virtuelle dünne Glasplatte in einem **Luftspalt**, modelliert als Ebene mit Phasenfunktion. Normierungsradius r_g, u = (r/r_g)², radiales Dickenprofil als Summe rotationssymmetrischer Zernike-Polynome (äquivalent zu Legendre-Polynomen in u):

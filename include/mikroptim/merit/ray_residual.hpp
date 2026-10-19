@@ -45,14 +45,18 @@ MKO_HD inline auto batch_image_point(const SystemBatchView<B>& b, const SurfaceT
 // `soft` (optional, Start {0, Ok}): weiches Versagen (numerik.md §11). Dann ist *opl auch für
 // weich versagte Strahlen (in_piston) gültig, und soft->penalty enthält die Summe der
 // Strafgrößen; ohne `soft` hartes Versagen wie in M2.
-template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserver>
+// `recorder` (optional, M5-T1): Aufzeichnung des Vorwärtsdurchlaufs für den adjungierten Modus
+// (trace_to_reference_sphere); die OPL hängt nicht davon ab.
+template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserver,
+          class Recorder = NoTraceRecorder>
 MKO_HD inline TraceStatus
 batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table, int table_l, int v, int f,
               int l, const PupilSample<R>& s, Vec3<R> center, R* opl, Observer* observer = nullptr,
-              typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
+              typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
+              Recorder* recorder = nullptr) {
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
     const TraceStatus st =
-        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer, soft);
+        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer, soft, recorder);
     *opl = ray.opl;
     return st;
 }

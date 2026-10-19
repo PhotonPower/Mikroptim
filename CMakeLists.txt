@@ -190,6 +190,7 @@ target_link_libraries(mikroptim_eval
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
+        src/cuda/adjoint.cu
         src/cuda/batch_trace_check.cu
         src/cuda/df64_check.cu
         src/cuda/device_info.cu
@@ -217,6 +218,10 @@ if(MIKROPTIM_ENABLE_CUDA)
     target_compile_definitions(mikroptim_cuda PUBLIC MIKROPTIM_HAS_CUDA=1)
     target_compile_options(mikroptim_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--Werror=cross-execution-space-call>)
+    # Modus ADJOINT (M5-T1): ohne FMA-Kontraktion, damit Trace mit und ohne Aufzeichnung und das
+    # Neu-Vorwärtsrechnen aus Checkpoints bitgleich sind (docs/architektur.md, Abschnitt "Modus
+    # ADJOINT"). Strenger als der Standard, keine fast-math-Option.
+    set_source_files_properties(src/cuda/adjoint.cu PROPERTIES COMPILE_OPTIONS "--fmad=false")
 endif()
 
 # --------------------------------------------------------------------------

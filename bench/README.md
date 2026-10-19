@@ -25,6 +25,7 @@ Misst den Durchsatz der Trace-Kernel über die öffentliche `mko::cuda::TraceEng
 - **Engine:** `TraceEngine::run` – Prüfung der Werte auf dem Host, Upload des Batches, Kernel, Download (RESIDUALS mit Status pro Strahl, ohne OPD; MERIT mit Merit und versagten Strahlen pro Variante). Das ist die Zeit, die ein Optimierer pro Aufruf sieht.
 - **Kernel:** `DeviceResiduals::run` bzw. `DeviceMerit::run` auf einem schon hochgeladenen `DeviceSystemBatch` (Feldablage hochladen, Kernel bzw. beide Stufen von MERIT, Synchronisation), ohne Upload und Download. Die Engine stellt keine CUDA-Events bereit; die Messung um den synchronen Aufruf enthält deshalb die Start- und Synchronisationslatenz (ca. 50 µs), die nur für kleine V ins Gewicht fällt. Passt ein Batch nicht in einem Stück auf das Gerät, entfällt die Kernelmessung („-“); die Engine-Messung teilt dann in Tranchen (Spalte `Tr`).
 - Strahlen/s = V · Strahlen pro Variante / Zeit, Strahl-Flächen/s = Strahlen/s · S.
+- **Modi `adjoint-*` (M5-T1):** Grundgerüst des Modus ADJOINT (Vorwärtsdurchlauf mit Aufzeichnung pro Strahl im Local Memory und Lesen der Aufzeichnung in absteigender Reihenfolge wie im späteren Rückwärtsdurchlauf; `none` ohne Aufzeichnung, `full` alle Zustände, `checkpoint` Zustände alle 8 Flächen mit Neu-Vorwärtsrechnen der Abschnitte). Noch nicht in der Engine: „Engine“ ist hier Upload, `DeviceAdjointForward::run` und Download (Residuen, Status, OPL, Prüfsummen), „Kernel“ der Lauf auf dem hochgeladenen Batch (eine Tranche, Spalte `Tr` = 1).
 
 **Optionen** (Listen durch Komma getrennt):
 
@@ -33,7 +34,7 @@ Misst den Durchsatz der Trace-Kernel über die öffentliche `mko::cuda::TraceEng
 | `--device N` | CUDA-Gerät | 0 |
 | `--surfaces LISTE` | Flächenzahlen S (4 … 64) | 10,20,30,40 |
 | `--variants LISTE` | Variantenzahlen V ≥ 1 | 1,10,100,1000,10000 |
-| `--mode LISTE` | `residuals`, `merit`, `residuals+extrema`, `merit+extrema`, `all` (alle vier) | residuals,merit |
+| `--mode LISTE` | `residuals`, `merit`, `residuals+extrema`, `merit+extrema`, `all` (alle vier); Grundgerüst ADJOINT (M5-T1): `adjoint-none`, `adjoint-full`, `adjoint-checkpoint`, `adjoint` (alle drei) | residuals,merit |
 | `--type LISTE` | Zahlentyp der Kernel: `fp64`, `df64` (M7-T1, `TraceSettings::precision`), `fp32prefilter` (FP32-Vorfilterung, M7-T2; ein Fall pro S und V, unabhängig von `--mode`) | fp64 |
 | `--fields F` | Felder (Feldwinkel 0 … 3°) | 3 |
 | `--wavelengths L` | Wellenlängen | 3 |
