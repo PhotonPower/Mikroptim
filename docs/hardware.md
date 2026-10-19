@@ -40,6 +40,20 @@ Programme tracen über `mko::cuda::TraceEngine` ([architektur.md, „Host-API Tr
 - **Teilen einer GPU:** `EngineOptions::memory_limit_bytes` begrenzt den Speicher, den die Engine als verfügbar ansieht (z. B. wenn andere Programme dieselbe GPU nutzen oder zwei Engines auf einer GPU laufen). Die Engine fragt den freien Speicher bei jedem Lauf neu ab; Speicher, den andere Programme zwischen Abfrage und `cudaMalloc` belegen, führt zu einem `CudaError` (kein automatischer Neuversuch).
 - **Größenordnung:** `testsystem_mehrlinser.json` (S = 8, 680 Strahlen) passt mit ca. 3,5 Mio. Varianten pro Tranche auf die RTX 3090 (Test `TraceEngine.MaxVariantsFromFreeMemory`); Tranchen sind also erst bei großen Jacobi-Batches oder dichten Quadraturen zu erwarten.
 
+## Mehrere GPUs (M7-T3)
+
+`mko::cuda::MultiTraceEngine` verteilt einen Batch auf mehrere Geräte im selben Rechner (Standard: alle sichtbaren ab sm_60, also RTX 3090 und P100), je eine `TraceEngine` und ein Host-Thread pro Gerät, Anteile nach gemessenem Durchsatz pro Art und Zahlentyp ([architektur.md, „Mehrere GPUs (M7-T3)“](architektur.md#mehrere-gpus-m7-t3)). Hinweise für den Betrieb:
+
+- **Zahlentyp:** Alle Geräte rechnen denselben Zahlentyp (`TraceSettings::precision`). Für gemischte Läufe ist FP64 die natürliche Wahl (P100 schnell, RTX 3090 langsam, die Kalibrierung gibt der P100 den größeren Anteil); df64 lohnt nur auf der RTX 3090. Läufe in df64 und FP64 sind nicht bitgleich.
+- **Architekturen:** Bitgleichheit „unabhängig von der Verteilung“ setzt voraus, dass sm_60 und sm_86 dieselben Bits liefern. Nach der Analyse von PTX und SASS (gleiche Gleitkommabefehle im PTX, korrekt gerundete Division und Wurzel, gleiche Zahl kontrahierter FMA auf beiden Architekturen, JIT aus `compute_60`-PTX auf der 3090 bitgleich, [architektur.md](architektur.md#gemischte-architekturen-sm_60-und-sm_86)) ist das zu erwarten, aber erst auf der P100 nachgewiesen, wenn diese Tests dort grün sind:
+  ```powershell
+  ctest --preset release-cuda -R "MultiTraceEngine\." --output-on-failure
+  .\build\release-cuda\tests\Release\mikroptim_tests.exe --gtest_filter=MultiTraceEngine.ResultFingerprint
+  ```
+  `MultiTraceEngine.RealDevicesBitIdenticalToSingle` vergleicht jedes Gerät mit Gerät 0 und die Verteilung mit dem Einzellauf (wird mit nur einem Gerät übersprungen); `ResultFingerprint` druckt pro Gerät Prüfsummen der Ergebnisbits, die sich auch zwischen getrennten Rechnern vergleichen lassen. Referenz auf der RTX 3090 (nvcc 12.9, Treiber am Arbeitsplatz-PC, Stand dieses Commits): FP64 RESIDUALS `be4c4c1f3cb3d1ed`, MERIT `a86224c203d6e435`; DF64 RESIDUALS `ee14c05f29940919`, MERIT `23695502155cf4d4`; PREFILTER `198fcadd375e938f`. Die Werte ändern sich mit jeder Änderung an Kerneln oder Testsystem.
+- **Eine GPU, mehrere Slots:** Für Tests darf ein Gerät mehrfach in `MultiEngineOptions::devices` stehen; die Slots teilen sich dann Speicher (je 1/k) und Rechenzeit und sind nicht schneller.
+- **Speicher:** Jede Engine richtet ihre Tranchen nach dem freien Speicher ihres Geräts (P100: 16 GB, RTX 3090: 24 GB); `slot_engines` setzt Grenzen pro Gerät.
+
 ## Durchsatzabschätzung
 
 Annahme: ca. 140 Flop-Äquivalente pro Strahl und Fläche (inklusive zwei Wurzeln und zwei Divisionen in FP64), 30 Flächen, also ca. 4.500 pro Strahl.
