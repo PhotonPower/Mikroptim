@@ -1,0 +1,205 @@
+// Unterbefehl `mikroptim eval` (M8-T1): JSON-Ausgabe gegen eval_cpu und eval_statistics
+// (bitgleich), OPD-Karte als CSV gegen eval_opd_map, Textausgabe, Fehlerfälle, --gpu (im
+// CUDA-Build GPU- gegen CPU-Ausgabe, übersprungen ohne Gerät; sonst Exit-Code 3).
+
+#include "cli/cli_util.hpp"
+#include "cli/eval_command.hpp"
+#include "mikroptim/batch/system_batch.hpp"
+#include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/eval/eval.hpp"
+#include "tolerances.hpp"
+
+#ifdef MIKROPTIM_HAS_CUDA
+#include "mikroptim/cuda/device_info.hpp"
+#endif
+
+#include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
+#include <numbers>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <vector>
+
+using nlohmann::json;
+
+namespace {
+
+const std::string kEinzellinse = std::string(MKO_SOURCE_DIR) + "/data/systems/einzellinse_bk7.json";
+
+struct RunResult {
+    int code = -1;
+    std::string out;
+    std::string err;
+};
+
+RunResult run(std::initializer_list<std::string_view> args) {
+    const std::vector<std::string_view> v(args);
+    std::ostringstream out;
+    std::ostringstream err;
+    RunResult r;
+    r.code = mko::cli::run_eval_command(v, out, err);
+    r.out = out.str();
+    r.err = err.str();
+    return r;
+}
+
+// Zerlegt eine CSV-Zeile an Kommas (leere Felder bleiben erhalten).
+std::vector<std::string> split(const std::string& line) {
+    std::vector<std::string> out;
+    std::string cell;
+    std::istringstream in(line);
+    while (std::getline(in, cell, ',')) {
+        out.push_back(cell);
+    }
+    if (!line.empty() && line.back() == ',') {
+        out.emplace_back();
+    }
+    return out;
+}
+
+} // namespace
+
+TEST(CliEval, JsonMatchesLibrary) {
+    const RunResult r = run({kEinzellinse, "--json", "--grid", "24"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["format"], "mikroptim.eval/1");
+    EXPECT_EQ(j["backend"], "cpu");
+    EXPECT_EQ(j["grid"], 24);
+    EXPECT_EQ(j["reference_sphere"], "exit-pupil");
+
+    const mko::LoadedSystem ls = mko::load_system(kEinzellinse);
+    const mko::SystemBatchHost b = mko::make_system_batch(ls, 1);
+    mko::EvalSettings s;
+    s.grid = 24;
+    const mko::EvalResult e = mko::eval_cpu(b, s);
+    const auto stats = mko::eval_statistics(e, 0);
+    EXPECT_EQ(j["grid_points"], e.samples());
+    EXPECT_EQ(j["exit_pupil_position"].get<double>(), e.exit_pupil_position[0]);
+    ASSERT_EQ(j["tuples"].size(), stats.size());
+    const double lambda_ref_mm = 587.56 * 1e-6;
+    for (std::size_t i = 0; i < stats.size(); ++i) {
+        const json& t = j["tuples"][i];
+        EXPECT_EQ(t["field"], stats[i].field);
+        EXPECT_EQ(t["wavelength"], stats[i].wavelength);
+        EXPECT_EQ(t["rms_opd_mm"].get<double>(), stats[i].rms_opd);
+        EXPECT_EQ(t["rms_opd_waves"].get<double>(), stats[i].rms_opd / lambda_ref_mm);
+        EXPECT_EQ(t["rms_spot_mm"].get<double>(), stats[i].rms_spot);
+        EXPECT_EQ(t["focus_sagittal_mm"].get<double>(), stats[i].focus_sagittal);
+        EXPECT_EQ(t["failed_rays"], 0);
+        const double lambda_mm = b.wavelength_nm(stats[i].wavelength) * 1e-6;
+        const double phase = 2.0 * std::numbers::pi * stats[i].rms_opd / lambda_mm;
+        EXPECT_NEAR(t["strehl_marechal"].get<double>(), std::exp(-phase * phase),
+                    mko::test::kUnitFp64);
+        if (stats[i].field == 0) {
+            EXPECT_TRUE(t["distortion_chief_percent"].is_null()); // Achsfeld
+        } else {
+            EXPECT_EQ(t["distortion_chief_percent"].get<double>(), stats[i].distortion_chief);
+        }
+    }
+    EXPECT_EQ(j["failed_rays"], 0);
+
+    // Lage Scheitel und halbe Pupille werden durchgereicht
+    const RunResult v =
+        run({kEinzellinse, "--json", "--grid", "24", "--reference", "vertex", "--half"});
+    ASSERT_EQ(v.code, mko::cli::kExitOk) << v.err;
+    const json jv = json::parse(v.out);
+    EXPECT_EQ(jv["reference_sphere"], "vertex");
+    EXPECT_EQ(jv["half_pupil"], true);
+    EXPECT_TRUE(jv["exit_pupil_position"].is_null());
+}
+
+TEST(CliEval, OpdMapCsvMatchesLibrary) {
+    const std::filesystem::path file =
+        std::filesystem::temp_directory_path() / "mikroptim_test_eval_map.csv";
+    const std::string path = file.string();
+    const RunResult r =
+        run({kEinzellinse, "--grid", "16", "--map", "2,1", "--map-file", path, "--remove", "tilt"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const mko::LoadedSystem ls = mko::load_system(kEinzellinse);
+    mko::EvalSettings s;
+    s.grid = 16;
+    const mko::EvalResult e = mko::eval_cpu(mko::make_system_batch(ls, 1), s);
+    const mko::EvalMap m = mko::eval_opd_map(e, 0, 2, 1, mko::OpdRemoval::Tilt);
+    std::ifstream in(file);
+    std::string line;
+    int row = 0;
+    while (std::getline(in, line)) {
+        const std::vector<std::string> cells = split(line);
+        ASSERT_EQ(cells.size(), 16u);
+        const int j = 15 - row; // erste Zeile = größtes y
+        for (int i = 0; i < 16; ++i) {
+            const double v = m.at(i, j);
+            if (std::isnan(v)) {
+                EXPECT_TRUE(cells[static_cast<std::size_t>(i)].empty());
+            } else {
+                // verlustfrei geschrieben (17 Stellen), Umrechnung wie im Programm
+                EXPECT_EQ(std::stod(cells[static_cast<std::size_t>(i)]), v / (587.56 * 1e-6));
+            }
+        }
+        ++row;
+    }
+    EXPECT_EQ(row, 16);
+    in.close();
+    std::error_code ec;
+    std::filesystem::remove(file, ec);
+}
+
+TEST(CliEval, TextOutputAndErrors) {
+    const RunResult r = run({kEinzellinse, "--grid", "16"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("System: Einzellinse N-BK7"), std::string::npos);
+    EXPECT_NE(r.out.find("Referenzsphäre: durch die Austrittspupille"), std::string::npos);
+    EXPECT_NE(r.out.find("Versagte Strahlen: 0 von"), std::string::npos);
+
+    EXPECT_EQ(run({kEinzellinse, "--grid", "0"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--reference", "irgendwo"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--map", "0,0"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--device", "0"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--unbekannt"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({"--help"}).code, mko::cli::kExitOk);
+    const RunResult missing =
+        run({std::string(MKO_SOURCE_DIR) + "/data/systems/gibt_es_nicht.json"});
+    EXPECT_EQ(missing.code, mko::cli::kExitError);
+    EXPECT_NE(missing.err.find("mikroptim eval: Fehler"), std::string::npos);
+    const RunResult bad_map = run({kEinzellinse, "--grid", "8", "--map", "7,0", "--map-file",
+                                   (std::filesystem::temp_directory_path() / "x.csv").string()});
+    EXPECT_EQ(bad_map.code, mko::cli::kExitError);
+}
+
+#ifdef MIKROPTIM_HAS_CUDA
+TEST(CliEvalGpu, MatchesCpu) {
+    if (mko::cuda::device_count() == 0) {
+        GTEST_SKIP() << "Keine CUDA-GPU gefunden";
+    }
+    const RunResult c = run({kEinzellinse, "--json", "--grid", "32"});
+    const RunResult g = run({kEinzellinse, "--json", "--grid", "32", "--gpu"});
+    ASSERT_EQ(c.code, mko::cli::kExitOk) << c.err;
+    ASSERT_EQ(g.code, mko::cli::kExitOk) << g.err;
+    const json jc = json::parse(c.out);
+    const json jg = json::parse(g.out);
+    EXPECT_EQ(jg["backend"], "gpu");
+    ASSERT_EQ(jc["tuples"].size(), jg["tuples"].size());
+    for (std::size_t i = 0; i < jc["tuples"].size(); ++i) {
+        const double a = jc["tuples"][i]["rms_opd_mm"].get<double>();
+        const double b = jg["tuples"][i]["rms_opd_mm"].get<double>();
+        EXPECT_NEAR(b, a, std::max(mko::test::kCpuGpuFp64, mko::test::kCpuGpuFp64Relative * a));
+    }
+    EXPECT_EQ(jg["failed_rays"], jc["failed_rays"]);
+}
+#else
+TEST(CliEval, GpuUnavailableWithoutCuda) {
+    const RunResult r = run({kEinzellinse, "--gpu"});
+    EXPECT_EQ(r.code, mko::cli::kExitNoGpu);
+    EXPECT_NE(r.err.find("ohne CUDA gebaut"), std::string::npos);
+}
+#endif

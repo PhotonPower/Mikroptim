@@ -138,6 +138,49 @@ inline constexpr double kPrefilterMarginFp32VsFp64 = 1e-3;
 // CPU-Referenz, relativ; Unterschiede nur aus FMA-Kontraktion auf dem Gerät (einige u).
 inline constexpr double kPrefilterGpuCpuLengthRelative = 1e-4;
 
+// Modus EVAL (M8-T1): Brennlinien aus den Feldstrahlen (Nachbarstrahlen im Abstand δ = 10⁻³ der
+// Pupille) bei einer perfekten Kugelwelle (aplanatische Punkte) [mm]. Die Strahlen schneiden
+// sich exakt im Bildpunkt; Rundungsfehler der Lage (~10⁻¹⁴ mm) werden durch den kleinen
+// Winkelunterschied der Nachbarstrahlen (~2δ·sin θ) um ~10³ verstärkt.
+inline constexpr double kEvalFocusFp64 = 1e-9;
+// EVAL: Brennlinien gegen die Coddington-Gleichungen, relativ zu max(1 mm, |z|). Abbruchfehler
+// der symmetrischen Nachbarstrahlen O(δ²) (Koma hebt sich im Paar ±δ auf) und Rundung ~ε/δ.
+inline constexpr double kEvalFocusRelative = 1e-6;
+// EVAL: Bildschale gegen die Petzval-Näherung z = κ_P h²/2 bei θ = 1°, relativ. Modellfehler
+// der Näherung O(θ²) ≈ 3·10⁻⁴, kein Maß für die Rechengenauigkeit.
+inline constexpr double kEvalPetzvalModel = 1e-3;
+// EVAL: RMS der OPD auf dem Raster gegen den RMS des stetigen Modells (Legendre-Projektion der
+// Gauß-Quadratur) auf denselben Rasterpunkten, relativ. Nur Rundung und Modellabbruch.
+inline constexpr double kEvalGridModel = 1e-8;
+// EVAL: Konvergenz des Raster-RMS gegen die Gauß-Quadratur, Faktor c der Schranke c·N^(−4/3).
+// Der Randanteil dominiert den inneren Mittelpunktfehler O(N⁻²): Die Zahl der Gitterpunkte im
+// Kreis weicht um E ~ R^(2/3) (R = N/2, Gaußsches Kreisproblem; beobachtet |E| <= 1,5 R^(2/3))
+// von π N²/4 ab, relativ also ≈ 0,8·1,5·N^(−4/3), und der RMS einer zum Rand wachsenden OPD
+// (sphärische Aberration) reagiert darauf etwa doppelt so stark. Gemessen c <= 2,4.
+inline constexpr double kEvalGridConvergence = 4.0;
+// EVAL: Verhältnis der Abweichung des Spot-Schwerpunkts von der paraxialen Bildhöhe bei
+// halbierter Apertur (Koma der dritten Ordnung ∝ NA², Verhältnis 4); Terme höherer Ordnung
+// ändern es relativ um O(NA²) und die Verzeichnung (∝ θ²) um ~10⁻³. Modellfehler.
+inline constexpr double kEvalComaScaling = 0.05;
+// EVAL: Schwerpunkt des Spots bei kleinem Feld (0,05°) gegen die paraxiale Bildhöhe f_λ tan θ,
+// relativ (Einzellinse, NA <= 0,025). Modellfehler: Koma der dritten Ordnung (∝ NA²) und
+// Verzeichnung (∝ θ²), kein Maß für die Rechengenauigkeit.
+inline constexpr double kEvalCentroidParaxial = 1e-3;
+// EVAL: Summe der Rastergewichte gegen 1 (bis zu 5·10⁴ Summanden 1/n, Rundung <= n·ε).
+inline constexpr double kEvalWeightSum = 1e-11;
+// EVAL: halbe gegen volle Pupille [mm] (Kennzahlen, Karten): dieselben Strahlen, nur andere
+// Summationsreihenfolge im Kolben und in den Momenten (mit Spiegelung), Werte bis ~10⁻³ mm.
+inline constexpr double kEvalHalfPupil = 1e-14;
+// EVAL: Änderung des Defokus-Koeffizienten bei verschobener Bildebene gegen n δz (NA²/2 + NA⁴/8),
+// relativ. Modellfehler: sin U ist wegen der sphärischen Aberration nicht streng ∝ ρ
+// (Längsaberration/Brennweite ≈ 1 % bei NA 0,05; gemessen 2,8·10⁻³), kein Maß für die
+// Rechengenauigkeit.
+inline constexpr double kEvalDefocusModel = 1e-2;
+// EVAL: Brennlinien GPU gegen CPU, relativ zu max(1 mm, |z_t| + |z_s|). Die Lagen der
+// Feldstrahlen weichen um kCpuGpuFp64 ab; die Brennlinie teilt diese Differenz durch den
+// Winkelunterschied der Nachbarstrahlen (~2δ·NA ≈ 10⁻⁴ … 10⁻³).
+inline constexpr double kEvalFocusGpuCpu = 1e-6;
+
 // Gebündelter LM (M3-T4), Abnahme 1: Formfaktor der Einzellinse bei minimaler sphärischer
 // Aberration gegen den Planwert 0,74 (Dünnlinsentheorie 2(n² − 1)/(n + 2) = 0,7397). Modellfehler
 // der Dünnlinsentheorie (Mittendicke 6 mm bei f = 100 mm verschiebt das Optimum auf q ≈ 0,72),

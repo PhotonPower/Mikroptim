@@ -159,7 +159,7 @@ s_ref darf negativ sein. Residuum pro Strahl ist die OPD nach Kolbenabzug:
 
 $$\mathrm{OPD}_i = \mathrm{OPL}_i - \sum_j W_j\,\mathrm{OPL}_j$$
 
-Kippung wird **nicht** entfernt: Sie entspricht Verzeichnung bzw. Brennweitenfehler und soll bestraft werden. Für die Endbewertung (M8) wird die Referenzsphäre durch die paraxiale Austrittspupille gelegt; der Unterschied ist von zweiter Ordnung in der Queraberration.
+Kippung wird **nicht** entfernt: Sie entspricht Verzeichnung bzw. Brennweitenfehler und soll bestraft werden. Für die Endbewertung (M8) wird die Referenzsphäre durch die paraxiale Austrittspupille gelegt; der Unterschied ist von zweiter Ordnung in der Queraberration (umgesetzt im Modus `EVAL`, Abschnitt [„Auswertung auf dem Raster (M8-T1)“](#auswertung-auf-dem-raster-m8-t1)).
 
 ### Festlegungen der Implementierung (M1-T7)
 
@@ -237,7 +237,53 @@ der gewichtete mittlere quadratische RMS-Wellenfrontfehler in Wellen bei λ_ref 
 
 Die Gewichtung selbst ist damit auf CPU und GPU auf Rundungsgenauigkeit (< 10⁻¹⁴) belegt. Der Vergleich GPU gegen CPU enthält zusätzlich die Abweichung der OPD (FMA-Kontraktion, `kCpuGpuFp64` = 10⁻¹² mm pro Strahl bzw. `kDf64VsFp64` = 10⁻⁹ mm): Relativ ist δF/F ≈ 2 δOPD/RMS, bei RMS um 10⁻⁴ … 10⁻³ mm also bis ≈ 10⁻¹¹ in FP64. Geprüft wird er deshalb in der Wurzel mit der daraus abgeleiteten Schranke |√F_GPU − √F_M1| ≤ δ·√(Σ_(f,l) s²) + 10⁻¹²·√F (Test `CudaMerit.EqualsWeightedSumOfWavefrontRms`), nicht mit 10⁻¹² relativ.
 
-Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern, müsste dann aber in CPU und Kernel gleich definiert werden. Für df64 ist sie nicht nötig: Der Rundungsfehler der OPL in df64 liegt bei einigen u²·OPL ≈ 10⁻¹² mm, die gemessene Abweichung der OPD von FP64 bei einigen 10⁻¹¹ mm (Abschnitt 12, „Zahlentyp df64“).
+Der Kernel summiert den Kolben als Baumreduktion (siehe „Summationsreihenfolge und Determinismus“), die CPU-Referenz sequenziell mit `opd_statistics`. Beide summieren die rohen OPL; eine Zentrierung um einen Referenzwert (z. B. die OPL des Hauptstrahls) würde die Auslöschung bei OPL ≈ 100 mm verringern, müsste dann aber in CPU und Kernel gleich definiert werden. Für df64 ist sie nicht nötig: Der Rundungsfehler der OPL in df64 liegt bei einigen u²·OPL ≈ 10⁻¹² mm, die gemessene Abweichung der OPD von FP64 bei einigen 10⁻¹¹ mm (Abschnitt 12, „Zahlentyp df64“). Der Modus `EVAL` (unten) summiert bis zu 3·10⁶ Strahlen pro Tupel und zentriert deshalb um die OPL des Hauptstrahls.
+
+### Auswertung auf dem Raster (M8-T1)
+
+Festlegung für den Modus `EVAL` (Kernel `src/cuda/eval.cu`, CPU-Referenz `eval_cpu`, Pro-Strahl-Teil `include/mikroptim/eval/eval_ray.hpp`, Host-API `include/mikroptim/eval/eval.hpp`; Ablage und Ablauf: [architektur.md, „Modus EVAL“](architektur.md#modus-eval-m8-t1)). Jedes Versagen ist hart (Abschnitt 11).
+
+**Raster.** N×N Zellmitten über das Quadrat [−1, 1]² der normierten Pupille, x_i = (2i + 1 − N)/N, y_j = (2j + 1 − N)/N; zur Pupille gehören die Punkte mit (2i + 1 − N)² + (2j + 1 − N)² ≤ N² (ganzzahlig, also exakt und spiegelsymmetrisch), abgelegt zeilenweise (j, dann i). Gewichte W_k = 1/n_voll (Summe 1). Halbe Pupille (Option, Symmetrie x → −x): nur x ≥ 0, Gewicht 2/n_voll für x > 0 und 1/n_voll auf der Spalte x = 0 (nur bei ungeradem N); jede Statistik zählt einen solchen Punkt als Paar (±x, y) mit gespiegeltem Spot (x → −x). Nicht erlaubt bei einer Punktquelle mit x ≠ 0. Startstrahlen direkt aus (x, y) statt über (ρ, φ): kollimiert **p**₀ = (a x, a y, 0), Punktquelle **d**₀ = (s x, s y, √(1 − s²(x² + y²))) (sonst wie Abschnitt 4).
+
+**Referenzsphäre durch die Austrittspupille** (Standard in `EVAL`). E = (0, 0, z_AP) ist die Mitte der paraxialen Austrittspupille bei λ_ref (Abschnitt 9, `batch_paraxial` mit `paraxial_index`, lokale Koordinaten der letzten Fläche), die Sphäre hat den Mittelpunkt **M**_f und den Radius R = |**M**_f − E|. Gesucht ist der Schnitt mit der Kappe durch E. Mit **q** = **p** − **M**_f, b = −**q**·**d** und t = −|**q** × **d**|² (= b² − |**q**|² für |**d**| = 1) ist s = b − σ√(R² + t) mit σ = +1 für M_z ≥ z_AP, sonst −1: Für die Schnittpunkte nahe der Achse gilt **x** − **M** ≈ −σR**d**, also (**x** − **M**)·(E − **M**) ≈ σR d_z (M_z − z_AP) > 0 genau für dieses σ (für E im Scheitel ist das die Wahl σ = sign M_z aus M1-T7). Addiert wird n_B (s + σR); der für alle Strahlen eines Feldes gleiche Anteil −σ n_B R fällt beim Kolbenabzug weg. Mit der vorzeichenbehafteten Krümmung κ = σ/R:
+
+$$s + \sigma R = b - \frac{\kappa\,t}{\sqrt{1 + \kappa^2 t} + 1}$$
+
+Die Form enthält keine Differenz großer Zahlen (R² gegen |**q**|², vgl. g in M1-T7) und geht für κ → 0 stetig in b über: Eine Austrittspupille im Unendlichen (bildseitig telezentrisch, `exit_pupil_at_infinity`) ergibt κ = 0, die Sphäre mit unendlichem Radius. Status `Missed`, wenn 1 + κ²t < 0 (die Gerade verfehlt die Sphäre) oder NaN, versagende Fläche S; die Position des Strahls wird nicht fortgeschrieben. Einen Bildpunkt in der Austrittspupille (R = 0) weist der Host zurück. Lage `Vertex` (wahlweise): Sphäre durch den Scheitel wie M1-T7 mit `reference_sphere_step` (dieselben Operationen wie `trace_to_reference_sphere`; auf denselben Strahlen bitgleich zu `evaluate_wavefront`, Test `Eval.VertexReferenceReproducesWavefrontOfM1T7`). Für E im Scheitel stimmt der Schritt durch die Austrittspupille mit `reference_sphere_step` bis auf den Anteil σ n_B R überein (Test `EvalRay.ExitPupilStepMatchesVertexSphere`, ≤ 5,0·10⁻¹⁴ mm). Beispiel Einzellinse: z_AP = −9,516 mm, R = 108,57 mm statt 99,05 mm durch den Scheitel.
+
+**OPD und Spot pro Rasterpunkt.** Bezugswert O₀ = OPL des Hauptstrahls (Pupillenmitte; 0, wenn er versagt), Kolben = Σ_ok W_k (OPL_k − O₀) / W_ok über die gültigen Rasterpunkte, OPD_k = (OPL_k − O₀) − Kolben (NaN bei Versagen und in Tupeln ohne gültigen Strahl). Die Zentrierung hält die Summanden in der Größe der OPD; ohne sie lag die Rundung des Kolbens bei 7.200 Punkten (N = 96) bei ≈ 10⁻¹¹ mm, mit ihr ≤ 9·10⁻¹⁴ mm (Abnahme unten). Kippung und Defokus bleiben in der OPD (wie MERIT). Spot: Schnittpunkt mit der Bildebene z = w (Abstand thickness[S−1] von der letzten Fläche) relativ zum idealen Bildpunkt, (x, y − h_f).
+
+**Kennzahlen pro Tupel** (`eval_statistics`, Host, sequenziell in aufsteigender Reihenfolge, für CPU- und GPU-Ergebnisse dieselbe Funktion), Mittel über die gültigen Rasterpunkte mit renormierten Gewichten:
+
+- RMS = √(Σ W OPD² / W_ok) und PV der OPD nach Kolbenabzug;
+- gewichtete kleinste Quadrate OPD ≈ c₀ + t_x x + t_y y + c_d ρ² (Cholesky der Normalgleichungen; Basis in normierten Pupillenkoordinaten, c_d ist der ρ²-Koeffizient, nicht der Zernike-Koeffizient von 2ρ² − 1), RMS nach Abzug von Kolben und Kippung (Basis 1, x, y) bzw. Kolben, Kippung und Defokus; dieselben Fits zieht `eval_opd_map` vor der Darstellung ab (Standard: nur Kolben);
+- Spot-Schwerpunkt (x̄, ȳ) und RMS-Spotradius √(Σ W ((x − x̄)² + (y − ȳ)²) / W_ok).
+
+**Feldstrahlen** (vier pro Tupel, Gewicht 0, nicht im Kolben): Hauptstrahl (0, 0), tangentiales Paar (0, ±δ), sagittaler Strahl (δ, 0), Standard δ = 10⁻³. Ausgegeben werden Schnittpunkt mit der Bildebene (relativ zu **M**_f) und Richtung im Bildraum. Daraus:
+
+- **Verzeichnung** 100·(y_H − h_f)/h_f [%] über den Hauptstrahl, ebenso über den Schwerpunkt ȳ; Bezug ist die ideale Bildhöhe h_f = f_soll tan θ_f des Batches (`field_target`), auf der Achse NaN. Mit f_soll ≠ paraxialer Brennweite enthält die Zahl den Brennweitenfehler.
+- **Brennlinien** als z relativ zur Bildebene (> 0: Fokus dahinter) mit den Steigungen m = d_y/d_z bzw. d_x/d_z: tangential z_t = (y₋ − y₊)/(m₊ − m₋) (Schnitt des Paares in der Meridionalebene), sagittal z_s = −x_s/m_s (Durchstoß durch die Meridionalebene x = 0, die der Spiegelstrahl aus Symmetrie ebenfalls trifft). Im Grenzfall δ → 0 sind das die Brennlinien des Coddington-Bündels um den Hauptstrahl; der Abbruchfehler ist O(δ²), weil sich die Koma (gerade in δ) im symmetrischen Paar aufhebt, die Rundung ≈ ε·|**p**|/(δ·NA). Astigmatismus z_t − z_s; Bildfeldwölbung über die Felder.
+
+**Rasterfehler.** Der Mittelpunktfehler im Inneren ist O(N⁻²), dominiert wird der Fehler aber vom treppenförmigen Rand: Die Zahl der Gitterpunkte im Kreis weicht um E ~ R^{2/3} (R = N/2, Gaußsches Kreisproblem) von πN²/4 ab, relativ also ~N^{−4/3}, und der RMS einer zum Rand wachsenden OPD reagiert darauf etwa doppelt so stark (Messung unten). Wo es auf den Integrationsfehler ankommt, ist die Gauß-Quadratur (Abschnitt 8) überlegen; das Raster dient Karten, Spots und später der FFT (M8-T2).
+
+**Ergebnisse der Abnahme** (Tests `Eval.*`, `EvalRay.*` in `tests/test_eval.cpp`, auf der GPU `CudaEval.*` in `tests/test_cuda_eval.cpp` mit denselben Prüfungen aus `tests/eval_test_systems.hpp`):
+
+| Kriterium | Orakel | Ergebnis CPU | Ergebnis GPU (RTX 3090) |
+|---|---|---|---|
+| (1) Perfekte Kugelwelle: aplanatische Punkte n = 1,5 und 1,8, sin θ = 0,95, Quelle auf und neben der Achse, beide Referenzsphären, volle und halbe Pupille, N = 64 | OPD = 0, Spot = 0, Brennlinien in der Bildebene | max \|OPD\| 2,8·10⁻¹⁴ mm, Spotradius ≤ 2,4·10⁻¹³ mm, Brennlinien ≤ 1,1·10⁻¹³ mm | max \|OPD\| 2,5·10⁻¹⁴ mm, Spotradius ≤ 3,0·10⁻¹³ mm, Brennlinien ≤ 2,1·10⁻¹³ mm |
+| (2a) Einzellinse NA 0,049 und 0,025, Achsfeld, Bildebene im paraxialen Fokus, N = 96: OPD jedes Rasterpunkts gegen das stetige Modell aus der Gauß-Quadratur (Legendre bis Grad 8 in u) | M1-T7 | ≤ 8,6·10⁻¹⁴ mm (Austrittspupille), ≤ 5,6·10⁻¹⁵ mm (Scheitel) | ≤ 8,8·10⁻¹⁴ mm bzw. ≤ 5,6·10⁻¹⁵ mm |
+| (2b) Fit c₀ + c₁ρ² + c₂ρ⁴ + c₃ρ⁶ auf dem Raster | c₂ = −W₀₄₀ (Seidel), c₁ = 0 | c₂ rel. ≤ 1,5·10⁻⁵, \|c₁/W₀₄₀\| ≤ 3,4·10⁻⁶ | wie CPU |
+| (2c) RMS des Rasters gegen RMS der Gauß-Quadratur (16 Ringe), N = 16 … 256 (GPU bis 1024) | Konvergenz ≤ 4 N^{−4/3} | 5,4·10⁻² (N = 16), 1,7·10⁻² (32), 6,7·10⁻³ (64), 3,6·10⁻³ (128), 1,5·10⁻⁴ (256); gegen das Modell auf denselben Punkten ≤ 1,6·10⁻¹⁰ relativ | wie CPU bis N = 256; 4,4·10⁻⁵ (512), 1,0·10⁻⁴ (1024); gegen das Modell ≤ 8,5·10⁻¹¹ |
+| (3) Verzeichnung: Kugelfläche (n′ = 1,5) mit Blende im Scheitel, θ = 1°, 5°, 10° | n′ tan θ′ / tan θ − 1 (exakt): −0,008462 %, −0,211943 %, −0,852615 % | Hauptstrahl ≤ 1,8·10⁻¹⁵ mm, ≤ 2·10⁻¹⁴ % | wie CPU (Hauptstrahl ≤ 1,8·10⁻¹⁵ mm) |
+| (3) dieselbe Fläche mit Blende im Krümmungsmittelpunkt (virtuelles Bild) | verzeichnungsfrei | Hauptstrahl ≤ 2,7·10⁻¹⁵ mm | wie CPU |
+| (4) Spot-Schwerpunkt bei θ = 0,05° (Einzellinse, Bildebene im paraxialen Fokus jeder Wellenlänge) | f_λ tan θ | rel. 3,3·10⁻⁴ (a = 2,5 mm) bzw. 8,2·10⁻⁵ (a = 1,25 mm), Verhältnis 4,01 (Koma ∝ NA²); Hauptstrahl rel. 9·10⁻⁸ | (nur CPU) |
+| (5) Brennlinien der Fläche mit Blende im Scheitel | Coddington | ≤ 1,4·10⁻⁸ mm (z bis 4,5 mm) | ≤ 1,4·10⁻⁸ mm |
+| (5) Blende im Krümmungsmittelpunkt | Coddington (z_t = z_s, Kugel um C), Petzval z ≈ κ_P h²/2 | ≤ 3,3·10⁻⁸ mm, z_t − z_s = −1,8·10⁻¹² mm; z_s/(κ_P h²/2) = 0,99978 bei 1° | wie CPU |
+| Defokus: Bildebene 0,2 mm verschoben | Δc_d = −n δz (NA²/2 + NA⁴/8), Brennlinien −0,2 mm | Δc_d rel. ≤ 2,8·10⁻³ (Modellfehler, sin U nicht streng ∝ ρ), Brennlinien −0,2 mm auf ≤ 10⁻⁶ mm | (nur CPU) |
+| (6) GPU gegen CPU (gestörte Varianten des Mehrlinsers mit versagten Strahlen, Geisterplatten, Punktquelle; beide Referenzsphären, volle und halbe Pupille, N = 33) | `kCpuGpuFp64`, `kCpuGpuFp64Relative` pro Strahl | – | OPD ≤ 2,3·10⁻¹³ mm, Spot ≤ 5,4·10⁻¹³ mm (einzelne streifende Strahlen extremer Varianten mit Spot ≈ 10⁴ mm relativ, höchstens 0,70 der Toleranz), Feldstrahlen ≤ 4,4·10⁻¹⁵, RMS ≤ 1,6·10⁻¹⁴ mm, Brennlinien ≤ 3,3·10⁻¹¹ mm; Status und NaN identisch (2,37·10⁶ Strahlen, davon 1,9·10⁵ versagt) |
+| (6) Determinismus | bitgleich | – | 5 Läufe und 5 Tranchen bitgleich |
+
+Die Seidel-Abweichung von c₂ ist der Anteil höherer Ordnung wie in M1-T7; mit der Sphäre durch die Austrittspupille ist er etwa dreimal kleiner als durch den Scheitel (4,9·10⁻⁶ gegen 1,5·10⁻⁵ bei NA 0,049): Die Lage der Sphäre ändert nur Terme zweiter Ordnung in der Queraberration.
 
 ## 8. Pupillenquadratur
 
