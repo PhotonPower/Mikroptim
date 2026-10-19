@@ -18,6 +18,7 @@
 #include "mikroptim/cuda/multi_levenberg_marquardt.hpp"
 #include "mikroptim/cuda/multi_trace_engine.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/cuda/tuple_packs.hpp"
 #include "prefilter_test_systems.hpp"
 #include "residual_test_systems.hpp"
 
@@ -133,7 +134,9 @@ std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout
     const std::size_t extra =
         mode == TraceMode::Merit && !s.extra_merit.empty() ? sizeof(double) : 0;
     return mko::estimate_device_bytes(t, variants, r, extra) +
-           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan));
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan)) +
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * t.wavelengths *
+                            sizeof(mko::cuda::TuplePack)); // Tupelpakete (M7-T4)
 }
 
 EngineOptions limited_to(std::size_t bytes) {

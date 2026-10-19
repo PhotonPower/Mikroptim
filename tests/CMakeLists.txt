@@ -60,6 +60,7 @@ add_executable(mikroptim_tests
     test_system_io.cpp
     test_trace.cpp
     test_trace_engine_header.cpp
+    test_tuple_packs.cpp
     test_variable_set.cpp
     test_variables_schema.cpp
     test_variant_generator.cpp
@@ -98,6 +99,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_system_batch.cpp
         test_cuda_trace.cpp
         test_cuda_trace_engine.cpp
+        test_cuda_tuple_packs.cpp
         test_cuda_vector_psf.cpp)
     target_link_libraries(mikroptim_tests PRIVATE mikroptim_cuda)
 endif()

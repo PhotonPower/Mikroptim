@@ -16,10 +16,15 @@
 
 namespace mko::cuda {
 
-// Threads pro Block des Kernels RESIDUALS (Vielfaches von 32; in M7 tunbar). Die Summation
-// des Kolbens hängt von diesem Wert ab: Ergebnisse sind für einen festen Wert bitgleich
-// reproduzierbar.
+// Threads pro Block des Kernels RESIDUALS (Vielfaches von 32). Seit M7-T4 hängt die
+// Summationsreihenfolge nicht mehr davon ab (128 virtuelle Lanes pro Tupel, docs/architektur.md,
+// "Kernel-Abbildung").
 inline constexpr int kResidualThreads = 128;
+
+// Standardgröße eines Tupelpakets in Strahlen (M7-T4): Ein Block rechnet aufeinanderfolgende
+// Tupel (f, l) einer Variante mit zusammen höchstens so vielen Strahlen (mindestens ein Tupel).
+// Messung der Wahl: docs/benchmarks.md, "Profiling und Tuning (M7-T4)".
+inline constexpr int kDefaultPackRays = 512;
 
 // Optionen eines Laufs.
 struct ResidualRunOptions {
@@ -30,6 +35,9 @@ struct ResidualRunOptions {
     bool extrema = false;                  // Max-Reduktionen pro Variante und Fläche (M2-T3,
                                            // ResidualResult::extrema; Definition batch_extrema.hpp)
     Precision precision = Precision::Fp64; // Rechentyp im Kernel (M7-T1); Ausgaben immer FP64
+    // Größte Paketgröße in Strahlen (>= 1, M7-T4); nur Laufzeit, die Ergebnisse sind für jeden
+    // Wert bitgleich (1: ein Tupel pro Block wie vor M7-T4).
+    int pack_rays = kDefaultPackRays;
 };
 
 // Ausgabepuffer des Kernels RESIDUALS auf dem Gerät (RAII, nur verschiebbar): ein
@@ -48,12 +56,13 @@ public:
     DeviceResiduals& operator=(DeviceResiduals&& other) noexcept;
 
     // Startet den Kernel für alle Varianten von `batch` auf dessen Gerät und wartet auf das
-    // Ende. Ein Block pro (v, f, l), V · F · L <= kMaxGridBlocks (sonst std::invalid_argument;
+    // Ende. Ein Block pro Tupelpaket einer Variante (M7-T4), V · F · L <= kMaxGridBlocks
+    // (sonst std::invalid_argument;
     // Tranchen sind Sache der TraceEngine, M2-T4). `layout` muss zur Topologie passen
     // (check_residual_layout). Die Werte der Varianten prüft der Aufrufer auf dem Host
     // (SystemBatchHost::validate_values; check_pupil_modes läuft schon beim Upload).
     // Wirft std::logic_error bei leerem Batch, std::invalid_argument bei unbekanntem
-    // options.precision.
+    // options.precision oder pack_rays < 1.
     void run(const DeviceSystemBatch& batch, const ResidualLayout& layout,
              const ResidualRunOptions& options = {});
 

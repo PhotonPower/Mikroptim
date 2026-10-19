@@ -71,6 +71,9 @@ struct TraceSettings {
     // Residuen weichen typisch um einige 1e-11 mm ab, höchstens 1e-9 mm (docs/numerik.md,
     // Abschnitt 12). Batch, Ausgaben (FP64) und Speicherbedarf sind gleich.
     Precision precision = Precision::Fp64;
+    // Beide Modi: größte Paketgröße der Kernel in Strahlen (>= 1, M7-T4,
+    // ResidualRunOptions::pack_rays). Nur Laufzeit; die Ergebnisse sind für jeden Wert bitgleich.
+    int pack_rays = kDefaultPackRays;
 };
 
 // Einstellungen der FP32-Vorfilterung (M7-T2, prefilter_variants).

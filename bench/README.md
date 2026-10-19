@@ -39,6 +39,7 @@ Misst den Durchsatz der Trace-Kernel über die öffentliche `mko::cuda::TraceEng
 | `--fields F` | Felder (Feldwinkel 0 … 3°) | 3 |
 | `--wavelengths L` | Wellenlängen | 3 |
 | `--rings N`, `--spokes M` | Pupillenquadratur N × M | 10 × 8 |
+| `--pack-rays P` | größte Paketgröße der Kernel RESIDUALS und MERIT in Strahlen (M7-T4, `TraceSettings::pack_rays`; 1 = ein Tupel pro Block wie vor M7-T4; Ergebnisse für jeden Wert bitgleich) | 512 |
 | `--repeat R` | gemessene Läufe pro Fall | 10 |
 | `--warmup W` | Aufwärmläufe pro Fall | 2 |
 | `--no-kernel` | nur über die Engine messen | – |
@@ -59,7 +60,7 @@ Exit-Codes: 0 Erfolg, 1 Fehler, 2 Aufruffehler, 3 kein CUDA-Gerät (wie `mikropt
               "fp32_fp64_ratio": 64, "memory_gib": 24.0,
               "driver_cuda_version": "13.3", "runtime_cuda_version": "12.9" },
   "settings": { "fields": 3, "wavelengths": 3, "rings": 10, "spokes": 8, "repeat": 10,
-                "warmup": 2, "seed": 20261018, "block_threads": 128 },
+                "warmup": 2, "seed": 20261018, "block_threads": 128, "pack_rays": 512 },
   "results": [ { "type": "fp64", "mode": "merit", "surfaces": 30, "variants": 10000,
                  "rays_per_variant": 510, "rays": 5100000, "failed_rays": 0, "tranches": 1,
                  "engine": { "median_s": …, "min_s": …, "rays_per_s": …, "ray_surfaces_per_s": … },

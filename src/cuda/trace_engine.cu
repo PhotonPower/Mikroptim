@@ -7,6 +7,7 @@
 
 #include "cuda_check.hpp"
 #include "device_guard.hpp"
+#include "wavefront_block.hpp"
 
 #include <cuda_runtime.h>
 
@@ -33,6 +34,9 @@ void check_settings(const TraceSettings& settings) {
         throw std::invalid_argument("TraceEngine: negative Zahl weiterer Residuen");
     }
     check_precision(settings.precision);
+    if (settings.pack_rays < 1) {
+        throw std::invalid_argument("TraceEngine: pack_rays muss >= 1 sein");
+    }
 }
 
 // Ausgaben auf dem Gerät, wie DeviceResiduals::run bzw. DeviceMerit::run sie anlegen. Im
@@ -59,9 +63,12 @@ OutputRequest output_request(TraceMode mode, const ResidualLayout& layout,
     return r;
 }
 
-// Puffer pro Lauf, unabhängig von der Variantenzahl: Feldablage ResidualFieldPlan[F].
+// Puffer pro Lauf, unabhängig von der Variantenzahl: Feldablage ResidualFieldPlan[F] und
+// höchstens F · L Tupelpakete (M7-T4).
 std::size_t fixed_run_bytes(const BatchTopology& topology) {
-    return align_bytes(static_cast<std::size_t>(topology.fields) * sizeof(ResidualFieldPlan));
+    const auto F = static_cast<std::size_t>(topology.fields);
+    const auto L = static_cast<std::size_t>(topology.wavelengths);
+    return align_bytes(F * sizeof(ResidualFieldPlan)) + align_bytes(F * L * sizeof(TuplePack));
 }
 
 // Speicher pro Variante außerhalb von OutputRequest: im Modus MERIT der Anteil weiterer
@@ -287,8 +294,9 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
             samples = std::max(samples, p.samples);
         }
         const detail::DeviceGuard guard(device_);
-        const int limit = merit_max_samples(settings.extrema, topology.ghost_plates,
-                                            topology.ghost_terms, settings.precision);
+        const int limit =
+            merit_max_samples(settings.extrema, topology.ghost_plates, topology.ghost_terms,
+                              settings.precision, settings.quadrature.failure);
         if (samples > limit) {
             throw std::invalid_argument("TraceEngine: Modus MERIT erlaubt höchstens " +
                                         std::to_string(limit) + " Stützstellen pro Feld (" +
@@ -347,9 +355,11 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
     residual_options.extra_residuals = settings.extra_residuals;
     residual_options.extrema = settings.extrema;
     residual_options.precision = settings.precision;
+    residual_options.pack_rays = settings.pack_rays;
     MeritRunOptions merit_options;
     merit_options.extrema = settings.extrema;
     merit_options.precision = settings.precision;
+    merit_options.pack_rays = settings.pack_rays;
     const auto extrema_stride = static_cast<std::size_t>(S) * 2;
     const detail::DeviceGuard guard(device_);
     for (int first = 0; first < V; first += tranche) {
@@ -427,6 +437,7 @@ TraceRunInfo TraceEngine::run_on_device(const SystemBatchHost& batch, const Trac
     options.extra_residuals = settings.extra_residuals;
     options.extrema = settings.extrema;
     options.precision = settings.precision;
+    options.pack_rays = settings.pack_rays;
     const detail::DeviceGuard guard(device_);
     for (int first = 0; first < V; first += plan.tranche) {
         const int count = std::min(plan.tranche, V - first);
