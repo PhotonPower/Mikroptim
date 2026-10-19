@@ -4,6 +4,7 @@
 // Prüfungen (docs/optimierung.md, Abschnitt 7).
 
 #include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/synth/beam_search.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 #include "residual_test_systems.hpp"
@@ -13,6 +14,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <iostream>
 #include <ostream>
 #include <utility>
@@ -140,6 +143,56 @@ inline void expect_same_decisions(const HomotopyResult& a, const HomotopyResult&
     if (merit_tol == 0.0) {
         EXPECT_EQ(a.message, b.message);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Strahlsuche (M6-T4): Kurzlauf wie homotopy_smoke_run mit B Kandidaten.
+
+struct BeamSmokeSettings {
+    int width = 2;
+    bool group = true;
+    int starts = 0;
+    bool prefilter = false;
+    std::uint64_t seed = 0;
+};
+
+inline BeamResult beam_smoke_run(const BeamSmokeSettings& s, HomotopyOptimizer optimizer = {}) {
+    const LoadedSystem start = load_residual_system(kHomotopyStartFile);
+    OpticalHomotopyOptions o = homotopy_optical_options(std::move(optimizer));
+    o.lm.max_iterations = 40;
+    o.element_stages = 2;
+    o.group_runs = s.group;
+    OpticalHomotopyModel model(start, o);
+    BeamOptions b;
+    b.homotopy.target_aperture = kHomotopySmokeAperture;
+    b.homotopy.merit_factor = 10.0;
+    b.homotopy.max_elements = 2;
+    b.beam_width = s.width;
+    b.perturbed_starts = s.starts;
+    b.prefilter = s.prefilter;
+    b.seed = s.seed;
+    return run_beam_search(model, model.start_system(), model.start_point(), b);
+}
+
+// Abnahmelauf mit Strahlsuche: wie homotopy_acceptance_run mit B Kandidaten.
+inline BeamResult beam_acceptance_run(int width, int alternatives, HomotopyOptimizer optimizer = {},
+                                      bool stream = false) {
+    const LoadedSystem start = load_residual_system(kHomotopyStartFile);
+    OpticalHomotopyModel model(start, homotopy_optical_options(std::move(optimizer)));
+    BeamOptions b;
+    b.homotopy = homotopy_options();
+    b.homotopy.max_steps = 1000;
+    b.beam_width = width;
+    b.alternatives = alternatives;
+    std::function<void(const BeamStep&)> on_step;
+    if (stream) {
+        write_beam_step_header(std::cout);
+        on_step = [](const BeamStep& s) {
+            write_beam_step_line(s, std::cout);
+            std::cout.flush();
+        };
+    }
+    return run_beam_search(model, model.start_system(), model.start_point(), b, on_step);
 }
 
 inline void print_homotopy(const HomotopyResult& r, std::ostream& out) {

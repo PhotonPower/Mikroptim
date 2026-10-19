@@ -107,7 +107,7 @@ void check_control(const HomotopyStepControl& c, const char* name) {
     }
 }
 
-void check_options(const HomotopyOptions& o) {
+void check_options_impl(const HomotopyOptions& o) {
     if (!finite_positive(o.target_rms)) {
         invalid("target_rms muss endlich und > 0 sein");
     }
@@ -127,6 +127,78 @@ void check_options(const HomotopyOptions& o) {
     check_control(o.aperture_step, "Apertur");
     check_control(o.field_step, "Feld");
 }
+
+} // namespace
+
+void check_homotopy_options(const HomotopyOptions& options) {
+    check_options_impl(options);
+}
+
+HomotopyPoint homotopy_target(const HomotopyPoint& start, const HomotopyOptions& options) {
+    HomotopyPoint t = start;
+    if (options.target_aperture > 0.0) {
+        t.aperture = options.target_aperture;
+    }
+    if (options.target_field >= 0.0) {
+        t.field = options.target_field;
+    }
+    if (options.target_spectrum >= 0) {
+        t.spectrum = options.target_spectrum;
+    }
+    if (t.spectrum < start.spectrum) {
+        invalid("Spektrumstufe des Ziels liegt vor der des Starts");
+    }
+    if (!std::isfinite(t.aperture) || !std::isfinite(t.field)) {
+        invalid("Zielparameter nicht endlich");
+    }
+    return t;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Standards der Schnittstelle für die Strahlsuche (M6-T4)
+// ---------------------------------------------------------------------------------------------
+
+std::vector<HomotopySolve> HomotopyModel::solve_all(std::span<SystemDescription* const> systems,
+                                                    const HomotopyPoint& point,
+                                                    std::vector<int>* groups) {
+    std::vector<HomotopySolve> out;
+    out.reserve(systems.size());
+    if (groups != nullptr) {
+        groups->clear();
+    }
+    for (std::size_t i = 0; i < systems.size(); ++i) {
+        out.push_back(solve(*systems[i], point));
+        if (groups != nullptr) {
+            groups->push_back(static_cast<int>(i));
+        }
+    }
+    return out;
+}
+
+std::vector<HomotopyNeed> HomotopyModel::insertion_options(const SystemDescription&,
+                                                           const HomotopyPoint&,
+                                                           const HomotopyNeed& need, int) {
+    return {need};
+}
+
+double HomotopyModel::distance(const SystemDescription&, const SystemDescription&,
+                               const HomotopyPoint&) {
+    return std::numeric_limits<double>::infinity();
+}
+
+std::vector<SystemDescription> HomotopyModel::perturbed_starts(const SystemDescription&,
+                                                               const HomotopyInsertion&,
+                                                               const HomotopyPoint&, int,
+                                                               std::uint64_t) {
+    return {};
+}
+
+std::vector<bool> HomotopyModel::prefilter(std::span<const SystemDescription* const> starts,
+                                           const HomotopyPoint&) {
+    return std::vector<bool>(starts.size(), true);
+}
+
+namespace {
 
 // Abbruch der Steuerung (Status und Meldung), intern als Ausnahme durch die Phasen gereicht.
 struct Stop {
@@ -488,24 +560,9 @@ private:
 
 HomotopyResult run_homotopy(HomotopyModel& model, SystemDescription system,
                             const HomotopyPoint& start, const HomotopyOptions& options) {
-    check_options(options);
+    check_homotopy_options(options);
     HomotopyResult r;
-    r.target = start;
-    if (options.target_aperture > 0.0) {
-        r.target.aperture = options.target_aperture;
-    }
-    if (options.target_field >= 0.0) {
-        r.target.field = options.target_field;
-    }
-    if (options.target_spectrum >= 0) {
-        r.target.spectrum = options.target_spectrum;
-    }
-    if (r.target.spectrum < start.spectrum) {
-        invalid("Spektrumstufe des Ziels liegt vor der des Starts");
-    }
-    if (!std::isfinite(r.target.aperture) || !std::isfinite(r.target.field)) {
-        invalid("Zielparameter nicht endlich");
-    }
+    r.target = homotopy_target(start, options);
     const auto t0 = std::chrono::steady_clock::now();
     State s{std::move(system), start};
     Controller c(model, options, r);
