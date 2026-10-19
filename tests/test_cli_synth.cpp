@@ -4,6 +4,7 @@
 #include "cli/synth_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "residual_test_systems.hpp"
+#include "temp_paths.hpp"
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -41,7 +42,7 @@ SynthCliResult synth(const std::vector<std::string>& args) {
 class SynthTempDir {
 public:
     explicit SynthTempDir(const std::string& name)
-        : path_(fs::temp_directory_path() / ("mikroptim_cli_synth_" + name)) {
+        : path_(mko::test::temp_dir() / ("mikroptim_cli_synth_" + name)) {
         std::error_code ec;
         fs::remove_all(path_, ec);
         fs::create_directories(path_);

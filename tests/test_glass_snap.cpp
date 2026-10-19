@@ -5,6 +5,7 @@
 
 #include "glass_snap_test_systems.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #include <gtest/gtest.h>
@@ -352,8 +353,7 @@ TEST(GlassSnap, AcceptanceAchromatCpu) {
         const std::u8string u = p.generic_u8string();
         file.glass_catalogs.emplace_back(u.begin(), u.end());
     }
-    const std::filesystem::path out =
-        std::filesystem::temp_directory_path() / "mikroptim_glass_snap_test.json";
+    const std::filesystem::path out = mko::test::temp_dir() / "mikroptim_glass_snap_test.json";
     write_system_file(file, out);
     const LoadedSystem reloaded = load_system(out);
     std::filesystem::remove(out);

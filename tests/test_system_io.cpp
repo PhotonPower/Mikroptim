@@ -2,6 +2,7 @@
 
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/model/system.hpp"
+#include "temp_paths.hpp"
 
 #include <gtest/gtest.h>
 
@@ -85,7 +86,7 @@ struct TempDir {
     fs::path path;
     TempDir() {
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        path = fs::temp_directory_path() /
+        path = mko::test::temp_dir() /
                (std::string("mikroptim_") + info->test_suite_name() + "_" + info->name());
         fs::remove_all(path);
         fs::create_directories(path);

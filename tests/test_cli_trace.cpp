@@ -8,6 +8,7 @@
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -59,7 +60,7 @@ RunResult run(std::initializer_list<std::string_view> args) {
 class TempFile {
 public:
     TempFile(const std::string& name, const std::string& content)
-        : path_(std::filesystem::temp_directory_path() / name) {
+        : path_(mko::test::temp_dir() / name) {
         std::ofstream f(path_, std::ios::binary);
         f << content;
     }

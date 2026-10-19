@@ -6,6 +6,7 @@
 #include "insertion_test_systems.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #include <gtest/gtest.h>
@@ -43,7 +44,7 @@ CliResult insert(const std::vector<std::string>& args) {
 class InsertTempDir {
 public:
     explicit InsertTempDir(const std::string& name)
-        : path_(fs::temp_directory_path() / ("mikroptim_cli_insert_" + name)) {
+        : path_(mko::test::temp_dir() / ("mikroptim_cli_insert_" + name)) {
         std::error_code ec;
         fs::remove_all(path_, ec);
         fs::create_directories(path_);
@@ -78,7 +79,11 @@ TEST(CliInsert, MeniscusMatchesLibrary) {
         insert_meniscus(d, meniscus(0, 2.5, -0.1, catalog_glass("N-BK7"))).system;
     expected.glass_catalogs = written.system.glass_catalogs;
     EXPECT_EQ(written.system, expected);
-    EXPECT_LE(relative_change(system_merit(d), system_merit(written.system)),
+    // system_merit löst Kataloge relativ zu data/systems auf; die Ergebnisdatei nennt sie
+    // relativ zu ihrem Temp-Verzeichnis, daher die ursprünglichen Pfade einsetzen
+    SystemDescription written_here = written.system;
+    written_here.glass_catalogs = d.glass_catalogs;
+    EXPECT_LE(relative_change(system_merit(d), system_merit(written_here)),
               kInsertionMeritRelative);
 }
 
@@ -115,7 +120,11 @@ TEST(CliInsert, MechanicalConstraintsCarriedOver) {
     EXPECT_EQ(written.system, expected);
     EXPECT_EQ(make_mechanical_constraints(written.system).size(),
               make_mechanical_constraints(d).size() + 2);
-    EXPECT_LE(relative_change(system_merit(d), system_merit(written.system)),
+    // system_merit löst Kataloge relativ zu data/systems auf; die Ergebnisdatei nennt sie
+    // relativ zu ihrem Temp-Verzeichnis, daher die ursprünglichen Pfade einsetzen
+    SystemDescription written_here = written.system;
+    written_here.glass_catalogs = d.glass_catalogs;
+    EXPECT_LE(relative_change(system_merit(d), system_merit(written_here)),
               kInsertionMeritRelative);
 }
 

@@ -16,6 +16,7 @@
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
+#include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -72,7 +73,7 @@ RunResult snap(const std::vector<std::string>& args) {
 class TempDir {
 public:
     explicit TempDir(const std::string& name)
-        : path_(fs::temp_directory_path() / ("mikroptim_cli_snap_" + name)) {
+        : path_(mko::test::temp_dir() / ("mikroptim_cli_snap_" + name)) {
         std::error_code ec;
         fs::remove_all(path_, ec);
         fs::create_directories(path_);
