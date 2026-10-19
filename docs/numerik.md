@@ -285,6 +285,69 @@ Die Form enthält keine Differenz großer Zahlen (R² gegen |**q**|², vgl. g in
 
 Die Seidel-Abweichung von c₂ ist der Anteil höherer Ordnung wie in M1-T7; mit der Sphäre durch die Austrittspupille ist er etwa dreimal kleiner als durch den Scheitel (4,9·10⁻⁶ gegen 1,5·10⁻⁵ bei NA 0,049): Die Lage der Sphäre ändert nur Terme zweiter Ordnung in der Queraberration.
 
+### Beugung: PSF, MTF, Strehl (M8-T2)
+
+Skalare Beugung aus der OPD-Karte des Modus `EVAL` (Host-API und CPU-Referenz `include/mikroptim/eval/psf.hpp`, eigene Radix-2-FFT `include/mikroptim/eval/fft.hpp`, elementweise Schritte `include/mikroptim/eval/psf_ops.hpp`, GPU `include/mikroptim/cuda/psf.hpp` mit cuFFT; Ablauf und Speicher: [architektur.md, „PSF, MTF, Strehl“](architektur.md#psf-mtf-strehl-m8-t2)). Die vektorielle Rechnung für hohe NA (Richards-Wolf) ist M8-T5.
+
+**Pupillenfunktion.** Auf dem vollen N×N-Raster von EVAL (Zellmitten x_i = (2i + 1 − N)/N, halbe Pupille gespiegelt, `eval_opd_map` mit Kolbenabzug):
+
+$$P_{ij} = A_{ij}\,\exp\!\Big(2\pi i\,\frac{\mathrm{OPD}_{ij}}{\lambda}\Big),\qquad A_{ij} = \begin{cases}1 & \text{Punkt in der Pupille, Strahl gültig}\\ 0 & \text{außerhalb oder versagt}\end{cases}$$
+
+mit der Vakuumwellenlänge λ des Tupels (nicht λ_ref; die OPD ist optische Weglänge in mm). Die Phase wird auf CPU und GPU gleich als kPsfTwoPi · (OPD/λ) gerundet. Kippung und Defokus bleiben in der OPD: Die PSF liegt relativ zum idealen Bildpunkt **M**_f, Verzeichnung verschiebt sie, ein Fokusfehler verbreitert sie.
+
+**Bildfeld (Debye, skalar).** Mit den Richtungskosinus **d** im Bildraum (Brechzahl n′) ist das Feld im Punkt **M**_f + (ξ, η, 0) der Bildebene U ∝ ∫∫ P exp(i k n′ (d_x ξ + d_y η)) dx dy, k = 2π/λ. Die Abbildung der normierten Pupillenkoordinaten auf die Richtungen wird linear angesetzt, n′ d_x ≈ n′ d_{x,0} + a_x x und n′ d_y ≈ n′ d_{y,0} + a_y y (exakt bei erfüllter Sinusbedingung; der konstante Anteil ist eine Phase ohne Einfluss auf |U|). Die Steigungen kommen aus den Feldstrahlen des Tupels (Abschnitt „Auswertung auf dem Raster“, Abstand δ):
+
+$$a_x = n'\,\frac{d_x(\delta, 0) - d_x(0, 0)}{\delta},\qquad a_y = n'\,\frac{d_y(0, \delta) - d_y(0, -\delta)}{2\delta},\qquad \mathrm{NA}_x = |a_x|,\ \mathrm{NA}_y = |a_y|$$
+
+Das ist die paraxiale NA im Sinne der Sinusbedingung (n′ sin U′/ρ für ρ → 0), auf der Achse NA_x = NA_y, außerhalb unterscheiden sie sich (Verkürzung der Pupille in der Meridionalebene); die Bildebene steht senkrecht zur Achse. Optional gibt der Aufrufer eine NA für beide Richtungen vor (`PsfSettings::numerical_aperture`, CLI `--na`), etwa bei afokalen Systemen. Konvergente Welle (reeller Bildpunkt): a < 0, das Integral ist die Vorwärts-DFT. Divergente Welle (virtueller Bildpunkt, z. B. aplanatische Punkte): a > 0, das Bild ist an der betroffenen Achse gespiegelt (`flip_x`, `flip_y`). Die Vorzeichen sind über die Geometrie festgelegt: Eine Kippung OPD = t·y verschiebt die PSF um +t/NA_y (konvergent) bzw. −t/NA_y (divergent), wie der Strahl, dessen Wellenfrontnormale gekippt ist (Querabweichung = ∂OPD/∂y / NA mit OPD = −W, Abschnitt 7); Test `Psf.TiltShiftsPsfAndMirrorsForDivergentWave`.
+
+**Abtastung.** Die N×N-Pupille liegt in der Ecke eines M×M-Feldes (Zero-Padding, M Zweierpotenz, M ≥ 2N, Q = M/N ≥ 2). Mit dem Pupillenabstand 2/N ist die DFT
+
+$$U_{pq} = \sum_{i,j} P_{ij}\, e^{-2\pi i (ip + jq)/M},\qquad \xi_p = p\,\Delta x,\quad \Delta x = \frac{\lambda N}{2 M\,\mathrm{NA}_x} = \frac{\lambda}{2 Q\,\mathrm{NA}_x}$$
+
+(Phase NA x_i ξ_p/λ = (i − (N − 1)/2) p/M; die Lage der Pupille im Feld ergibt nur einen linearen Phasenfaktor in U). Δy entsprechend mit NA_y. Die Intensität hat die Bandbreite 2 NA/λ; Q ≥ 2 tastet sie nach Nyquist ab und trennt die Autokorrelation (Breite 2N) im periodischen Feld. Standard Q = 4 (`PsfSettings::padding`, die FFT-Größe ist die kleinste Zweierpotenz ≥ max(2N, ⌈QN⌉), höchstens `kMaxPsfFft` = 8192); das Bildfeld ist M Δx = λN/(2 NA) groß, also N/2 Airy-Durchmesser, unabhängig von Q. Eine PSF, die darüber hinausreicht (stark aberrierte Systeme, geometrischer Spot ≳ N/4 Airy-Durchmesser), wird von der periodischen DFT zurückgefaltet; dann muss N wachsen (`mikroptim eval --psf` warnt, [cli.md](cli.md#mikroptim-eval)). Ebenso braucht die Phase mindestens zwei Abtastpunkte pro Welle (|∂OPD/∂x| · N/2 < λ/2). Für die Lage der ersten Nullstelle reicht Q = 8 bei N = 128 (Abnahme unten).
+
+**PSF.** I_pq = |U_pq|² / n_voll², zentriert abgelegt: Index (i, j) bei ((i − M/2) Δx, (j − M/2) Δy) relativ zu **M**_f, FFT-Index q ≡ s (i − M/2) mod M mit s = ±1 (Spiegelung). Normierung: Die ungestörte volle Pupille hat |U(0)| = n_voll, ihr Maximum ist also 1, und die PSF steht in Strehl-Einheiten.
+
+**Strehl.** Drei Werte: `strehl_fft` = I im idealen Bildpunkt (FFT, Index (M/2, M/2)); `strehl_origin` = |Σ exp(iφ_k)|²/n_voll² direkt über die transmittierenden Rasterpunkte (zeilenweise summiert), mathematisch derselbe Wert (Test: Abweichung ≤ `kPsfFftIdentity`); `strehl` = dieselbe Summe nach Abzug der Kippung (Kleinste-Quadrate-Fit OPD ≈ c₀ + t_x x + t_y y über die transmittierenden Punkte), also der Strehl im verschobenen Bildpunkt (t_x/NA_x, t_y/NA_y) (Vorzeichen wie oben, `reference_x`, `reference_y`). Ohne Verzeichnung und auf der Achse sind alle drei gleich; außerhalb der Achse ist `strehl` die übliche Kennzahl. Bei großen Aberrationen (Strehl ≪ 0,5) ist der Kippungs-Fit nicht mehr der hellste Punkt; dann ist nur `peak` aussagekräftig. Dazu das Maximum der abgetasteten PSF (`peak`, Lage `peak_x`, `peak_y`; liegt es zwischen zwei Abtastpunkten, ist der Wert etwas kleiner). Versagte Strahlen zählen als undurchlässig und senken den Strehl.
+
+**Maréchal.** Für kleine Fehler S ≈ exp(−s²) mit s = 2πσ/λ (σ RMS der OPD). Die Entwicklung von |⟨e^{iφ}⟩|² für eine Phase mit Mittelwert 0 ergibt S − exp(−s²) = s⁴ (κ/12 − 1/4) + s⁶ (1/6 − κ/24 − μ₆/360 + γ²/36) + O(s⁸) mit Schiefe γ, Kurtosis κ und sechstem Moment μ₆ der Phase: Für eine gaußverteilte Phase (κ = 3) verschwindet der s⁴-Term, für Defokus (Phase gleichverteilt, κ = 1,8) ist er −0,10 s⁴, für sphärische Aberration (κ = 15/7) −0,07 s⁴; bei σ = 0,07 λ sind das 0,4 % bzw. 0,3 %. Die Textausgabe von `mikroptim eval` nennt weiterhin den Maréchal-Wert als grobe Angabe.
+
+**MTF.** Die FFT⁻¹ der Intensität ist die (periodische) Autokorrelation der Pupille, wegen M ≥ 2N ohne Überlappung gleich der linearen: OTF(k) = Σ_p I_p e^{+2πi pk/M}. MTF = |OTF| / OTF(0), Schnitte entlang f_x (sagittal) und f_y (tangential) für k = 0 … N bei den Frequenzen f = k f_c/N mit der Grenzfrequenz f_c = 2 NA/λ [Linienpaare/mm] (Verschiebung der Pupille um 2k/N normierte Einheiten); MTF(N) = 0. Zwischen den Stützstellen linear (`mtf_sagittal_at(ν)`). Für ein perfektes System ist die MTF die Beugungs-MTF (2/π)[acos ν − ν√(1 − ν²)], ν = f/f_c.
+
+**Energie (Parseval).** Σ_pq |U_pq|² = M² Σ_ij |P_ij|², also Σ I · n_voll / M² = n_gültig / n_voll (`energy`; 1 ohne Versagen).
+
+**Rasterfehler.** Die Pupille ist ein Treppenkreis aus n_voll Zellen; sein Flächeninhalt weicht wie im Abschnitt „Auswertung auf dem Raster“ um ~N^{−4/3} relativ von π ab. Das verschiebt die erste Nullstelle (äquivalenter Radius) und die MTF um ≲ 10⁻³ bei N = 128 und ist kein Rechenfehler; die DFT selbst ist für die Treppenpupille exakt (Abweichung von der direkt gezählten Autokorrelation ≤ 4·10⁻¹⁶).
+
+**Grenzen der skalaren Näherung bei hoher NA** (Zielobjektiv NA 0,95; M8-T5):
+
+- *Polarisation:* Bei hoher NA haben die Feldkomponenten im Fokus verschiedene Verteilungen (E_z wächst mit sin²θ, der Fokus ist bei linearer Polarisation entlang der Polarisationsrichtung gestreckt, bei NA 0,95 um einige zehn Prozent); die skalare PSF ist rotationssymmetrisch und unterschätzt dort die Breite.
+- *Apodisation:* Bei aplanatischer Fokussierung eines gleichmäßig beleuchteten Bündels ist die Amplitude auf der Referenzsphäre ∝ √cos θ und das Flächenelement dΩ = dL dM / cos θ; in Richtungskosinus-Koordinaten (unser Raster bei Sinusbedingung) wird der Integrand also mit A = 1/√cos θ = (1 − (NA/n′)² ρ²)^{−1/4} gewichtet (Richards-Wolf). Bei NA 0,95 in Luft ist das am Rand ein Faktor 1,8 in der Amplitude. Mikroptim rechnet mit A = 1 (gleichmäßig, wie die Gewichte der Pupillenquadratur); der Faktor folgt mit M8-T5.
+- *Pupillenabbildung:* Die lineare Abbildung (NA aus der Ableitung im Pupillenzentrum) setzt die Sinusbedingung voraus; ihre Verletzung (Koma, OSC) verzerrt die Abbildung zwischen Raster und Richtungen und wird nur über die OPD erfasst.
+- *Debye-Näherung:* gültig für große Fresnel-Zahlen (Pupillenradius² / (λ · Abstand) ≫ 1), bei Mikroskopobjektiven erfüllt.
+
+**Determinismus und GPU.** Alle Kernel sind elementweise, ohne Reduktionen; cuFFT liefert für denselben Plan auf derselben GPU bitgleiche Ergebnisse (Test `CudaPsf.RepeatedRunsAndTranchesAreBitIdentical`: zehn Läufe bitgleich). GPU und CPU unterscheiden sich durch die Zerlegung der FFT, die FMA-Kontraktion in |U|² und sin/cos der CUDA-Bibliothek; Toleranz `kPsfCpuGpu` = 10⁻¹² absolut in Strehl-Einheiten (erwartet einige ε·log₂ M²). Die Kennzahlen (`finish_psf`) rechnet für beide dieselbe Host-Funktion; `strehl_origin` und `strehl` hängen nur von der Pupille ab und sind auf CPU und GPU bitgleich.
+
+**Ergebnisse der Abnahme** (Tests `Psf.*`, `Fft.*`, `PsfOracle.*` in `tests/test_psf.cpp`, auf der GPU `CudaPsf.*` in `tests/test_cuda_psf.cpp` mit denselben Prüfungen aus `tests/psf_test_systems.hpp`; Orakel: J₁ aus der Potenzreihe, geprüft an Tabellenwerten und den Nullstellen j₁,₁ … j₁,₃):
+
+| Kriterium | Orakel | Ergebnis CPU | Ergebnis GPU (RTX 3090) |
+|---|---|---|---|
+| (1) Erste Nullstelle, perfekte Pupille (OPD = 0), NA 0,05, λ = 587,56 nm, N = 128, Q = 8 (M = 1024), beide Achsen; Bestimmung: Vorzeichenwechsel von ±√I, kubische Interpolation durch vier Abtastwerte | 0,61 λ/NA (Abnahme < 1 %), genauer j₁,₁/(2π) λ/NA = 0,60983 λ/NA | 0,60930 λ/NA: rel. 1,1·10⁻³ gegen 0,61, 8,7·10⁻⁴ gegen j₁,₁/(2π) | wie CPU |
+| (1) dasselbe Ende-zu-Ende über EVAL: aplanatischer Punkt (n = 1,5, sin θ = 0,075 im Glas, NA′ = 0,05, virtuelles Bild → gespiegelt) | NA aus den Feldstrahlen = 0,05, Nullstelle wie oben | NA_x = NA_y = 0,050000000000 (≤ 10⁻¹⁰), Nullstelle rel. 8,7·10⁻⁴, Strehl 1 | wie CPU |
+| (1) PSF auf den Achsen bis zum dritten dunklen Ring (v ≤ 10,2, 78 Punkte) | [2 J₁(v)/v]² | max. Abweichung 7,5·10⁻⁴ (Strehl-Einheiten) | wie CPU |
+| (1) MTF der perfekten Pupille, k = 0 … N | (2/π)[acos ν − ν√(1 − ν²)]; direkt gezählte Autokorrelation des Rasters | 7,2·10⁻⁴; 3,3·10⁻¹⁶ | 7,2·10⁻⁴; 2,2·10⁻¹⁶ |
+| (2) Strehl gegen Maréchal, Defokus √3(2ρ² − 1), σ = 0,02 / 0,035 / 0,05 / 0,07 λ, N = 256 | exp(−(2πσ)²), relativ < 1 % | 2,5·10⁻⁵ / 2,4·10⁻⁴ / 9,9·10⁻⁴ / 3,9·10⁻³ | wie CPU |
+| (2) dasselbe, sphärisch √5(6ρ⁴ − 6ρ² + 1) | exp(−(2πσ)²), relativ < 1 % | 1,8·10⁻⁵ / 1,7·10⁻⁴ / 7,0·10⁻⁴ / 2,7·10⁻³ | wie CPU |
+| (2) Koeffizient (S − exp(−s²))/s⁴ | Entwicklung bis s⁶ aus den Momenten der Rasterphase | Abweichung ≤ 1,1·10⁻³ (≤ 0,03 s⁴); bei σ = 0,02: −0,0987 (Defokus), −0,0703 (sphärisch) | wie CPU |
+| (2) Strehl aus der FFT gegen die direkte Summe; Raster gegen die stetige Pupille (sinc²(√3 s) bzw. Simpson) | Identität; Rasterfehler | ≤ 4,7·10⁻¹⁴; ≤ 5,1·10⁻⁵ | wie CPU |
+| (2) Ende-zu-Ende: Einzellinse a = 3 / 3,5 / 4 mm, Bildebene im paraxialen Fokus, RMS aus `eval_statistics` 0,016 / 0,029 / 0,050 λ | exp(−(2πσ/λ)²), relativ < 1 % | 6,8·10⁻⁶ / 8,0·10⁻⁵ / 6,8·10⁻⁴ | wie CPU |
+| (3) Parseval: zufällige OPD bis 0,3 λ, 10 % ausgefallene Rasterpunkte, N = 48 … 80 | Energie = n_gültig/n_voll, MTF(0) = 1, MTF(N) = 0 | rel. ≤ 1,6·10⁻¹⁴ (perfekte Pupille: Energie − 1 = −7,6·10⁻¹⁴) | wie CPU |
+| (4) Kippung OPD = t·y, konvergent und divergent | Maximum bei ±t/NA, Strehl ohne Kippung 1 | Maximum exakt im erwarteten Bildpunkt (10 Bildpunkte), Strehl 1 − 10⁻¹⁵ | wie CPU |
+| (5) GPU gegen CPU (Einzellinse a = 5 mm, 3 Felder × 3 Wellenlängen, 5 % Ausfall, N = 32 … 128, Q = 2 und 4; dazu gespiegelt mit anisotroper NA) | `kPsfCpuGpu` = 10⁻¹³ | – | PSF ≤ 3,3·10⁻¹⁶, MTF ≤ 5,6·10⁻¹⁶, Strehl/Maximum ≤ 3,3·10⁻¹⁶ |
+| (5) Determinismus | bitgleich | – | 10 Läufe bitgleich; 2 Tranchen à 7 Pupillen (anderer Plan) ebenfalls bitgleich zu einer Tranche (beobachtet, nicht zugesichert) |
+
+Die Abweichung der ersten Nullstelle von j₁,₁/(2π) λ/NA ist der Rasterfehler (äquivalenter Radius der Treppenpupille), nicht die Interpolation: Sie ist auf CPU und GPU, über EVAL und synthetisch dieselbe.
+
 ## 8. Pupillenquadratur
 
 Mittelwert über die Kreispupille als Gauß-Quadratur (Forbes):

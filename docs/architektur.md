@@ -36,7 +36,7 @@ flowchart TD
 | Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
 | Optimierer (ab M3-T1: Variablen, Variantengenerator; M3-T2: FD-Jacobi) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
-| Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
+| Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`; M8-T2: PSF, MTF, Strehl) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
 | Python | – | `python/` | M9 |
 
@@ -683,6 +683,56 @@ Versagte Strahlen laufen maskiert weiter. Die Krümmungen κ der Referenzsphäre
 
 **Durchsatz** (RTX 3090, Test `CudaEval.LargeGridThroughput`, Information, über die Engine mit Upload, Download und Puffern; Mehrlinser F = 3, L = 4): 1 Variante mit N = 512 (12 Blöcke, 2,5·10⁶ Strahlen) 64 ms, 10 Varianten mit N = 256 (120 Blöcke, 6,2·10⁶ Strahlen) 170–230 ms, 400 Varianten mit N = 64 (4.800 Blöcke, 1,5·10⁷ Strahlen, 388 MB Ausgabe) 284 ms, also 2,7–5,5·10⁷ Strahlen/s; der Download der Rohdaten (25 Byte pro Strahl) ist ein wesentlicher Teil. Bei wenigen Tupeln rechnen nur V·F·L Blöcke (ein Block pro Tupel, ADR-0004), also nur so viele SMs; die Pupille eines Tupels auf mehrere Blöcke zu verteilen (Kolben dann zweistufig) wäre eine spätere Optimierung (M7).
 
+## PSF, MTF, Strehl (M8-T2)
+
+Skalare Beugung aus den OPD-Karten des Modus EVAL über eine zweidimensionale FFT; Formeln, Abtastung, Vorzeichen, Grenzen bei hoher NA und Abnahme: [numerik.md, „Beugung: PSF, MTF, Strehl“](numerik.md#beugung-psf-mtf-strehl-m8-t2). Die PSF ist eine Nachbearbeitung der heruntergeladenen EVAL-Ergebnisse (Host → Gerät: nur die N×N-Karten), kein weiterer Modus der TraceEngine.
+
+| Baustein | Ort | Inhalt |
+|---|---|---|
+| FFT (CPU) | `include/mikroptim/eval/fft.hpp`, `src/eval/fft.cpp` (`Mikroptim::eval`) | `fft`, `fft2d`: Radix-2 in FP64, Konvention wie cuFFT (vorwärts e^{−}, ohne Normierung) |
+| Elementweise Schritte | `include/mikroptim/eval/psf_ops.hpp` (header-only, `MKO_HD`) | `psf_pupil_value`, `psf_fft_index`/`psf_output_index` (Zentrierung, Spiegelung), `psf_norm2`, `PsfPupilParams` |
+| Host, CPU-Referenz, Kennzahlen | `include/mikroptim/eval/psf.hpp`, `src/eval/psf.cpp` | `PsfSettings`, `psf_fft_size`, `PsfPupil`, `make_psf_pupil(s)`, `PsfResult`, `prepare_psf_result`, `finish_psf`, `psf_cpu`, `PsfDeviceLayout` |
+| GPU | `include/mikroptim/cuda/psf.hpp` (reines C++), `src/cuda/psf.cu` (linkt `CUDA::cufft` privat) | `PsfEngine`, `PsfRunInfo` |
+| CLI | `src/cli/eval_command.cpp` | `mikroptim eval --psf` ([cli.md](cli.md#mikroptim-eval)) |
+
+```cpp
+// include/mikroptim/eval/psf.hpp (Host, auch ohne CUDA)
+struct PsfSettings { double padding = 4.0;              // Q, M = Zweierpotenz >= max(2N, Q·N)
+                     double numerical_aperture = 0.0; }; // 0: NA aus den Feldstrahlen
+int psf_fft_size(int grid, double padding);              // <= kMaxPsfFft = 8192
+struct PsfPupil { int field, wavelength, grid, full_count; double wavelength_nm, na_x, na_y;
+                  bool flip_x, flip_y; vector<double> opd; /*[N·N] mm, NaN = undurchlässig*/ };
+PsfPupil make_psf_pupil(const SystemBatchHost&, const EvalResult&, int v, int f, int l, const PsfSettings& = {});
+std::vector<PsfPupil> make_psf_pupils(const SystemBatchHost&, const EvalResult&, int v, const PsfSettings& = {});
+struct PsfResult { int field, wavelength, grid, fft_size; double wavelength_nm, na_x, na_y, dx, dy, airy_radius;
+    vector<double> psf;                                  // [M·M] zentriert, Maximum der perfekten PSF = 1
+    vector<double> mtf_sagittal, mtf_tangential;         // [N + 1], f = k·f_c/N
+    int64_t transmitted; double energy, strehl_fft, strehl_origin, strehl, reference_x, reference_y,
+    peak, peak_x, peak_y; cutoff_x(), cutoff_y(), mtf_*_at(ν) };
+PsfResult psf_cpu(const PsfPupil&, int fft_size);
+std::vector<PsfResult> psf_cpu(const SystemBatchHost&, const EvalResult&, int v, const PsfSettings& = {});
+// include/mikroptim/cuda/psf.hpp
+class PsfEngine { explicit PsfEngine(int device, const EngineOptions& = {});
+    std::vector<PsfResult> compute(std::span<const PsfPupil>, int fft_size);
+    std::vector<PsfResult> compute(const SystemBatchHost&, const EvalResult&, int v, const PsfSettings& = {});
+    const PsfRunInfo& last_run() const; size_t device_bytes() const; void release(); };
+```
+
+**Ablauf auf der GPU** (pro Tranche von T Pupillen, alle mit derselben Rasterkante N und FFT-Größe M):
+
+1. Upload der OPD-Karten [T·N²] und der Parameter pro Pupille (λ, 1/n_voll², Spiegelung).
+2. `psf_pupil_kernel`: Pupillenfunktion in die Ecke jedes M×M-Feldes, sonst 0 (Grid-Stride-Schleife über T·M², 256 Threads).
+3. `cufftExecZ2Z` vorwärts, ein Plan mit Batch T (`cufftMakePlanMany64`, Rang 2, dichte Ablage, Abstand M²).
+4. `psf_intensity_kernel`: I = |U|²/n_voll² an die zentrierte (ggf. gespiegelte) Stelle des PSF-Puffers und reell zurück in das Spektrum.
+5. `cufftExecZ2Z` rückwärts (OTF), `psf_mtf_kernel`: MTF-Schnitte (k, 0) und (0, k), k = 0 … N, normiert auf OTF(0).
+6. Download von PSF [T·M²] und MTF [T·2(N + 1)], Kennzahlen mit `finish_psf` auf dem Host (dieselbe Funktion wie die CPU-Referenz).
+
+Jeder CUDA-Aufruf ist mit `MKO_CUDA_CHECK`, jeder cuFFT-Aufruf mit `MKO_CUFFT_CHECK` geprüft (`cufftResult` → `CudaError` mit Namen des Fehlers), nach jedem Kernelstart `cudaGetLastError()`. Keine Reduktionen auf dem Gerät (Kennzahlen auf dem Host, sequenziell), cuFFT ist für denselben Plan deterministisch.
+
+**Speicher und Tranchen** (`make_psf_device_layout`, Bereiche auf 256 Byte ausgerichtet): pro Pupille 24 Byte pro FFT-Punkt (Spektrum komplex 16, PSF 8), 8 Byte pro Rasterpunkt, 16(N + 1) Byte MTF, 24 Byte Parameter, dazu der Arbeitsspeicher von cuFFT (automatische Allokation abgeschaltet, `cufftSetAutoAllocation(plan, 0)`, Bereich hinter den Puffern in derselben Allokation, `cufftSetWorkArea`). Die Tranche T ist die größte Zahl Pupillen, deren Puffer und Arbeitsspeicher in den nutzbaren Speicher passen (freier Speicher nach `cudaMemGetInfo` plus eigene Puffer, ggf. `EngineOptions::memory_limit_bytes`, abzüglich `MemoryReserve`): erst aus der Abschätzung pro Pupille (`cufftGetSizeMany64`), dann mit dem exakten Arbeitsspeicher des Plans geprüft und bei Bedarf um ein Viertel verkleinert. Die letzte, unvollständige Tranche läuft mit demselben Plan (leere Plätze sind 0), damit jede Pupille unabhängig von ihrer Lage mit demselben Plan gerechnet wird. Plan und Puffer bleiben zwischen den Aufrufen erhalten, solange M und T gleich bleiben. Beispiel: N = 128, M = 512 (Q = 4) belegt 6,0 MiB pro Pupille plus Arbeitsspeicher; das Zielsystem mit F·L = 35 Tupeln passt in einer Tranche. Höchstens M = 8192 (1,5 GiB pro Pupille).
+
+**Host-Speicher.** `PsfResult::psf` hat M² Werte pro Tupel; `mikroptim eval --psf` rechnet die Tupel deshalb einzeln und behält die PSF nur für das Tupel der Ausgabedateien.
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
@@ -690,7 +740,7 @@ Versagte Strahlen laufen maskiert weiter. Die Krümmungen κ der Referenzsphäre
 | `MERIT` | gewichtete Quadratsumme pro Variante | Liniensuche, Multistart-Screening | M2 |
 | `RESIDUALS` | Residuenvektor pro Variante | finite Differenzen, LM | M2 |
 | `ADJOINT` | Residuen plus Gradientenzeilen | analytische Jacobi-Matrix | M5 |
-| `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, später PSF, MTF, Tolerierung | M8-T1 |
+| `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, Eingabe der PSF und MTF (M8-T2, `PsfEngine`), später Tolerierung | M8-T1 |
 
 Zusätzlich liefern die Optimierungsmodi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2) und EVAL (M8-T1) sind bewusst keine Werte von `TraceMode`, sondern eigene Funktionen der Engine.
 

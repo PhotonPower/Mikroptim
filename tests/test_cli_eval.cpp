@@ -1,5 +1,6 @@
 // Unterbefehl `mikroptim eval` (M8-T1): JSON-Ausgabe gegen eval_cpu und eval_statistics
-// (bitgleich), OPD-Karte als CSV gegen eval_opd_map, Textausgabe, Fehlerfälle, --gpu (im
+// (bitgleich), OPD-Karte als CSV gegen eval_opd_map, mit --psf (M8-T2) Kennzahlen gegen psf_cpu
+// und PSF-/MTF-Dateien, Textausgabe, Fehlerfälle, --gpu (im
 // CUDA-Build GPU- gegen CPU-Ausgabe, übersprungen ohne Gerät; sonst Exit-Code 3).
 
 #include "cli/cli_util.hpp"
@@ -7,6 +8,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/eval/eval.hpp"
+#include "mikroptim/eval/psf.hpp"
 #include "tolerances.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
@@ -176,7 +178,123 @@ TEST(CliEval, TextOutputAndErrors) {
     EXPECT_EQ(bad_map.code, mko::cli::kExitError);
 }
 
+TEST(CliEval, PsfJsonMatchesLibrary) {
+    const RunResult r = run({kEinzellinse, "--json", "--grid", "24", "--psf", "--padding", "3"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    const mko::LoadedSystem ls = mko::load_system(kEinzellinse);
+    const mko::SystemBatchHost b = mko::make_system_batch(ls, 1);
+    mko::EvalSettings s;
+    s.grid = 24;
+    const mko::EvalResult e = mko::eval_cpu(b, s);
+    mko::PsfSettings ps;
+    ps.padding = 3.0;
+    const std::vector<mko::PsfResult> p = mko::psf_cpu(b, e, 0, ps);
+    EXPECT_EQ(j["psf"]["fft_size"], 128);
+    EXPECT_EQ(j["psf"]["padding"].get<double>(), 3.0);
+    EXPECT_TRUE(j["psf"]["numerical_aperture"].is_null());
+    ASSERT_EQ(j["tuples"].size(), p.size());
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        const json& t = j["tuples"][i]["psf"];
+        EXPECT_EQ(t["strehl"].get<double>(), p[i].strehl);
+        EXPECT_EQ(t["strehl_fft"].get<double>(), p[i].strehl_fft);
+        EXPECT_EQ(t["strehl_origin"].get<double>(), p[i].strehl_origin);
+        EXPECT_EQ(t["peak"].get<double>(), p[i].peak);
+        EXPECT_EQ(t["airy_radius_mm"].get<double>(), p[i].airy_radius);
+        EXPECT_EQ(t["na"][1].get<double>(), p[i].na_y);
+        EXPECT_EQ(t["pixel_mm"][0].get<double>(), p[i].dx);
+        EXPECT_EQ(t["mtf_half_cutoff"][1].get<double>(), p[i].mtf_tangential_at(0.5));
+        EXPECT_EQ(t["energy"].get<double>(), p[i].energy);
+    }
+    // ohne --psf: null
+    const json n = json::parse(run({kEinzellinse, "--json", "--grid", "8"}).out);
+    EXPECT_TRUE(n["psf"].is_null());
+    EXPECT_TRUE(n["tuples"][0]["psf"].is_null());
+    // NA vorgegeben
+    const json v = json::parse(run({kEinzellinse, "--json", "--grid", "16", "--na", "0.1"}).out);
+    EXPECT_EQ(v["psf"]["numerical_aperture"].get<double>(), 0.1);
+    EXPECT_EQ(v["tuples"][0]["psf"]["na"][0].get<double>(), 0.1);
+}
+
+TEST(CliEval, PsfAndMtfFilesMatchLibrary) {
+    const auto dir = std::filesystem::temp_directory_path();
+    const std::string psf_path = (dir / "mikroptim_test_eval_psf.csv").string();
+    const std::string mtf_path = (dir / "mikroptim_test_eval_mtf.csv").string();
+    const RunResult r = run({kEinzellinse, "--grid", "16", "--psf-tuple", "1,2", "--psf-file",
+                             psf_path, "--mtf-file", mtf_path});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("PSF skalar (FFT 64 x 64"), std::string::npos);
+    // volle Öffnung (Spot ~0,15 mm) bei N = 16: Bildfenster λN/(2 NA) ≈ 0,04 mm zu klein
+    EXPECT_NE(r.err.find("PSF zurückgefaltet"), std::string::npos);
+    const mko::LoadedSystem ls = mko::load_system(kEinzellinse);
+    const mko::SystemBatchHost b = mko::make_system_batch(ls, 1);
+    mko::EvalSettings s;
+    s.grid = 16;
+    const mko::EvalResult e = mko::eval_cpu(b, s);
+    const mko::PsfResult p = mko::psf_cpu(mko::make_psf_pupil(b, e, 0, 1, 2), 64);
+    {
+        std::ifstream in(psf_path);
+        std::string line;
+        int row = 0;
+        while (std::getline(in, line)) {
+            const std::vector<std::string> cells = split(line);
+            ASSERT_EQ(cells.size(), 64u);
+            const int jj = 63 - row; // erste Zeile = größtes y
+            for (int i = 0; i < 64; ++i) {
+                EXPECT_EQ(std::stod(cells[static_cast<std::size_t>(i)]), p.psf_at(i, jj));
+            }
+            ++row;
+        }
+        EXPECT_EQ(row, 64);
+    }
+    {
+        std::ifstream in(mtf_path);
+        std::string line;
+        std::getline(in, line);
+        EXPECT_EQ(line, "k,nu,f_sagittal_lpmm,mtf_sagittal,f_tangential_lpmm,mtf_tangential");
+        int k = 0;
+        while (std::getline(in, line)) {
+            const std::vector<std::string> cells = split(line);
+            ASSERT_EQ(cells.size(), 6u);
+            EXPECT_EQ(std::stoi(cells[0]), k);
+            EXPECT_EQ(std::stod(cells[3]), p.mtf_sagittal[static_cast<std::size_t>(k)]);
+            EXPECT_EQ(std::stod(cells[5]), p.mtf_tangential[static_cast<std::size_t>(k)]);
+            ++k;
+        }
+        EXPECT_EQ(k, 17);
+    }
+    std::error_code ec;
+    std::filesystem::remove(psf_path, ec);
+    std::filesystem::remove(mtf_path, ec);
+
+    EXPECT_EQ(run({kEinzellinse, "--padding", "1.5"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--na", "0"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--psf-tuple", "1"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--grid", "8", "--psf-tuple", "9,0"}).code, mko::cli::kExitError);
+}
+
 #ifdef MIKROPTIM_HAS_CUDA
+TEST(CliEvalGpu, PsfMatchesCpu) {
+    if (mko::cuda::device_count() == 0) {
+        GTEST_SKIP() << "Keine CUDA-GPU gefunden";
+    }
+    const RunResult c = run({kEinzellinse, "--json", "--grid", "32", "--psf"});
+    const RunResult g = run({kEinzellinse, "--json", "--grid", "32", "--psf", "--gpu"});
+    ASSERT_EQ(c.code, mko::cli::kExitOk) << c.err;
+    ASSERT_EQ(g.code, mko::cli::kExitOk) << g.err;
+    const json jc = json::parse(c.out);
+    const json jg = json::parse(g.out);
+    ASSERT_EQ(jc["tuples"].size(), jg["tuples"].size());
+    for (std::size_t i = 0; i < jc["tuples"].size(); ++i) {
+        const json& a = jc["tuples"][i]["psf"];
+        const json& b = jg["tuples"][i]["psf"];
+        // NA aus den Feldstrahlen (GPU-EVAL) und PSF über cuFFT
+        EXPECT_NEAR(b["strehl_fft"].get<double>(), a["strehl_fft"].get<double>(), 1e-9);
+        EXPECT_NEAR(b["strehl"].get<double>(), a["strehl"].get<double>(), 1e-9);
+        EXPECT_NEAR(b["na"][1].get<double>(), a["na"][1].get<double>(), 1e-9);
+    }
+}
+
 TEST(CliEvalGpu, MatchesCpu) {
     if (mko::cuda::device_count() == 0) {
         GTEST_SKIP() << "Keine CUDA-GPU gefunden";
