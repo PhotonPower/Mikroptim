@@ -36,7 +36,7 @@ mko::test::EvalFn cpu_eval() {
     return [](const SystemBatchHost& b, const EvalSettings& s) { return mko::eval_cpu(b, s); };
 }
 
-std::vector<Complex> random_data(std::size_t n, unsigned seed) {
+std::vector<Complex> random_signal(std::size_t n, unsigned seed) {
     std::mt19937_64 rng(seed);
     std::uniform_real_distribution<double> uni(-1.0, 1.0);
     std::vector<Complex> v(n);
@@ -78,7 +78,7 @@ double max_abs_diff(const std::vector<Complex>& a, const std::vector<Complex>& b
 
 TEST(Fft, MatchesDirectDftAndRoundTrips) {
     for (const std::size_t n : {1u, 2u, 8u, 64u, 256u}) {
-        const std::vector<Complex> x = random_data(n, 7u + static_cast<unsigned>(n));
+        const std::vector<Complex> x = random_signal(n, 7u + static_cast<unsigned>(n));
         std::vector<Complex> f = x;
         mko::fft(f, mko::FftDirection::Forward);
         EXPECT_LT(max_abs_diff(f, direct_dft(x, -1.0)), 1e-12 * static_cast<double>(n)) << n;
@@ -97,7 +97,7 @@ TEST(Fft, MatchesDirectDftAndRoundTrips) {
 TEST(Fft, TwoDimensionalMatchesRowsThenColumns) {
     const int rows = 16;
     const int cols = 32;
-    const std::vector<Complex> x = random_data(static_cast<std::size_t>(rows * cols), 11u);
+    const std::vector<Complex> x = random_signal(static_cast<std::size_t>(rows * cols), 11u);
     std::vector<Complex> f = x;
     mko::fft2d(f, rows, cols, mko::FftDirection::Forward);
     // Referenz: 2D-DFT direkt
