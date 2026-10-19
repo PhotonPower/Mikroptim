@@ -14,7 +14,7 @@ Typische Größenordnung beim Zielsystem: P ≈ 60–100 Variablen.
 
 ### Variablenabbildung (ab M3-T1)
 
-Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](dateiformat.md#variablen-ab-m3-t1)). Implementiert sind Krümmung, Dicke, Arbeitsabstand und (ab M4-T6) Geisterkoeffizienten; Glas (M6-T1) kommt als weiterer `VariableType` hinzu.
+Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](dateiformat.md#variablen-ab-m3-t1)). Implementiert sind Krümmung, Dicke, Arbeitsabstand, (ab M4-T6) Geisterkoeffizienten und (ab M6-T1) Glas.
 
 `mko::VariableSet` (`include/mikroptim/optim/variable_set.hpp`, Bibliothek `Mikroptim::optim`) wird aus Systembeschreibung und Batch-Topologie gebaut und legt die Komponenten des Variablenvektors x ∈ ℝ^P fest (Reihenfolge von `resolve_variables`):
 
@@ -24,8 +24,11 @@ Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](
 | Dicke t der Dateifläche i (i < S_Datei − 1) | `surfaces[i].thickness` | `thickness[v][m(i+1) − 1]`, bei Geisterplatten im Spalt x − d_last (siehe unten) |
 | Arbeitsabstand w | `surfaces[S_Datei − 1].thickness` | `thickness[v][S − 1]` (einzige Quelle, `image_distance`) |
 | Geisterkoeffizient a_k der Platte g (ab M4-T6) | `ghost_plates[g].coefficients[k − 1]` | `ghost_coeff[v][g][k − 1]` |
+| Glas: n₀, ν₁, ν₂ des Mediums nach Dateifläche i (ab M6-T1, drei Komponenten) | `surfaces[i].material`: `n0`, `nu[0]`, `nu[1]` des Buchdahl-Materials | `buchdahl_coeff[v][m(i)][c]`, c = 0, 1, 2; `apply` rechnet danach `index[v][m(i)][l]` und `paraxial_index[v][m(i)]` neu |
 
 Geisterkoeffizienten heißen in Berichten `a[g,k]`; `Variable::ghost_plate`/`ghost_order` nennen Platte und Ordnung, `batch_surface` ist die Tabellenfläche der Platte. Standard x_typ = 10⁻⁴ mm (`kDefaultTypicalGhostCoefficient`): Die FD-Schrittweite bei a = 0 ist dann h = 6·10⁻¹⁰ mm, klein gegen die Glättung ε der L1-Strafe (Abschnitt 3), sodass die zentrale Differenz den glatten Bereich der Strafe auflöst ((h/ε)² ≈ 4·10⁻⁷ bei ε = 10⁻⁶ mm); die Wellenfrontspalten bleiben dabei auf etwa 10⁻⁴ relativ genau (OPD-Änderung (n_G − 1)·h gegen die Rundung ε_m·L der optischen Länge). Schranken sind optional (frei). Störung im Variantengenerator relativ wie bei den übrigen Typen (`PerturbationOptions::ghost_coefficient`, Standard 1 %); a = 0 bleibt ungestört.
+
+**Glas** (ab M6-T1): Ein Eintrag `{"type": "glass", "surface": i}` ergibt drei Variablen n₀, ν₁, ν₂ (Namen `n0[i]`, `nu1[i]`, `nu2[i]`, `Variable::glass_component` 0, 1, 2) der Buchdahl-Koordinaten (numerik.md §10) des Mediums nach Dateifläche i. ν₃ bleibt fest. Vor dem Aufbau der Variablenmenge wird das Material in ein Buchdahl-Material umgewandelt (`convert_glass_variables`, `include/mikroptim/optim/glass_variables.hpp`: Katalogglas → 3-Term-Fit über 400–700 nm, konstantes n → n₀ = n, ν = 0), danach Brechzahltabelle und Batch neu (`prepare_system`, `make_system_batch`); `VariableSet` verlangt ein Buchdahl-Material (sonst `std::invalid_argument`). Die Koordinaten pro Variante stehen im Host-Feld `buchdahl_coeff[v][s][0 … 3]` des Batches (docs/architektur.md): Aus den Brechzahlen allein sind sie nicht immer eindeutig zurückzugewinnen (eine Wellenlänge, λ_ref unter den Wellenlängen), und das Feld macht `extract` exakt. `apply` schreibt die drei Koeffizienten und rechnet die Brechzahlen bei allen Wellenlängen und bei λ_ref mit `buchdahl_index` (derselbe Ausdruck wie `material_index`): Der Batch ist danach bitgleich zu dem aus der mit `apply_to_description` geänderten Datei (Test `GlassVariables.VariableSetRoundtripAndIndices`, auch mit Geisterplatten im Luftspalt davor). `apply_to_description` schreibt `n0`, `nu[0]`, `nu[1]`; die Datei enthält danach `{"model": "buchdahl", "n0": …, "nu": [ν₁, ν₂, ν₃]}`. Schranken gibt es nicht (die Hülle der Katalog-Gläser wirkt als Strafterm, Abschnitt 2.4); x_typ ist pro Komponente fest: 1 (n₀), 0,01 (ν₁), 0,001 (ν₂), `kDefaultTypicalGlass*`. Geisterplatten liegen nur in Luftspalten, ein Glasmedium ist im Batch also nie geteilt. Störung im Variantengenerator relativ wie bei den übrigen Typen (`PerturbationOptions::glass`, Standard 1 %).
 
 m = `table_of_file` der `SurfaceMap` (`make_surface_map`, geprüft gegen die Topologie mit `checked_surface_map`: Flächenzahl, Zahl der Geisterplatten, Typ jeder Tabellenfläche); ohne Geisterplatten die Identität. Das ist die einzige Stelle, an der `VariableSet` den Indexversatz durch Geisterplatten berücksichtigt.
 
@@ -37,7 +40,7 @@ m = `table_of_file` der `SurfaceMap` (`make_surface_map`, geprüft gegen die Top
 - Die untere Schranke wird auf max(`min`, d_m) angehoben, damit die letzte Platte im Spalt bleibt (validate_system verlangt d ≤ T).
 - Der Arbeitsabstand ist nie geteilt (nach der letzten Fläche liegen keine Geisterplatten).
 
-- `extract(batch, v)` → x und `apply(batch, v, x)` lesen bzw. schreiben genau diese Elemente; alles andere (Brechzahlen, Feldwinkel, Feldziele, Geisterkoeffizienten) bleibt unverändert. Der Roundtrip Vektor → Batch → Vektor ist bitgleich (Test `VariableSet.RoundtripVectorBatchVector`; einzige Ausnahme: Rundungsfall „genau halb“ bei einem Spalt mit Geisterplatten, siehe unten). `apply` prüft Länge, Endlichkeit und Topologie, bevor es schreibt.
+- `extract(batch, v)` → x und `apply(batch, v, x)` lesen bzw. schreiben genau diese Elemente; alles andere (Brechzahlen außer denen der Glasvariablen, Feldwinkel, Feldziele, Geisterkoeffizienten) bleibt unverändert. Der Roundtrip Vektor → Batch → Vektor ist bitgleich (Test `VariableSet.RoundtripVectorBatchVector`; einzige Ausnahme: Rundungsfall „genau halb“ bei einem Spalt mit Geisterplatten, siehe unten). `apply` prüft Länge, Endlichkeit und Topologie, bevor es schreibt.
 - `extract(system)` und `apply_to_description(system, x)` tun dasselbe auf den Dateiflächen (Schreiben optimierter Systeme, M3-T5).
 - Schranken als Vektoren `lower()`, `upper()` (±∞ für offene Schranken), `typical()` für x_typ; `feasible(x)` und die Projektion `clamp_to_bounds(x)`: x_k ← min(max(x_k, lower_k), upper_k).
 - Skalierte Koordinaten gibt es bewusst nicht: Die Marquardt-Skalierung mit diag(JᵀJ) (Abschnitt 4) macht LM invariant gegen die Skalierung der Variablen; x_typ dient nur der Schrittweite.
@@ -52,7 +55,7 @@ Die Merit ist F = ‖r‖². Der Residuenvektor einer Variante besteht aus:
 4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°).
 5. **Weiches Versagen** (ab M4-T2): ein Strafresiduum pro Strahl, p_k = √(w_fail · ŵ_f · ŵ_λ · W_i · V_j) · π_k, mit der Summe π_k der dimensionslosen Strafgrößen seiner Ereignisse (−D, −k, −Radikand, −disc/R_ref²; hart versagt zusätzlich 1). Die Strafresiduen stehen als eigener Block gleicher Länge direkt hinter den Wellenfrontresiduen (vor den Zusatzresiduen 2–7) und entstehen im Kernel; weich versagte Strahlen bleiben mit der OPL ihrer Fortsetzung in Kolben und Wellenfrontresiduen. Gewicht w_fail in Wellen² (`ResidualSettings::fail_weight`, Standard 10⁶), im LM mit äußerem Strafverfahren (Abschnitt 4). Regeln, Grenzfälle und Messungen: [numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen).
 6. **Geisterplatten (L1, geglättet):** im Plan √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist. Implementiert (ab M4-T6) ist die gleichwertige Form √(μ·w_k) · a/√(ε + √(a² + ε²)) mit dem Quadrat μ·w_k·(√(a² + ε²) − ε): gleicher Gradient, also gleiches Minimum, aber r(0) = 0 und eine Gauß-Newton-Krümmung, die bei a = 0 exakt stimmt (Begründung in Abschnitt 3).
-7. **Glas-Hülle:** √w · Abstand außerhalb der Hülle.
+7. **Glas-Hülle:** √w · Abstand außerhalb der Hülle der Katalog-Gläser in normierten Koordinaten, als Vektor √w (u − P(u)) mit drei Residuen pro Glaselement (ab M6-T1, Abschnitt 2.4).
 
 Gewichte w_f, w_λ stammen aus der Systemdatei (`source.field_weights`, `spectrum.weights`); Gewicht 0 schaltet ein Feld bzw. eine Wellenlänge in der Merit ab (Residuen exakt 0, verfolgt wird es weiter). **Einheit der Merit:** Wellen² bei λ_ref. Alle Zusatzresiduen (Punkte 2–7) sind √w · (Größe in ihrer eigenen Einheit) und gehen mit ihrem Quadrat direkt in dieselbe Summe ein; ihre Gewichte haben daher die Einheit 1/(Einheit der Größe)² und sind relativ zu „ein Residuum von 1 entspricht einer Welle RMS“ zu wählen (Faustregel in Abschnitt 2.2). Geisterplatten-Gewichte steigen mit der Ordnung: w_k = w₀ · κ^k (κ ≈ 2).
 
@@ -148,6 +151,39 @@ Direkt mit großem Gewicht zu beginnen, ist ungünstig: Liegt die Überschreitun
 | Brennweite eingehalten | f − f_s = 4,8·10⁻⁷ mm (Toleranz `kPetzvalFocalLength` = 10⁻⁵ mm) |
 
 **API** (`include/mikroptim/model/constraints.hpp`, `include/mikroptim/optim/paraxial_residuals.hpp`): `ConstraintType::Petzval`, `ConstraintSpec::max_curvature`, `ConstraintSpec::mode_or_default()` liefert bei Petzval `Max`, `constraint_bound(system, spec)` (Grenze bzw. Sollwert eines Eintrags; `constraint_target` bleibt für Petzval leer). In `ParaxialConstraint` steht κ_max in `target`, der Modus ist `Max`; `check_paraxial_constraints` lehnt andere Modi und κ_max < 0 ab. Die Bedingung braucht den Paraxialtrace (`needs_trace()`) und läuft wie die übrigen über `make_paraxial_residuals` und `evaluate_extra_residuals`.
+
+### 2.4 Glas-Hülle (ab M6-T1)
+
+API: `include/mikroptim/glass/convex_hull.hpp` (Hülle im ℝ³), `include/mikroptim/glass/glass_hull.hpp` (Hülle der Gläser, Bibliothek `Mikroptim::glass`), `include/mikroptim/optim/glass_variables.hpp` (Umwandlung, Strafe, `Mikroptim::optim`); Schema: Variablentyp `glass` und Nebenbedingung `glass_hull` in [dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3).
+
+**Koordinaten und Normierung.** Jedes Katalogglas, dessen `range_nm` den Fitbereich 400–700 nm abdeckt, wird mit dem 3-Term-Buchdahl-Fit (dieselben Einstellungen wie bei der Umwandlung des Startglases, numerik.md §10) zum Punkt x = (n₀, ν₁, ν₂); Gläser ohne Abdeckung stehen in `GlassHull::excluded()`. Normiert wird pro Koordinate mit Mittelwert m_j und Spannweite s_j = max − min über die Gläser der Hülle: u_j = (x_j − m_j)/s_j (`GlassHull::normalize`, Konstanten `center()`, `scale()`; Spannweite 0 → s_j = 1). Eine normierte Einheit ist die Ausdehnung des Katalogs in dieser Koordinate; n₀, ν₁, ν₂ zählen damit gleich, unabhängig von ihren Größenordnungen (n₀ − 1 ≈ 0,5, ν₁ ≈ 0,1, ν₂ ≈ 0,01). Für die frei erfundenen Testgläser (`data/glass/synthetisch.json`) ist m = (1,6272; −0,09844; 0,05024), s = (0,3806; 0,1949; 0,2137).
+
+**Hülle.** Konvexe Hülle der normierten Punkte, eigener Code (`convex_hull`): Starttetraeder aus den extremen Punkten, danach inkrementell nach fallendem Abstand vom Schwerpunkt; ein Punkt erweitert die Hülle, wenn er mehr als ε = 10⁻¹⁰ · Skala vor einem Dreieck liegt (Skala = max(Diagonale der Hüllbox, größter Koordinatenbetrag)); der Horizont sind die gerichteten Kanten sichtbarer Dreiecke ohne sichtbares Gegenstück, die neuen Dreiecke übernehmen ihre Richtung (Orientierung nach außen). Ergebnis: Randdreiecke mit äußeren Einheitsnormalen (koplanare Dreiecke werden nicht zusammengefasst). Entartete Kataloge ergeben eine Hülle niedrigerer Dimension, entschieden mit derselben Toleranz: alle Punkte gleich → Punkt, kollinear → Strecke (Endpunkte), koplanar → konvexes Polygon (monotone Kette nach Andrew in der Ebene, Fächertriangulierung). `basis.json` allein (drei Gläser) ergibt ein Dreieck, die Testgläser einen Polyeder mit 15 Ecken und 26 Dreiecken.
+
+**Abstand.** d(u) = min über die Randdreiecke des Abstands zum Dreieck (Fallunterscheidung über die Voronoi-Gebiete von Ecken, Kanten und Fläche), bei einem Polyeder 0, wenn u hinter allen Ebenen liegt; vorzeichenbehaftet (nur Polyeder) innen −min_i (b_i − n_i·u), der Abstand zum Rand. Bei niedrigerer Dimension ist alles außerhalb der Punktmenge selbst „außen“ (etwa ν₂ abseits der Ebene der drei Basisgläser). Glattheit: P(u) (nächster Punkt) ist stetig, also ist d außerhalb C¹ mit ∇d = (u − P(u))/d, d² überall C¹ mit ∇d² = 2 (u − P(u)), aber nicht C² (die Hesse-Matrix springt zwischen den Gebieten von Ecken, Kanten und Facetten); d selbst hat am Rand einen Knick (innen 0, außen Steigung 1).
+
+**Residuum.** Pro Glaselement drei Residuen, der Vektor
+
+$$r = \sqrt{w}\,\max(0, \varphi(u))\,g(u),\qquad \varphi = \begin{cases} d(u) & \text{außen}\\ \text{signed\_distance}(u) + \delta & \text{Polyeder mit Sicherheitsabstand } \delta\end{cases},\qquad g = \nabla\varphi,$$
+
+ohne δ also r = √w (u − P(u)) außen und 0 innen; |r|² = w max(0, φ)² ist der Strafbeitrag (die Form „√w · Abstand“ des Plans) und C¹. Mit δ > 0 (nur bei einer dreidimensionalen Hülle) beginnt die Strafe δ vor dem Rand: innen ist φ = δ − (Abstand zur nächsten Randebene), also auf den Facetten genau der Abstand zur um δ nach innen versetzten Fläche; g ist dort die Normale dieser Ebene.
+
+*Warum ein Vektor:* Mit dem skalaren Residuum √w · d fehlt im Gauß-Newton-Modell die Krümmung der Strafe quer zum Gradienten: Liegt der nächste Punkt auf einer Ecke oder Kante, ist ∇²(w d²/2) = w (I bzw. I − e eᵀ), das Modell JᵀJ = w g gᵀ hat davon nur den Anteil in Richtung g. Beobachtet (Abnahmesystem, w = 100): LM im Zickzack in ν₂, Dämpfung ≈ 350, nach 1000 Zyklen `max_iterations` 1,5·10⁻³ außerhalb, und mit wachsendem w blieb der Abstand bei 8,8·10⁻⁴ stehen. u − P(u) ist dagegen stückweise linear (Abstand zu einem affinen Unterraum: Ecke, Kante, Facettenebene), das Gauß-Newton-Modell ist in jedem Stück exakt; dieselbe Fortsetzung konvergiert damit in jeder Stufe (Tabelle unten).
+
+**Gewicht.** w in Wellen² pro normierte Einheit² (Standard `kDefaultGlassHullWeight` = 10⁴: d = 0,01, also 1 % der Katalogspanne, kostet eine Welle²). Wie bei Petzval (Abschnitt 2.3) erreicht die Strafe den Rand nur asymptotisch, d* ≈ λ/(2w) mit dem Lagrange-Multiplikator λ; die Tests nutzen die Penalty-Fortsetzung (Faktor 10 pro Stufe, jede Stufe ab dem Ergebnis der vorigen). w·d ist über die Stufen nahezu konstant (Abnahmesystem 0,13–0,25).
+
+**Ablauf** (`mikroptim optimize` macht ihn automatisch, [cli.md](cli.md#mikroptim-optimize)): `convert_glass_variables` (Startgläser → Buchdahl), `prepare_system`, `make_system_batch`, `VariableSet`; `make_glass_hull(loaded.catalog)` (alle Gläser aller `glass_catalogs`); `make_glass_hull_penalty(system, set, hull)` (Gewicht und δ aus dem Eintrag `glass_hull`, ein Element pro Glasfläche; δ > 0 mit ebener Hülle → `std::invalid_argument`); `make_glass_hull_residuals` über `concat_extra_residuals` hinter die übrigen Zusatzresiduen. Hilfsfunktionen für Berichte und Tests: `glass_hull_excess` (max(0, φ)), `glass_hull_residual` (Vektor), `glass_hull_penalty` (|r|²) und `glass_hull_penalty_gradient` (2 w max(0, φ) g_j/s_j in Rohkoordinaten).
+
+**Hüllentests** (`tests/test_convex_hull.cpp`, `tests/test_glass_hull.cpp`, `tests/test_glass_variables.cpp`): Würfel mit inneren, Flächen- und Kantenpunkten → genau die 8 Ecken, 12 Dreiecke in 6 Ebenen, Volumen 1, Abstand und vorzeichenbehafteter Abstand gegen die analytische Formel (2000 Punkte, Abweichung 0); Tetraeder mit bekannten Facetten und Projektionen auf Fläche, Kante, Ecke; 12 zufällige Punktwolken (8–52 Punkte, ein Drittel auf einer Kugel) mit Facetten gleich den Brute-Force-Facetten, geschlossene orientierte Fläche (Euler V − E + F = 2), Abstand gegen eine unabhängige Projektion auf alle Facetten, Kanten und Ecken (< 10⁻¹²); entartete Fälle Punkt, Strecke, Dreieck, ebenes Gitter (4 Ecken im Umlaufsinn), fast koplanar (10⁻¹³ → eben, 10⁻⁶ → räumlich); Gradient gegen zentrale Differenzen in allen Dimensionen (< 10⁻⁷); Testgläser gegen eine unabhängige Python-Referenz (numpy-Fit, scipy/Qhull): dieselben 15 Ecken, Volumen und Oberfläche auf 2·10⁻¹³ relativ, Normierung; Abstand entlang der Facettennormalen; Strafe innen 0, außen √w (u − P(u)), Gradient des Strafbeitrags gegen zentrale Differenzen außen, im Band des Sicherheitsabstands und für die ebene Hülle.
+
+**Abnahme „Optimierung bleibt innerhalb der Hülle“** (`tests/test_glass_optimization.cpp`, GPU `tests/test_cuda_glass_optimization.cpp`): frei erfundene Einzellinse `data/systems/einzellinse_glasvariable.json` (f = 50 mm, NA 0,05 auf der Achse, Wellenlängen 486,13/546,07/656,27 nm, Start N-BK7), Variablen c₁, c₂, Glas (n₀, ν₁, ν₂) und Arbeitsabstand, Brennweite als Gleichung, Hülle aus `basis.json` und den Testgläsern (39 Gläser, 17 Ecken). Der Farblängsfehler verschwindet nur ohne Dispersion, also weit außerhalb jeder Glas-Hülle. Ergebnisse (CPU):
+
+| Kriterium | Ergebnis |
+|---|---|
+| Kontrollfall ohne Strafe (300 Zyklen) | Glas läuft nach ν₁ = 4,5·10⁻⁶, ν₂ = −5,4·10⁻⁵ (normierter Abstand 0,27), F = 1,27·10⁻⁴ Wellen² |
+| Penalty-Fortsetzung w = 10² … 10⁸ | alle Stufen konvergiert (315, 23, 17, 14, 14, 15, 14 Zyklen; GPU (RTX 3090): 315, 22, 17, 17, 15, 15, 15 mit Abstand 2,2·10⁻⁹ und F relativ 1,0·10⁻¹⁰ zur CPU) |
+| Abstand am Ende | 2,2·10⁻⁹ normiert (Toleranz `kGlassHullPenaltyDistance` = 10⁻⁶), ∝ 1/w; das Glas sitzt auf der Ecke CaF₂ (kleinste Dispersion der Hülle) |
+| Merit schlechter als ohne Strafe | 1,968·10⁻² gegen 1,27·10⁻⁴ Wellen² (ohne Strafterm gerechnet) |
 
 ## 3. Warum L1 für Geisterplatten
 
@@ -320,7 +356,7 @@ Rechentyp: FP64 (die Abnahme). df64 für Jacobi und Merit ist nicht angebunden (
 - Die Verteilungen der Standardbibliothek sind nicht plattformgleich festgelegt; Box-Muller bräuchte log, cos und sin, deren Rundung zwischen Bibliotheken um ein ulp abweichen darf. Daher eigene Umwandlungen nur mit exakten bzw. korrekt gerundeten Operationen: u = (bits ≫ 11)·2⁻⁵³ ∈ [0, 1); gleichverteilt ξ = 2u − 1 ∈ [−1, 1) (`Distribution::Uniform`, eine Ziehung pro Variable) oder Irwin-Hall ξ = Σ_{i=1}^{12} u_i − 6 (`Distribution::IrwinHall`: Mittel 0, Varianz 1, begrenzt auf (−6, 6), nahe der Normalverteilung; 12 Ziehungen pro Variable). Ziehungen in der Reihenfolge k = 0 … P − 1.
 - Störung pro Variablentyp: s_k = `absolute` + `relative`·|x₀_k| (`PerturbationScale`, Standard 1 % relativ), y_k = x₀_k + s_k·ξ, beide Ausdrücke mit `std::fma` (unabhängig von der Kontraktion des Compilers), danach Projektion auf die Schranken. `first_is_base`: Variante 0 = x₀.
 - Erwartungswerte für Startwert 42 stehen im Test `VariantGenerator.PerturbedValuesArePlatformIndependent` (berechnet mit einer unabhängigen Python-Implementierung); sie gelten unverändert unter MSVC und GCC.
-- Brechzahlen bleiben unverändert (Glas als Variable erst M6).
+- Glasvariablen (ab M6-T1) werden wie die übrigen relativ gestört (`PerturbationOptions::glass`); `apply` rechnet danach die Brechzahlen der Variante neu. Alle übrigen Brechzahlen bleiben unverändert.
 
 ### Finite-Differenzen-Jacobi (ab M3-T2)
 
@@ -411,7 +447,7 @@ Beide Operatoren ändern die Merit **exakt nicht** (Test: |ΔF| ≤ 10⁻¹² re
 
 **A – Meniskus ohne Brechkraft (nach Bociort):** In einem Luftspalt werden zwei Flächen gleicher Krümmung c₀ im Abstand 0 mit einem Glas aus dem Wörterbuch eingefügt. Die Dicke wird anschließend über eine Homotopie auf die Mindestdicke gebracht. c₀ und Glas werden aus der aktivsten Geisterplatte an dieser Position initialisiert (Vorzeichen der Biegung, Glastyp). Danach wird das Strafgewicht dieser Geisterplatte erhöht, sodass die Korrektur in das reale Element wandert. Dass eingefügte Elemente Sattelpunkte erzeugen können, wird genutzt: Beide Abstiegsrichtungen werden als getrennte Läufe weiterverfolgt.
 
-**B – Aufspalten in ein Kittglied:** Eine Glaslinse wird an einer inneren Fläche (Krümmung c_s, z. B. aus der Geisterdiagnose oder als Mittel der Außenflächen) in zwei Teile aus **demselben** Glas geteilt. Danach werden die Glasparameter eines Teils freigegeben und wandern stetig, z. B. von einem Kronglas Richtung Fluorit.
+**B – Aufspalten in ein Kittglied:** Eine Glaslinse wird an einer inneren Fläche (Krümmung c_s, z. B. aus der Geisterdiagnose oder als Mittel der Außenflächen) in zwei Teile aus **demselben** Glas geteilt. Danach werden die Glasparameter eines Teils freigegeben (Variable `glass`, Abschnitt 1; Hülle der Katalog-Gläser als Strafterm, Abschnitt 2.4) und wandern stetig, z. B. von einem Kronglas Richtung Fluorit.
 
 ## 7. Homotopie-Controller
 
@@ -442,7 +478,7 @@ Die Kandidatenverwaltung selbst (Auswahl der besten B, Zweige) ist M6-T4. Ein ra
 
 ## 9. Glas-Einrasten
 
-Am Ende: für jedes Glaselement die k nächsten Katalog-Gläser im normierten (n₀, ν₁, ν₂)-Raum; Kombinationen werden als Varianten im Batch reoptimiert, das beste Ergebnis gewinnt. Weiche Nebenbedingung auf Transmission bei 420–450 nm (Farbstich), Kennzeichnung spannungsarmer Gläser für DIC.
+Am Ende: für jedes Glaselement die k nächsten Katalog-Gläser im normierten (n₀, ν₁, ν₂)-Raum (Normierung der Glas-Hülle, Abschnitt 2.4); Kombinationen werden als Varianten im Batch reoptimiert, das beste Ergebnis gewinnt. Weiche Nebenbedingung auf Transmission bei 420–450 nm (Farbstich), Kennzeichnung spannungsarmer Gläser für DIC.
 
 ## 10. Literatur
 

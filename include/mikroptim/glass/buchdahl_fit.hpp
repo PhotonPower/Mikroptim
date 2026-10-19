@@ -7,8 +7,8 @@
 // Termzahl: `dispersion_terms` zählt die Dispersionskoeffizienten ohne n0.
 //   3 Terme: n = n0 + nu1 w + nu2 w^2 + nu3 w^3  (vier Unbekannte),
 //   2 Terme: n = n0 + nu1 w + nu2 w^2, nu3 = 0   (drei Unbekannte).
-// Die 2-Term-Koeffizienten (n0, nu1, nu2) sind die Glasvariablen der Optimierung, der
-// 3-Term-Fit dient der Bewertung (numerik.md, Abschnitt 10).
+// Die Glasvariablen der Optimierung (M6-T1) sind (n0, nu1, nu2) des 3-Term-Fits, nu3 bleibt fest
+// (numerik.md, Abschnitt 10, „Glasvariablen“).
 
 #include "mikroptim/glass/catalog.hpp"
 #include "mikroptim/model/material.hpp"

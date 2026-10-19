@@ -207,6 +207,7 @@ Structure of Arrays, alle Werte FP64 (außer `type` und `ghost_surface`), Varian
 | `ghost_index[v][g][l]` | R | pro Variante | Brechzahl des virtuellen Glases der Geisterplatte |
 | `paraxial_index[v][s]` | R | pro Variante | Brechzahl nach Fläche s bei λ_ref (Paraxialrechnung, ab M3-T3) |
 | `paraxial_ghost_index[v][g]` | R | pro Variante | Brechzahl des Glases der Geisterplatte g bei λ_ref (ab M3-T3) |
+| `buchdahl_coeff[v][s][j]` | FP64 | pro Variante, **nur Host** | Buchdahl-Koeffizienten (n₀, ν₁, ν₂, ν₃) des Mediums nach Fläche s (Glasvariablen, ab M6-T1) |
 
 Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 
@@ -220,6 +221,7 @@ Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 | `ghost_index` | (v·G + g)·L + l | G·L |
 | `paraxial_index` | v·S + s (wie `curvature`) | S |
 | `paraxial_ghost_index` | v·G + g (`ghost_at`) | G |
+| `buchdahl_coeff` (nur Host) | (v·S + s)·4 + j | 4·S |
 
 Die Daten einer Variante liegen in jedem Feld zusammenhängend; Variante v der Flächentabelle ist daher eine `SurfaceTableView` mit um v·S bzw. v·S·L versetzten Zeigern (`SystemBatchView::surface_table(v)`), `type` ist für alle Varianten derselbe Zeiger. `index` hat für eine Variante dasselbe Layout wie `IndexTable::n`.
 
@@ -232,6 +234,7 @@ Festlegungen:
 - **Feldwinkel** werden mit demselben Ausdruck wie im CPU-Tracer umgerechnet (θ = Grad · (π/180)), damit CPU-Trace über Batch und Einzeltabelle bitgleich sind.
 - **Geisterplatten** (M4-T5): `type` enthält die eingefügten Flächen vom Typ GhostPlate, G = deren Zahl, K = größte Ordnung (kürzere Profile mit 0 ergänzt, K ≤ `kMaxGhostTerms`, geprüft in `validate_topology`); `make_system_batch` füllt `ghost_norm_radius`, `ghost_coeff` und `ghost_index` aus der Flächentabelle. `surface_table(v)` setzt die Geisterzeiger auf `ghost_coeff + ghost_coeff_at(v, 0, 0)` und `ghost_index + ghost_index_at(v, 0, 0)` (gleiches Layout wie `SurfaceTableView`).
 - Brechzahlen werden pro Variante und Wellenlänge auf dem Host (oder einem kleinen Kernel) berechnet; der Trace-Kernel rechnet keine Dispersionsformeln.
+- **Glasvariablen** (M6-T1): `buchdahl_coeff[v][s][0 … 3]` = (n₀, ν₁, ν₂, ν₃) des Mediums nach Tabellenfläche s, wenn es ein Buchdahl-Material ist (`make_system_batch` füllt sie aus der Systemdatei), sonst 0. Das Feld ist die Quelle der Glasvariablen (`VariableSet::extract`), weil die Brechzahlen allein die Koordinaten nicht immer bestimmen (z. B. eine Wellenlänge und λ_ref). `VariableSet::apply` schreibt die Koeffizienten und rechnet daraus `index[v][s][l]` für alle Wellenlängen und `paraxial_index[v][s]` mit demselben Ausdruck wie `material_index` (Batch nach `apply` bitgleich zum Batch aus der geänderten Datei). Das Feld liegt nur im Host-Container: Die Kernel brauchen es nicht, `DeviceSystemBatch` lädt es nicht hoch, `download` lässt es unverändert, `view()` enthält es nicht; Kopieren, Teil-Batches, `validate_values` (endlich) und `operator==` berücksichtigen es. Kosten 32·S Byte pro Variante im Host-Speicher.
 - **Brechzahlen bei λ_ref** (M3-T3): Die Paraxial-Nebenbedingungen (Brennweite bei λ_ref, numerik.md §9) brauchen Brechzahlen bei λ_ref, die nicht unter den Wellenlängen des Batches sein muss (Spektrum-Homotopie: z. B. nur 480 und 644 nm bei λ_ref = 546 nm). Deshalb hat der Batch zwei Spalten pro Variante: `paraxial_index[v][s]` (Medium nach Tabellenfläche s; bei Geisterplatten das Medium des Spalts) und `paraxial_ghost_index[v][g]`. Sie sind immer vorhanden (eine Regel statt „Spalte von λ_ref, falls vorhanden“) und gehören zu `index`/`ghost_index`: Wer die Brechzahlen einer Variante ändert (Glasvariablen M6), ändert beide. `make_system_batch` füllt sie aus `IndexTable::reference_n`/`reference_ghost_n` (`make_system_index_table`), sonst aus der Spalte von λ_ref; fehlt beides, wirft es. Die Trace-Kernel lesen sie nicht; sie liegen trotzdem im Gerätepuffer (Upload/Download bleiben verlustfrei, Kosten (S + G)·8 Byte pro Variante). `validate_values` verlangt nur Endlichkeit (von Hand gebaute Batches für reine Traces dürfen sie auf 0 lassen); die Paraxialrechnung prüft n > 0 selbst.
 
 ### Host-Container (Bibliothek `Mikroptim::batch`, `src/batch/`)

@@ -121,6 +121,16 @@ public:
     double paraxial_index(int v, int s) const;
     double& paraxial_ghost_index(int v, int g);
     double paraxial_ghost_index(int v, int g) const;
+    // Buchdahl-Koeffizienten des Mediums nach Fläche s (M6-T1, Glasvariablen): j = 0 → n₀,
+    // j = 1, 2, 3 → ν₁, ν₂, ν₃ (docs/numerik.md, Abschnitt 10). Ablage [V][S][4]. Nur Host:
+    // Quelle der Glasvariablen (VariableSet::extract), weil die Brechzahlen allein (n bei L
+    // Wellenlängen und λ_ref) die Koordinaten nicht immer eindeutig bestimmen. Wer sie ändert,
+    // berechnet index und paraxial_index neu (VariableSet::apply). make_system_batch füllt sie
+    // für Medien vom Typ Buchdahl, sonst 0. Nicht im Gerätespeicher (DeviceSystemBatch lädt sie
+    // nicht hoch, download lässt sie unverändert) und nicht in der Sicht view().
+    static constexpr int kBuchdahlCoefficients = 4;
+    double& buchdahl_coeff(int v, int s, int j);
+    double buchdahl_coeff(int v, int s, int j) const;
     // Arbeitsabstand = thickness(v, S−1) (einzige Quelle, kein eigenes Feld).
     double& image_distance(int v) { return thickness(v, surfaces() - 1); }
     double image_distance(int v) const { return thickness(v, surfaces() - 1); }
@@ -156,6 +166,8 @@ public:
     std::span<const double> paraxial_index_data() const { return paraxial_index_; }
     std::span<double> paraxial_ghost_index_data() { return paraxial_ghost_index_; }
     std::span<const double> paraxial_ghost_index_data() const { return paraxial_ghost_index_; }
+    std::span<double> buchdahl_coeff_data() { return buchdahl_coeff_; }
+    std::span<const double> buchdahl_coeff_data() const { return buchdahl_coeff_; }
 
     // ---- Sichten ---------------------------------------------------------------------------
     // Sicht auf die Host-Vektoren; gültig, bis der Batch verändert (resize, Zuweisung) oder
@@ -196,6 +208,7 @@ private:
     std::vector<double> ghost_index_;
     std::vector<double> paraxial_index_;
     std::vector<double> paraxial_ghost_index_;
+    std::vector<double> buchdahl_coeff_; // nur Host, [V][S][4]
 };
 
 // Prüft, ob die Varianten [first, first + count) (count < 0: bis zum Ende) zu den
@@ -221,6 +234,7 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
 // index.reference_ghost_n (make_system_index_table; index.reference_nm muss gleich
 // spectrum.reference_nm sein), sonst aus der Spalte von λ_ref, wenn λ_ref unter den
 // Wellenlängen des Spektrums ist; Geisterplatten im Luftspalt erhalten das Medium des Spalts.
+// Buchdahl-Koeffizienten (buchdahl_coeff) aus den Materialien vom Typ Buchdahl, sonst 0.
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
 // `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (mit den
 // Brechzahlen bei λ_ref wie paraxial_index). Ist keine Brennweite bestimmbar (afokales System)

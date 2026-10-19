@@ -86,11 +86,13 @@ target_link_libraries(mikroptim_model
     PRIVATE nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
-# Glasmodell (Host): Glaskataloge, Brechzahltabellen, Buchdahl-Fit
+# Glasmodell (Host): Glaskataloge, Brechzahltabellen, Buchdahl-Fit, Glas-Hülle (M6-T1)
 # --------------------------------------------------------------------------
 add_library(mikroptim_glass STATIC
     src/glass/buchdahl_fit.cpp
     src/glass/catalog.cpp
+    src/glass/convex_hull.cpp
+    src/glass/glass_hull.cpp
     src/glass/index_table.cpp)
 add_library(Mikroptim::glass ALIAS mikroptim_glass)
 target_link_libraries(mikroptim_glass
@@ -155,6 +157,7 @@ add_library(mikroptim_optim STATIC
     src/optim/fd_jacobian.cpp
     src/optim/ghost_diagnosis.cpp
     src/optim/ghost_penalty.cpp
+    src/optim/glass_variables.cpp
     src/optim/levenberg_marquardt.cpp
     src/optim/paraxial_residuals.cpp
     src/optim/variable_set.cpp

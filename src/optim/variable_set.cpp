@@ -2,6 +2,8 @@
 
 #include "mikroptim/optim/variable_set.hpp"
 
+#include "mikroptim/glass/dispersion.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -62,13 +64,19 @@ std::string variable_name(VariableType type, int file_surface) {
     case VariableType::WorkingDistance:
         return "w";
     case VariableType::GhostCoefficient:
-        break; // Name aus ghost_variable_name
+    case VariableType::Glass:
+        break; // Name aus ghost_variable_name bzw. glass_variable_name
     }
     return "?";
 }
 
 std::string ghost_variable_name(int plate, int order) {
     return "a[" + std::to_string(plate) + "," + std::to_string(order) + "]";
+}
+
+std::string glass_variable_name(int file_surface, int component) {
+    const char* prefix = component == 0 ? "n0[" : component == 1 ? "nu1[" : "nu2[";
+    return prefix + std::to_string(file_surface) + "]";
 }
 
 VariableSet::VariableSet(const SystemDescription& system, const BatchTopology& topology)
@@ -131,6 +139,23 @@ VariableSet::VariableSet(const SystemDescription& system, const BatchTopology& t
             var.batch_surface = map.table_of_ghost[static_cast<std::size_t>(r.plate)];
             var.name = ghost_variable_name(r.plate, r.order);
             break;
+        case VariableType::Glass: {
+            // Medium nach der Dateifläche; Geisterplatten liegen nur in Luftspalten
+            // (validate_system), der Spalt eines Glases ist also nie geteilt.
+            if (system.surfaces[i].material.kind != MaterialKind::Buchdahl) {
+                invalid("Glasvariable auf Fläche " + std::to_string(r.surface) +
+                        ": Material ist kein Buchdahl-Glas (vorher mit convert_glass_variables "
+                        "umwandeln)");
+            }
+            var.batch_surface = map.table_of_file[i];
+            var.glass_component = r.component;
+            var.name = glass_variable_name(r.surface, r.component);
+            if (r.component == 0) {
+                glass_file_surfaces_.push_back(r.surface);
+                glass_batch_surfaces_.push_back(var.batch_surface);
+            }
+            break;
+        }
         }
         lower_.push_back(var.lower);
         upper_.push_back(var.upper);
@@ -177,6 +202,12 @@ void VariableSet::check_description(const SystemDescription& system) const {
         invalid("Systembeschreibung mit anderen Geisterplatten als bei der Erzeugung der "
                 "Variablenmenge");
     }
+    for (const int i : glass_file_surfaces_) {
+        if (system.surfaces[static_cast<std::size_t>(i)].material.kind != MaterialKind::Buchdahl) {
+            invalid("Systembeschreibung: Material der Glasvariable auf Fläche " +
+                    std::to_string(i) + " ist kein Buchdahl-Glas");
+        }
+    }
 }
 
 std::vector<double> VariableSet::extract(const SystemBatchHost& batch, int v) const {
@@ -194,6 +225,8 @@ void VariableSet::extract(const SystemBatchHost& batch, int v, std::span<double>
             x[k] = batch.curvature(v, var.batch_surface);
         } else if (var.type == VariableType::GhostCoefficient) {
             x[k] = batch.ghost_coeff(v, var.ghost_plate, var.ghost_order - 1);
+        } else if (var.type == VariableType::Glass) {
+            x[k] = batch.buchdahl_coeff(v, var.batch_surface, var.glass_component);
         } else {
             const double t = batch.thickness(v, var.batch_surface);
             x[k] = var.split ? var.offset + t : t;
@@ -210,16 +243,44 @@ void VariableSet::apply(SystemBatchHost& batch, int v, std::span<const double> x
         }
     }
     (void)batch.curvature(v, 0); // prüft v vor der ersten Änderung (std::out_of_range)
+    if (!glass_batch_surfaces_.empty()) {
+        // Buchdahl-Koordinate muss bei allen Wellenlängen und λ_ref definiert sein
+        for (int l = 0; l <= batch.wavelengths(); ++l) {
+            const double nm =
+                l < batch.wavelengths() ? batch.wavelength_nm(l) : batch.reference_wavelength_nm;
+            if (!(buchdahl_denominator(nm_to_um(nm)) > 0.0)) {
+                invalid("Glasvariablen: Buchdahl-Koordinate bei " + std::to_string(nm) +
+                        " nm nicht definiert (erfordert λ > 146,074 nm)");
+            }
+        }
+    }
     for (std::size_t k = 0; k < variables_.size(); ++k) {
         const Variable& var = variables_[k];
         if (var.type == VariableType::Curvature) {
             batch.curvature(v, var.batch_surface) = x[k];
         } else if (var.type == VariableType::GhostCoefficient) {
             batch.ghost_coeff(v, var.ghost_plate, var.ghost_order - 1) = x[k];
+        } else if (var.type == VariableType::Glass) {
+            batch.buchdahl_coeff(v, var.batch_surface, var.glass_component) = x[k];
         } else {
             // derselbe Ausdruck wie in make_surface_table (Ende des Spalts − distance)
             batch.thickness(v, var.batch_surface) = var.split ? x[k] - var.offset : x[k];
         }
+    }
+    // Brechzahlen der Glaselemente aus den Koeffizienten, mit demselben Ausdruck wie
+    // material_index (Brechzahltabelle aus der Datei): Ein Batch nach apply ist bitgleich zu dem
+    // aus der mit apply_to_description geänderten Datei.
+    for (const int s : glass_batch_surfaces_) {
+        const double n0 = batch.buchdahl_coeff(v, s, 0);
+        const double nu1 = batch.buchdahl_coeff(v, s, 1);
+        const double nu2 = batch.buchdahl_coeff(v, s, 2);
+        const double nu3 = batch.buchdahl_coeff(v, s, 3);
+        for (int l = 0; l < batch.wavelengths(); ++l) {
+            batch.index(v, s, l) =
+                buchdahl_index(n0, nu1, nu2, nu3, nm_to_um(batch.wavelength_nm(l)));
+        }
+        batch.paraxial_index(v, s) =
+            buchdahl_index(n0, nu1, nu2, nu3, nm_to_um(batch.reference_wavelength_nm));
     }
 }
 
@@ -234,6 +295,12 @@ std::vector<double> VariableSet::extract(const SystemDescription& system) const 
             continue;
         }
         const Surface& s = system.surfaces[static_cast<std::size_t>(var.file_surface)];
+        if (var.type == VariableType::Glass) {
+            x[k] = var.glass_component == 0
+                       ? s.material.n0
+                       : s.material.nu[static_cast<std::size_t>(var.glass_component - 1)];
+            continue;
+        }
         x[k] = var.type == VariableType::Curvature ? s.curvature : s.thickness;
     }
     return x;
@@ -255,6 +322,12 @@ void VariableSet::apply_to_description(SystemDescription& system, std::span<cons
             continue;
         }
         Surface& s = system.surfaces[static_cast<std::size_t>(var.file_surface)];
+        if (var.type == VariableType::Glass) {
+            (var.glass_component == 0
+                 ? s.material.n0
+                 : s.material.nu[static_cast<std::size_t>(var.glass_component - 1)]) = x[k];
+            continue;
+        }
         (var.type == VariableType::Curvature ? s.curvature : s.thickness) = x[k];
     }
 }

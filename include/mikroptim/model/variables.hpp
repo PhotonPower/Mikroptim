@@ -14,13 +14,14 @@ namespace mko {
 
 struct SystemDescription;
 
-// Art einer Variablen. Erweiterbar: Glasparameter (n₀, ν) folgen in M6-T1. Unbekannte Typen
-// lehnt der Leser mit FormatError ab.
+// Art einer Variablen. Unbekannte Typen lehnt der Leser mit FormatError ab.
 enum class VariableType {
     Curvature,        // Krümmung c einer Fläche vom Typ sphere [1/mm]
     Thickness,        // Dicke bzw. Luftabstand t einer Fläche (nicht der letzten) [mm]
     WorkingDistance,  // Arbeitsabstand w = Dicke der letzten Fläche [mm]
     GhostCoefficient, // Koeffizient a_k des Dickenprofils einer Geisterplatte [mm] (M4-T6)
+    Glass,            // Glas des Mediums nach einer Fläche: Buchdahl-Koordinaten (n₀, ν₁, ν₂),
+                      // drei Komponenten pro Fläche (M6-T1)
 };
 
 // Form einer Auswahl in einem Eintrag (bestimmt, wie er geschrieben wird). Gilt für Flächen
@@ -70,13 +71,23 @@ inline constexpr double kDefaultTypicalWorkingDistance = 1.0; // mm
 // FD-Schrittweite bei a = 0 (h = 6·10⁻¹⁰ mm) den glatten Bereich der Strafe auflöst
 // (docs/optimierung.md, Abschnitt 3).
 inline constexpr double kDefaultTypicalGhostCoefficient = 1e-4; // mm
-double default_typical(VariableType type);
+// Glas (M6-T1): typische Größen der Komponenten n₀, ν₁, ν₂ (dimensionslos). Katalog-Gläser
+// haben n₀ ≈ 1,4 … 2,0, ν₁ ≈ −0,02 … −0,25, ν₂ ≈ 0,001 … 0,05; x_typ zählt nur, wenn |x| kleiner
+// ist (z. B. ν₂ nahe 0), und hält die FD-Schrittweite dann über dem Rundungsrauschen.
+inline constexpr double kDefaultTypicalGlassIndex = 1.0; // n₀
+inline constexpr double kDefaultTypicalGlassNu1 = 0.01;  // ν₁
+inline constexpr double kDefaultTypicalGlassNu2 = 0.001; // ν₂
+// Komponenten einer Glasvariable
+inline constexpr int kGlassComponents = 3;
+// Standardwert von x_typ; bei Glass für die Komponente `component` (0 = n₀, 1 = ν₁, 2 = ν₂).
+double default_typical(VariableType type, int component = 0);
 
 // Eine einzelne, aufgelöste Variable.
 struct ResolvedVariable {
     VariableType type = VariableType::Curvature;
     // Dateifläche, deren Wert die Variable ist: Krümmung bzw. Dicke von surfaces[surface];
-    // bei WorkingDistance die letzte Fläche; bei GhostCoefficient after_surface der Platte.
+    // bei WorkingDistance die letzte Fläche; bei GhostCoefficient after_surface der Platte; bei
+    // Glass die Fläche, nach der das Medium liegt (surfaces[surface].material).
     int surface = 0;
     double lower = 0.0;   // untere Schranke, -∞ wenn offen
     double upper = 0.0;   // obere Schranke, +∞ wenn offen
@@ -86,6 +97,9 @@ struct ResolvedVariable {
     // ghost_plates[plate].coefficients[order − 1]. Sonst −1 bzw. 0.
     int plate = -1;
     int order = 0;
+    // Nur Glass: Komponente 0 = n₀, 1 = ν₁, 2 = ν₂ der Buchdahl-Koordinaten des Mediums nach
+    // `surface`; sonst 0. Jede Glasfläche ergibt drei aufeinanderfolgende Variablen.
+    int component = 0;
 
     friend bool operator==(const ResolvedVariable&, const ResolvedVariable&) = default;
 };
@@ -99,11 +113,13 @@ struct ResolvedVariable {
 std::vector<ResolvedVariable> resolve_variables(const SystemDescription& system);
 
 // Wert der Variable in der Systembeschreibung (Krümmung bzw. Dicke der Dateifläche,
-// Koeffizient der Geisterplatte).
+// Koeffizient der Geisterplatte; Glas: n₀ bzw. ν₁, ν₂ eines Buchdahl-Materials, n bzw. 0 bei
+// einem konstanten Material). Wirft std::invalid_argument bei einer Glasvariable auf einem
+// Katalogglas (erst umwandeln, convert_glass_variables in mikroptim/optim/glass_variables.hpp).
 double variable_value(const SystemDescription& system, const ResolvedVariable& variable);
 
 // Namen für Meldungen und Dateiformat: "curvature", "thickness", "working_distance",
-// "ghost_coefficient".
+// "ghost_coefficient", "glass".
 std::string_view to_string(VariableType type);
 // Umkehrung von to_string; leer bei unbekanntem Namen.
 std::optional<VariableType> variable_type_from_string(std::string_view name);

@@ -42,6 +42,7 @@ std::string_view target_field(ConstraintType type) {
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
     case ConstraintType::GhostPenalty:
+    case ConstraintType::GlassHull:
         return {};
     }
     return {};
@@ -123,6 +124,8 @@ std::string_view to_string(ConstraintType type) {
         return "petzval";
     case ConstraintType::GhostPenalty:
         return "ghost_penalty";
+    case ConstraintType::GlassHull:
+        return "glass_hull";
     }
     return "?";
 }
@@ -140,9 +143,10 @@ std::string_view to_string(ConstraintMode mode) {
 }
 
 std::optional<ConstraintType> constraint_type_from_string(std::string_view name) {
-    for (const ConstraintType t : {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
-                                   ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus,
-                                   ConstraintType::Petzval, ConstraintType::GhostPenalty}) {
+    for (const ConstraintType t :
+         {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
+          ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus, ConstraintType::Petzval,
+          ConstraintType::GhostPenalty, ConstraintType::GlassHull}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -169,6 +173,7 @@ bool is_paraxial(ConstraintType type) {
     case ConstraintType::Petzval:
         return true;
     case ConstraintType::GhostPenalty:
+    case ConstraintType::GlassHull:
         return false;
     }
     return false;
@@ -178,7 +183,8 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     if (type == ConstraintType::ParaxialFocus) {
         return 0.0;
     }
-    if (type == ConstraintType::Petzval || type == ConstraintType::GhostPenalty) {
+    if (type == ConstraintType::Petzval || type == ConstraintType::GhostPenalty ||
+        type == ConstraintType::GlassHull) {
         return std::nullopt; // Grenze im Eintrag (max_curvature) bzw. keine Sollgröße
     }
     if (!system.target) {
@@ -194,6 +200,7 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
     case ConstraintType::GhostPenalty:
+    case ConstraintType::GlassHull:
         break;
     }
     return std::nullopt;
@@ -268,6 +275,41 @@ void check_constraints(const SystemDescription& system) {
             }
         } else if (c.max_curvature) {
             fail(path + ".max_curvature", "nur bei petzval erlaubt");
+        }
+
+        if (c.type == ConstraintType::GlassHull) {
+            if (c.margin && !(std::isfinite(*c.margin) && *c.margin >= 0.0)) {
+                fail(path + ".margin", "muss endlich und mindestens 0 sein, ist " + num(*c.margin));
+            }
+        } else if (c.margin) {
+            fail(path + ".margin", "nur bei glass_hull erlaubt");
+        }
+
+        if (c.type == ConstraintType::GlassHull) {
+            // Keine Sollgröße, kein Modus, höchstens ein Eintrag (gilt für alle Glasvariablen).
+            if (c.mode) {
+                fail(path + ".mode", "glass_hull hat keinen Modus (Feld weglassen)");
+            }
+            if (c.plate_selection != SurfaceSelection::None) {
+                fail(path + (c.plate_selection == SurfaceSelection::One ? ".plate" : ".plates"),
+                     "nur bei ghost_penalty erlaubt");
+            }
+            if (c.order_weight) {
+                fail(path + ".order_weight", "nur bei ghost_penalty erlaubt");
+            }
+            if (c.order_factor) {
+                fail(path + ".order_factor", "nur bei ghost_penalty erlaubt");
+            }
+            if (c.smoothing) {
+                fail(path + ".smoothing", "nur bei ghost_penalty erlaubt");
+            }
+            for (std::size_t j = 0; j < i; ++j) {
+                if (items[j].type == c.type) {
+                    fail(path + ".type", "Nebenbedingung doppelt: glass_hull steht schon in " +
+                                             at("constraints.items", j));
+                }
+            }
+            continue;
         }
 
         if (c.type == ConstraintType::GhostPenalty) {

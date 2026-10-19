@@ -1,0 +1,28 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse mit Glasvariable",
+  "description": "Frei erfundenes Testsystem (M6-T1): Einzellinse f = 50 mm bei NA 0,05 auf der Achse, drei Wellenlängen (F, e, C). Variablen: beide Krümmungen, das Glas der Linse (Start N-BK7, n0, nu1, nu2 als Buchdahl-Koordinaten) und der Arbeitsabstand; Nebenbedingungen: Brennweite und die Glas-Hülle der frei erfundenen Testgläser (data/glass/synthetisch.json). Der Farblängsfehler verschwindet nur ohne Dispersion (nu1 = nu2 = 0), also weit außerhalb der Hülle realer Gläser; die Strafe hält das Glas in der Hülle.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json", "data/glass/synthetisch.json"],
+  "spectrum": { "wavelengths_nm": [486.13, 546.07, 656.27], "weights": [1.0, 1.0, 1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 50.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.0193, "thickness": 4.0, "material": "N-BK7", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.0193, "thickness": 48.7, "material": "AIR", "semi_diameter": 6.0 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": [1, 2], "min": -0.1, "max": 0.1 },
+      { "type": "glass", "surface": 1 },
+      { "type": "working_distance", "min": 30.0, "max": 70.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 10000.0 },
+      { "type": "glass_hull", "weight": 100000000.0, "comment": "Abstand normiert; Penalty-Fortsetzung in den Tests von 100 bis zu diesem Gewicht" }
+    ]
+  }
+}

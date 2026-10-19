@@ -8,9 +8,12 @@
 #include "cli/trace_command.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
+#include "mikroptim/glass/buchdahl_fit.hpp"
+#include "mikroptim/glass/glass_hull.hpp"
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
+#include "mikroptim/optim/glass_variables.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
@@ -29,6 +32,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -410,6 +414,80 @@ TEST(CliOptimize, GhostPenaltyAndDiagnosis) {
     EXPECT_TRUE(json::parse(n.out)["ghost_diagnosis"].is_null());
     const RunResult nt = optimize({kBiegung, "--quiet", "--max-iterations", "2"});
     EXPECT_EQ(nt.out.find("Geisterplatten"), std::string::npos);
+}
+
+// Glasvariable und Glas-Hülle (M6-T1): Das Startglas wird ein Buchdahl-Material, n0, nu1, nu2
+// sind Variablen, die Strafe glass_hull geht in die Merit ein; die Ergebnisdatei enthält das
+// Glas als {"model": "buchdahl"} mit festem ν₃ und reproduziert die Merit bitgleich.
+TEST(CliOptimize, GlassVariableAndHull) {
+    const TempDir dir("glass");
+    const std::string out_file = dir.file("glas_opt.json");
+    const std::string in_file = kSystems + "einzellinse_glasvariable.json";
+    const RunResult r = optimize({in_file, "-o", out_file, "--json", "--quiet", "--max-iterations",
+                                  "200", "--rings", "6", "--spokes", "4"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_LT(j["result"]["merit"].get<double>(), j["result"]["start_merit"].get<double>());
+    std::vector<std::string> names;
+    for (const json& v : j["variables"]) {
+        names.push_back(v["name"].get<std::string>());
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"c[1]", "c[2]", "n0[1]", "nu1[1]", "nu2[1]", "w"}));
+    EXPECT_EQ(j["variables"][2]["type"], "glass");
+    EXPECT_EQ(j["variables"][2]["surface"], 1);
+    const json& g = j["glass_hull"];
+    ASSERT_TRUE(g.is_object());
+    EXPECT_EQ(g["glasses"], 39);
+    EXPECT_EQ(g["dimension"], 3);
+    EXPECT_EQ(g["weight"].get<double>(), 1e8);
+    ASSERT_EQ(g["elements"].size(), 1U);
+    EXPECT_EQ(g["elements"][0]["surface"], 1);
+    EXPECT_LE(g["elements"][0]["excess_start"].get<double>(), mko::test::kHullDistance);
+    std::printf("Glas-Hülle über die Kommandozeile: Überschreitung am Ende %.3e\n",
+                g["elements"][0]["excess_result"].get<double>());
+
+    // Ergebnisdatei: Buchdahl-Material mit den Ergebniskoordinaten, ν₃ des N-BK7-Fits bleibt
+    const std::vector<double> x = doubles(j["runs"][0]["x"]);
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(out_file));
+    const mko::MaterialSpec& m = loaded.system.surfaces[1].material;
+    ASSERT_EQ(m.kind, mko::MaterialKind::Buchdahl);
+    EXPECT_EQ(m.n0, x[2]);
+    EXPECT_EQ(m.nu[0], x[3]);
+    EXPECT_EQ(m.nu[1], x[4]);
+    const mko::BuchdahlFit fit = mko::fit_buchdahl(loaded.catalog.at("N-BK7"), 3);
+    EXPECT_EQ(m.nu[2], fit.nu[2]);
+    // Merit der Ergebnisdatei (Strahlen, Brennweite, Glas-Hülle) bitgleich
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::LmOptions options;
+    options.jacobian.quadrature.rings = 6;
+    options.jacobian.quadrature.spokes = 4;
+    options.jacobian.extra = mko::concat_extra_residuals(
+        {mko::make_paraxial_residuals(mko::make_paraxial_constraints(loaded.system)),
+         mko::make_glass_hull_residuals(mko::make_glass_hull_penalty(
+             loaded.system, set, mko::make_glass_hull(loaded.catalog)))});
+    const std::vector<double> x_file = set.extract(base, 0);
+    EXPECT_EQ(x_file, x);
+    std::vector<double> f(1);
+    std::vector<std::int64_t> failed(1);
+    std::vector<std::int64_t> hard_failed(1);
+    const int run = 0;
+    mko::CpuLmBackend backend(set, base, options);
+    backend.merit(std::span<const int>(&run, 1), x_file, f, failed, hard_failed);
+    EXPECT_TRUE(same_bits(f[0], j["result"]["merit"].get<double>()))
+        << f[0] << " " << j["result"]["merit"];
+
+    // Text: Abschnitte Glasvariablen und Glas-Hülle; ohne Glasvariablen kein Abschnitt
+    const RunResult t = optimize({in_file, "--quiet", "--max-iterations", "2"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    for (const char* s :
+         {"Glasvariablen (Startglas als Buchdahl-Material", "  Fläche 1: N-BK7 (Fit, max. Fehler",
+          "Glas-Hülle (39 Gläser, Dimension 3", "  n0[1]   1   "}) {
+        EXPECT_NE(t.out.find(s), std::string::npos) << s << "\n" << t.out;
+    }
+    const RunResult n = optimize({kBiegung, "--json", "--quiet", "--max-iterations", "2"});
+    ASSERT_EQ(n.code, mko::cli::kExitOk) << n.err;
+    EXPECT_TRUE(json::parse(n.out)["glass_hull"].is_null());
 }
 
 // Ohne target.focal_length mit Feldwinkeln ≠ 0 hängen die Feldziele von der Brennweite des

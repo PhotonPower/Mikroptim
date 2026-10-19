@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace mko {
@@ -38,8 +39,11 @@ std::string value_path(const ResolvedVariable& v) {
         return at(at("ghost_plates", static_cast<std::size_t>(v.plate)) + ".coefficients",
                   static_cast<std::size_t>(v.order - 1));
     }
-    return at("surfaces", static_cast<std::size_t>(v.surface)) +
-           (v.type == VariableType::Curvature ? ".curvature" : ".thickness");
+    const std::string surface = at("surfaces", static_cast<std::size_t>(v.surface));
+    if (v.type == VariableType::Glass) {
+        return surface + ".material";
+    }
+    return surface + (v.type == VariableType::Curvature ? ".curvature" : ".thickness");
 }
 
 // Geisterkoeffizienten eines Eintrags: (Platte, Ordnung) mit dem JSON-Pfad für Fehler.
@@ -191,20 +195,27 @@ std::vector<SurfaceRef> targets_of(const VariableSpec& spec, const std::string& 
             fail(path + ".surfaces", "bei \"all\" keine einzelnen Flächen");
         }
         // Krümmungen: alle Flächen vom Typ sphere; Dicken: alle außer der letzten
-        // (deren Dicke ist der Arbeitsabstand).
+        // (deren Dicke ist der Arbeitsabstand); Glas: alle Flächen mit einem Glas danach.
         for (int s = 0; s < n; ++s) {
-            const bool take =
-                spec.type == VariableType::Curvature
-                    ? surfaces[static_cast<std::size_t>(s)].type == SurfaceType::Sphere
-                    : s < n - 1;
+            const Surface& surf = surfaces[static_cast<std::size_t>(s)];
+            bool take = s < n - 1;
+            if (spec.type == VariableType::Curvature) {
+                take = surf.type == SurfaceType::Sphere;
+            } else if (spec.type == VariableType::Glass) {
+                take = surf.material.kind != MaterialKind::Air;
+            }
             if (take) {
                 out.push_back({s, path + ".surfaces"});
             }
         }
         if (out.empty()) {
-            fail(path + ".surfaces", spec.type == VariableType::Curvature
-                                         ? "\"all\" findet keine Fläche vom Typ \"sphere\""
-                                         : "\"all\" findet keine Fläche mit variabler Dicke");
+            const char* what = "\"all\" findet keine Fläche mit variabler Dicke";
+            if (spec.type == VariableType::Curvature) {
+                what = "\"all\" findet keine Fläche vom Typ \"sphere\"";
+            } else if (spec.type == VariableType::Glass) {
+                what = "\"all\" findet keine Fläche mit einem Glas (Material nicht \"AIR\")";
+            }
+            fail(path + ".surfaces", what);
         }
         break;
     }
@@ -228,6 +239,10 @@ void check_target(VariableType type, const SurfaceRef& t, const std::vector<Surf
                          "\" (eine Planfläche, die gekrümmt werden darf, als \"sphere\" mit "
                          "\"curvature\": 0 angeben)");
     }
+    if (type == VariableType::Glass && s.material.kind == MaterialKind::Air) {
+        fail(t.path, "Glasvariable verlangt ein Glas nach Fläche " + std::to_string(t.surface) +
+                         " (Material ist \"AIR\")");
+    }
     if (type == VariableType::Thickness && t.surface == n - 1) {
         fail(t.path, "die Dicke der letzten Fläche ist der Arbeitsabstand; dafür die Variable "
                      "\"working_distance\" verwenden");
@@ -236,7 +251,7 @@ void check_target(VariableType type, const SurfaceRef& t, const std::vector<Surf
 
 } // namespace
 
-double default_typical(VariableType type) {
+double default_typical(VariableType type, int component) {
     switch (type) {
     case VariableType::Curvature:
         return kDefaultTypicalCurvature;
@@ -246,6 +261,10 @@ double default_typical(VariableType type) {
         return kDefaultTypicalWorkingDistance;
     case VariableType::GhostCoefficient:
         return kDefaultTypicalGhostCoefficient;
+    case VariableType::Glass:
+        return component == 1   ? kDefaultTypicalGlassNu1
+               : component == 2 ? kDefaultTypicalGlassNu2
+                                : kDefaultTypicalGlassIndex;
     }
     return 1.0;
 }
@@ -260,13 +279,16 @@ std::string_view to_string(VariableType type) {
         return "working_distance";
     case VariableType::GhostCoefficient:
         return "ghost_coefficient";
+    case VariableType::Glass:
+        return "glass";
     }
     return "?";
 }
 
 std::optional<VariableType> variable_type_from_string(std::string_view name) {
-    for (const VariableType t : {VariableType::Curvature, VariableType::Thickness,
-                                 VariableType::WorkingDistance, VariableType::GhostCoefficient}) {
+    for (const VariableType t :
+         {VariableType::Curvature, VariableType::Thickness, VariableType::WorkingDistance,
+          VariableType::GhostCoefficient, VariableType::Glass}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -280,6 +302,26 @@ double variable_value(const SystemDescription& system, const ResolvedVariable& v
             .coefficients.at(static_cast<std::size_t>(variable.order - 1));
     }
     const Surface& s = system.surfaces.at(static_cast<std::size_t>(variable.surface));
+    if (variable.type == VariableType::Glass) {
+        const MaterialSpec& m = s.material;
+        const int c = variable.component;
+        if (c < 0 || c >= kGlassComponents) {
+            throw std::invalid_argument("Glasvariable: Komponente " + std::to_string(c) +
+                                        " außerhalb von [0, 3)");
+        }
+        switch (m.kind) {
+        case MaterialKind::Buchdahl:
+            return c == 0 ? m.n0 : m.nu[static_cast<std::size_t>(c - 1)];
+        case MaterialKind::Constant:
+            return c == 0 ? m.n : 0.0;
+        case MaterialKind::Catalog:
+        case MaterialKind::Air:
+            break;
+        }
+        throw std::invalid_argument(
+            "Glasvariable auf Fläche " + std::to_string(variable.surface) +
+            ": Material ist kein Buchdahl-Glas (vorher mit convert_glass_variables umwandeln)");
+    }
     return variable.type == VariableType::Curvature ? s.curvature : s.thickness;
 }
 
@@ -323,6 +365,22 @@ std::vector<ResolvedVariable> resolve_variables(const SystemDescription& system)
                                         ") liegt über der oberen Schranke " + num(v.upper));
             }
         };
+        if (spec.type == VariableType::Glass) {
+            // Drei Komponenten mit verschiedenen Größenordnungen; die Hülle der Katalog-Gläser
+            // wirkt als Strafterm (Nebenbedingung glass_hull), nicht als Schranke.
+            const char* reason = "bei glass nicht erlaubt (die Glas-Hülle wirkt als Strafterm, "
+                                 "Nebenbedingung \"glass_hull\"; typische Größen fest pro "
+                                 "Komponente)";
+            if (spec.min) {
+                fail(path + ".min", reason);
+            }
+            if (spec.max) {
+                fail(path + ".max", reason);
+            }
+            if (spec.typical) {
+                fail(path + ".typical", reason);
+            }
+        }
         ResolvedVariable base;
         base.type = spec.type;
         base.lower = spec.min.value_or(-kInf);
@@ -363,6 +421,16 @@ std::vector<ResolvedVariable> resolve_variables(const SystemDescription& system)
             }
             ResolvedVariable v = base;
             v.surface = t.surface;
+            if (spec.type == VariableType::Glass) {
+                // n₀, ν₁, ν₂ hintereinander; keine Schranken, kein Startwert zu prüfen (das
+                // Material darf noch ein Katalogglas sein)
+                for (int c = 0; c < kGlassComponents; ++c) {
+                    v.component = c;
+                    v.typical = default_typical(VariableType::Glass, c);
+                    out.push_back(v);
+                }
+                continue;
+            }
             check_start(v);
             out.push_back(v);
         }

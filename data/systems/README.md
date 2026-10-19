@@ -12,6 +12,7 @@
 | `einzellinse_geisterplatte.json` | frei erfundenes Testsystem: Einzellinse wie `einzellinse_bk7.json` mit zwei Geisterplatten im Luftspalt hinter der Blende (Abbildung Datei- ↔ Tabellenflächen, Paraxial, CPU/GPU, M4-T5) |
 | `einzellinse_geisterplatten_exakt.json` | frei erfundenes Testsystem: Biegung der Einzellinse (NA 0,025) mit vier Geisterplatten (Startkoeffizienten ≠ 0), Geisterkoeffizienten als Variablen und L1-Strafe `ghost_penalty`; Abnahme Exaktheit (alle \|a\| < 10⁻⁸ mm, M4-T6) |
 | `einzellinse_na05_geisterplatten.json` | frei erfundenes Testsystem: Einzellinse N-BK7 f = 2 mm bei NA 0,5 mit Geisterplatten-Wörterbuch (CaF₂, N-BK7, Flint als Buchdahl-Modell an drei Lagen), μ aus dem Beugungsziel λ/14; Abnahme Bedarf und Beispiel für den Diagnosebericht (M4-T6) |
+| `einzellinse_glasvariable.json` | frei erfundene Einzellinse f = 50 mm (NA 0,05, F/e/C) mit Glasvariable (Start N-BK7), Brennweite und Glas-Hülle aus `basis.json` und den frei erfundenen Testgläsern `data/glass/synthetisch.json`; Abnahme „Optimierung bleibt innerhalb der Hülle“ (M6-T1) |
 | `zweilinser_petzval.json` | frei erfundener Zweilinser (Sammellinse n = 1,8, Zerstreuungslinse CaF₂, f = 20 mm) mit Variablen, Brennweiten- und Petzval-Bedingung (κ_max = 0,01/mm); Abnahme der Petzval-Nebenbedingung (M4-T4) |
 
 Geplante Start- und Referenzsysteme (Linsendaten trägt der Maintainer ein, Agenten erfinden keine Daten realer Objektive):

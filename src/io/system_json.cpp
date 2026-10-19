@@ -444,7 +444,7 @@ private:
         if (!t) {
             fail(type_path, "unbekannter Variablentyp \"" + type +
                                 "\" (erlaubt: curvature, thickness, working_distance, "
-                                "ghost_coefficient)");
+                                "ghost_coefficient, glass)");
         }
         v.type = *t;
 
@@ -534,7 +534,7 @@ private:
         if (!t) {
             fail(type_path, "unbekannter Typ einer Nebenbedingung \"" + type +
                                 "\" (erlaubt: focal_length, parfocal_length, working_distance, "
-                                "paraxial_focus, petzval, ghost_penalty)");
+                                "paraxial_focus, petzval, ghost_penalty, glass_hull)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -569,12 +569,16 @@ private:
         if (const Json* e = member(j, "smoothing")) {
             c.smoothing = as_number(*e, join(path, "smoothing"));
         }
+        if (const Json* d = member(j, "margin")) {
+            c.margin = as_number(*d, join(path, "margin"));
+        }
         if (const Json* m = member(j, "comment")) {
             c.comment = as_string(*m, join(path, "comment"));
         }
         warn_unknown(j, path,
                      {"type", "mode", "weight", "reference_surface", "offset", "max_curvature",
-                      "plate", "plates", "order_weight", "order_factor", "smoothing", "comment"});
+                      "plate", "plates", "order_weight", "order_factor", "smoothing", "margin",
+                      "comment"});
         return c;
     }
 
@@ -686,6 +690,9 @@ Json constraints_to_json(const Constraints& cons) {
         }
         if (c.smoothing) {
             j["smoothing"] = *c.smoothing;
+        }
+        if (c.margin) {
+            j["margin"] = *c.margin;
         }
         if (c.comment) {
             j["comment"] = *c.comment;

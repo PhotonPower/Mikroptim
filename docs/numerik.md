@@ -471,11 +471,11 @@ $$\omega = \frac{\delta\lambda}{1 + 2{,}5\,\delta\lambda},\qquad n(\omega) = n_0
 
 Die Koordinate ist nur für 1 + 2,5 δλ > 0 definiert, also λ > 0,146074 µm; außerhalb meldet der Host einen Fehler. Implementierung beider Formeln: `include/mikroptim/glass/dispersion.hpp`.
 
-Koeffizienten werden per kleinsten Quadraten an Sellmeier über 400–700 nm angepasst. Optimiert werden (n₀, ν₁, ν₂) innerhalb der konvexen Hülle der Katalog-Gläser (normierte Koordinaten); ν₃ dient der Bewertung.
+Koeffizienten werden per kleinsten Quadraten an Sellmeier über 400–700 nm angepasst. Optimiert werden (n₀, ν₁, ν₂) innerhalb der konvexen Hülle der Katalog-Gläser (normierte Koordinaten, Strafterm außerhalb); ν₃ bleibt fest (Festlegung M6-T1, siehe unten).
 
 **Buchdahl-Fit** (`include/mikroptim/glass/buchdahl_fit.hpp`, `mko::fit_buchdahl`):
 
-- *Termzahl:* gezählt werden die Dispersionskoeffizienten ohne n₀. „3 Terme“: (n₀, ν₁, ν₂, ν₃); „2 Terme“: (n₀, ν₁, ν₂) mit ν₃ = 0. Die 2-Term-Koeffizienten sind die Glasvariablen der Optimierung, der 3-Term-Fit dient der Bewertung.
+- *Termzahl:* gezählt werden die Dispersionskoeffizienten ohne n₀. „3 Terme“: (n₀, ν₁, ν₂, ν₃); „2 Terme“: (n₀, ν₁, ν₂) mit ν₃ = 0. Die Glasvariablen (ab M6-T1) kommen aus dem 3-Term-Fit (siehe „Glasvariablen“ unten); der 2-Term-Fit bleibt als Option (`dispersion_terms = 2`).
 - *Stützstellen:* standardmäßig N = 301 Tschebyschow-Knoten erster Art in λ, λ_k = λ_m − h cos(π (k + ½)/N) mit Mitte λ_m und halber Breite h des Bereichs. Ungewichtete kleinste Quadrate auf diesen Knoten kommen dem gleichmäßig besten (Minimax-)Fit nahe; das passt zum Fehlermaß der Abnahme (Maximum). Alternativ äquidistant in λ mit Randpunkten. Bereich, N und Knotenart sind Parameter (`BuchdahlFitOptions`).
 - *Lösung:* Das Modell ist linear in den Koeffizienten. Entwurfsmatrix A_ij = ω_i^j (Vandermonde in ω, j = 0 … Termzahl), rechte Seite n(λ_i); min ‖A x − b‖₂ per Householder-QR in FP64, keine Normalgleichungen (die würden die Konditionszahl quadrieren; cond(A) ≈ 1,2·10² für 2 und 1,4·10³ für 3 Terme über 400–700 nm).
 - *Fehlermaß:* max |n_Buchdahl − n_Sellmeier| und RMS auf einem eigenen äquidistanten Prüfgitter mit Randpunkten (Standard 3001 Punkte = 0,1 nm), ausgewertet mit derselben Formel wie die Brechzahltabelle.
@@ -490,6 +490,8 @@ Ergebnisse für `data/glass/basis.json` (Standardeinstellungen; „äquidistant�
 | F_SILICA | 1,4600812 | −4,3132·10⁻² | 1,3161·10⁻³ | −3,6838·10⁻³ | 5,7·10⁻⁶ | 9,4·10⁻⁶ | 9,3·10⁻⁶ / 1,5·10⁻⁵ |
 
 (Koeffizienten des 3-Term-Fits. Der Test `BuchdahlFit.AcceptanceBasisCatalog` gibt diese Tabelle aus.)
+
+**Glasvariablen (ab M6-T1, `include/mikroptim/optim/glass_variables.hpp`).** Das Material einer Fläche mit Variable `glass` wird vor der Optimierung in ein Buchdahl-Material umgewandelt (`convert_glass_variables`): Katalogglas → 3-Term-Fit über 400–700 nm (Standardeinstellungen oben), konstantes n → n₀ = n, ν = 0. Variabel sind (n₀, ν₁, ν₂) dieses Fits; ν₃ des Startglases bleibt fest. Die Punkte der Glas-Hülle sind die (n₀, ν₁, ν₂) der 3-Term-Fits aller Katalog-Gläser mit denselben Einstellungen (`make_glass_hull`), sodass Variable und Hülle dieselben Koordinaten haben. Gründe gegen die 2-Term-Koeffizienten (ν₃ = 0): Die Umwandlung soll die Merit praktisch nicht ändern; der 3-Term-Fit trifft N-BK7 auf 5,5·10⁻⁶ (Brechzahlen im Batch nach der Umwandlung gemessen 4,3·10⁻⁶ bei F, d, C und λ_ref), der 2-Term-Fit auf 6,1·10⁻⁶ bis 1,1·10⁻⁵ (CaF₂), bei Flinten deutlich schlechter. Preis der Festlegung: Wandert das Glas zu den Koordinaten eines anderen Katalogglases, weicht sein ν₃ von dem des Ziels ab (|Δν₃| · max|ω|³ ≈ |Δν₃| · 0,012 über 400–700 nm, für |Δν₃| ≈ 10⁻² etwa 10⁻⁴ am blauen Rand); das Glas-Einrasten (M6-T5) ersetzt am Ende ohnehin das Modell durch das Katalogglas. Die Alternative (Variablen und Hülle aus dem 2-Term-Fit) ist eine Einstellung (`dispersion_terms` in `convert_glass_variables` und `GlassHullOptions`), keine Formatänderung. Die Brechzahlen der Variante (alle Wellenlängen und λ_ref) entstehen in `VariableSet::apply` mit `buchdahl_index` wie in der Brechzahltabelle.
 
 ## 11. Weiches Versagen
 
