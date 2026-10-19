@@ -492,17 +492,84 @@ API `include/mikroptim/optim/ghost_diagnosis.hpp`: `diagnose_ghost_plates(system
 3. Sonst wird die gemeinsame Korrektur der aktiven Platten in einen monochromatischen und einen Farbanteil zerlegt: T_k = Σ_g (n_g,ref − n_m) a_{g,k} (Phase bei λ_ref) und ΔT_k = Σ_g Δn_g a_{g,k} mit Δn_g = n_g(λ_kurz) − n_g(λ_lang) (Unterschied der Phase zwischen den äußeren Merit-Wellenlängen), beide in der Norm Σ_k x_k²/(2k + 1) (RMS des Profils, Orthogonalität der P_k). Der Farbanteil χ = ‖ΔT‖/‖T‖ einer einzelnen Platte ist |Δn_g|/(n_g,ref − n_m), also höchstens das größte χ_g der aktiven Gläser („gleiches Muster über alle Wellenlängen“ bis auf die Dispersion eines Glases). Ist χ > 2 · max χ_g, unterscheiden sich die Muster der Wellenlängen stärker, als es eine einzelne Platte könnte – das geht nur durch Kombination von Gläsern verschiedener Dispersion (etwa Kron positiv, Flint negativ bei kompensierter Brechkraft): **B**. Sonst **A**.
 4. **B mit anomaler Teildispersion**, wenn bei B mindestens drei Merit-Wellenlängen vorliegen und eine aktive Platte mit ΔP_g,F ≥ 0,02 (CaF₂: +0,055, FK51-artig ≈ +0,03; normale Gläser |ΔP| < 0,01) mindestens 25 % von Σ|a| der Lage trägt. Bei zwei Wellenlängen genügt ein großer Abbe-Unterschied für die Farbkorrektur; eine aktive Fluorit-Platte ist dort kein Nachweis eines sekundären Spektrums (Hinweis in der Begründung, Klassifikation B).
 
-Alle Schwellen stehen in `GhostDiagnosisOptions`. **Empfehlung** des Berichts: die Lage mit dem größten Merit-Gewinn ihrer aktiven Platten (ohne Merit: größte Σ|a|), mit Operator, Glas der aktivsten Platte und dominanter Ordnung; Initialisierung des Operators daraus ist M6-T2.
+Alle Schwellen stehen in `GhostDiagnosisOptions`. **Empfehlung** des Berichts: die Lage mit dem größten Merit-Gewinn ihrer aktiven Platten (ohne Merit: größte Σ|a|), mit Operator, Glas der aktivsten Platte und dominanter Ordnung; Initialisierung des Operators daraus: Abschnitt 6 (M6-T2).
 
 Tests: `tests/test_ghost_diagnosis.cpp` (Felder gegen unabhängige Rechnungen: t₂ und φ_G, Rand- und Hauptstrahlhöhe im kollimierten Strahl, Merit mit Orakel 1 + Σ a², Abbezahlen und ΔP_g,F von CaF₂, N-BK7 und dem Flint; Klassifikation A/B/B anomal an vorgegebenen Koeffizienten; Text und JSON), Bedarf-Abnahme in Abschnitt 3.
 
 ## 6. Einfüge-Operatoren
 
-Beide Operatoren ändern die Merit **exakt nicht** (Test: |ΔF| ≤ 10⁻¹² relativ).
+Beide Operatoren ändern die Merit **exakt nicht** (Plan: |ΔF| ≤ 10⁻¹² relativ; in FP64 bis auf den Rundungsboden des Traces, siehe „Festlegungen der Implementierung“).
 
 **A – Meniskus ohne Brechkraft (nach Bociort):** In einem Luftspalt werden zwei Flächen gleicher Krümmung c₀ im Abstand 0 mit einem Glas aus dem Wörterbuch eingefügt. Die Dicke wird anschließend über eine Homotopie auf die Mindestdicke gebracht. c₀ und Glas werden aus der aktivsten Geisterplatte an dieser Position initialisiert (Vorzeichen der Biegung, Glastyp). Danach wird das Strafgewicht dieser Geisterplatte erhöht, sodass die Korrektur in das reale Element wandert. Dass eingefügte Elemente Sattelpunkte erzeugen können, wird genutzt: Beide Abstiegsrichtungen werden als getrennte Läufe weiterverfolgt.
 
 **B – Aufspalten in ein Kittglied:** Eine Glaslinse wird an einer inneren Fläche (Krümmung c_s, z. B. aus der Geisterdiagnose oder als Mittel der Außenflächen) in zwei Teile aus **demselben** Glas geteilt. Danach werden die Glasparameter eines Teils freigegeben (Variable `glass`, Abschnitt 1; Hülle der Katalog-Gläser als Strafterm, Abschnitt 2.4) und wandern stetig, z. B. von einem Kronglas Richtung Fluorit.
+
+### Festlegungen der Implementierung (M6-T2)
+
+API: `include/mikroptim/optim/insertion.hpp` (Bibliothek `Mikroptim::optim`), Kommandozeile `mikroptim insert` ([cli.md](cli.md#mikroptim-insert)). Die Operatoren arbeiten auf der `SystemDescription` und geben eine neue zurück (`InsertionResult`: System, Abbildung alte → neue Dateiflächen, erste eingefügte Fläche, Zahl der eingefügten Flächen); die Topologie ändert sich, Brechzahltabelle, Batch und `VariableSet` werden neu gebaut (`prepare_system`, `make_system_batch`). Das neue System wird mit `validate_system` geprüft.
+
+```cpp
+SystemDescription renumber_surfaces(const SystemDescription&, std::span<const int> new_of_old,
+                                    std::vector<Surface> new_surfaces);
+InsertionResult insert_meniscus(const SystemDescription&, const MeniscusInsertion&);   // A
+InsertionResult split_lens(const SystemDescription&, const LensSplit&);                // B
+std::array<SystemDescription, 2> meniscus_saddle_starts(const SystemDescription&, int first,
+                                                        double delta_front, double delta_back);
+void free_glass(SystemDescription&, int surface, const std::optional<MaterialSpec>& start = {});
+void scale_ghost_penalty(SystemDescription&, int plate, double factor);
+MeniscusPlan meniscus_from_diagnosis(const SystemDescription&, const GhostDiagnosis&,
+                                     const MeniscusInitOptions& = {});
+SplitPlan split_from_diagnosis(const SystemDescription&, const GlassCatalog&,
+                               const GhostDiagnosis&, const SplitInitOptions& = {});
+double achromat_split_curvature(double c1, double c2, double abbe_front, double abbe_back);
+double ghost_profile_t4(const GhostPlate&);   double abbe_number(const MaterialSpec&, const GlassCatalog&);
+```
+
+**Umnummerierung** (`renumber_surfaces`, einzige Stelle mit Flächenbezügen; Test `RenumberSurfaces.*`). Die Abbildung i → new_of_old[i] ist streng monoton, die Blende bleibt Fläche 0, die Frontfläche die letzte. Angepasst werden: Flächenlisten der Variablen `curvature`, `thickness`, `glass` (Einträge mit `"all"` werden in die explizite Liste der alten Flächen umgewandelt, damit die Variablenmenge erhalten bleibt und eingefügte Flächen nicht unbemerkt Variablen werden; die Reihenfolge der Variablen bleibt), `after_surface` der Geisterplatten, `reference_surface` der Abgleichlänge und die Flächen der mechanischen Nebenbedingungen (M4-T3; Standardauswahl bzw. `"all"` wird wie bei den Variablen zur expliziten Liste der alten Flächen aus `constraint_surfaces`, sodass eingefügte Flächen nicht unbemerkt eingeschränkt werden; bei den Dicken-Bedingungen ist die Fläche i der Spalt i → i + 1). Arbeitsabstand, Geisterkoeffizienten und `ghost_penalty` beziehen sich auf die letzte Fläche bzw. auf Plattenindizes und bleiben; die Operatoren fügen keine Platten ein und ändern ihre Reihenfolge nicht. Weitere Nebenbedingungen mit Flächenbezug gehören in diese Funktion (Test `RenumberSurfaces.MechanicalConstraints`: Einfügen vor, zwischen und hinter den referenzierten Flächen).
+
+**Operator A** (`insert_meniscus`): Im Luftspalt T nach Dateifläche i entstehen die Flächen i + 1 (Typ `sphere`, c₀, Glas, Dicke t_m, Standard 0) und i + 2 (Typ `sphere`, c₀, Luft, Dicke fl(T − p − t_m)); Fläche i hat danach die Dicke p (`position`). Geisterplatten des Spalts mit distance ≤ p bleiben vor dem Meniskus, die übrigen (distance ≥ p + t_m) liegen danach nach Fläche i + 2 mit distance − p − t_m; eine Platte im Glas ist ein Fehler. Eine Dickenvariable des Spalts gilt danach für beide Luftspalte (gleicher Eintrag, gleiche Schranken; ein Teilstück unter der Schranke ergibt `FormatError`), ebenso mechanische Mitten- und Randdicken-Bedingungen des Spalts (dort kein Fehler: Verletzt ein Teilstück die Grenze, wird die Strafe aktiv und die Merit ändert sich). Optional (`curvature_variables`, Standard an) ein neuer Eintrag `curvature` für beide Meniskusflächen mit eigenen Schranken. Halbdurchmesser: Vorgabe, sonst der größere der beiden Spaltflächen (er geht nicht in den Trace ein). Die Mitteldicke t_m ist der Homotopie-Parameter (M6-T3); sie ist keine Variable.
+
+**Operator B** (`split_lens`): Die Linse aus Fläche i (Glas danach) und i + 1 wird an der neuen Fläche i + 1 (Typ `sphere`, c_s, dasselbe Material) geteilt, Dicken t₁ = fl(f·t) und t₂ = fl(t − t₁) mit dem Anteil f (`fraction`, 0 … 1). Dicken- und Glasvariablen sowie mechanische Mitten- und Randdicken-Bedingungen der Linse gelten danach für beide Teile (eine Grenze für die ganze Linse, etwa die Randdicke, ist für jeden Teil meist zu streng; dann wird die Strafe aktiv); optional ein neuer Eintrag `curvature` für die Kittfläche. Halbdurchmesser: Vorgabe, sonst der kleinere der beiden Linsenflächen. `free_glass(system, s, start)` gibt das Glas nach Fläche s als Variable frei (Eintrag `glass`, nichts, wenn es schon frei ist), optional mit anderem Startglas; danach wie in M6-T1 `convert_glass_variables` und die Nebenbedingung `glass_hull`.
+
+**Merit-Invarianz.** Mit t_m = 0 brechen die Strahlen an zwei identischen Flächen ein und wieder aus, an der Kittfläche ist μ = n/n = 1; mathematisch ändert sich nichts. Bitgleich ist das Ergebnis nicht: Spalt bzw. Glasdicke werden in Teilstücke zerlegt (zusätzliche Transfers und Schnittpunkte), die OPL-Summe erhält mehr Summanden, und die Brechungsformel (numerik.md, Abschnitt 5) stellt die Richtung nur bis auf Rundung her (k = 1 − μ²(1 − cos² I) ist nicht bitgleich cos² I). Die Änderung liegt am Rundungsboden des sequenziellen FP64-Traces, der relativ zu F umso größer ist, je besser das System korrigiert ist (OPD-RMS ≈ 10⁻⁴ mm gegen optische Längen ≈ 100 mm): Schon zwei Flächen mit n = 1 im Luftspalt (optisch nichts, nur Transfer in Teilstücken) ändern F der Einzellinse (F = 3·10⁻² Wellen²) um bis zu 1,1·10⁻¹² relativ (Test `InsertionMerit.RoundingFloorControl`). Gemessen über 26 Fälle (`InsertionMerit.UnchangedOnCpu`, GPU `CudaInsertion.MeritUnchangedOnGpu`: A an verschiedenen Lagen, Krümmungen −0,4 … 0,6/mm und Gläsern, auch zwischen, an und hinter Geisterplatten mit Koeffizienten ≠ 0 und mit paraxialen Nebenbedingungen und L1-Strafe; B mit Anteil 0 … 1 und verschiedenen Kittflächen; Einzellinsen und Mehrlinser mit drei Feldern und vier Wellenlängen; zwei Fälle von A im Zweilinser mit mechanischen Nebenbedingungen, M4-T3, dort ≤ 1,9·10⁻¹⁵):
+
+| | CPU | GPU (RTX 3090) |
+|---|---|---|
+| größte relative Änderung, Operator A | 2,1·10⁻¹² | 2,0·10⁻¹² |
+| größte relative Änderung, Operator B | 3,0·10⁻¹³ | 5,7·10⁻¹³ |
+| Fälle mit ≤ 10⁻¹² | 24 von 26 | 23 von 26 |
+| F GPU gegen CPU (eingefügte Systeme) | – | höchstens 2,3·10⁻¹² relativ |
+| Rundungsboden (Flächen mit n = 1) | 1,1·10⁻¹² | – |
+
+Die Planvorgabe 10⁻¹² halten B in diesen Fällen immer und A in der Regel; im Abnahmesystem von B unten (Einzellinse am Optimum, zwei Wellenlängen) ändert der Split F um 4,7·10⁻¹² (GPU 1,3·10⁻¹²). Die Tests prüfen gegen `kInsertionMeritRelative` = 10⁻¹¹ (Begründung in `tests/tolerances.hpp`, Frage an den Maintainer im PR). Paraxial ändert sich die Brennweite höchstens um `kParaxialRelative`. Gegenprobe: derselbe Meniskus mit t_m = 0,5 mm ändert F um mehr als 10⁻³ relativ.
+
+**Initialisierung aus dem Diagnosebericht** (Abschnitt 5):
+
+- *A* (`meniscus_from_diagnosis`): Lage = empfohlene Lage des Berichts (`after_surface`, `distance` → `position`); Quellplatte = aktive Platte der Lage mit der größten Σ|a|; Glas = Glas dieser Platte. |c₀|: Vorgabe, sonst die Krümmung der dem Meniskus näheren Spaltfläche (wie Bociorts Konstruktion, die das Nullelement an eine vorhandene Fläche legt), sonst die der anderen, sonst 0 (Planplatte). Vorzeichen von c₀ = Vorzeichen von (n_G − n_m)·t₄ mit dem r⁴-Koeffizienten des Dickenprofils t₄ = Σ_k a_k q_k/r_g⁴, q_k = (−1)^k C(k, 2) C(k + 2, 2) (q₂ = 6, q₃ = −30, q₄ = 90: der Anteil der sphärischen Korrektur, bei dominanter Ordnung 2 das Vorzeichen von a₂); bei t₄ = 0 das von φ_G. Die Regel ist eine Heuristik (in einem kollimierten Bündel ist die Wirkung eines dicken Meniskus gleicher Krümmungen in c₀ gerade, das Vorzeichen zählt erst im konvergenten Bündel); die Gegenrichtung liefert ein zweiter Lauf. `meniscus_saddle_starts(system, first, δ_a, δ_b)` erzeugt die beiden Startvarianten c_a = c₀ ± δ_a, c_b = c₀ ± δ_b (Standard δ_b = −δ_a: dünne Brechkraft ±2 (n − 1) δ); die Verwaltung der Zweige ist M6-T4.
+- *Strafgewicht* (`scale_ghost_penalty(system, g, factor)`): μ der Platte g wird mit `factor` multipliziert. Deckt ihr Eintrag `ghost_penalty` weitere Platten ab, wird die Platte daraus gelöst (`"all"` → Liste der übrigen) und erhält einen eigenen Eintrag mit μ·factor und denselben w₀, κ, ε; die übrigen Terme bleiben unverändert (Test `GhostPenaltyScale.SplitsSharedEntry`). `ghost_penalty_weight` liest μ einer Platte.
+- *B* (`split_from_diagnosis`): Linse = die dem Spalt der Lage benachbarte Glaslinse (vor oder hinter dem Spalt, bei beiden die der Plattenlage nähere); Zielglas = Glas der aktiven Platte mit der größten Abweichung |1/ν_d − 1/ν_d,Linse| (bei „B anomal“ die mit dem größten ΔP_g,F); freigegeben wird Teil `free_part` (Standard 1, der hintere), sein Glas startet beim Linsenglas (Merit unverändert), das Zielglas bestimmt nur c_s. c_s: dünnes Achromat aus Linse (c₁, c₂) und Zielglas, φ₁ = φ ν₁/(ν₁ − ν₂), φ₂ = −φ ν₂/(ν₁ − ν₂), also c_s = c₁ − (c₁ − c₂) ν₁/(ν₁ − ν₂) (`achromat_split_curvature`, unabhängig von n); alternativ das Mittel der Außenkrümmungen. Verletzt c_s die Randdicke `min_edge_thickness` (Standard 0) eines Teils bei der Höhe h = kleinerer Halbdurchmesser (höchstens 0,99/|c| jeder Fläche, und nur so weit, wie die ungeteilte Linse dort Randdicke hat), wird c_s auf der Strecke zum Mittel zurückgenommen (Bisektion). Die Abbezahlen kommen aus `abbe_number` (Linien d, F, C; konstantes n: ∞).
+
+**Abnahme B** (`tests/test_insertion_optimization.cpp`, GPU `tests/test_cuda_insertion.cpp`): frei erfundene Einzellinse `data/systems/einzellinse_achromat_start.json` (N-BK7, f = 50 mm, NA 0,05, Achse, 480 und 644 nm, λ_ref = 546,07 nm), Variablen c₁, c₂, w, Brennweite als Gleichung (10⁴/mm²). Ablauf: Einzellinse optimieren; Operator B mit c_s aus `achromat_split_curvature` und dem Glas kleinster Abbezahl der Hülle (SYN-30, ν_d = 22,3), Anteil 0,5, Kittfläche als Variable; Glas des hinteren Teils freigeben (Start N-BK7, Buchdahl-Fit); Penalty-Fortsetzung der Glas-Hülle (basis.json und Testgläser) über 10² … 10⁸ wie in M6-T1 mit höchstens 300 Zyklen pro Stufe. Farblängsfehler = paraxiale hintere Schnittweite bei 480 nm minus der bei 644 nm.
+
+| Kriterium | CPU | GPU (RTX 3090) |
+|---|---|---|
+| Einzellinse: Farblängsfehler | −0,7664 mm (F = 6,45·10⁻² Wellen², 141 Zyklen) | −0,7664 mm (148 Zyklen) |
+| Merit nach dem Operator B | relativ 4,7·10⁻¹² | relativ 1,3·10⁻¹² |
+| Kittglied: Farblängsfehler | −0,0433 mm, **Faktor 17,7 kleiner** (F = 1,05·10⁻⁴) | −0,0433 mm, **Faktor 17,7 kleiner** (F = 9,86·10⁻⁵) |
+| Brennweite | 50,00000001 mm (Einzellinse 50,00000013 mm) | 50,00000000 mm |
+| Glas am Ende | n₀ = 1,519, ν_d = 52,2 (im Inneren der Hülle) | n₀ = 1,519, ν_d = 52,2 |
+
+Verlauf: Nach 50 Zyklen der ersten Stufe ist der Farblängsfehler schon −0,046 mm; danach kriecht LM durch das flache Tal der Achromate (Farbe nahezu 0, Rest sphärische Aberration und Sphärochromasie bei NA 0,05) und erreicht in den Stufen bis 10⁶ die Zyklengrenze (`max_iterations`), die letzten Stufen konvergieren (`converged_step`). Mit dem vollen Gewicht der Hülle von Anfang an bleibt das Glas an der Ecke N-BK7 der Hülle hängen (Farblängsfehler nur Faktor 1,4 kleiner), die Fortsetzung ist also nötig. Das Glas wandert nicht bis zum Zielglas: LM findet ein Achromat mit einem schwächer dispergierenden Partner und stärker gekrümmter Kittfläche (c_s = −0,166/mm statt −0,031/mm).
+
+**Ablauf A** (`InsertionOptimization.OperatorAFromDiagnosisCpu`, GPU `CudaInsertion.OperatorAFromDiagnosisGpu`): Einzellinse NA 0,5 mit Geisterplatten-Wörterbuch (`einzellinse_na05_geisterplatten.json`, Abnahme „Bedarf“ aus M4-T6): LM mit Geisterplatten, Diagnose (Empfehlung A, Flint-Platte 8 hinter der Linse, Ordnung 2), Plan aus `meniscus_from_diagnosis` (c₀ = +0,1417/mm = |c| der hinteren Linsenfläche, Glas Flint), Einfügen bei t_m = 0, Strafgewicht der Platte ×10, dann t_m = 0,01; 0,02; 0,05; 0,1; 0,15 mm (Luftspalt dahinter entsprechend kürzer), jede Stufe LM ab der vorigen (Krümmungen der Linse und des Meniskus, Arbeitsabstand, alle Geisterkoeffizienten):
+
+| | CPU | GPU (RTX 3090) |
+|---|---|---|
+| mit Geisterplatten | RMS 0,0875 Wellen, Platte 8 Σ\|a\| = 7,77·10⁻³ mm | gleich (73 Zyklen) |
+| Merit nach dem Einfügen | relativ 3,1·10⁻¹⁴ | relativ 3,9·10⁻¹⁴ |
+| nach t_m = 0,15 mm | RMS 0,0473 Wellen, Platte 8 Σ\|a\| = 2,7·10⁻⁷ mm, übrige Platten 8,6·10⁻⁴ mm | gleich auf die gezeigten Stellen (256, 60, 75, 88, 89 Zyklen) |
+
+Die Korrektur wandert vollständig aus der Platte in das reale Element; schon bei t_m = 0,01 mm ist sie übernommen (LM-Läufe 245, 62, 74, 92, 81 Zyklen, alle konvergiert). Der „Meniskus“ wird dabei zu einer sammelnden Linse (c = +0,788/+0,401 mm⁻¹): Die Meniskusflächen sind frei, und das Teilen der Brechkraft senkt die sphärische Aberration stärker als ein brechkraftloser Meniskus. Ohne Mechanik-Nebenbedingungen (M4-T3) hat sie bei r = 0,8 mm keine Randdicke mehr; das Beispiel zeigt den Ablauf, kein fertigbares System. Mit −c₀ (zweiter Zweig) endet der Lauf im selben Minimum.
 
 ## 7. Homotopie-Controller
 

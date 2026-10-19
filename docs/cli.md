@@ -9,6 +9,8 @@ mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex]
                [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]] [--gpu [--device N]]
 mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--max-combinations N]
                [--max-iterations N] [--rings N] [--spokes M] [--gpu [--device N]]
+mikroptim insert <system.json> -o <neu.json> (--meniscus I,POS,C0,GLAS [--thickness T] |
+                 --split I,C_S[,ANTEIL] [--free-glass]) [--no-variables]
 ```
 
 | Aufruf | Wirkung |
@@ -19,6 +21,7 @@ mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--ma
 | `mikroptim optimize …` | Variablen eines Systems optimieren, Ergebnis als neue Systemdatei (M3-T5; [Abschnitt `optimize`](#mikroptim-optimize)) |
 | `mikroptim eval …` | Auswertung auf dem dichten Pupillenraster (Modus EVAL, M8-T1; Abschnitt [`mikroptim eval`](#mikroptim-eval)) |
 | `mikroptim snap …` | Glasvariablen auf Katalog-Gläser einrasten, übrige Variablen reoptimieren (M6-T5; Abschnitt [`mikroptim snap`](#mikroptim-snap)) |
+| `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
 
@@ -1051,3 +1054,34 @@ Zahlen verlustfrei, nicht endliche Werte `null` (wie `mikroptim.optimize/1`).
 ### Tests
 
 `tests/test_cli_snap.cpp`: `CliSnap.OptimizeThenSnapReproducesMerit` (Achromat über `optimize` kontinuierlich optimiert, dann eingerastet: 9 Läufe, nur Katalog-Gläser und keine Glasvariablen in der Ergebnisdatei, Verschlechterung = Merit − kontinuierlich, bester Lauf mit der kleinsten Merit, Ergebnis bitgleich zu `snap_glasses`, Merit der neu geladenen Datei und RMS von `mikroptim trace` bitgleich; erneutes Einrasten scheitert mit „keine Glasvariablen“), `CliSnap.TextOutputAndLimit` (Abschnitte, „3 von 4 (kleinste Summe d²)“), `CliSnap.Errors`, `CliSnap.GpuUnavailableWithoutCuda` bzw. im CUDA-Build `CliSnapGpu.MatchesCpuSelection` (gleiche Auswahl, Merit relativ ≤ 10⁻⁶). ctest-Kommandos: `cli_snap_optimize` → `cli_snap_text` → `cli_snap_result_trace` (Beispiel oben). Implementierung: `src/cli/snap_command.cpp`; `same_file`, `utf8` und `catalogs_for` teilen sich `optimize` und `snap` in `src/cli/cli_util.hpp`.
+
+## `mikroptim insert`
+
+Wendet einen Einfüge-Operator der Systemsynthese auf eine Systemdatei an und schreibt das neue System ([optimierung.md, Abschnitt 6](optimierung.md#6-einfüge-operatoren)). Gibt die Merit vorher und nachher aus (CPU, Pupillenquadratur 10 × 8; Strahl- und Strafresiduen, paraxiale Nebenbedingungen und L1-Strafe der Geisterplatten, ohne Glas-Hülle) sowie die paraxiale Brennweite bei λ_ref; beide bleiben bis auf Rundung gleich.
+
+| Option | Bedeutung |
+|---|---|
+| `--meniscus I,POS,C0,GLAS` | Operator A (`insert_meniscus`): zwei Flächen der Krümmung C0 [1/mm] im Luftspalt nach Dateifläche I, Vorderfläche im Abstand POS [mm] vom Scheitel von I; GLAS ist ein Katalogname oder `n=<Brechzahl>` (konstant) |
+| `--thickness T` | Mittendicke des Meniskus [mm] (nur mit `--meniscus`; Standard 0, dann ändert sich die Merit nicht) |
+| `--split I,C_S[,ANTEIL]` | Operator B (`split_lens`): Linse aus Fläche I und I + 1 an einer Kittfläche der Krümmung C_S teilen, ANTEIL der Mittendicke vor der Kittfläche (Standard 0,5) |
+| `--free-glass` | nur mit `--split`: Glas des hinteren Teils als Variable `glass` freigeben (`free_glass`; `mikroptim optimize` wandelt es beim Laden in Buchdahl um) |
+| `--no-variables` | keine Krümmungsvariablen für die neuen Flächen (Standard: eigener Eintrag `curvature` ohne Schranken) |
+| `-o DATEI`, `--output DATEI` | neues System (Pflicht); Glaskataloge wie bei `optimize` relativ zum Verzeichnis der Ergebnisdatei; die Eingabedatei wird nie überschrieben (Exit-Code 2) |
+
+Genau einer von `--meniscus` und `--split` ist nötig. Exit-Codes wie bei `trace`: 0 Ergebnis geschrieben, 1 Datei- oder Formatfehler (z. B. Luftspalt ohne Luft, Glas unbekannt, Teilstück unter der Schranke einer Dickenvariable), 2 ungültige Kommandozeile.
+
+Beispiel (Operator B auf die frei erfundene Einzellinse, c_s für ein dünnes Achromat mit SYN-30):
+
+```
+$ mikroptim insert data/systems/einzellinse_achromat_start.json --split 1,-0.03076,0.5 --free-glass -o kitt.json
+mikroptim insert: Operator B (Kittglied)
+  Eingefügte Flächen                          2
+  Flächen vorher / nachher                    3 / 4
+  Merit vorher [Wellen²]                      3.639291160270993e+03
+  Merit nachher [Wellen²]                     3.639291160270992e+03
+  relative Änderung                           1.25e-16
+  Brennweite vorher / nachher [mm]            50.610619298 / 50.610619298
+Ergebnis geschrieben: kitt.json
+```
+
+**Tests:** `tests/test_cli_insert.cpp` (Ergebnisdatei gleich der Bibliothek, Merit unverändert, Kataloge aus einem anderen Verzeichnis auffindbar, konstantes Glas und Dicke, Fehlerfälle). Implementierung: `src/cli/insert_command.cpp`.

@@ -1,0 +1,27 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7 bei zwei Wellenlängen",
+  "description": "Frei erfundenes Testsystem (M6-T2): Einzellinse N-BK7, f = 50 mm, NA 0,05 auf der Achse, zwei Wellenlängen (480 und 644 nm wie Homotopie-Schritt 4). Variablen: beide Krümmungen und der Arbeitsabstand; Nebenbedingung Brennweite. Der Farblängsfehler der Einzellinse bleibt; Abnahme des Operators B: Aufspalten in ein Kittglied, Glas des hinteren Teils freigeben (Hülle aus basis.json und den frei erfundenen Testgläsern data/glass/synthetisch.json), danach ist der Farblängsfehler um mehr als den Faktor 10 kleiner.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json", "data/glass/synthetisch.json"],
+  "spectrum": { "wavelengths_nm": [480.0, 644.0], "weights": [1.0, 1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 50.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.0193, "thickness": 4.0, "material": "N-BK7", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.0193, "thickness": 48.7, "material": "AIR", "semi_diameter": 6.0 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.2, "max": 0.2 },
+      { "type": "working_distance", "min": 30.0, "max": 70.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 10000.0 },
+      { "type": "glass_hull", "weight": 100000000.0, "comment": "wirkt erst, wenn ein Glas freigegeben ist (Operator B); Penalty-Fortsetzung in den Tests von 100 bis zu diesem Gewicht" }
+    ]
+  }
+}
