@@ -21,10 +21,10 @@
 
 namespace mko::cuda {
 
-// Threads pro Block des Kernels MERIT. Gleich kResidualThreads, weil beide Kernel den Kolben
-// mit derselben Baumreduktion bilden müssen: dann sind OPD und Residuen in beiden Modi
-// bitgleich und die Merit unterscheidet sich von Σ RESIDUALS² nur durch die Reihenfolge der
-// Quadratsumme.
+// Threads pro Block des Kernels MERIT (gleich kResidualThreads). Beide Kernel bilden den
+// Kolben mit derselben Baumreduktion (128 virtuelle Lanes pro Tupel, unabhängig von Blockgröße
+// und Paketen, M7-T4): OPD und Residuen sind in beiden Modi bitgleich, und die Merit
+// unterscheidet sich von Σ RESIDUALS² nur durch die Reihenfolge der Quadratsumme.
 inline constexpr int kMeritThreads = kResidualThreads;
 
 // Shared Memory pro Block, das der Kernel höchstens belegt (ohne Opt-in auf beiden Karten).
@@ -39,6 +39,9 @@ struct MeritRunOptions {
     // weiteren Residuen); die Daten werden bei run kopiert.
     std::span<const double> extra_merit{};
     Precision precision = Precision::Fp64; // Rechentyp im Kernel (M7-T1); Ergebnisse immer FP64
+    // Größte Paketgröße in Strahlen (>= 1, M7-T4); nur Laufzeit, die Ergebnisse sind für jeden
+    // Wert bitgleich.
+    int pack_rays = kDefaultPackRays;
 };
 
 // Ausgabepuffer des Kernels MERIT auf dem Gerät (RAII, nur verschiebbar): ein cudaMalloc im
@@ -56,12 +59,13 @@ public:
     DeviceMerit(DeviceMerit&& other) noexcept;
     DeviceMerit& operator=(DeviceMerit&& other) noexcept;
 
-    // Startet den Kernel (ein Block pro (v, f, l)) und die zweite Reduktionsstufe für alle
+    // Startet den Kernel (ein Block pro Tupelpaket einer Variante, M7-T4) und die zweite
+    // Reduktionsstufe für alle
     // Varianten von `batch` auf dessen Gerät und wartet auf das Ende. Wirft
     // std::invalid_argument, wenn `layout` nicht zur Topologie passt, V · F · L >
     // kMaxGridBlocks, extra_merit weder leer noch V Werte lang ist, options.precision unbekannt
-    // ist oder die OPL der größten Stützstellenzahl eines Feldes nicht in das Shared Memory
-    // passt (merit_max_samples);
+    // ist, pack_rays < 1 ist oder OPL, Status und Strafresiduen der größten Stützstellenzahl
+    // eines Feldes nicht in das Shared Memory passen (merit_max_samples);
     // std::logic_error bei leerem Batch. Die Werte der Varianten prüft der Aufrufer auf dem Host
     // (SystemBatchHost::validate_values).
     void run(const DeviceSystemBatch& batch, const ResidualLayout& layout,
@@ -106,13 +110,16 @@ private:
 MeritResult run_merit(const DeviceSystemBatch& batch, const ResidualLayout& layout,
                       const MeritRunOptions& options = {});
 
-// Größte Stützstellenzahl n_f eines Feldes, deren OPL und Status der Kernel MERIT im Shared
-// Memory ablegen kann (n_f · 9 Byte zusätzlich zum statischen Shared Memory und den
-// Geisterdaten (G · K + 2 G) · 8 Byte, zusammen <= kMeritMaxSharedBytes); mit Max-Reduktionen
-// und Geisterplatten kleiner. Fragt die Kernelattribute der Kernel-Variante für `precision` auf
-// dem aktuellen Gerät ab (CudaError); std::invalid_argument bei negativen Zahlen oder
-// unbekanntem Zahlentyp.
+// Größte Stützstellenzahl n_f eines Feldes, deren OPL, Status und (weiches Versagen, M4-T2)
+// Strafresiduen der Kernel MERIT im Shared Memory ablegen kann: n_f · 9 Byte (hart) bzw.
+// n_f · 17 Byte (weich) zusätzlich zum statischen Shared Memory, den Geisterdaten
+// (G · K + 2 G) · 8 Byte und den Brechzahlen einer Wellenlänge für kMaxSurfaces Flächen,
+// zusammen <= kMeritMaxSharedBytes (Tupelpakete, M7-T4); mit Max-Reduktionen und
+// Geisterplatten kleiner. Fragt die Kernelattribute der Kernel-Variante für `precision` auf dem
+// aktuellen Gerät ab (CudaError); std::invalid_argument bei negativen Zahlen oder unbekanntem
+// Zahlentyp.
 int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0,
-                      Precision precision = Precision::Fp64);
+                      Precision precision = Precision::Fp64,
+                      FailureMode failure = FailureMode::Soft);
 
 } // namespace mko::cuda

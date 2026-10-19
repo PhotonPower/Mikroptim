@@ -9,6 +9,7 @@
 #include "mikroptim/cuda/cuda_error.hpp"
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/cuda/tuple_packs.hpp"
 #include "mikroptim/merit/wavefront.hpp"
 #include "residual_test_systems.hpp"
 #include "tolerances.hpp"
@@ -63,7 +64,7 @@ bool identical(const ResidualResult& a, const ResidualResult& b) {
 }
 
 // Gerätespeicher eines Laufs mit `variants` Varianten im Modus RESIDUALS nach
-// docs/architektur.md ("Host-API TraceEngine"): Batch + Ausgaben + Feldablage.
+// docs/architektur.md ("Host-API TraceEngine"): Batch + Ausgaben + Feldablage + Tupelpakete.
 std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout& layout,
                       const TraceSettings& s) {
     OutputRequest r;
@@ -76,11 +77,13 @@ std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout
     r.merit = false;
     r.surface_max = false;
     return mko::estimate_device_bytes(t, variants, r) +
-           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan));
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan)) +
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * t.wavelengths *
+                            sizeof(mko::cuda::TuplePack)); // Tupelpakete (M7-T4)
 }
 
 // Dasselbe im Modus MERIT: Merit, Teilsummen, versagte Strahlen, optional Max-Reduktionen
-// und extra_merit (8 Byte pro Variante) + Feldablage.
+// und extra_merit (8 Byte pro Variante) + Feldablage + Tupelpakete.
 std::size_t merit_run_bytes(const BatchTopology& t, int variants, const ResidualLayout& layout,
                             const TraceSettings& s) {
     OutputRequest r;
@@ -92,7 +95,9 @@ std::size_t merit_run_bytes(const BatchTopology& t, int variants, const Residual
     r.merit = true;
     r.surface_max = s.extrema;
     return mko::estimate_device_bytes(t, variants, r, s.extra_merit.empty() ? 0 : sizeof(double)) +
-           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan));
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * sizeof(mko::ResidualFieldPlan)) +
+           mko::align_bytes(static_cast<std::size_t>(t.fields) * t.wavelengths *
+                            sizeof(mko::cuda::TuplePack)); // Tupelpakete (M7-T4)
 }
 
 // Engine, deren Speicher genau für `tranche` Varianten reicht (ohne Reserve).

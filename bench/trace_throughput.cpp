@@ -137,6 +137,7 @@ struct Options {
     int wavelengths = 3;
     int rings = 10;
     int spokes = 8;
+    int pack_rays = mko::cuda::kDefaultPackRays;
     int repeat = 10;
     int warmup = 2;
     bool kernel = true;
@@ -305,6 +306,8 @@ Options parse_args(int argc, char** argv) {
             o.wavelengths = parse_number<int>(arg, value());
         } else if (arg == "--rings") {
             o.rings = parse_number<int>(arg, value());
+        } else if (arg == "--pack-rays") {
+            o.pack_rays = parse_number<int>(arg, value());
         } else if (arg == "--spokes") {
             o.spokes = parse_number<int>(arg, value());
         } else if (arg == "--repeat") {
@@ -331,6 +334,9 @@ Options parse_args(int argc, char** argv) {
     if (o.rings < 1 || o.rings > mko::kMaxPupilRings || o.spokes < 1) {
         throw UsageError("--rings muss in [1, " + std::to_string(mko::kMaxPupilRings) +
                          "] liegen, --spokes >= 1");
+    }
+    if (o.pack_rays < 1) {
+        throw UsageError("--pack-rays muss >= 1 sein");
     }
     if (o.repeat < 1 || o.warmup < 0) {
         throw UsageError("--repeat muss >= 1, --warmup >= 0 sein");
@@ -562,6 +568,7 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType typ
     settings.quadrature = mko::ResidualSettings{o.rings, o.spokes};
     settings.status = true;
     settings.extrema = mode.extrema;
+    settings.pack_rays = o.pack_rays;
     configure_number_type(type, settings);
 
     Result r;
@@ -596,6 +603,7 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType typ
                 mko::cuda::MeritRunOptions opt;
                 opt.extrema = mode.extrema;
                 opt.precision = settings.precision;
+                opt.pack_rays = settings.pack_rays;
                 r.kernel =
                     measure(o.warmup, o.repeat, [&] { merit.run(device_batch, layout, opt); });
             } else {
@@ -603,6 +611,7 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, NumberType typ
                 mko::cuda::ResidualRunOptions opt;
                 opt.extrema = mode.extrema;
                 opt.precision = settings.precision;
+                opt.pack_rays = settings.pack_rays;
                 r.kernel =
                     measure(o.warmup, o.repeat, [&] { residuals.run(device_batch, layout, opt); });
             }
@@ -777,10 +786,11 @@ nlohmann::json to_json(const Options& o, const DeviceReport& d,
                    {"memory_gib", d.memory_gib},
                    {"driver_cuda_version", d.driver},
                    {"runtime_cuda_version", d.runtime}};
-    j["settings"] = {{"fields", o.fields}, {"wavelengths", o.wavelengths},
-                     {"rings", o.rings},   {"spokes", o.spokes},
-                     {"repeat", o.repeat}, {"warmup", o.warmup},
-                     {"seed", o.seed},     {"block_threads", mko::cuda::kResidualThreads}};
+    j["settings"] = {{"fields", o.fields},      {"wavelengths", o.wavelengths},
+                     {"rings", o.rings},        {"spokes", o.spokes},
+                     {"repeat", o.repeat},      {"warmup", o.warmup},
+                     {"seed", o.seed},          {"block_threads", mko::cuda::kResidualThreads},
+                     {"pack_rays", o.pack_rays}};
     nlohmann::json list = nlohmann::json::array();
     for (const Result& r : results) {
         const double er = rays_per_s(r, r.engine.median_s);

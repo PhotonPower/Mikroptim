@@ -9,7 +9,7 @@
 | FP32 : FP64 | 64 : 1 (ca. 0,55 TFLOPS FP64) | 2 : 1 (ca. 4,7–5,3 TFLOPS FP64) |
 | Rolle | Entwicklung, Debugging, FP32-Vorfilterung, Produktionsläufe mit df64 (M7-T1) | FP64-Referenz und Produktionsläufe |
 
-**df64 auf der RTX 3090 (M7-T1).** Mit `TraceSettings::precision = Precision::Df64` rechnen die Kernel mit Paaren aus zwei float ([numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)): ca. 48 Bit Genauigkeit bei FP32-Rate, OPD und Residuen weichen von FP64 typisch um einige 10⁻¹¹ mm ab (höchstens 10⁻⁹ mm, Abnahme M7-T1). Der Kernel ist damit auf der RTX 3090 etwa 4-mal so schnell wie in FP64 (S = 30: 3,5·10⁸ statt 8,3·10⁷ Strahlen/s, [benchmarks.md](benchmarks.md#df64-m7-t1)). Die Tesla P100 rechnet FP64 mit halber FP32-Rate; dort bringt df64 (ca. 10–20 FP32-Befehle pro Operation) nichts, sie bleibt FP64-Referenz. Ergebnisse aus df64 und FP64 sind nicht bitgleich; Läufe, die bitgleich reproduzierbar sein müssen (ADR-0007, Multi-GPU M7-T3), verwenden auf allen Geräten denselben Zahlentyp.
+**df64 auf der RTX 3090 (M7-T1).** Mit `TraceSettings::precision = Precision::Df64` rechnen die Kernel mit Paaren aus zwei float ([numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)): ca. 48 Bit Genauigkeit bei FP32-Rate, OPD und Residuen weichen von FP64 typisch um einige 10⁻¹¹ mm ab (höchstens 10⁻⁹ mm, Abnahme M7-T1). Der Kernel ist damit auf der RTX 3090 etwa 4-mal so schnell wie in FP64 (S = 30: 3,5·10⁸ statt 8,3·10⁷ Strahlen/s, [benchmarks.md](benchmarks.md#df64-m7-t1); seit den Tupelpaketen von M7-T4 4,9·10⁸ statt 1,1·10⁸, [benchmarks.md](benchmarks.md#profiling-und-tuning-m7-t4)). Die Tesla P100 rechnet FP64 mit halber FP32-Rate; dort bringt df64 (ca. 10–20 FP32-Befehle pro Operation) nichts, sie bleibt FP64-Referenz. Ergebnisse aus df64 und FP64 sind nicht bitgleich; Läufe, die bitgleich reproduzierbar sein müssen (ADR-0007, Multi-GPU M7-T3), verwenden auf allen Geräten denselben Zahlentyp.
 
 ## CUDA-Version
 
@@ -32,6 +32,37 @@ nvcc 12.9 warnt bei sm_60, dass die Offline-Kompilierung für Architekturen unte
 - Keine Tensor Cores, keine Features oberhalb sm_60 ohne Fallback.
 - Batchgrößen aus `cudaMemGetInfo` ableiten: `mko::cuda::device_memory_info()` und `max_variants_on_device()` mit Sicherheitsreserve (Formel in [architektur.md, „Speicherbedarf“](architektur.md#speicherbedarf)); auf der P100 (16 GB) passen deutlich weniger Varianten als auf der RTX 3090 (24 GB).
 
+## Belegung und Blockabbildung (M7-T4)
+
+Die Trace-Kernel `RESIDUALS` und `MERIT` laufen mit 128 Threads pro Block; seit M7-T4 rechnet ein Block ein Paket aufeinanderfolgender Tupel (f, l) einer Variante mit bis zu 512 Strahlen ([architektur.md, „Kernel-Abbildung“](architektur.md#kernel-abbildung)), Kolben und Summen in einer Reihenfolge, die von Blockgröße und Paketen nicht abhängt. Die Belegung begrenzen die Register (nicht Shared Memory, nicht Blockzahl):
+
+| Register pro Thread | sm_86 (64 K Register, max. 48 Warps) | sm_60 (64 K Register, max. 64 Warps) |
+|---|---|---|
+| ≤ 96 | 5 Blöcke = 20 Warps (42 %) | 5 Blöcke = 20 Warps (31 %) |
+| 97 … 128 | 4 Blöcke = 16 Warps (33 %) | 4 Blöcke = 16 Warps (25 %) |
+
+Auf der RTX 3090 begrenzt der FP64-Durchsatz (2 Ergebnisse pro Takt und SM), nicht die Belegung: Eine Registergrenze von 96 (`__launch_bounds__(128, 5)`) brachte dort weder in FP64 noch in df64 einen messbaren Gewinn (±2 %, [benchmarks.md](benchmarks.md#profiling-und-tuning-m7-t4)) und ist deshalb nicht voreingestellt. Auf der P100 (32 FP64-Ergebnisse pro Takt und SM) kann die Belegung begrenzen; zum Messen lässt sich die Grenze ohne Codeänderung setzen: `-DCMAKE_CUDA_FLAGS="-DMKO_KERNEL_MIN_BLOCKS=5"` beim Konfigurieren (`src/cuda/wavefront_block.hpp`; ohne den Schalter steht nur die Blockgröße im `__launch_bounds__`, denn schon ein ausdrückliches Minimum von 1 ändert die Registerzuteilung). Die Rechnung im PTX ändert sich dadurch nicht, nur die Registerzuteilung in ptxas; ob die Bits gleich bleiben, zeigt danach `MultiTraceEngine.ResultFingerprint` (Werte wie im Abschnitt „Mehrere GPUs“). Erst nach einer Messung auf der P100 als Standard übernehmen.
+
+## Profiling mit Nsight Compute
+
+Nsight Compute (`ncu`) braucht Zugriff auf die Leistungszähler der GPU. Ohne ihn bricht jede Messung mit `ERR_NVGPUCTRPERM` ab (so am Arbeitsplatz-PC in M2-T6 und M7-T4). Freischalten (einmalig, mit Administratorrechten durch den Maintainer):
+
+- **Windows:** NVIDIA-Systemsteuerung → Menü „Desktop“ → „Entwicklereinstellungen aktivieren“; dann „Entwickler“ → „GPU-Leistungsindikatoren verwalten“ → „Allen Benutzern Zugriff auf die GPU-Leistungsindikatoren erlauben“.
+- **Linux (P100-Rechner):** Datei `/etc/modprobe.d/nvidia-profiling.conf` mit `options nvidia NVreg_RestrictProfilingToAdminUsers=0`, danach Treibermodul neu laden bzw. neu starten (`cat /proc/driver/nvidia/params | grep RmProfilingAdminOnly` zeigt `0`).
+
+Sinnvolle Messungen danach (Release-Build, ein Lauf genügt):
+
+```bash
+# Übersicht: erreichte Belegung, FP64-Pipeline, Speicher, Warp-Zustände der Trace-Kernel
+ncu --kernel-name regex:"merit_kernel|residuals_kernel" --launch-skip 3 --launch-count 2 \
+    --section SpeedOfLight --section Occupancy --section LaunchStats \
+    --section ComputeWorkloadAnalysis --section WarpStateStats --section MemoryWorkloadAnalysis \
+    -o m7t4_profil ./build/release-cuda/bench/trace_throughput --surfaces 30 --variants 10000 \
+    --mode merit,merit+extrema --type fp64,df64 --repeat 1 --warmup 1 --no-kernel
+```
+
+Zu prüfen: Auslastung der FP64-Pipeline (`sm__inst_executed_pipe_fp64`, auf der RTX 3090 erwartet nahe 100 % in FP64), erreichte gegen theoretische Belegung, Stall-Gründe (`smsp__pcsamp_warps_issue_stalled_*`: auf der P100 vermutlich Latenz der FP64-Befehle, dann `MKO_KERNEL_MIN_BLOCKS=5` messen), Local-Memory-Verkehr der Max-Reduktionen (`l1tex__t_bytes_pipe_lsu_mem_local`) und Lane-Ausnutzung (`smsp__thread_inst_executed_per_inst_executed`, nach M7-T4 erwartet nahe 32).
+
 ## Speicherreserve und Tranchen
 
 Programme tracen über `mko::cuda::TraceEngine` ([architektur.md, „Host-API TraceEngine“](architektur.md#host-api-traceengine-m2-t4)). Die Engine teilt einen Batch, der nicht in den Gerätespeicher passt, selbst in Tranchen; die Ergebnisse sind davon unabhängig bitgleich.
@@ -50,7 +81,7 @@ Programme tracen über `mko::cuda::TraceEngine` ([architektur.md, „Host-API Tr
   ctest --preset release-cuda -R "MultiTraceEngine\." --output-on-failure
   .\build\release-cuda\tests\Release\mikroptim_tests.exe --gtest_filter=MultiTraceEngine.ResultFingerprint
   ```
-  `MultiTraceEngine.RealDevicesBitIdenticalToSingle` vergleicht jedes Gerät mit Gerät 0 und die Verteilung mit dem Einzellauf (wird mit nur einem Gerät übersprungen); `ResultFingerprint` druckt pro Gerät Prüfsummen der Ergebnisbits, die sich auch zwischen getrennten Rechnern vergleichen lassen. Referenz auf der RTX 3090 (nvcc 12.9, Treiber am Arbeitsplatz-PC, neu erhoben mit M5-T1: main ce79590 und M5-T1 liefern dieselben Werte, der Umbau des Trace in M5-T1 ändert RESIDUALS und MERIT also nicht; die Werte von M7-T3 galten auf main schon vorher nicht mehr, vermutlich seit dem Strafresiduen-Block von M4-T2): FP64 RESIDUALS `4c25f7bd60a12b22`, MERIT `8c62727b084a89e7`; DF64 RESIDUALS `b8f3b1c0589fdd36`, MERIT `128ba8f7c507e722`; PREFILTER `198fcadd375e938f`. Die Werte ändern sich mit jeder Änderung an Kerneln oder Testsystem.
+  `MultiTraceEngine.RealDevicesBitIdenticalToSingle` vergleicht jedes Gerät mit Gerät 0 und die Verteilung mit dem Einzellauf (wird mit nur einem Gerät übersprungen); `ResultFingerprint` druckt pro Gerät Prüfsummen der Ergebnisbits, die sich auch zwischen getrennten Rechnern vergleichen lassen. Referenz auf der RTX 3090 (nvcc 12.9, Treiber am Arbeitsplatz-PC, neu erhoben mit M5-T1: main ce79590 und M5-T1 liefern dieselben Werte, der Umbau des Trace in M5-T1 ändert RESIDUALS und MERIT also nicht; die Werte von M7-T3 galten auf main schon vorher nicht mehr, vermutlich seit dem Strafresiduen-Block von M4-T2): FP64 RESIDUALS `4c25f7bd60a12b22`, MERIT `8c62727b084a89e7`; DF64 RESIDUALS `b8f3b1c0589fdd36`, MERIT `128ba8f7c507e722`; PREFILTER `198fcadd375e938f`. Die Werte ändern sich mit jeder Änderung an Kerneln oder Testsystem, die die Rechnung berührt; die Tupelpakete von M7-T4 lassen sie unverändert (gleiche Summationsreihenfolge, auf der RTX 3090 nachgeprüft).
 - **Eine GPU, mehrere Slots:** Für Tests darf ein Gerät mehrfach in `MultiEngineOptions::devices` stehen; die Slots teilen sich dann Speicher (je 1/k) und Rechenzeit und sind nicht schneller.
 - **Speicher:** Jede Engine richtet ihre Tranchen nach dem freien Speicher ihres Geräts (P100: 16 GB, RTX 3090: 24 GB); `slot_engines` setzt Grenzen pro Gerät.
 

@@ -115,8 +115,9 @@ double compensated_sum_of_squares(const ResidualResult& r, int v) {
     return sum + c;
 }
 
-// Dieselbe Summe in der Reihenfolge des Kernels nachgerechnet: pro Tupel (f, l) Thread
-// t = 0 … 127 mit fma(r, r, acc) über k = t, t + 128, …, Baumreduktion im Warp
+// Dieselbe Summe in der Reihenfolge des Kernels nachgerechnet: pro Tupel (f, l) virtuelle Lane
+// t = 0 … 127 (seit M7-T4 unabhängig von Blockgröße und Tupelpaketen) mit fma(r, r, acc) über
+// k = t, t + 128, …, Baumreduktion im Warp
 // (__shfl_down_sync, Abstände 16 … 1; Lanes ohne Partner behalten ihren Wert), Warps und
 // danach Tupel in fester Reihenfolge. Nur zur Information (bitgleich, solange nvcc die
 // Quadratsumme wie angenommen kontrahiert).

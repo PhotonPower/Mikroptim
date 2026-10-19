@@ -16,8 +16,10 @@
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch_view.hpp"
 #include "mikroptim/cuda/residuals.hpp"
+#include "mikroptim/cuda/tuple_packs.hpp"
 #include "mikroptim/math/df64.hpp"
 #include "mikroptim/math/scalar.hpp"
+#include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
 #include "mikroptim/trace/surface_table.hpp"
@@ -263,23 +265,21 @@ struct NoExtrema {};
 
 template <class R, bool kEnabled>
 using ExtremaSharedIf = std::conditional_t<kEnabled, ExtremaShared<R>, NoExtrema>;
-template <class R, bool kEnabled>
-using ExtremaIf = std::conditional_t<kEnabled, SurfaceExtrema<R>, NoExtrema>;
-template <class R, bool kEnabled>
-using RayRecordIf = std::conditional_t<kEnabled, RaySurfaceRecord<R>, NoExtrema>;
 
 // Max-Reduktionen des Blocks aus den Akkumulatoren der Threads: pro Fläche Maximum der
 // Höhenquadrate und Minimum von cos I im Warp, dann über die Warps in fester Reihenfolge.
 // Schreibt out[2 s] = max x² + y², out[2 s + 1] = min cos I für s < S (nach double gewandelt).
-// Alle Threads müssen eintreten (ein __syncthreads).
-template <class R>
-__device__ inline void block_extrema(ExtremaShared<R>& sh, const SurfaceExtrema<R>& acc,
-                                     int surfaces, int tid, double* out) {
+// height(s) und cos_incidence(s) liefern den Akkumulator des Threads. Alle Threads müssen
+// eintreten (ein __syncthreads).
+template <class R, class Height, class CosIncidence>
+__device__ inline void block_extrema_of(ExtremaShared<R>& sh, Height height,
+                                        CosIncidence cos_incidence, int surfaces, int tid,
+                                        double* out) {
     const int lane = tid % kWarpSize;
     const int warp = tid / kWarpSize;
     for (int s = 0; s < surfaces; ++s) {
-        const R h = warp_max(acc.max_height_sq[s]);
-        const R c = warp_min(acc.min_cos_incidence[s]);
+        const R h = warp_max(height(s));
+        const R c = warp_min(cos_incidence(s));
         if (lane == 0) {
             sh.value[(warp * kMaxSurfaces + s) * 2] = h;
             sh.value[(warp * kMaxSurfaces + s) * 2 + 1] = c;
@@ -298,8 +298,56 @@ __device__ inline void block_extrema(ExtremaShared<R>& sh, const SurfaceExtrema<
     }
 }
 
-// Zweite Stufe der Max-Reduktionen: ein Thread pro (v, s) über die B = F · L Blöcke der
-// Variante in fester Reihenfolge b = f · L + l, danach √ der Höhe.
+// Akkumulator der Max-Reduktionen mit Doppelpuffer (M7-T4), zugleich Beobachter des Traces:
+// surface() schreibt max(Akkumulator, Höhenquadrat) bzw. min(Akkumulator, cos I) des Strahls
+// sofort in den zweiten Puffer, commit() übernimmt ihn nach einem gültigen Strahl (Status Ok)
+// durch Umschalten. Ein versagter Strahl hinterlässt nur den verworfenen Puffer. Gleiche Werte
+// wie RaySurfaceRecord plus SurfaceExtrema::add_ray (dieselben Formeln und Vergleiche), aber
+// halb so viel Local-Memory-Verkehr pro Strahl und Fläche (2 Lade- und 2 Schreibzugriffe statt
+// 4 und 4). 4 · kMaxSurfaces · sizeof(R) Byte (wie Aufzeichnung und Akkumulator zusammen).
+template <class R>
+struct PendingExtrema {
+    R height_sq[2][kMaxSurfaces];
+    R cos_incidence[2][kMaxSurfaces];
+    int committed;
+
+    __device__ void reset(int surfaces) {
+        committed = 0;
+        for (int s = 0; s < surfaces; ++s) {
+            height_sq[0][s] = neutral_height_sq<R>();
+            cos_incidence[0][s] = neutral_cos_incidence<R>();
+        }
+    }
+
+    // Beobachter (Formeln wie RaySurfaceRecord::surface)
+    __device__ void surface(int s, R c, const Vec3<R>& d_before, const Ray<R>& ray) {
+        const Vec3<R>& p = ray.p;
+        const R h = p.x * p.x + p.y * p.y;
+        const Vec3<R> normal{-c * p.x, -c * p.y, R(1) - c * p.z};
+        const R ci = dot(d_before, normal);
+        const int a = committed;
+        height_sq[1 - a][s] = extremum_max(height_sq[a][s], h);
+        cos_incidence[1 - a][s] = extremum_min(cos_incidence[a][s], ci);
+    }
+
+    // Übernimmt den Strahl (nur bei Status Ok: dann hat er alle Flächen 0 … S − 1 passiert).
+    __device__ void commit() { committed = 1 - committed; }
+};
+
+template <class R>
+__device__ inline void block_extrema(ExtremaShared<R>& sh, const PendingExtrema<R>& acc,
+                                     int surfaces, int tid, double* out) {
+    const int a = acc.committed;
+    block_extrema_of<R>(
+        sh, [&acc, a](int s) { return acc.height_sq[a][s]; },
+        [&acc, a](int s) { return acc.cos_incidence[a][s]; }, surfaces, tid, out);
+}
+
+template <class R, bool kEnabled>
+using PendingExtremaIf = std::conditional_t<kEnabled, PendingExtrema<R>, NoExtrema>;
+
+// Zweite Stufe der Max-Reduktionen: ein Thread pro (v, s) über die B Blöcke der Variante
+// (seit M7-T4 Tupelpakete, b = v · B + p) in fester Reihenfolge, danach √ der Höhe.
 // partial[(v · B + b) · S + s][2], out[(v · S + s)][2].
 template <class R>
 struct ExtremaFinalizeArgs {
@@ -355,6 +403,206 @@ const T* region_ptr(const void* buffer, const BufferRegion& region) {
     return region.bytes == 0
                ? nullptr
                : reinterpret_cast<const T*>(static_cast<const char*>(buffer) + region.offset);
+}
+
+// ---- Tupelpakete (M7-T4) ------------------------------------------------------------------
+//
+// Die Kernel RESIDUALS und MERIT rechnen seit M7-T4 nicht mehr einen Block pro Tupel (v, f, l),
+// sondern einen Block pro Paket aufeinanderfolgender Tupel t = f · L + l derselben Variante
+// (docs/architektur.md, "Kernel-Abbildung"). Die Strahlen eines Pakets liegen in der
+// Residuenablage hintereinander (offset(t + 1) = offset(t) + n_f); Durchlauf 1 (Trace) verteilt
+// sie dicht auf die Threads (Strahl r = t, t + 128, …), sodass nur der letzte Warp eines Pakets
+// leere Lanes hat. Kolben und Quadratsumme bildet jedes Tupel dagegen unabhängig von Paket und
+// Blockgröße in der Reihenfolge von M2: 128 virtuelle Lanes c summieren die Stützstellen
+// k = c, c + 128, … aufsteigend, Baum über je 32 Lanes (Gruppe g = c / 32, ein Warp pro
+// (Tupel, Gruppe)), dann die 4 Gruppen in fester Reihenfolge. Die Ergebnisse sind damit
+// bitgleich zur Abbildung "ein Block à 128 Threads pro Tupel" (main vor M7-T4).
+
+// Virtuelle Lanes der Reduktion eines Tupels (die Blockgröße von M2-T2 … M7-T3).
+constexpr int kReductionLanes = 128;
+constexpr int kReductionGroups = kReductionLanes / kWarpSize;
+static_assert(kReductionLanes % kWarpSize == 0);
+
+// Startgrenzen der Kernel RESIDUALS und MERIT. Standard: nur die Blockgröße (ptxas wählt die
+// Register frei). Messschalter für die P100 (M7-T4, docs/hardware.md): -DMKO_KERNEL_MIN_BLOCKS=5
+// in CMAKE_CUDA_FLAGS verlangt 5 residente Blöcke pro SM, also höchstens 96 Register; auf der
+// RTX 3090 ohne messbaren Gewinn. (Ein ausdrückliches Minimum von 1 ist nicht dasselbe wie
+// keines: ptxas teilt dann anders zu, z. B. 124 statt 96 Register für RESIDUALS auf sm_86.)
+#ifdef MKO_KERNEL_MIN_BLOCKS
+#define MKO_TRACE_LAUNCH_BOUNDS __launch_bounds__(kBlockThreads, MKO_KERNEL_MIN_BLOCKS)
+#else
+#define MKO_TRACE_LAUNCH_BOUNDS __launch_bounds__(kBlockThreads)
+#endif
+
+// Shared Memory pro Block, das die Kernel höchstens belegen (ohne Opt-in auf beiden Karten).
+constexpr std::size_t kBlockMaxSharedBytes = 48 * 1024;
+
+// Shared Memory eines Pakets (statisch): Flächentabelle ohne Brechzahlen, Quadratur (Knoten,
+// Gewichte, Ringzahl; Speichen und Pupillenart pro Tupel), Angaben pro Tupel, Kolben und
+// Teilsummen der Gruppen.
+template <class R>
+struct PackShared {
+    SurfaceKind type[kMaxSurfaces];
+    R curvature[kMaxSurfaces];
+    R thickness[kMaxSurfaces];
+    PupilQuadrature<R> pupil;
+    int field[kMaxPackTuples];
+    int wavelength[kMaxPackTuples];
+    int spokes[kMaxPackTuples];
+    PupilMode mode[kMaxPackTuples];
+    int start[kMaxPackTuples + 1]; // erster Strahl des Tupels im Paket; start[tuples] = rays
+    R scale[kMaxPackTuples];       // residual_scale(f, l)
+    R pscale[kMaxPackTuples];      // penalty_scale(f, l, w_fail) im weichen Modus, sonst 0
+    R piston[kMaxPackTuples];
+    int valid[kMaxPackTuples];
+    R sum_a[kMaxPackTuples * kReductionGroups]; // Teilsummen pro (Tupel, Gruppe)
+    R sum_b[kMaxPackTuples * kReductionGroups];
+    std::int32_t count_a[kMaxPackTuples * kReductionGroups];
+    std::int32_t count_b[kMaxPackTuples * kReductionGroups];
+};
+
+// Lädt Flächentabelle (Brechzahlen des Wellenlängenfensters), Geisterdaten, Quadratur und die
+// Angaben pro Tupel des Pakets in den Shared Memory (Tabellen an den Anfang von `dynamic`,
+// pack_table_bytes) und liefert die Sicht darauf (wavelengths = Fensterbreite, Index
+// l − first_wavelength). Dieselben Zahlen wie surface_table(v) auf der CPU. Der Aufrufer
+// synchronisiert danach.
+template <class R>
+__device__ inline SurfaceTableView<R>
+load_pack(PackShared<R>& sh, unsigned char* dynamic, const SystemBatchView<double>& b,
+          const PupilQuadrature<double>& pupil, const ResidualFieldPlan* plan,
+          const TuplePack& pack, int v, bool soft, double fail_weight, int tid) {
+    const int S = b.shape.surfaces;
+    const int L = b.shape.wavelengths;
+    const int G = b.shape.ghost_plates;
+    const int K = b.shape.ghost_terms;
+    const int lo = pack.first_wavelength;
+    const int W = pack.wavelengths;
+    R* const coeff = reinterpret_cast<R*>(dynamic);
+    R* const ghost_index = coeff + G * K;
+    R* const radius = ghost_index + G * W;
+    R* const index = radius + G;
+    for (int s = tid; s < S; s += kBlockThreads) {
+        sh.type[s] = b.type[s];
+        sh.curvature[s] = R(b.curvature[b.shape.surface_at(v, s)]);
+        sh.thickness[s] = R(b.thickness[b.shape.surface_at(v, s)]);
+    }
+    for (int i = tid; i < S * W; i += kBlockThreads) {
+        const int s = i / W;
+        index[i] = R(b.index[b.shape.index_at(v, s, lo + i - s * W)]);
+    }
+    if (G > 0) {
+        const double* const c = b.ghost_coeff + b.shape.ghost_coeff_at(v, 0, 0);
+        for (int i = tid; i < G * K; i += kBlockThreads) {
+            coeff[i] = R(c[i]);
+        }
+        for (int i = tid; i < G * W; i += kBlockThreads) {
+            const int p = i / W;
+            ghost_index[i] = R(b.ghost_index[b.shape.ghost_index_at(v, p, lo + i - p * W)]);
+        }
+        for (int p = tid; p < G; p += kBlockThreads) {
+            radius[p] = R(b.ghost_norm_radius[p]);
+        }
+    }
+    if (tid < pupil.rings) {
+        sh.pupil.u[tid] = R(pupil.u[tid]);
+        sh.pupil.w[tid] = R(pupil.w[tid]);
+    }
+    if (tid < pack.tuples) {
+        const int t = pack.first_tuple + tid;
+        const int f = t / L;
+        const int l = t % L;
+        const ResidualFieldPlan p = plan[f];
+        sh.field[tid] = f;
+        sh.wavelength[tid] = l;
+        sh.spokes[tid] = p.mode == PupilMode::Axis ? 1 : pupil.spokes;
+        sh.mode[tid] = p.mode;
+        sh.scale[tid] = R(residual_scale(b, f, l));
+        sh.pscale[tid] = soft ? R(penalty_scale(b, f, l, fail_weight)) : R(0);
+    }
+    if (tid == 0) {
+        sh.pupil.rings = pupil.rings;
+        sh.pupil.spokes = pupil.spokes;
+        sh.pupil.mode = PupilMode::Half; // pro Tupel in sh.mode
+        int start = 0;
+        for (int j = 0; j < pack.tuples; ++j) {
+            sh.start[j] = start;
+            start += plan[(pack.first_tuple + j) / L].samples;
+        }
+        sh.start[pack.tuples] = start;
+    }
+    return SurfaceTableView<R>{S,
+                               W,
+                               sh.type,
+                               sh.curvature,
+                               sh.thickness,
+                               index,
+                               G,
+                               K,
+                               G > 0 ? coeff : nullptr,
+                               G > 0 ? ghost_index : nullptr,
+                               G > 0 ? radius : nullptr};
+}
+
+// Tupel j des Strahls r im Paket (lineare Suche über start, höchstens kMaxPackTuples).
+template <class R>
+__device__ inline int pack_tuple_of(const PackShared<R>& sh, int tuples, int r) {
+    int j = 0;
+    while (j + 1 < tuples && r >= sh.start[j + 1]) {
+        ++j;
+    }
+    return j;
+}
+
+// Stützstelle k des Tupels j.
+template <class R>
+__device__ inline PupilSample<R> pack_sample(const PackShared<R>& sh, int j, int k) {
+    return sample(sh.pupil, k, sh.spokes[j], sh.mode[j]);
+}
+
+// Kolben aller Tupel des Pakets aus OPL und Status pro Strahl (opl[r], status[r], r = Strahl
+// im Paket, vom Block vorher geschrieben und synchronisiert): ein Warp pro (Tupel j, Gruppe g),
+// Lane c = 32 g + lane summiert (W_k, W_k · OPL_k) der Stützstellen k = c, c + 128, … im Kolben
+// aufsteigend, Baumreduktion im Warp, danach summiert Thread j die 4 Gruppen in fester
+// Reihenfolge: OPL̄_j = Σ W·OPL / W_ok in sh.piston[j], sh.valid[j] = (W_ok > 0). Dieselbe
+// Reihenfolge wie block_piston mit 128 Threads pro Tupel. Alle Threads müssen eintreten (zwei
+// __syncthreads); danach sind piston und valid für alle sichtbar.
+template <class R>
+__device__ inline void pack_piston(PackShared<R>& sh, int tuples, const R* opl,
+                                   const std::uint8_t* status, int tid) {
+    const int lane = tid % kWarpSize;
+    for (int q = tid / kWarpSize; q < tuples * kReductionGroups; q += kBlockWarps) {
+        const int j = q / kReductionGroups;
+        const int first = sh.start[j];
+        const int n = sh.start[j + 1] - first;
+        R weight_ok = R(0);
+        R weighted_opl = R(0);
+        for (int k = (q % kReductionGroups) * kWarpSize + lane; k < n; k += kReductionLanes) {
+            if (in_piston(static_cast<TraceStatus>(status[first + k]))) {
+                const PupilSample<R> s = pack_sample(sh, j, k);
+                weight_ok += s.weight;
+                weighted_opl += s.weight * opl[first + k];
+            }
+        }
+        weight_ok = warp_sum(weight_ok);
+        weighted_opl = warp_sum(weighted_opl);
+        if (lane == 0) {
+            sh.sum_a[q] = weight_ok;
+            sh.sum_b[q] = weighted_opl;
+        }
+    }
+    __syncthreads();
+    if (tid < tuples) {
+        R w = R(0);
+        R wo = R(0);
+        for (int g = 0; g < kReductionGroups; ++g) {
+            w += sh.sum_a[tid * kReductionGroups + g];
+            wo += sh.sum_b[tid * kReductionGroups + g];
+        }
+        const bool ok = w > R(0);
+        sh.valid[tid] = ok ? 1 : 0;
+        sh.piston[tid] = ok ? wo / w : R(0);
+    }
+    __syncthreads();
 }
 
 } // namespace mko::cuda::detail

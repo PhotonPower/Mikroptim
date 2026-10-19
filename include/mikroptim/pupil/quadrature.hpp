@@ -63,29 +63,39 @@ MKO_HD inline int sample_count(const PupilQuadrature<R>& q) {
     return q.rings * q.spokes;
 }
 
-// Stützstelle zum linearen Index. Vorbedingung: 0 <= index < sample_count(q)
+// Stützstelle zum linearen Index mit Speichenzahl und Pupillenart als Argument (Knoten und
+// Gewichte aus q): Kernel, die Stützstellen mehrerer Felder mit verschiedener Pupillenart im
+// selben Block rechnen (Tupelpakete, M7-T4). Vorbedingung: 0 <= index < q.rings · spokes
 // (wird nicht geprüft, damit der Aufruf im Kernel verzweigungsarm bleibt).
 template <class R>
-MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>& q, int index) {
+MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>& q, int index, int spokes,
+                                    PupilMode mode) {
     const R pi = R(3.14159265358979323846264338327950288);
-    const int i = index / q.spokes;
-    const int j = index - i * q.spokes;
+    const int i = index / spokes;
+    const int j = index - i * spokes;
     PupilSample<R> s;
     s.rho = msqrt(q.u[i]);
     // V_j = 1/M für alle Modi; eine Division statt Multiplikation mit 1/M (eine Rundung).
-    s.weight = q.w[i] / R(q.spokes);
-    switch (q.mode) {
+    s.weight = q.w[i] / R(spokes);
+    switch (mode) {
     case PupilMode::Half:
-        s.phi = R(2 * j + 1) * pi / R(2 * q.spokes);
+        s.phi = R(2 * j + 1) * pi / R(2 * spokes);
         break;
     case PupilMode::Full:
-        s.phi = R(2 * j + 1) * pi / R(q.spokes);
+        s.phi = R(2 * j + 1) * pi / R(spokes);
         break;
     default: // PupilMode::Axis
         s.phi = R(0);
         break;
     }
     return s;
+}
+
+// Stützstelle zum linearen Index. Vorbedingung: 0 <= index < sample_count(q)
+// (wird nicht geprüft, damit der Aufruf im Kernel verzweigungsarm bleibt).
+template <class R>
+MKO_HD inline PupilSample<R> sample(const PupilQuadrature<R>& q, int index) {
+    return sample(q, index, q.spokes, q.mode);
 }
 
 // Gewicht der Stützstelle im Residuum: √(W_i·V_j) (docs/optimierung.md, Abschnitt Merit).

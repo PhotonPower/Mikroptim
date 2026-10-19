@@ -1,6 +1,7 @@
-// Kernel RESIDUALS (M2-T2): ein Block pro (Variante, Feld, Wellenlänge), Threads über die
-// Pupillenstützstellen, Flächentabelle im Shared Memory, Kolbenabzug per deterministischer
-// Block-Reduktion (ADR-0004, ADR-0007; docs/architektur.md, Abschnitt "Kernel RESIDUALS").
+// Kernel RESIDUALS (M2-T2): seit M7-T4 ein Block pro Paket aufeinanderfolgender Tupel
+// (Feld, Wellenlänge) einer Variante, Threads über die Pupillenstrahlen des Pakets,
+// Flächentabelle im Shared Memory, Kolbenabzug pro Tupel per deterministischer Reduktion
+// (ADR-0004, ADR-0007; docs/architektur.md, Abschnitte "Kernel-Abbildung" und "Kernel RESIDUALS").
 // Optional die Max-Reduktionen pro Fläche (M2-T3, Abschnitt "Max-Reduktionen"). Rechentyp
 // double oder df64 (M7-T1, ResidualRunOptions::precision); Batch und Ausgaben sind FP64.
 
@@ -18,10 +19,12 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace mko::cuda {
 
@@ -35,6 +38,8 @@ struct ResidualKernelArgs {
     SystemBatchView<double> batch;
     PupilQuadrature<double> pupil; // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
     const ResidualFieldPlan* plan; // [F]
+    const TuplePack* packs;        // [P], gleich für alle Varianten (M7-T4)
+    int packs_per_variant;         // P
     std::int64_t rays;             // Strahlresiduen pro Variante
     std::int64_t stride;           // Residuen pro Variante (rays + Strafresiduen + weitere)
     int soft;                      // 1: weiches Versagen, Strafresiduen ab Zeile rays (M4-T2)
@@ -42,127 +47,132 @@ struct ResidualKernelArgs {
     double* residuals;             // [V][stride]
     double* opd;                   // [V][rays] oder nullptr
     std::uint8_t* status;          // [V][rays]
-    double* extrema_partial;       // [V · F · L][S][2] (nur mit kExtrema)
+    double* extrema_partial;       // [V · P][S][2] (nur mit kExtrema)
 };
 
-// Block b = (v · F + f) · L + l. Alle Threads durchlaufen jede Schleife und jedes
-// __syncthreads (versagte Strahlen und Threads ohne Stützstelle sind nur maskiert).
+// Block b = v · P + p: Paket p der Variante v (M7-T4). Alle Threads durchlaufen jede Schleife
+// und jedes __syncthreads (versagte Strahlen und Threads ohne Strahl sind nur maskiert).
 // R: Rechentyp (double oder df64). kExtrema: zusätzlich Max-Reduktionen pro Fläche (ohne
 // kExtrema entfällt jeder Aufwand).
 template <class R, bool kExtrema>
-__global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const ResidualKernelArgs a) {
-    // Shared Memory (statisch, für S = kMaxSurfaces und R = double oder df64 ca. 1,9 KB, mit
-    // kExtrema zusätzlich 4 KB): Flächentabelle der Variante mit den Brechzahlen der Wellenlänge l,
-    // Quadratur des Feldes, Teilsummen pro Warp, Kolben; dynamisch die Geisterplatten
-    // (ghost_shared_bytes, höchstens 17 KiB).
-    __shared__ detail::BlockTable<R> sh_table;
-    __shared__ detail::PistonShared<R> sh_piston;
+__global__ void MKO_TRACE_LAUNCH_BOUNDS residuals_kernel(const ResidualKernelArgs a) {
+    // Shared Memory: statisch Flächentabelle, Quadratur, Angaben pro Tupel, Kolben und
+    // Teilsummen (PackShared, für R = double ca. 3,6 KB; mit kExtrema zusätzlich 4 KB);
+    // dynamisch Geisterdaten und Brechzahlen des Wellenlängenfensters (pack_table_bytes).
+    __shared__ detail::PackShared<R> sh;
     __shared__ detail::ExtremaSharedIf<R, kExtrema> sh_extrema;
     extern __shared__ __align__(16) unsigned char sh_dynamic[];
 
     const int S = a.batch.shape.surfaces;
-    const detail::BlockTuple tu =
-        detail::block_tuple(a.batch.shape.fields, a.batch.shape.wavelengths);
-    const int v = tu.v;
-    const int f = tu.f;
-    const int l = tu.l;
+    const auto block = static_cast<std::int64_t>(blockIdx.x);
+    const int v = static_cast<int>(block / a.packs_per_variant);
+    const TuplePack pack = a.packs[block % a.packs_per_variant];
     const int tid = static_cast<int>(threadIdx.x);
-    const ResidualFieldPlan plan = a.plan[f];
 
-    detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
-    const detail::BlockGhosts<R> ghosts =
-        detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
+    const SurfaceTableView<R> table = detail::load_pack(sh, sh_dynamic, a.batch, a.pupil, a.plan,
+                                                        pack, v, a.soft != 0, a.fail_weight, tid);
     __syncthreads();
 
-    const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
-    const Vec3<R> center = batch_image_point(a.batch, table, v, f);
-    const int n = plan.samples;
-    const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n; // Tupel (f, l)
-    double* const residuals = a.residuals + static_cast<std::int64_t>(v) * a.stride + first;
-    std::uint8_t* const status = a.status + static_cast<std::int64_t>(v) * a.rays + first;
+    // Strahlen des Pakets liegen ab Zeile first_row hintereinander (Strahl r im Paket).
+    double* const residuals =
+        a.residuals + static_cast<std::int64_t>(v) * a.stride + pack.first_row;
+    std::uint8_t* const status = a.status + static_cast<std::int64_t>(v) * a.rays + pack.first_row;
     double* const opd =
-        a.opd != nullptr ? a.opd + static_cast<std::int64_t>(v) * a.rays + first : nullptr;
+        a.opd != nullptr ? a.opd + static_cast<std::int64_t>(v) * a.rays + pack.first_row : nullptr;
     // Vorläufige OPL im Rechentyp auf dem Residuenplatz (sizeof(R) == sizeof(double)); für
     // R = df64 ohne Rundung nach double zwischen den Durchläufen.
     R* const opl_scratch = reinterpret_cast<R*>(residuals);
 
-    // Durchlauf 1: Trace, OPL vorläufig in den Residuenplatz, Teilsummen (W_k, W_k · OPL_k)
-    // der gültigen Strahlen in aufsteigender Reihenfolge der eigenen Stützstellen.
-    [[maybe_unused]] detail::ExtremaIf<R, kExtrema> extrema;
-    [[maybe_unused]] detail::RayRecordIf<R, kExtrema> record;
+    // Durchlauf 1: Trace, OPL vorläufig in den Residuenplatz, Status; Strahlen dicht über die
+    // Threads verteilt (r = tid, tid + 128, …), Tupel und Stützstelle aus r.
+    // Max-Reduktionen: Akkumulator mit Doppelpuffer, zugleich Beobachter (PendingExtrema)
+    [[maybe_unused]] detail::PendingExtremaIf<R, kExtrema> extrema;
     if constexpr (kExtrema) {
         extrema.reset(S);
     }
     // Weiches Versagen (M4-T2): Strafresiduen direkt in Durchlauf 1 (sie hängen nicht vom
     // Kolben ab), Ablage ab Zeile rays derselben Variante.
     double* const penalties = a.soft ? residuals + a.rays : nullptr;
-    const R pscale = a.soft ? R(penalty_scale(a.batch, f, l, a.fail_weight)) : R(0);
-    R weight_ok = R(0);
-    R weighted_opl = R(0);
-    for (int k = tid; k < n; k += kBlockThreads) {
-        const PupilSample<R> s = sample(sh_table.pupil, k);
+    for (int r = tid; r < pack.rays; r += kBlockThreads) {
+        const int j = detail::pack_tuple_of(sh, pack.tuples, r);
+        const int k = r - sh.start[j];
+        const int f = sh.field[j];
+        const int l = sh.wavelength[j];
+        const PupilSample<R> s = detail::pack_sample(sh, j, k);
+        const Vec3<R> center = batch_image_point(a.batch, table, v, f);
         R opl = R(0);
         SoftFailure<R> soft{R(0), TraceStatus::Ok};
         SoftFailure<R>* const soft_ptr = a.soft ? &soft : nullptr;
+        const int table_l = l - pack.first_wavelength;
         TraceStatus st;
         if constexpr (kExtrema) {
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, &record, soft_ptr);
+            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, center, &opl, &extrema,
+                               soft_ptr);
         } else {
             NoSurfaceObserver* const none = nullptr;
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, none, soft_ptr);
-        }
-        if (in_piston(st)) {
-            weight_ok += s.weight;
-            weighted_opl += s.weight * opl;
+            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, center, &opl, none, soft_ptr);
         }
         if constexpr (kExtrema) {
             if (st == TraceStatus::Ok) {
-                extrema.add_ray(record, S);
+                extrema.commit();
             }
         }
         if (penalties != nullptr) {
-            penalties[k] = static_cast<double>(ray_penalty(pscale, s, st, soft.penalty));
+            penalties[r] = static_cast<double>(ray_penalty(sh.pscale[j], s, st, soft.penalty));
         }
-        opl_scratch[k] = opl;
-        status[k] = static_cast<std::uint8_t>(st);
+        opl_scratch[r] = opl;
+        status[r] = static_cast<std::uint8_t>(st);
     }
+    __syncthreads();
 
-    // Kolben per Baumreduktion (ohne gültigen Strahl: valid = false, alle OPD und Residuen des
-    // Tupels werden 0, der Status bleibt gesetzt, wie opd_statistics).
-    R piston;
-    bool valid;
-    detail::block_piston(sh_piston, weight_ok, weighted_opl, tid, piston, valid);
-    const R scale = R(residual_scale(a.batch, f, l));
+    // Kolben pro Tupel in der Reihenfolge von M2 (pack_piston; ohne gültigen Strahl:
+    // valid = false, alle OPD und Residuen des Tupels werden 0, der Status bleibt gesetzt, wie
+    // opd_statistics).
+    detail::pack_piston(sh, pack.tuples, opl_scratch, status, tid);
 
-    // Durchlauf 2: OPD und Residuen derselben Stützstellen (gleicher Thread, eigene
+    // Durchlauf 2: OPD und Residuen derselben Strahlen (gleicher Thread, eigene
     // Schreibzugriffe), Ausgabe in FP64.
-    for (int k = tid; k < n; k += kBlockThreads) {
+    for (int r = tid; r < pack.rays; r += kBlockThreads) {
+        const int j = detail::pack_tuple_of(sh, pack.tuples, r);
         R e = R(0);
-        if (valid && in_piston(static_cast<TraceStatus>(status[k]))) {
-            e = opl_scratch[k] - piston;
+        if (sh.valid[j] != 0 && in_piston(static_cast<TraceStatus>(status[r]))) {
+            e = opl_scratch[r] - sh.piston[j];
         }
         if (opd != nullptr) {
-            opd[k] = static_cast<double>(e);
+            opd[r] = static_cast<double>(e);
         }
-        residuals[k] = static_cast<double>(ray_residual(scale, sample(sh_table.pupil, k), e));
+        residuals[r] = static_cast<double>(
+            ray_residual(sh.scale[j], detail::pack_sample(sh, j, r - sh.start[j]), e));
     }
 
     if constexpr (kExtrema) {
         detail::block_extrema(sh_extrema, extrema, S, tid,
-                              a.extrema_partial + tu.block * static_cast<std::int64_t>(S) * 2);
+                              a.extrema_partial + block * static_cast<std::int64_t>(S) * 2);
     }
 }
 
 // Startet den Kernel mit Rechentyp R (Gerät ist gesetzt) und prüft den Start.
 template <class R>
 void launch_residuals(const ResidualKernelArgs& args, bool extrema, unsigned grid,
-                      std::size_t ghost_bytes) {
+                      std::size_t dynamic) {
     if (extrema) {
-        residuals_kernel<R, true><<<grid, kBlockThreads, ghost_bytes>>>(args);
+        residuals_kernel<R, true><<<grid, kBlockThreads, dynamic>>>(args);
     } else {
-        residuals_kernel<R, false><<<grid, kBlockThreads, ghost_bytes>>>(args);
+        residuals_kernel<R, false><<<grid, kBlockThreads, dynamic>>>(args);
     }
     MKO_CUDA_CHECK(cudaGetLastError());
+}
+
+// Statisches Shared Memory der Kernel-Variante (Kernelattribut).
+template <class R>
+std::size_t residuals_static_shared(bool extrema) {
+    cudaFuncAttributes attr{};
+    if (extrema) {
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, true>));
+    } else {
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, false>));
+    }
+    return attr.sharedSizeBytes;
 }
 
 using detail::region_ptr;
@@ -228,6 +238,9 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
         throw std::invalid_argument("DeviceResiduals::run: negative Zahl weiterer Residuen");
     }
     check_precision(options.precision);
+    if (options.pack_rays < 1) {
+        throw std::invalid_argument("DeviceResiduals::run: pack_rays muss >= 1 sein");
+    }
     const int V = batch.variants();
     const std::int64_t blocks =
         static_cast<std::int64_t>(V) * view.shape.fields * view.shape.wavelengths;
@@ -248,7 +261,12 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     const OutputLayout out = make_output_layout(batch.topology(), V, request);
     const BufferRegion plan_region{out.total_bytes,
                                    layout.plan().size() * sizeof(ResidualFieldPlan)};
-    const std::size_t total = plan_region.offset + align_bytes(plan_region.bytes);
+    const std::size_t ghost_bytes = detail::ghost_shared_bytes(view.shape);
+    if (ghost_bytes > detail::kMaxGhostSharedBytes) {
+        throw std::invalid_argument("DeviceResiduals::run: Geisterdaten (" +
+                                    std::to_string(ghost_bytes) +
+                                    " Byte) passen nicht in den Shared Memory");
+    }
 
     ran_ = false;
     if (buffer_ != nullptr && device_ != batch.device()) {
@@ -256,6 +274,25 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     }
     device_ = batch.device();
     const detail::DeviceGuard guard(device_);
+
+    // Tupelpakete (M7-T4): nur die Tabellen im dynamischen Shared Memory, OPL und Status liegen
+    // im Ausgabepuffer.
+    const bool df = options.precision == Precision::Df64;
+    const std::size_t static_bytes = df ? residuals_static_shared<df64>(options.extrema)
+                                        : residuals_static_shared<double>(options.extrema);
+    const std::vector<TuplePack> packs = make_tuple_packs(
+        layout, view.shape, options.pack_rays, 0,
+        detail::kBlockMaxSharedBytes - std::min(static_bytes, detail::kBlockMaxSharedBytes));
+    const std::size_t dynamic = pack_dynamic_bytes(packs, view.shape, 0);
+    const auto P = static_cast<int>(packs.size());
+    // Platz für F · L Pakete (höchstens so viele), damit der Puffer zur Abschätzung der
+    // TraceEngine passt (fixed_run_bytes) und über Läufe wiederverwendet wird.
+    const BufferRegion pack_region{plan_region.offset + align_bytes(plan_region.bytes),
+                                   packs.size() * sizeof(TuplePack)};
+    const std::size_t total =
+        pack_region.offset + align_bytes(static_cast<std::size_t>(view.shape.fields) *
+                                         view.shape.wavelengths * sizeof(TuplePack));
+
     if (total > capacity_) {
         if (buffer_ != nullptr) {
             MKO_CUDA_CHECK(cudaFree(buffer_));
@@ -267,6 +304,8 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     }
     MKO_CUDA_CHECK(cudaMemcpy(static_cast<char*>(buffer_) + plan_region.offset,
                               layout.plan().data(), plan_region.bytes, cudaMemcpyHostToDevice));
+    MKO_CUDA_CHECK(cudaMemcpy(static_cast<char*>(buffer_) + pack_region.offset, packs.data(),
+                              pack_region.bytes, cudaMemcpyHostToDevice));
     if (options.extra_residuals > 0 && out.residuals.bytes > 0) {
         MKO_CUDA_CHECK(
             cudaMemset(static_cast<char*>(buffer_) + out.residuals.offset, 0, out.residuals.bytes));
@@ -278,6 +317,8 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
         args.pupil = make_pupil_quadrature<double>(layout.settings().rings,
                                                    layout.settings().spokes, PupilMode::Half);
         args.plan = region_ptr<ResidualFieldPlan>(buffer_, plan_region);
+        args.packs = region_ptr<TuplePack>(buffer_, pack_region);
+        args.packs_per_variant = P;
         args.rays = layout.rays_per_variant();
         args.stride = layout.trace_rows() + options.extra_residuals;
         args.soft = layout.soft_failure() ? 1 : 0;
@@ -286,23 +327,17 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
         args.opd = region_ptr<double>(buffer_, out.opd);
         args.status = region_ptr<std::uint8_t>(buffer_, out.ray_status);
         args.extrema_partial = region_ptr<double>(buffer_, out.surface_max_partial);
-        const std::size_t ghost_bytes = detail::ghost_shared_bytes(view.shape);
-        if (ghost_bytes > detail::kMaxGhostSharedBytes) {
-            throw std::invalid_argument("DeviceResiduals::run: Geisterdaten (" +
-                                        std::to_string(ghost_bytes) +
-                                        " Byte) passen nicht in den Shared Memory");
-        }
-        const auto grid = static_cast<unsigned>(blocks);
-        if (options.precision == Precision::Df64) {
-            launch_residuals<df64>(args, options.extrema, grid, ghost_bytes);
+        const auto grid = static_cast<unsigned>(static_cast<std::int64_t>(V) * P);
+        if (df) {
+            launch_residuals<df64>(args, options.extrema, grid, dynamic);
         } else {
-            launch_residuals<double>(args, options.extrema, grid, ghost_bytes);
+            launch_residuals<double>(args, options.extrema, grid, dynamic);
         }
         if (options.extrema) {
             detail::ExtremaFinalizeArgs<double> fin{};
             fin.variants = V;
             fin.surfaces = view.shape.surfaces;
-            fin.blocks_per_variant = view.shape.fields * view.shape.wavelengths;
+            fin.blocks_per_variant = P;
             fin.partial = args.extrema_partial;
             fin.out = region_ptr<double>(buffer_, out.surface_max);
             detail::launch_extrema_finalize(fin);

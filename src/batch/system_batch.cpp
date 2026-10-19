@@ -10,7 +10,9 @@
 #include "mikroptim/paraxial/paraxial.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <numbers>
 #include <stdexcept>
@@ -444,7 +446,18 @@ void SystemBatchHost::validate_values() const {
     const auto fail = [](const std::string& what) {
         throw std::invalid_argument("SystemBatch: " + what);
     };
+    // Endlichkeit über die Exponentenbits (Exponent nicht alle Einsen): gleichwertig zu
+    // std::isfinite, aber ohne Funktionsaufruf pro Wert (MSVC ruft dafür _dtest auf; bei
+    // 10.000 Varianten kostete die Prüfung sonst über 10 ms pro Engine-Aufruf, M7-T4).
     const auto finite = [&](const std::vector<double>& values, const char* name) {
+        constexpr std::uint64_t kExponent = 0x7ff0000000000000ULL;
+        std::uint64_t all_finite = 1;
+        for (const double x : values) {
+            all_finite &= (std::bit_cast<std::uint64_t>(x) & kExponent) != kExponent ? 1U : 0U;
+        }
+        if (all_finite != 0) {
+            return;
+        }
         for (std::size_t i = 0; i < values.size(); ++i) {
             if (!std::isfinite(values[i])) {
                 fail(std::string(name) + "[" + std::to_string(i) + "] ist nicht endlich");
