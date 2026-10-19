@@ -174,61 +174,6 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     return a;
 }
 
-// Dieselbe Datei? Existieren beide, entscheidet das Dateisystem (auch Verknüpfungen), sonst
-// der Vergleich der normalisierten absoluten Pfade.
-bool same_file(const fs::path& a, const fs::path& b) {
-    std::error_code ec;
-    if (fs::exists(a, ec) && fs::exists(b, ec)) {
-        const bool same = fs::equivalent(a, b, ec);
-        if (!ec) {
-            return same;
-        }
-    }
-    const fs::path ca = fs::weakly_canonical(a, ec);
-    const fs::path cb = fs::weakly_canonical(b, ec);
-    return ca == cb;
-}
-
-// UTF-8-Text eines Pfads (Dateiformat speichert Pfade als UTF-8).
-std::string utf8(const fs::path& p) {
-    const std::u8string s = p.generic_u8string();
-    return std::string(s.begin(), s.end());
-}
-
-// Einträge von glass_catalogs für eine Systemdatei im Verzeichnis `out_dir`: Ein Eintrag bleibt
-// unverändert, wenn er von dort aus (resolve_glass_catalogs, mit der Suche in den
-// Elternverzeichnissen) auf dieselbe Datei führt wie von der Eingabedatei aus; sonst wird er
-// durch den relativen Pfad von `out_dir` zur aufgelösten Datei ersetzt, und wenn es keinen gibt
-// (anderes Laufwerk), durch den absoluten Pfad.
-std::vector<std::string> catalogs_for(const SystemDescription& system,
-                                      const std::vector<fs::path>& resolved,
-                                      const fs::path& out_dir) {
-    std::vector<std::string> out;
-    for (std::size_t i = 0; i < system.glass_catalogs.size(); ++i) {
-        const std::string& entry = system.glass_catalogs[i];
-        const fs::path& target = resolved.at(i);
-        SystemDescription probe;
-        probe.glass_catalogs = {entry};
-        bool keep = false;
-        try {
-            const std::vector<fs::path> r = resolve_glass_catalogs(probe, out_dir);
-            std::error_code ec;
-            keep = fs::equivalent(r.at(0), target, ec) && !ec;
-        } catch (const FormatError&) {
-            keep = false;
-        }
-        if (keep) {
-            out.push_back(entry);
-            continue;
-        }
-        std::error_code ec;
-        const fs::path abs_target = fs::absolute(target, ec).lexically_normal();
-        const fs::path rel = fs::relative(abs_target, out_dir, ec);
-        out.push_back(utf8(!ec && !rel.empty() ? rel : abs_target));
-    }
-    return out;
-}
-
 // ------------------------------------------------------------------------------------------
 // Bericht
 // ------------------------------------------------------------------------------------------

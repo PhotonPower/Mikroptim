@@ -1,0 +1,30 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Achromat mit zwei Glasvariablen",
+  "description": "Frei erfundenes Testsystem (M6-T5): verkittetes Doppel f = 50 mm bei NA 0,05 auf der Achse, drei Wellenlängen (F, e, C). Start Kronglas N-BK7 und ein Flint als Buchdahl-Material mit den Koordinaten des 3-Term-Fits (400–700 nm) des frei erfundenen Testglases SYN-21 (data/glass/synthetisch.json; Buchdahl statt Katalogname, damit die Datei nur Gläser aus basis.json nennt). Variablen: drei Krümmungen, beide Gläser (n0, nu1, nu2 als Buchdahl-Koordinaten) und der Arbeitsabstand; Nebenbedingungen: Brennweite und die Glas-Hülle. Beispiel und Abnahme für das Glas-Einrasten (mikroptim snap): erst kontinuierlich optimieren, dann auf Katalog-Gläser einrasten.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json", "data/glass/synthetisch.json"],
+  "spectrum": { "wavelengths_nm": [486.13, 546.07, 656.27], "weights": [1.0, 1.0, 1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 50.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 2.5 },
+    { "type": "sphere", "curvature": 0.0418, "thickness": 4.0, "material": "N-BK7", "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.0418, "thickness": 2.0, "material": { "model": "buchdahl", "n0": 1.6615857982437898, "nu": [-0.12253774359897068, 0.06287087404281516, 0.006633015152247694] }, "semi_diameter": 6.0 },
+    { "type": "sphere", "curvature": -0.0065, "thickness": 47.0, "material": "AIR", "semi_diameter": 6.0 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": [1, 2, 3], "min": -0.1, "max": 0.1 },
+      { "type": "glass", "surface": 1 },
+      { "type": "glass", "surface": 2 },
+      { "type": "working_distance", "min": 30.0, "max": 70.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 10000.0 },
+      { "type": "glass_hull", "weight": 1000000.0 }
+    ]
+  }
+}

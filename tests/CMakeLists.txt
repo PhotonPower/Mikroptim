@@ -16,6 +16,7 @@ add_executable(mikroptim_tests
     test_buchdahl_fit.cpp
     test_cli_eval.cpp
     test_cli_optimize.cpp
+    test_cli_snap.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_convex_hull.cpp
@@ -31,6 +32,7 @@ add_executable(mikroptim_tests
     test_glass_catalog.cpp
     test_glass_hull.cpp
     test_glass_optimization.cpp
+    test_glass_snap.cpp
     test_glass_variables.cpp
     test_index_table.cpp
     test_levenberg_marquardt.cpp
@@ -67,6 +69,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_fd_jacobian.cpp
         test_cuda_ghost_optimization.cpp
         test_cuda_glass_optimization.cpp
+        test_cuda_glass_snap.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
         test_cuda_multi_trace_engine.cpp
@@ -176,6 +179,29 @@ else()
     set_tests_properties(cli_optimize_gpu_unavailable PROPERTIES
         PASS_REGULAR_EXPRESSION "--gpu: ohne CUDA gebaut")
 endif()
+
+# `mikroptim snap` (M6-T5): Achromat mit zwei Glasvariablen kontinuierlich optimieren, dann auf
+# Katalog-Gläser einrasten und das Ergebnis mit `mikroptim trace` laden (Beispiel in docs/cli.md).
+set(MKO_ACHROMAT ${PROJECT_SOURCE_DIR}/data/systems/achromat_glasvariablen.json)
+set(MKO_ACHROMAT_OPT ${CMAKE_CURRENT_BINARY_DIR}/achromat_kontinuierlich.json)
+set(MKO_ACHROMAT_SNAP ${CMAKE_CURRENT_BINARY_DIR}/achromat_eingerastet.json)
+add_test(NAME cli_snap_optimize
+    COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_ACHROMAT} -o ${MKO_ACHROMAT_OPT}
+            --max-iterations 5000 --quiet)
+set_tests_properties(cli_snap_optimize PROPERTIES
+    FIXTURES_SETUP cli_snap_continuous
+    PASS_REGULAR_EXPRESSION "Status +converged.*Ergebnis geschrieben: ")
+add_test(NAME cli_snap_text
+    COMMAND $<TARGET_FILE:mikroptim> snap ${MKO_ACHROMAT_OPT} -o ${MKO_ACHROMAT_SNAP})
+set_tests_properties(cli_snap_text PROPERTIES
+    FIXTURES_REQUIRED cli_snap_continuous
+    FIXTURES_SETUP cli_snap_result
+    PASS_REGULAR_EXPRESSION "Kombinationen \\(Läufe\\) +9 von 9 \\(alle\\).*Verschlechterung.*Ergebnis geschrieben: ")
+add_test(NAME cli_snap_result_trace
+    COMMAND $<TARGET_FILE:mikroptim> trace ${MKO_ACHROMAT_SNAP})
+set_tests_properties(cli_snap_result_trace PROPERTIES
+    FIXTURES_REQUIRED cli_snap_result
+    PASS_REGULAR_EXPRESSION "Brennweite f' +50\\.0.*Versagte Strahlen: 0 von 30")
 
 # Benchmark trace_throughput (M2-T6) als kurzer Smoke-Lauf: 10 Varianten, ein Lauf. Exit-Code 3 =
 # kein CUDA-Gerät (übersprungen); die Synthesesysteme dürfen keine versagten Strahlen haben.

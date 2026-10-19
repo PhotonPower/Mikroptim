@@ -157,6 +157,7 @@ add_library(mikroptim_optim STATIC
     src/optim/fd_jacobian.cpp
     src/optim/ghost_diagnosis.cpp
     src/optim/ghost_penalty.cpp
+    src/optim/glass_snap.cpp
     src/optim/glass_variables.cpp
     src/optim/levenberg_marquardt.cpp
     src/optim/paraxial_residuals.cpp
@@ -224,6 +225,7 @@ add_library(mikroptim_cli STATIC
     src/cli/cli_util.cpp
     src/cli/eval_command.cpp
     src/cli/optimize_command.cpp
+    src/cli/snap_command.cpp
     src/cli/trace_command.cpp)
 target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mikroptim_cli
