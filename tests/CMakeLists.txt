@@ -20,6 +20,7 @@ add_executable(mikroptim_tests
     test_cli_insert.cpp
     test_cli_optimize.cpp
     test_cli_snap.cpp
+    test_cli_synth.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_convex_hull.cpp
@@ -37,6 +38,8 @@ add_executable(mikroptim_tests
     test_glass_optimization.cpp
     test_glass_snap.cpp
     test_glass_variables.cpp
+    test_homotopy.cpp
+    test_homotopy_optimization.cpp
     test_index_table.cpp
     test_insertion.cpp
     test_insertion_optimization.cpp
@@ -64,7 +67,7 @@ add_executable(mikroptim_tests
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-    mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
+    mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
@@ -79,6 +82,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_ghost_optimization.cpp
         test_cuda_glass_optimization.cpp
         test_cuda_glass_snap.cpp
+        test_cuda_homotopy.cpp
         test_cuda_insertion.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_mechanical.cpp

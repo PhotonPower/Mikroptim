@@ -173,6 +173,18 @@ target_link_libraries(mikroptim_optim
     PRIVATE Threads::Threads nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# Systemsynthese (Host): Homotopie-Controller mit Schrittweitensteuerung, Fortsetzungen und
+# Einfüge-Operatoren (M6-T3); GPU über einen austauschbaren Optimierer (ohne CUDA-Abhängigkeit)
+# --------------------------------------------------------------------------
+add_library(mikroptim_synth STATIC
+    src/synth/homotopy.cpp
+    src/synth/optical_homotopy.cpp)
+add_library(Mikroptim::synth ALIAS mikroptim_synth)
+target_link_libraries(mikroptim_synth
+    PUBLIC mikroptim_core mikroptim_model mikroptim_batch mikroptim_cpu mikroptim_optim
+    PRIVATE mikroptim_glass nlohmann_json::nlohmann_json mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # Auswertung (Host): Modus EVAL auf dem dichten Pupillenraster, CPU-Referenz, Kennzahlen
 # (M8-T1); skalare PSF, MTF und Strehl mit eigener Radix-2-FFT (M8-T2), vektorielle PSF
 # (M8-T5); die Kernel liegen in Mikroptim::cuda
@@ -240,12 +252,14 @@ add_library(mikroptim_cli STATIC
     src/cli/insert_command.cpp
     src/cli/optimize_command.cpp
     src/cli/snap_command.cpp
+    src/cli/synth_command.cpp
     src/cli/trace_command.cpp)
 target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mikroptim_cli
     PUBLIC mikroptim_core
     PRIVATE mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-            mikroptim_batch mikroptim_eval mikroptim_optim nlohmann_json::nlohmann_json mikroptim_warnings)
+            mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth nlohmann_json::nlohmann_json
+            mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     # `mikroptim trace --gpu` (M2-T5) über die TraceEngine und `mikroptim optimize --gpu`
     # (M3-T5) über optimize_lm_gpu; setzt MIKROPTIM_HAS_CUDA

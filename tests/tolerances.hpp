@@ -391,5 +391,11 @@ inline constexpr double kInsertionMeritRelative = 1e-11;
 // Abnahme Operator B: Brennweite des Kittglieds gegen die der Einzellinse [mm]; beide über die
 // gewichtete Gleichung (Gewicht 10⁴/mm²) auf f = 50 mm gehalten.
 inline constexpr double kAchromatFocalLength = 1e-3;
+// Homotopie-Controller (M6-T3): Merit des Kurzlaufs auf der GPU gegen die CPU, relativ pro
+// Schritt. Jeder Schritt ist ein LM-Lauf ab dem Ergebnis des vorigen; FMA-Kontraktion und
+// Bibliotheksfunktionen der GPU (kCpuGpuFp64Relative pro Strahl) wachsen über die Zyklen und
+// Schritte an (vgl. die Abnahmen von M3-T4 bis M6-T2: F GPU gegen CPU bis ~1e-10 nach einem
+// Lauf).
+inline constexpr double kHomotopyCpuGpuMerit = 1e-6;
 
 } // namespace mko::test

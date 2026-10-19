@@ -11,6 +11,8 @@ mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--ma
                [--max-iterations N] [--rings N] [--spokes M] [--gpu [--device N]]
 mikroptim insert <system.json> -o <neu.json> (--meniscus I,POS,C0,GLAS [--thickness T] |
                  --split I,C_S[,ANTEIL] [--free-glass]) [--no-variables]
+mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log <protokoll.json>]
+                [--quiet] [--max-elements N] [--max-iterations N] [--gpu [--device N]] ...
 ```
 
 | Aufruf | Wirkung |
@@ -22,6 +24,7 @@ mikroptim insert <system.json> -o <neu.json> (--meniscus I,POS,C0,GLAS [--thickn
 | `mikroptim eval …` | Auswertung auf dem dichten Pupillenraster (Modus EVAL, M8-T1; Abschnitt [`mikroptim eval`](#mikroptim-eval)) |
 | `mikroptim snap …` | Glasvariablen auf Katalog-Gläser einrasten, übrige Variablen reoptimieren (M6-T5; Abschnitt [`mikroptim snap`](#mikroptim-snap)) |
 | `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
+| `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
 
@@ -1085,3 +1088,167 @@ Ergebnis geschrieben: kitt.json
 ```
 
 **Tests:** `tests/test_cli_insert.cpp` (Ergebnisdatei gleich der Bibliothek, Merit unverändert, Kataloge aus einem anderen Verzeichnis auffindbar, konstantes Glas und Dicke, Fehlerfälle). Implementierung: `src/cli/insert_command.cpp`.
+
+## `mikroptim synth`
+
+Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optimierung.md#festlegungen-der-implementierung-m6-t3)): Ausgehend von der Startdatei (Variablen, Nebenbedingungen, Geisterplatten-Wörterbuch mit L1-Strafe) wird die numerische Apertur in Schritten mit Schrittweitensteuerung bis `--target-na` geöffnet (danach optional der Feldanteil). Ein Schritt ist eine LM-Optimierung; abgelehnte Schritte werden halbiert, unter Δ_min wird bei Bedarf (Diagnose der Geisterplatten) ein Einfüge-Operator angewandt (A: Meniskus mit innerer Homotopie über die Dicke und zwei Starts am Sattelpunkt, B: Kittglied mit freiem Glas). Am Ende ε-Fortsetzung und Prüfung des Beugungsziels am realen System (Geisterkoeffizienten 0). Kollimierte Quellen brauchen `target.focal_length` (Pupillenradius = f · NA).
+
+| Option | Bedeutung |
+|---|---|
+| `--target-na NA` | numerische Apertur am Ende (Standard: die des Starts, a/f) |
+| `--start-field F`, `--target-field F` | Feldanteil (Faktor auf die Feldwinkel der Datei) am Start (Standard 1) bzw. am Ende (Standard: wie am Start) |
+| `--rms-target W` | Beugungsziel [Wellen] pro Feld und Wellenlänge (Standard 1/14) |
+| `--merit-factor K` | Schwelle F_max = (K · Ziel)² für die Bewertungsmerit F_B = Wellenfront + L1-Strafe (Standard 1) |
+| `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |
+| `--max-elements N` | höchstens N Glaselemente (Standard 6) |
+| `--max-steps N` | höchstens N Optimierungen (Standard 400) |
+| `--max-iterations N` | LM-Zyklen pro Schritt (Standard 500) |
+| `--rings N`, `--spokes M` | Pupillenquadratur (Standard 10 × 8) |
+| `--element-thickness T`, `--element-max-thickness T`, `--element-stages J` | Operator A: Mittendicke am Ende der inneren Homotopie (0,5 mm), danach Variable bis T (5 mm; ≤ Dicke: fest), Zahl der Dickenstufen (5) |
+| `--min-air-gap G` | kleinster Luftspalt hinter einem eingefügten Meniskus (0,1 mm) |
+| `--saddle-delta D` | zwei Starts am Sattelpunkt mit c₀ ± D (0,002/mm; 0: ein Zweig) |
+| `--curvature-bound C` | Schranken ±C [1/mm] der neuen Krümmungsvariablen (Standard offen) |
+| `-o DATEI` | Ergebnis am Endpunkt als Systemdatei (Pupille, Feldwinkel, Spektrum und Gewichte des Endpunkts, ohne Vorhalt; Kataloge relativ zum Verzeichnis der Datei) |
+| `--log DATEI` | Protokoll als JSON `mikroptim.synth/1` in eine Datei (zusätzlich zur Ausgabe) |
+| `--json` | Ausgabe als JSON statt Text |
+| `--quiet` | Text ohne Schrittprotokoll |
+| `--gpu [--device N]` | LM-Läufe auf einem CUDA-Gerät (`optimize_lm_gpu`); Diagnose und Zielprüfung bleiben auf der CPU |
+
+Exit-Codes: 0 Lauf beendet (auch wenn das Ziel verfehlt wurde; der Status steht in der Ausgabe), 1 Datei-, Format- oder Rechenfehler, 2 ungültige Kommandozeile (auch: `-o` oder `--log` gleich der Eingabedatei), 3 GPU-Backend nicht verfügbar.
+
+**Textausgabe.** Kopf (System, Start, Ziel, F_max, Backend), danach eine Zeile pro Schritt (`write_homotopy_step_line`): Nummer, Art, Punkt (NA, Feldanteil, Spektrumstufe), Δ, LM-Status und Zyklen, F, F_B, größter RMS mit Geisterplatten [Wellen], Σ|a|, Glaselemente, Entscheidung (`grow`/`keep`/`shrink`/`insert`/`stop` mit dem Δ danach, sonst `ok`) und Bemerkung (Operator, Zweig und Stufe, Gewichtsstufe, Ziel). Am Ende Status, Endpunkt, Elemente, RMS des realen Systems pro Feld und Wellenlänge, Laufzeit.
+
+**Beispiel** (Abnahme von M6-T3, CPU, Release-Build auf dem Rechner des Maintainers):
+
+```
+$ mikroptim synth data/systems/einzellinse_homotopie_start.json --target-na 0.6 --curvature-bound 1 -o ergebnis.json --log protokoll.json
+mikroptim synth 0.1.0: data/systems/einzellinse_homotopie_start.json
+  System                                      Einzellinse NA 0,3 mit Geisterplatten, Start der Homotopie
+  Start                                       NA 0.3000, Feldanteil 1.000, 1 Glaselement(e)
+  Ziel                                        NA 0.6000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     CPU
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.3000  1.000   0  -        converged_merit       22  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.3000  1.000   0  -        converged_merit        0  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.3000  1.000   0  -        converged_merit        0  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.3000  1.000   0  -        -                      -  -             -             -         -             1  ok: Operator A: Meniskus nach Fläche 0 bei 1 mm, c0 = 0.124736/mm, Glas buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138) (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      4  insertion_stage  0.3000  1.000   0  -        converged_step       217  2.098751e-02  2.098739e-02  0.05743   3.803e-04   1  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.3000  1.000   0  -        converged_step        67  2.098507e-02  2.098494e-02  0.05740   3.803e-04   1  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.3000  1.000   0  -        converged_step        75  2.098019e-02  2.098007e-02  0.05735   3.803e-04   1  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.3000  1.000   0  -        converged_step        85  2.097046e-02  2.097033e-02  0.05725   3.804e-04   1  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.3000  1.000   0  -        converged_step        89  2.095078e-02  2.095065e-02  0.05702   3.805e-04   1  ok, Zweig 0, Stufe 0.5
+      9  insertion_stage  0.3000  1.000   0  -        converged_step       186  2.098751e-02  2.098739e-02  0.05743   3.803e-04   1  ok, Zweig 1, Stufe 0.03125
+     10  insertion_stage  0.3000  1.000   0  -        converged_step        82  2.098507e-02  2.098494e-02  0.05740   3.803e-04   1  ok, Zweig 1, Stufe 0.0625
+     11  insertion_stage  0.3000  1.000   0  -        converged_step        81  2.098019e-02  2.098007e-02  0.05735   3.803e-04   1  ok, Zweig 1, Stufe 0.125
+     12  insertion_stage  0.3000  1.000   0  -        converged_step        86  2.097046e-02  2.097033e-02  0.05725   3.804e-04   1  ok, Zweig 1, Stufe 0.25
+     13  insertion_stage  0.3000  1.000   0  -        converged_step        95  2.095078e-02  2.095065e-02  0.05702   3.805e-04   1  ok, Zweig 1, Stufe 0.5
+     14  penalty          0.3000  1.000   0  -        converged_step       222  1.894521e-02  1.894511e-02  0.05688   3.387e-04   2  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     15  penalty          0.3000  1.000   0  -        converged_step         7  1.894521e-02  1.894511e-02  0.05688   3.387e-04   2  ok: Gewichte der einseitigen Bedingungen ×0.1
+     16  penalty          0.3000  1.000   0  -        converged_step         7  1.894521e-02  1.894511e-02  0.05688   3.387e-04   2  ok: Gewichte der einseitigen Bedingungen ×1
+     17  insertion        0.3000  1.000   0  -        -                      -  -             -             -         -             2  ok: Operator A: Meniskus nach Fläche 0 bei 1 mm, c0 = 0.0633467/mm, Glas N-BK7 (Platte 0, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     18  insertion_stage  0.3000  1.000   0  -        max_iterations       500  2.962288e-04  2.712286e-04  0.01622   1.612e-06   2  ok, Zweig 0, Stufe 0.03125
+     19  insertion_stage  0.3000  1.000   0  -        converged_step       380  2.964099e-04  2.714098e-04  0.01623   1.613e-06   2  ok, Zweig 0, Stufe 0.0625
+     20  insertion_stage  0.3000  1.000   0  -        converged_step       150  2.969464e-04  2.719463e-04  0.01624   1.617e-06   2  ok, Zweig 0, Stufe 0.125
+     21  insertion_stage  0.3000  1.000   0  -        converged_step       314  2.980150e-04  2.730149e-04  0.01627   1.626e-06   2  ok, Zweig 0, Stufe 0.25
+     22  insertion_stage  0.3000  1.000   0  -        converged_step       488  3.001348e-04  2.751348e-04  0.01634   1.642e-06   2  ok, Zweig 0, Stufe 0.5
+     23  insertion_stage  0.3000  1.000   0  -        converged_step       136  1.979290e-02  1.976770e-02  0.07950   2.897e-04   2  ok, Zweig 1, Stufe 0.03125
+     24  insertion_stage  0.3000  1.000   0  -        converged_step        61  1.976504e-02  1.973984e-02  0.07933   2.897e-04   2  ok, Zweig 1, Stufe 0.0625
+     25  insertion_stage  0.3000  1.000   0  -        converged_step        57  1.971051e-02  1.968530e-02  0.07898   2.897e-04   2  ok, Zweig 1, Stufe 0.125
+     26  insertion_stage  0.3000  1.000   0  -        converged_step        58  1.960612e-02  1.958092e-02  0.07832   2.897e-04   2  ok, Zweig 1, Stufe 0.25
+     27  insertion_stage  0.3000  1.000   0  -        converged_step        97  1.941527e-02  1.939007e-02  0.07708   2.897e-04   2  ok, Zweig 1, Stufe 0.5
+     28  penalty          0.3000  1.000   0  -        converged_step       188  2.759722e-04  2.757220e-04  0.01635   1.646e-06   3  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     29  penalty          0.3000  1.000   0  -        converged_step       233  2.782030e-04  2.757029e-04  0.01635   1.646e-06   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+     30  penalty          0.3000  1.000   0  -        converged_step        55  3.007025e-04  2.757025e-04  0.01635   1.646e-06   3  ok: Gewichte der einseitigen Bedingungen ×1
+     31  aperture         0.3200  1.000   0  0.02000  max_iterations       500  4.796765e-04  4.546763e-04  0.02099   2.156e-06   3  keep (Delta 0.02000)
+     32  aperture         0.3400  1.000   0  0.02000  max_iterations       500  7.583469e-04  7.333463e-04  0.02663   2.825e-06   3  keep (Delta 0.02000)
+     33  aperture         0.3600  1.000   0  0.02000  max_iterations       500  1.176571e-03  1.151569e-03  0.03331   3.732e-06   3  keep (Delta 0.02000)
+     34  aperture         0.3800  1.000   0  0.02000  max_iterations       500  1.788313e-03  1.763309e-03  0.04106   5.096e-06   3  keep (Delta 0.02000)
+     35  aperture         0.4000  1.000   0  0.02000  max_iterations       500  2.623513e-03  2.598500e-03  0.04911   8.091e-06   3  keep (Delta 0.02000)
+     36  aperture         0.4200  1.000   0  0.02000  max_iterations       500  3.691754e-03  3.666726e-03  0.05154   2.579e-05   3  keep (Delta 0.02000)
+     37  aperture         0.4400  1.000   0  0.02000  max_iterations       500  4.924733e-03  4.899673e-03  0.05159   5.176e-05   3  keep (Delta 0.02000)
+     38  aperture         0.4600  1.000   0  0.02000  max_iterations       500  6.355247e-03  6.329754e-03  0.05166   8.187e-05   3  shrink (Delta 0.01000)
+     39  aperture         0.4500  1.000   0  0.01000  max_iterations       500  5.579714e-03  5.554647e-03  0.05161   6.558e-05   3  shrink (Delta 0.00500)
+     40  aperture         0.4450  1.000   0  0.00500  max_iterations       500  5.206054e-03  5.180997e-03  0.05160   5.770e-05   3  shrink (Delta 0.00250)
+     41  aperture         0.4425  1.000   0  0.00250  max_iterations       500  5.032468e-03  5.007416e-03  0.05159   5.405e-05   3  keep (Delta 0.00250)
+     42  aperture         0.4450  1.000   0  0.00250  max_iterations       500  5.151708e-03  5.126649e-03  0.05160   5.655e-05   3  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 6 im Abstand 0.5 mm, Glas wie Platte 3 (buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138)), dominante Ordnung 4; Biegung aus dem Vorzeichen der Korrektur
+     43  insertion        0.4425  1.000   0  -        -                      -  -             -             -         -             3  ok: Operator A: Meniskus nach Fläche 6 bei 0.5 mm, c0 = 0.151146/mm, Glas buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138) (Platte 3, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     44  insertion_stage  0.4425  1.000   0  -        max_iterations       500  5.438332e-03  5.412719e-03  0.07249   6.075e-06   3  ok, Zweig 0, Stufe 0.03125
+     45  insertion_stage  0.4425  1.000   0  -        max_iterations       500  4.784563e-03  4.755219e-03  0.06813   4.985e-06   3  ok, Zweig 0, Stufe 0.0625
+     46  insertion_stage  0.4425  1.000   0  -        max_iterations       500  4.302526e-03  4.276961e-03  0.06469   4.447e-06   3  ok, Zweig 0, Stufe 0.125
+     47  insertion_stage  0.4425  1.000   0  -        max_iterations       500  4.208372e-03  4.182769e-03  0.06398   4.366e-06   3  ok, Zweig 0, Stufe 0.25
+     48  insertion_stage  0.4425  1.000   0  -        max_iterations       500  2.584377e-03  2.558942e-03  0.05014   3.005e-06   3  ok, Zweig 0, Stufe 0.5
+     49  insertion_stage  0.4425  1.000   0  -        max_iterations       500  4.067704e-03  4.042176e-03  0.06292   4.209e-06   3  ok, Zweig 1, Stufe 0.03125
+     50  insertion_stage  0.4425  1.000   0  -        max_iterations       500  3.704260e-03  3.678773e-03  0.06005   3.878e-06   3  ok, Zweig 1, Stufe 0.0625
+     51  insertion_stage  0.4425  1.000   0  -        max_iterations       500  3.426491e-03  3.401011e-03  0.05776   3.650e-06   3  ok, Zweig 1, Stufe 0.125
+     52  insertion_stage  0.4425  1.000   0  -        max_iterations       500  3.237148e-03  3.211665e-03  0.05614   3.503e-06   3  ok, Zweig 1, Stufe 0.25
+     53  insertion_stage  0.4425  1.000   0  -        max_iterations       500  3.666648e-03  3.641028e-03  0.05974   3.892e-06   3  ok, Zweig 1, Stufe 0.5
+     54  penalty          0.4425  1.000   0  -        max_iterations       500  3.331250e-06  3.081250e-06  0.00175   4.554e-08   4  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     55  penalty          0.4425  1.000   0  -        max_iterations       500  5.387893e-06  2.887892e-06  0.00169   4.404e-08   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+     56  penalty          0.4425  1.000   0  -        max_iterations       500  2.770950e-05  2.709497e-06  0.00164   4.259e-08   4  ok: Gewichte der einseitigen Bedingungen ×1
+     57  aperture         0.4625  1.000   0  0.02000  max_iterations       500  2.997929e-05  4.979294e-06  0.00222   5.844e-08   4  keep (Delta 0.02000)
+     58  aperture         0.4825  1.000   0  0.02000  max_iterations       500  3.509171e-05  1.009171e-05  0.00317   8.424e-08   4  keep (Delta 0.02000)
+     59  aperture         0.5025  1.000   0  0.02000  max_iterations       500  4.423192e-05  1.923191e-05  0.00437   1.176e-07   4  keep (Delta 0.02000)
+     60  aperture         0.5225  1.000   0  0.02000  max_iterations       500  6.026233e-05  3.526230e-05  0.00592   1.612e-07   4  keep (Delta 0.02000)
+     61  aperture         0.5425  1.000   0  0.02000  max_iterations       500  8.709887e-05  6.209880e-05  0.00785   2.167e-07   4  keep (Delta 0.02000)
+     62  aperture         0.5625  1.000   0  0.02000  max_iterations       500  1.320080e-04  1.070078e-04  0.01031   2.889e-07   4  keep (Delta 0.02000)
+     63  aperture         0.5825  1.000   0  0.02000  max_iterations       500  2.044409e-04  1.794404e-04  0.01335   3.817e-07   4  keep (Delta 0.02000)
+     64  aperture         0.6000  1.000   0  0.02000  max_iterations       500  2.998484e-04  2.748472e-04  0.01652   4.814e-07   4  keep (Delta 0.02000)
+     65  smoothing        0.6000  1.000   0  -        max_iterations       500  2.915273e-04  2.665261e-04  0.01632   4.750e-08   4  ok: ε ×0.1
+     66  goal             0.6000  1.000   0  -        -                      -  -             -             -         -             4  ok: Ziel erreicht: größter RMS 0.01633 Wellen (Ziel 0.07143)
+
+Status: goal_reached (Ziel erreicht)
+Endpunkt: NA 0.6000, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x0.1 (Ziel NA 0.6000)
+Glaselemente: 1 -> 4 (3 Einfügungen), Optimierungen: 63, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.01633 Wellen, versagt 0
+  Laufzeit [s]                                19.2
+Ergebnis geschrieben: ergebnis.json
+Protokoll geschrieben: protokoll.json
+```
+
+Mit `--gpu` (RTX 3090) dieselben Entscheidungen, RMS am Ende 0,01566 Wellen, 35 s. `mikroptim trace ergebnis.json` liefert 0,016320 Wellen (die Ergebnisdatei enthält die Restkoeffizienten der Geisterplatten von ~10⁻⁸ mm, die Zielprüfung setzt sie auf 0).
+
+**JSON** (`--json` bzw. `--log`), Format `mikroptim.synth/1`: `format`, `version`, `input`, `backend` (`gpu`, mit `--gpu` `device` und `device_name`), `options` (Ziel-NA, Startpunkt, Ziel-RMS, Faktor, Elemente, Zyklen, Quadratur, Einstellungen des Operators A), `result` und `output` (Ergebnisdatei oder `null`). `result`: `status` (`goal_reached`, `goal_not_reached`, `step_too_small`, `max_elements`, `max_steps`, `start_rejected`), `message`, `start_point`, `target`, `point` (je `aperture`, `field`, `spectrum`, `ghost_weight`, `ghost_smoothing`, `penalty_scale`), `merit_threshold`, `start_elements`, `elements`, `insertions`, `solves`, `goal` (`reached`, `target_waves`, `max_rms_waves`, `tuples` mit Feld, Wellenlänge, Winkel, λ, `rms_waves`, `failed_rays`), `seconds` und `steps`. Ein Schritt (hier der Aperturschritt 42, der zum Einfügen führte):
+
+```json
+{
+  "index": 42,
+  "kind": "aperture",
+  "point": {
+    "aperture": 0.4450000000000001,
+    "field": 1.0,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0
+  },
+  "delta": 0.0025,
+  "branch": null,
+  "stage": null,
+  "lm": {
+    "status": "max_iterations",
+    "iterations": 500,
+    "start_merit": 0.6153761907875889,
+    "merit": 0.005151708173780439,
+    "wavefront": 0.0026628403204233793,
+    "ghost_penalty": 0.0024638085090079253,
+    "rms_waves": 0.051602716211681915,
+    "ghost_sum_mm": 5.65538305661399e-05,
+    "failed_rays": 0
+  },
+  "accepted": false,
+  "action": "insert",
+  "next_delta": 0.00125,
+  "recommendation": "A",
+  "operation": "Operator A (Meniskus ohne Brechkraft) nach Fläche 6 im Abstand 0.5 mm, Glas wie Platte 3 (buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138)), dominante Ordnung 4; Biegung aus dem Vorzeichen der Korrektur",
+  "elements": 3,
+  "goal": null,
+  "seconds": 0.4285371
+}
+```
+
+Nicht endliche Zahlen stehen als `null`; `seconds` ist der einzige nicht deterministische Wert.
+
+**Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`). Implementierung: `src/cli/synth_command.cpp`.
