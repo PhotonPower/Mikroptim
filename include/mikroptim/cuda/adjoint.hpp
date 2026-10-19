@@ -4,9 +4,10 @@
 // Modus ADJOINT, Grundgerüst (M5-T1): Vorwärtsdurchlauf mit Aufzeichnung pro Strahl im Local
 // Memory (AdjointRecord oder CheckpointRecord, include/mikroptim/trace/adjoint_record.hpp), danach
 // Lesen der Aufzeichnung in absteigender Reihenfolge der Flächen wie im Rückwärtsdurchlauf
-// (M5-T2). Residuen, Status und OPD sind bitgleich zum Kernel RESIDUALS. Der Rückwärtsdurchlauf
-// und die Einbindung in die TraceEngine folgen in M5-T2/M5-T3; bis dahin ist dies ein Testzugang
-// (Aufzeichnung herunterladen, Prüfsumme, Durchsatz). docs/architektur.md, Abschnitt
+// (M5-T2). Residuen, Status und OPD sind bitgleich zum Kernel RESIDUALS. Dies ist ein Testzugang
+// (Aufzeichnung herunterladen, Prüfsumme, Durchsatz); die Jacobi-Matrix mit Rückwärtsdurchlauf
+// liefert DeviceAdjointJacobian (mikroptim/cuda/adjoint_jacobian.hpp, M5-T2), die Einbindung in
+// die TraceEngine folgt in M5-T3. docs/architektur.md, Abschnitt
 // "Modus ADJOINT: Vorwärtsdurchlauf mit Aufzeichnung (M5-T1)".
 
 #include "mikroptim/batch/batch_memory.hpp"

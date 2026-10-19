@@ -154,6 +154,7 @@ target_link_libraries(mikroptim_batch
 # --------------------------------------------------------------------------
 find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
+    src/optim/adjoint_jacobian.cpp
     src/optim/fd_jacobian.cpp
     src/optim/ghost_diagnosis.cpp
     src/optim/ghost_penalty.cpp
@@ -192,6 +193,7 @@ target_link_libraries(mikroptim_eval
 if(MIKROPTIM_ENABLE_CUDA)
     add_library(mikroptim_cuda STATIC
         src/cuda/adjoint.cu
+        src/cuda/adjoint_jacobian.cu
         src/cuda/batch_trace_check.cu
         src/cuda/df64_check.cu
         src/cuda/device_info.cu
@@ -222,7 +224,10 @@ if(MIKROPTIM_ENABLE_CUDA)
     # Modus ADJOINT (M5-T1): ohne FMA-Kontraktion, damit Trace mit und ohne Aufzeichnung und das
     # Neu-Vorwärtsrechnen aus Checkpoints bitgleich sind (docs/architektur.md, Abschnitt "Modus
     # ADJOINT"). Strenger als der Standard, keine fast-math-Option.
-    set_source_files_properties(src/cuda/adjoint.cu PROPERTIES COMPILE_OPTIONS "--fmad=false")
+    # Ebenso die adjungierte Jacobi-Matrix (M5-T2): Vorwärtsdurchlauf, Aufzeichnung und
+    # Neuberechnung der Zwischengrößen im Rückwärtsdurchlauf mit denselben Rundungen.
+    set_source_files_properties(src/cuda/adjoint.cu src/cuda/adjoint_jacobian.cu
+        PROPERTIES COMPILE_OPTIONS "--fmad=false")
 endif()
 
 # --------------------------------------------------------------------------

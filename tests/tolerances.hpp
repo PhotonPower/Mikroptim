@@ -122,6 +122,38 @@ inline constexpr double kFdRichardsonReference = 1e-8;
 // Zentrale Differenz analytischer Zusatzresiduen (Polynome bis Grad 2 und 1/w) gegen die
 // exakte Ableitung, relativ: Abbruch (h/w)² ≈ 4·10⁻¹¹, Rundung ε·|e|/h ≲ 10⁻⁹.
 inline constexpr double kFdExtraAnalytic = 1e-8;
+// Lokale Ableitungen des Rückwärtsdurchlaufs (M5-T2: brechender Schritt, Geisterplatte,
+// Referenzsphäre, Startstrahl der Punktquelle) gegen Richardson-Extrapolation zentraler
+// Differenzen (h = 10⁻²·max(|x|, x_typ), h/2, h/4, adaptiv über vier Stufen h/10ᵏ, Fehler
+// O(h⁶)), relativ in der 2-Norm des Gradienten. Der Rest ist der Fehler der Referenz (Rundung
+// ε·|Φ|/h, Abbruch nahe streifendem Einfall). Beobachtet (MSVC, zufällige Fälle): brechender
+// Schritt ≤ 1,0·10⁻¹⁰, Referenzsphäre ≤ 4,6·10⁻¹¹, Geisterplatte ≤ 8,4·10⁻⁹ (Profile bis K = 8
+// mit großer Amplitude weit außerhalb von r_g, |t| bis 10³ mm, also Rundung ε·|t|/h); die
+// Zufallsfälle hängen von der Standardbibliothek ab (uniform_real_distribution), daher Abstand.
+inline constexpr double kAdjointLocalRichardson = 1e-7;
+// Gradient der OPL bzw. der Strafgröße eines Einzelstrahls über die ganze Kette (M5-T2) gegen
+// Richardson (adaptiv, h/x bis 10⁻¹), relativ in der 2-Norm über alle Variablen. Rest aus der
+// Rundung der Referenz ε·OPL/h bei OPL ≈ 100 mm; beobachtet ≤ 1,8·10⁻⁸ (OPL, Geisterplatten)
+// und ≤ 5,5·10⁻⁹ (Strafe).
+inline constexpr double kAdjointRayRichardson = 1e-7;
+// Adjungierte Jacobi-Matrix gegen Richardson-Referenz bzw. FD-Jacobi (Abnahmekriterium M5-T2):
+// relativ pro Spalte und spaltenskaliert in der Frobeniusnorm, wie kFdJacobianRichardson.
+// Beobachtet gegen Richardson ≤ 6,6·10⁻⁸ pro Spalte (ν₂, Geisterkoeffizienten: Referenz
+// rundungsbegrenzt), sonst ≤ 2·10⁻⁹.
+inline constexpr double kAdjointJacobian = 1e-6;
+// Kolbenabzug als Projektion (M5-T2): Σ_k √W_k J(k, p) über die Strahlen eines Tupels ist exakt
+// 0; relativ zu Σ_k √W_k |J(k, p)| bleibt die Rundung der Summen und der Differenzen g_k − ḡ
+// (einige n ε bei n ≤ 80 Stützstellen); beobachtet 1,3·10⁻¹².
+inline constexpr double kAdjointPistonProjection = 1e-11;
+// Adjungierte Jacobi GPU (FP64) gegen CPU-Referenz (M5-T2), relativ pro Spalte der Trace-Zeilen;
+// auch r₀ der Strahlzeilen relativ zu max(|r|, 1). Dieselbe Pro-Strahl-Rechnung, Unterschiede aus
+// sin/cos der CUDA-Bibliothek und der Summationsreihenfolge (Kolben, Projektion). Beobachtet
+// (RTX 3090) J ≤ 1,7·10⁻¹¹ (Geisterplatten), r₀ ≤ 1,5·10⁻¹¹.
+inline constexpr double kAdjointCpuGpu = 1e-10;
+// Adjungierte Jacobi df64 gegen FP64 auf der GPU (M5-T2), relativ pro Spalte der Trace-Zeilen.
+// df64 hat ca. 48 Bit (u² ≈ 3,6·10⁻¹⁵); die Ableitungen nach dem Kolbenabzug sind Differenzen
+// fast gleicher Gradienten (Verstärkung bis ≈ 10⁵, z. B. Dicken). Beobachtet ≤ 1,6·10⁻¹⁰.
+inline constexpr double kAdjointDf64 = 1e-8;
 // df64 gegen FP64 (Abnahmekriterium M7-T1) [mm]: OPL, OPD und Residuen pro Strahl, Strahlhöhen
 // der Max-Reduktionen. Ziel aus docs/numerik.md, Abschnitt 12 (df64: typisch 1e-9).
 inline constexpr double kDf64VsFp64 = 1e-9;

@@ -10,6 +10,7 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
+    test_adjoint_jacobian.cpp
     test_adjoint_record.cpp
     test_batch_memory.cpp
     test_batch_merit.cpp
@@ -70,6 +71,7 @@ target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOU
 if(MIKROPTIM_ENABLE_CUDA)
     target_sources(mikroptim_tests PRIVATE
         test_cuda_adjoint.cpp
+        test_cuda_adjoint_jacobian.cpp
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
         test_cuda_eval.cpp

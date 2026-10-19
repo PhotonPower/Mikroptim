@@ -956,13 +956,85 @@ Im Plan hat M5-T1 kein eigenes Kriterium; festgelegt wurden:
 | GPU: Checkpoints und Kapazitätsklassen untereinander bitgleich | `CudaAdjoint.CheckpointsAndCapacityClassesBitIdentical` | erfüllt |
 | Determinismus, Prüfsumme gegen heruntergeladene Aufzeichnung | `CudaAdjoint.RepeatedRunsBitIdenticalAndChecksumMatchesRecord` | erfüllt |
 
+## Modus ADJOINT: Jacobi-Matrix (M5-T2)
+
+Rückwärtsdurchlauf pro Strahl und adjungierte Jacobi-Matrix in der Ablage der FD-Jacobi. Formeln, Zweige, Kolbenprojektion und der hybride Ansatz für Zusatzzeilen: [numerik.md, „Rückwärtsdurchlauf (M5-T2)“](numerik.md#rückwärtsdurchlauf-m5-t2).
+
+```cpp
+// include/mikroptim/trace/adjoint_backward.hpp (header-only, MKO_HD, über R templatisiert)
+template <class R> struct AdjointSeed { R opl, penalty; };          // Spur Φ = ō OPL + π̄ π
+template <class R> struct RayAdjoint { Vec3<R> p, d; };
+template <class R> struct SurfaceAdjoint { R thickness, curvature, n_before, n_after; };
+void refracting_step_backward(p, d, t, c, n_vor, n_nach, branch, seed, RayAdjoint&, SurfaceAdjoint&);
+void ghost_step_backward(p, d, t, GhostPlateParams, n_vor, n_nach, branch, seed, adj, out, coeff_sink);
+void reference_step_backward(p, d, M, n_B, branch, seed, adj, Vec3& M_adj, R& n_B_adj);
+R point_source_backward(d0, n0, adj);
+void backward_ray(sys, l, const Record&, bool reached_image, M, bool point_source, seed, Sink&);
+//   Sink: curvature(s, v), thickness(s, v), index(s, v), ghost(g, k, v) – jeder Parameter ≤ 1-mal
+// include/mikroptim/merit/ray_jacobian.hpp (header-only, MKO_HD)
+struct AdjointParameterMap { int variables, surfaces, wavelengths, ghost_plates, ghost_terms;
+    const int *curvature /*[S]*/, *thickness /*[S]*/, *glass /*[S·3]*/, *ghost /*[G·K]*/;
+    const double* glass_slope; /*[L·3] = (1, ω_l, ω_l²)*/ };          // Spalte p oder −1
+template <class R> struct JacobianRowWriter { AdjointParameterMap map; int wavelength;
+    double* column0; int64_t rows, row; R factor; /* Sink: J[p·rows + row] = factor·v */ };
+void ray_gradient_rows(table, table_l, rec, status, soft_first, soft_mode, M, point_source,
+                       opl_row, penalty_row);   // OPL-Spur (in_piston), Strafspur (weiches Ereignis)
+// include/mikroptim/optim/adjoint_jacobian.hpp (Host, Mikroptim::optim)
+class AdjointParameters { AdjointParameters(const VariableSet&, const SystemBatchHost&);
+                          AdjointParameterMap view() const; /* Vektoren für den Upload */ };
+struct AdjointJacobianOptions { ResidualSettings quadrature; ExtraResiduals extra;
+                                TraceExtraResiduals trace_extra; int extra_threads; };
+struct AdjointJacobian { JacobianShape shape; std::vector<double> jacobian /*[runs][P][R]*/,
+    residuals /*[runs][R]*/; std::vector<uint8_t> status /*[runs][rays]*/; /* at, column, … */ };
+SystemBatchHost make_adjoint_batch(const VariableSet&, const SystemBatchHost& base, x0);
+ExtraRowsJacobian extra_rows_cpu(set, base, x0, options);           // Zusatzzeilen per FD
+ExtraRowsJacobian extra_rows_from_fd(const FdJacobianBatch&, extra, E);
+void insert_extra_rows(const ExtraRowsJacobian&, AdjointJacobian&);
+FdJacobianOptions fd_options_of(const AdjointJacobianOptions&);
+AdjointJacobian adjoint_jacobian_cpu(set, base, x0, options = {});  // CPU-Referenz
+// include/mikroptim/cuda/adjoint_jacobian.hpp (reines C++, Mikroptim::cuda)
+class DeviceAdjointJacobian {   // RAII, nur verschiebbar; J bleibt auf dem Gerät
+    void compute(TraceEngine&, const VariableSet&, const SystemBatchHost& base, x0,
+                 const AdjointJacobianOptions& = {}, Precision = Fp64);
+    AdjointJacobian download() const; void release() noexcept; bool ready() const;
+    const double* device_jacobian() const; const double* device_residuals() const;
+    const uint8_t* device_status() const; const JacobianShape& shape() const; };
+AdjointJacobian adjoint_jacobian_gpu(TraceEngine&, set, base, x0, options = {}, Precision = Fp64);
+AdjointKernelInfo adjoint_jacobian_kernel_info(int capacity, Precision = Fp64, int device = -1);
+```
+
+**Ablage** wie die FD-Jacobi (optimierung.md, „Finite-Differenzen-Jacobi“): pro Lauf i eine R × P-Matrix spaltenweise, J_i(r, p) = `jacobian[(i·P + p)·R + r]`, r₀_i(r) = `residuals[i·R + r]`, R = R_v + P_v + E (`JacobianShape`), auf dem Gerät in derselben Ablage (`device_jacobian`, `device_residuals`). Ein Lauf ist eine Variante (am Punkt x₀ des Laufs, `make_adjoint_batch`: Vorlage + `VariableSet::apply`, bitgleich zur Variante x₀ des FD-Batches); die Zeilen r₀ sind auf der CPU bitgleich zu denen der FD-Jacobi (`residuals_cpu`). M5-T3 tauscht `DeviceFdJacobian` gegen `DeviceAdjointJacobian` (gleiche Methode `compute(engine, set, base, x0, …)`, gleiche Gerätezeiger); `DeviceNormalEquations::compute` nimmt bisher nur `DeviceFdJacobian` und braucht dafür eine Überladung (nur J, r₀ und die Form).
+
+**CPU-Referenz** `adjoint_jacobian_cpu`: `residuals_cpu` für r₀ und Status, dann pro Strahl `batch_ray_opl` mit `AdjointRecord<double>` (Status bitgleich, sonst `std::logic_error`) und `ray_gradient_rows` in eine mit 0 vorbelegte Matrix, pro Tupel und Variable die Projektion (Summen aufsteigend in k), zuletzt die Zusatzzeilen (`extra_rows_cpu`). Läuft in einem Thread (CI-Referenz; Parallelisierung über Läufe wäre trivial, M5-T3).
+
+**Kernel `adjoint_jacobian_kernel<R, C>`** (`src/cuda/adjoint_jacobian.cu`, mit `--fmad=false` wie `adjoint.cu`; R = double oder df64, C = 16, 32, 64, sechs Instanzen): ein Block pro (Lauf, Feld, Wellenlänge), 128 Threads über die Stützstellen, Flächentabelle und Geisterdaten im Shared Memory (dieselben Bausteine aus `wavefront_block.hpp`).
+
+1. Pro Stützstelle: `batch_ray_opl` mit `AdjointRecord<R, C>` im Local Memory, OPL vorläufig auf dem Residuenplatz, Status, Strafresiduum; danach sofort `ray_gradient_rows`: OPL-Spur (Strahl im Kolben) schreibt ∂OPL/∂x roh in die Wellenfrontzeile, Strafspur (weiches Ereignis) schreibt s_p √W ∂π/∂x in die Strafzeile. Jede Spalte erhält pro Strahl höchstens einen Schreibzugriff; J ist vorher per `cudaMemset` 0. Threads eines Warps schreiben benachbarte Zeilen derselben Spalte (koalesziert).
+2. Kolben und W_ok (Baumreduktion wie RESIDUALS), Wellenfrontresiduen.
+3. Projektion: für p = 0 … P − 1 Teilsumme Σ W_k J(k, p) der eigenen Strahlen (aufsteigend), Warp-Shuffle, Warps in fester Reihenfolge, Mittel per Shared Memory, dann J(k, p) = s √W_k (J(k, p) − ḡ_p) bzw. 0 (in FP64, auch für R = df64). Keine Atomics: zwei Läufe sind bitgleich, ein Lauf ist unabhängig von seiner Lage im Batch bitgleich (Test `CudaAdjointJacobian.RepeatedRunsAndBatchPositionBitIdentical`).
+
+Die Zusatzzeilen rechnet der Host (bei trace-abhängigen Residuen mit den Extrema eines MERIT-Laufs der Engine über den FD-Batch) und kopiert sie mit `cudaMemcpy2D` in die Zeilen R_v + P_v … R − 1 jeder Spalte und von r₀. Ein `cudaMalloc` für J, r₀, Status, Feldablage und Spaltenzuordnung (wiederverwendet), der Batch der Läufe in einem eigenen `DeviceSystemBatch` auf dem Gerät der Engine; jeder CUDA-Aufruf geprüft, nach dem Start `cudaGetLastError()`. J muss ganz in den Gerätespeicher passen (Läufe pro Aufruf wählt M5-T3); Tranchen und die Einbindung als `TraceMode` der Engine folgen in M5-T3.
+
+**Ressourcen** (`adjoint_jacobian_kernel_info`, RTX 3090, sm_86, CUDA 12.9, Test `CudaAdjointJacobian.KernelResources`):
+
+| Instanz | Register | Stack (Local Memory) | statischer Shared Memory |
+|---|---:|---:|---:|
+| double, C = 16 / 32 / 64 | 168 | 976 / 1.760 / 3.328 B | 2.000 B |
+| df64, C = 16 / 32 / 64 | 158 | 848 / 1.632 / 3.200 B | 2.000 B |
+
+Die Aufzeichnung dominiert den Stack (wie im Grundgerüst, M5-T1); der Rückwärtsdurchlauf selbst braucht keine Felder der Länge P, weil jede Ableitung sofort in ihre Spalte geschrieben wird. Die 168 Register (Grundgerüst 96) begrenzen die Belegung auf drei Blöcke pro SM; Tuning ist Sache von M5-T3/M7.
+
+**Erste Laufzeitzahl** (kein Benchmark; Test `CudaAdjointJacobian.FirstTimingAgainstFd`, RTX 3090, FP64): Mehrlinser, P = 13, 200 Läufe (680 Strahlen, J = 28 MB) adjungiert 3,3 ms gegen 24,4 ms für die FD-Jacobi (27 Traces pro Lauf), Faktor 7,3. Die FD-Kosten wachsen mit 2P + 1, die adjungierten mit P nur über Projektion und Schreiben von J; die Abnahme „mindestens 10× für P ≥ 60“ ist M5-T3.
+
+**Abnahme** (Tests `AdjointLocal.*`, `AdjointRay.*`, `AdjointJacobian.*`, `CudaAdjointJacobian.*`; Messwerte und Toleranzen in [numerik.md](numerik.md#rückwärtsdurchlauf-m5-t2), Abschnitt „Ergebnisse“).
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
 |---|---|---|---|
 | `MERIT` | gewichtete Quadratsumme pro Variante | Liniensuche, Multistart-Screening | M2 |
 | `RESIDUALS` | Residuenvektor pro Variante | finite Differenzen, LM | M2 |
-| `ADJOINT` | Residuen plus Gradientenzeilen; Grundgerüst seit M5-T1: Residuen wie RESIDUALS plus Aufzeichnung pro Strahl (`DeviceAdjointForward`, unten) | analytische Jacobi-Matrix | M5 |
+| `ADJOINT` | Residuen plus Gradientenzeilen; Grundgerüst seit M5-T1: Residuen wie RESIDUALS plus Aufzeichnung pro Strahl (`DeviceAdjointForward`, oben); seit M5-T2 die Jacobi-Matrix in der Ablage der FD-Jacobi (`DeviceAdjointJacobian`, oben) | analytische Jacobi-Matrix | M5 |
 | `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, Eingabe der PSF und MTF (M8-T2, `PsfEngine`; vektoriell M8-T5, `VectorPsfEngine`), später Tolerierung | M8-T1 |
 
 Zusätzlich liefern die Optimierungsmodi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2) und EVAL (M8-T1) sind bewusst keine Werte von `TraceMode`, sondern eigene Funktionen der Engine.
