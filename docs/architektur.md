@@ -35,7 +35,7 @@ flowchart TD
 | CUDA-Backend | `include/mikroptim/cuda/` (reines C++) | `src/cuda/` | M2–M8 |
 | Merit (ab M1-T7: Wellenfront) | `include/mikroptim/merit/` | `src/merit/` | M1, M3, M4 |
 | Optimierer (ab M3-T1: Variablen, Variantengenerator; M3-T2: FD-Jacobi) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
-| Synthese | `include/mikroptim/synth/` | `src/synth/` | M6 |
+| Synthese (ab M6-T3: Homotopie-Controller, `Mikroptim::synth`) | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`; M8-T2: PSF, MTF, Strehl) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
 | Python | – | `python/` | M9 |
@@ -1271,6 +1271,17 @@ Verfahren, Kriterien und Messungen: [optimierung.md](optimierung.md#verfahren-ab
 - **GPU-Backend** `cuda::GpuLmBackend` (`src/cuda/levenberg_marquardt.cpp`, reines Host-C++ in `Mikroptim::cuda`): Teilstücke aus ganzen Läufen nach dem Speicher (J höchstens die Hälfte des nutzbaren Speichers), pro Teilstück `DeviceFdJacobian::compute` → `DeviceNormalEquations::compute` → Download von A und g; Merit über `TraceEngine::run` im Modus MERIT mit `extra_merit` (mit trace-abhängigen Zusatzresiduen zusätzlich `extrema = true` und Σ t² auf dem Host, M4-T3).
 - **Kernel `gram_kernel`** (`src/cuda/normal_equations.cu`): G = [J r₀]ᵀ[J r₀] pro Lauf, (P + 1) × (P + 1) spaltenweise, Abstand (P + 1)². Grid: Läufe · T(T + 1)/2 Blöcke (T = ⌈(P + 1)/16⌉ Kacheln, nur Kachelpaare tp ≤ tq), Block 16 × 16 Threads, Shared Memory 2 · 16 · 17 · 8 = 4.352 Byte. Thread (ty, tx) lädt Zeile r₀ + tx der Spalten 16·tp + ty und 16·tq + ty (zusammenhängend über tx) und führt die FMA-Kette für G(16·tp + ty, 16·tq + tx) über die Zeilen in aufsteigender Reihenfolge fort; die letzte Kachel endet bei R − 1 (kein Polster in der Summe). Keine Reduktion über Threads, keine Atomics; bitgleich zu `normal_equations_host`. Puffer in `DeviceNormalEquations` (8·Läufe·(P + 1)² Byte), wiederverwendet.
 - **Host-Threads** (`lm_host_threads`): nur, wenn die Arbeit eines Aufrufs es lohnt (Zusatzresiduen ab 4.096 Varianten pro Thread, CPU-Strahlen ab 2·10⁵ Strahl-Flächen, Schritte ab 2·10⁶ Gleitkommaoperationen); sonst im aufrufenden Thread.
+
+## Systemsynthese: Homotopie-Controller (M6-T3)
+
+Statische Host-Bibliothek `mikroptim_synth` (Alias `Mikroptim::synth`, `src/synth/`), linkt `model`, `batch`, `cpu`, `optim` und privat `glass` und nlohmann/json; ohne CUDA. Verfahren und Festlegungen: [optimierung.md, Abschnitt 7](optimierung.md#festlegungen-der-implementierung-m6-t3).
+
+| Header | Inhalt |
+|---|---|
+| `include/mikroptim/synth/homotopy.hpp` | `HomotopyPoint` (NA, Feldanteil, Spektrumstufe, Faktoren auf μ, ε und die einseitigen Gewichte), `HomotopyStepControl`, Schnittstelle `HomotopyModel`, `HomotopyOptions`, `run_homotopy`, Protokoll `HomotopyStep`/`HomotopyResult` als Text und JSON |
+| `include/mikroptim/synth/optical_homotopy.hpp` | `OpticalHomotopyModel` (realisiert einen Punkt auf der Systembeschreibung, Schritt = ein LM-Lauf, Diagnose, Operatoren A/B mit innerer Homotopie, Zielprüfung am realen System), `OpticalHomotopyOptions`, `HomotopyOptimizer`, `is_one_sided`, `glass_elements` |
+
+Schichtung: Die Steuerlogik (`run_homotopy`, `src/synth/homotopy.cpp`) kennt nur die Schnittstelle `HomotopyModel` und rechnet nichts Optisches; Tests prüfen sie mit synthetischen Modellen. Das optische Modell (`src/synth/optical_homotopy.cpp`) benutzt die Bausteine aus `Mikroptim::optim` (Variablen, Zusatzresiduen, Diagnose, Einfüge-Operatoren, LM). Der LM-Lauf eines Schritts geht über den austauschbaren `HomotopyOptimizer` (Standard `optimize_lm_cpu`); die GPU bindet der Aufrufer ein (`mikroptim synth --gpu`, GPU-Tests: Lambda um `cuda::optimize_lm_gpu` mit einer `TraceEngine`), sodass `Mikroptim::synth` ohne CUDA baut. Diagnose, Zielprüfung und RMS-Bericht rechnen auf der CPU (ein Trace pro Variante bzw. Platte). Der Zustand ist eine `SystemDescription`; jedes `solve` baut Brechzahltabelle, Batch und `VariableSet` neu (Kataloge aus dem Start, `rebuild_loaded_system`, ohne Dateizugriff), weil Apertur, Spektrum und Topologie sich zwischen den Schritten ändern. CLI: `src/cli/synth_command.cpp` ([cli.md](cli.md#mikroptim-synth)).
 
 ## Mehrere GPUs (M7-T3)
 

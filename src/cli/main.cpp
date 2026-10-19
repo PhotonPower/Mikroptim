@@ -2,6 +2,7 @@
 #include "cli/insert_command.hpp"
 #include "cli/optimize_command.hpp"
 #include "cli/snap_command.hpp"
+#include "cli/synth_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
@@ -27,13 +28,16 @@ void print_usage() {
         "        mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k]\n"
         "                       [--max-combinations N] [--gpu [--device N]]\n"
         "        mikroptim insert <system.json> -o <neu.json> (--meniscus ... | --split ...)\n"
+        "        mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json]\n"
+        "                        [--log <protokoll.json>] [--gpu [--device N]]\n"
         "  --version   Version ausgeben\n"
         "  --devices   CUDA-Geräte auflisten\n"
         "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
         "  optimize    Variablen optimieren (Hilfe: mikroptim optimize --help)\n"
         "  eval        Auswertung auf dem Pupillenraster (Hilfe: mikroptim eval --help)\n"
         "  snap        auf Katalog-Gläser einrasten (Hilfe: mikroptim snap --help)\n"
-        "  insert      Einfüge-Operator A oder B anwenden (Hilfe: mikroptim insert --help)");
+        "  insert      Einfüge-Operator A oder B anwenden (Hilfe: mikroptim insert --help)\n"
+        "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)");
 }
 
 } // namespace
@@ -71,6 +75,10 @@ int main(int argc, char** argv) {
     if (arg == "eval") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_eval_command(args, std::cout, std::cerr);
+    }
+    if (arg == "synth") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_synth_command(args, std::cout, std::cerr);
     }
     if (arg == "insert") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

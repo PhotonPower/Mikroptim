@@ -1,0 +1,38 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse NA 0,3 mit Geisterplatten, Start der Homotopie",
+  "description": "Startsystem (frei erfunden) für den Homotopie-Controller (M6-T3): Einzellinse aus einem hochbrechenden Glas mit den Buchdahl-Koordinaten des 3-Term-Fits (400–700 nm) des frei erfundenen Testglases SYN-36 aus data/glass/synthetisch.json (n = 1,807 bei 546 nm; Buchdahl statt Katalogname, damit die Datei nur Gläser aus basis.json nennt), f = 10 mm, Pupillenradius 3 mm (NA 0,3), Achse, eine Wellenlänge 546,07 nm. Wörterbuch aus Geisterplatten (N-BK7 und dasselbe hochbrechende Glas, K = 6) an zwei Lagen: im kollimierten Bündel zwischen Blende und Linse und im konvergenten Bündel hinter der Linse vor einer Hilfsebene. Strafgewicht μ aus dem Beugungsziel: Ordnung k wird aktiv, wenn ihr Restfehler σ/2·√((2k+1)/5) übersteigt (σ = λ/14, hochbrechendes Glas). Mechanische Bedingungen: Glasrand ≥ 0,3 mm und Luftrand ≥ 0,1 mm bei der freien Öffnung plus 0,2 mm, Luftspalte ≥ 0,1 mm. Die Linse allein liegt weit über der Beugungsgrenze; die Homotopie öffnet die NA bis 0,6 und fügt dabei Elemente ein.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [546.07], "weights": [1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 10.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": 0.1, "thickness": 3.0, "material": { "model": "buchdahl", "n0": 1.8066761675654839, "nu": [-0.10615943162462037, 0.044823368536336575, 0.023613828009611485] }, "semi_diameter": 7.0 },
+    { "type": "sphere", "curvature": -0.02, "thickness": 3.0, "material": "AIR", "semi_diameter": 7.0 },
+    { "type": "plane", "thickness": 5.0, "material": "AIR", "semi_diameter": 7.0, "comment": "Hilfsebene, damit Geisterplatten hinter der Linse liegen können" }
+  ],
+  "ghost_plates": [
+    { "after_surface": 0, "distance": 1.0, "glass": "N-BK7", "norm_radius": 3.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 1.0, "glass": { "model": "buchdahl", "n0": 1.8066761675654839, "nu": [-0.10615943162462037, 0.044823368536336575, 0.023613828009611485] }, "norm_radius": 3.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 2, "distance": 0.5, "glass": "N-BK7", "norm_radius": 3.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 2, "distance": 0.5, "glass": { "model": "buchdahl", "n0": 1.8066761675654839, "nu": [-0.10615943162462037, 0.044823368536336575, 0.023613828009611485] }, "norm_radius": 3.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -1.0, "max": 1.0 },
+      { "type": "working_distance", "min": 0.2, "max": 30.0, "typical": 1.0 },
+      { "type": "ghost_coefficient", "plates": "all" }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 100.0, "comment": "Faustregel: 1e-3 mm Abweichung kostet so viel wie 0,01 Wellen RMS" },
+      { "type": "ghost_penalty", "weight": 47.2, "order_weight": 1.0, "order_factor": 1.0, "smoothing": 1e-06, "comment": "μ·w_k = 2σ′·Δn/(λ_ref·√5) mit σ′ = σ/2 = 1/28 Welle, Δn = 0,807 (hochbrechendes Glas), λ_ref = 546,07 nm: μ = 47,2 Wellen²/mm; Ordnungsfaktor 1 (alle w_k = 1), damit auch höhere Ordnungen der sphärischen Aberration (Schwelle σ′√((2k+1)/5)) Bedarf anzeigen" },
+      { "type": "min_edge_thickness", "weight": 1e4, "medium": "glass", "thickness": 0.3, "clearance": 0.2, "height": "rays", "comment": "Glasrand bei der freien Öffnung plus 0,2 mm; gilt auch für eingefügte Elemente" },
+      { "type": "min_edge_thickness", "weight": 1e4, "medium": "air", "thickness": 0.1, "clearance": 0.2, "height": "rays" },
+      { "type": "min_center_thickness", "weight": 1e4, "medium": "air", "thickness": 0.1 }
+    ]
+  }
+}
