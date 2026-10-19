@@ -933,7 +933,7 @@ Glas-Einrasten (M6-T5, [optimierung.md, Abschnitt 9](optimierung.md#9-glas-einra
 
 Eingabe ist typischerweise die Ergebnisdatei von `mikroptim optimize` mit Glasvariablen (Materialien als `{"model": "buchdahl", …}`, Werte = kontinuierliches Optimum). Eine Datei mit Katalog- oder konstanten Startgläsern wird wie in `optimize` zuerst in Buchdahl-Materialien umgewandelt; „kontinuierlich“ ist dann der Startpunkt. Als eigener Befehl (statt einer Option von `optimize`) lässt sich das Einrasten mit anderen Einstellungen wiederholen, ohne die kontinuierliche Optimierung neu zu rechnen, und das kontinuierliche Ergebnis bleibt als Datei erhalten.
 
-**Merit:** wie bei `optimize` (Wellenfront, Strafresiduen beim weichen Versagen, paraxiale Nebenbedingungen, L1-Strafe der Geisterkoeffizienten) ohne die Glas-Hülle; dieselben Einstellungen für das kontinuierliche und die eingerasteten Systeme. Einheit Wellen² bei λ_ref, FP64.
+**Merit:** wie bei `optimize` (Wellenfront, Strafresiduen beim weichen Versagen, paraxiale Nebenbedingungen, L1-Strafe der Geisterkoeffizienten, mechanische Nebenbedingungen ab M4-T3) ohne die Glas-Hülle; dieselben Einstellungen für das kontinuierliche und die eingerasteten Systeme. Einheit Wellen² bei λ_ref, FP64.
 
 ### Optionen
 
