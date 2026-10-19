@@ -55,4 +55,11 @@ DeviceMemoryInfo device_memory_info(int device) {
     return info;
 }
 
+void copy_device_to_host(void* host, const void* device, std::size_t bytes) {
+    if (bytes == 0) {
+        return;
+    }
+    MKO_CUDA_CHECK(cudaMemcpy(host, device, bytes, cudaMemcpyDeviceToHost));
+}
+
 } // namespace mko::cuda
