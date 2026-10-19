@@ -38,6 +38,7 @@ add_executable(mikroptim_tests
     test_prefilter.cpp
     test_psf.cpp
     test_pupil_quadrature.cpp
+    test_soft_failure.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
     test_system_io.cpp
@@ -69,6 +70,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp
         test_cuda_smoke.cpp
+        test_cuda_soft_failure.cpp
         test_cuda_system_batch.cpp
         test_cuda_trace.cpp
         test_cuda_trace_engine.cpp)

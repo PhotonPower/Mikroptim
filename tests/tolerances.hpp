@@ -19,6 +19,21 @@ inline constexpr double kCpuGpuFp64 = 1e-12;
 // haben |OPD| von einigen mm. Beobachtet: bis 2,4e-12 mm bei |OPD| = 1,8 … 6 mm, relativ
 // <= 1,3e-12 (auch mit --fmad=false noch 1,3e-12 mm, also nicht nur FMA).
 inline constexpr double kCpuGpuFp64Relative = 1e-11;
+// CPU gegen GPU für die Strafgrößen π des weichen Versagens (M4-T2, dimensionslos), relativ:
+// Schranke max(kCpuGpuFp64, kCpuGpuPenaltyRelative · |π|). Tief im Versagensbereich entstehen
+// die Strafen aus fortgesetzten Strahlen weit außerhalb des Systems (Höhen bis 10⁴ mm,
+// Geisterplatten weit außerhalb von r_g mit Profilwerten bis 1e26), oft nach mehreren weichen
+// Ereignissen; dort verstärken sich die Rundungsunterschiede der FMA-Kontraktion. Beobachtet
+// (je 1.000 bis 10.000 gestörte Varianten): relativ bis 7e-8 (ein Strahl, π = 1,86, weich und
+// danach hart), sonst ≤ 5,6e-10; Strahlen nahe an einer Grenze (π klein) einige 1e-14. Gegen
+// df64 statt FP64 auf der GPU beobachtet bis 2,7e-8.
+inline constexpr double kCpuGpuPenaltyRelative = 1e-6;
+// CPU gegen GPU, OPD und Wellenfrontresiduen in Tupeln mit weich versagten Strahlen (M4-T2)
+// [mm], ersetzt dort kCpuGpuFp64 als absoluten Anteil. Weich versagte Strahlen sind fortgesetzt
+// (verfehlte Fläche, Totalreflexion) und laufen weit außerhalb des Systems; ihre OPL ist so
+// schlecht konditioniert wie die streifender gültiger Strahlen, und über den Kolben wirkt das
+// auf alle Strahlen des Tupels. Beobachtet bis 1,35e-10 mm (|OPD| = 2,5 mm).
+inline constexpr double kCpuGpuSoftTuple = 1e-9;
 // Merit des Kernels MERIT gegen die Summe der Quadrate der RESIDUALS-Ausgabe, relativ
 // (Abnahmekriterium M2-T3). Beide Kernel bilden bitgleiche Residuen; der Unterschied ist nur
 // die Summationsreihenfolge der Quadratsumme (Baumreduktion gegen kompensierte Summe auf dem
@@ -253,5 +268,15 @@ inline constexpr double kGhostStationarity = 1e-4;
 // die Kopplung über die übrigen Variablen (die Restkoeffizienten korrigieren z. B. zusätzlich
 // die Brennweite); beobachtet 0,3 %.
 inline constexpr double kGhostSmoothingGain = 0.05;
+
+// Weiches Versagen (M4-T2), Stetigkeit der Merit entlang einer Geraden durch eine
+// Versagensgrenze (10⁴ Punkte): größtes Verhältnis eines Nachbarsprungs |F_{i+1} − F_i| zum
+// größeren seiner beiden Nachbarn. Eine stetige Merit mit Knick oder Wurzelsingularität
+// F ≈ a + b√(t − t*) (gültige Seite einer Totalreflexion oder eines Verfehlens) ergibt höchstens
+// 1/(√2 − 1) ≈ 2,4; ein Sprung ragt um Größenordnungen heraus (beobachtet > 1.000).
+inline constexpr double kContinuityNeighborRatio = 10.0;
+// Dasselbe: Sprung am Übergang nach Verfeinerung des Intervalls um 10⁴ relativ zum Sprung davor.
+// Stetig mindestens wie √Δt (Faktor 1e-2), beobachtet ≤ 3e-3; ein Sprung bleibt (Faktor ≈ 1).
+inline constexpr double kContinuityShrink = 0.05;
 
 } // namespace mko::test

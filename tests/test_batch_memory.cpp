@@ -153,24 +153,32 @@ TEST(BatchMemory, RaysPerVariant) {
 TEST(BatchMemory, OutputLayoutAndEstimate) {
     OutputRequest out;
     out.rays_per_variant = mko::rays_per_variant(3, 3, 80, 1, 10); // 510
+    out.penalty_residuals = 510; // weiches Versagen (M4-T2): ein Strafresiduum pro Strahl
     out.extra_residuals = 5;
     const mko::OutputLayout o = mko::make_output_layout(lens_topology(), 10, out, 100);
-    // residuals 10·515·8 = 41200 -> 41216, status 5100 -> 5120, merit 80 -> 256,
+    // residuals 10·1025·8 = 82000 -> 82176, status 5100 -> 5120, merit 80 -> 256,
     // merit_partial 10·9·8 = 720 -> 768, failed_rays 10·8 = 80 -> 256,
-    // failed_rays_partial 10·9·4 = 360 -> 512, surface_max 10·2·3·8 = 480 -> 512,
+    // failed_rays_partial 10·9·4 = 360 -> 512, hard_failed_rays 80 -> 256,
+    // hard_failed_rays_partial 360 -> 512, surface_max 10·2·3·8 = 480 -> 512,
     // surface_max_partial 10·9·2·3·8 = 4320 -> 4352, extra 1000 -> 1024
-    EXPECT_EQ(o.residuals.bytes, 41200u);
-    EXPECT_EQ(o.ray_status.offset, 41216u);
+    EXPECT_EQ(o.residuals.bytes, 82000u);
+    EXPECT_EQ(o.ray_status.offset, 82176u);
     EXPECT_EQ(o.ray_status.bytes, 5100u);
     EXPECT_EQ(o.merit.bytes, 80u);
     EXPECT_EQ(o.merit_partial.bytes, 720u);
     EXPECT_EQ(o.failed_rays.bytes, 80u);
     EXPECT_EQ(o.failed_rays_partial.bytes, 360u);
+    EXPECT_EQ(o.hard_failed_rays.bytes, 80u);
+    EXPECT_EQ(o.hard_failed_rays_partial.bytes, 360u);
     EXPECT_EQ(o.surface_max.bytes, 480u);
     EXPECT_EQ(o.surface_max_partial.bytes, 4320u);
     EXPECT_EQ(o.extra.bytes, 1000u);
-    EXPECT_EQ(o.total_bytes, 54016u);
-    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3328u + 54016u);
+    EXPECT_EQ(o.total_bytes, 95744u);
+    EXPECT_EQ(mko::estimate_device_bytes(lens_topology(), 10, out, 100), 3328u + 95744u);
+    // Harter Modus: keine Strafresiduen
+    OutputRequest hard = out;
+    hard.penalty_residuals = 0;
+    EXPECT_EQ(mko::make_output_layout(lens_topology(), 10, hard, 100).residuals.bytes, 41200u);
 
     // Nicht angeforderte Ausgaben kosten nichts
     OutputRequest none;
@@ -185,6 +193,9 @@ TEST(BatchMemory, OutputLayoutAndEstimate) {
     OutputRequest bad;
     bad.rays_per_variant = -1;
     EXPECT_THROW(mko::make_output_layout(lens_topology(), 1, bad), std::invalid_argument);
+    OutputRequest bad_penalty;
+    bad_penalty.penalty_residuals = -1;
+    EXPECT_THROW(mko::make_output_layout(lens_topology(), 1, bad_penalty), std::invalid_argument);
     EXPECT_THROW(mko::make_batch_layout(lens_topology(), -1), std::invalid_argument);
     BatchTopology broken = lens_topology();
     broken.type.pop_back();

@@ -199,7 +199,7 @@ inline std::vector<double> central_differences(const FdProblem& p, std::span<con
         *failed = res.failed_count();
     }
     const std::vector<double> e = extra_values(b, extra);
-    const std::int64_t rv = res.rays_per_variant;
+    const std::int64_t rv = res.trace_rows(); // Strahl- und Strafresiduen (M4-T2)
     const std::int64_t R = rv + extra.count;
     std::vector<double> d(static_cast<std::size_t>(P) * static_cast<std::size_t>(R));
     const auto value = [&](int v, std::int64_t r) {

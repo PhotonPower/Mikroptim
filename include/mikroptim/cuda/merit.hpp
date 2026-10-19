@@ -83,10 +83,11 @@ public:
 
     // Gerätezeiger auf die Ergebnisse des letzten Laufs (für Folgekernel, z. B. die Auswahl in
     // einer Liniensuche); gültig bis zum nächsten run oder release, nullptr ohne Lauf.
-    // device_merit: [V] (FP64), device_failed: [V] (int64), device_extrema: [V][S][2] oder
-    // nullptr ohne Anforderung.
+    // device_merit: [V] (FP64), device_failed und device_hard_failed: [V] (int64),
+    // device_extrema: [V][S][2] oder nullptr ohne Anforderung.
     const double* device_merit() const;
     const std::int64_t* device_failed() const;
+    const std::int64_t* device_hard_failed() const;
     const double* device_extrema() const;
 
 private:

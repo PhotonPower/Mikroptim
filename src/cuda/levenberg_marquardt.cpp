@@ -11,6 +11,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,7 +33,7 @@ int GpuLmBackend::max_jacobian_runs() const {
     const ResidualLayout layout(base_.topology(), options_.jacobian.quadrature);
     const int P = set_.size();
     const int n = fd_variant_count(options_.jacobian.scheme, P);
-    const JacobianShape one{1, P, layout.rays_per_variant(), options_.jacobian.extra.count};
+    const JacobianShape one{1, P, layout.trace_rows(), options_.jacobian.extra.count};
     // Ausrichtung der Regionen: großzügig 7 · 256 Byte pro Lauf zusätzlich
     const std::size_t per_run = DeviceFdJacobian::buffer_bytes(one, n) + 7 * kBatchAlignment;
     std::size_t available =
@@ -75,7 +78,8 @@ void GpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
 }
 
 void GpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
-                         std::span<double> merit, std::span<std::int64_t> failed) {
+                         std::span<double> merit, std::span<std::int64_t> failed,
+                         std::span<std::int64_t> hard_failed) {
     const SystemBatchHost batch = lm_point_batch(set_, base_, runs, x);
     const std::vector<double> extra = extra_merit_values(
         options_.jacobian.extra, batch,
@@ -87,20 +91,62 @@ void GpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
     for (std::size_t j = 0; j < runs.size(); ++j) {
         merit[j] = output_.merit.merit[j];
         failed[j] = output_.merit.failed[j];
+        hard_failed[j] = output_.merit.hard_failed[j];
     }
     ++stats_.merit_calls;
     stats_.merit_tranches += output_.info.tranches;
     stats_.merit_points += static_cast<std::int64_t>(runs.size());
 }
 
+namespace {
+
+// GPU-Backend einer Runde des Strafverfahrens, das seine Statistik beim Abbau zur Summe aller
+// Runden addiert.
+class CollectingGpuBackend final : public LmBackend {
+public:
+    CollectingGpuBackend(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
+                         const LmOptions& options, LmGpuStats& total)
+        : inner_(engine, set, base, options), total_(total) {}
+    ~CollectingGpuBackend() override {
+        const LmGpuStats& s = inner_.stats();
+        total_.jacobian_calls += s.jacobian_calls;
+        total_.jacobian_chunks += s.jacobian_chunks;
+        total_.jacobian_runs += s.jacobian_runs;
+        total_.merit_calls += s.merit_calls;
+        total_.merit_points += s.merit_points;
+        total_.max_runs_per_chunk = std::max(total_.max_runs_per_chunk, s.max_runs_per_chunk);
+        total_.jacobian_tranches += s.jacobian_tranches;
+        total_.merit_tranches += s.merit_tranches;
+    }
+    CollectingGpuBackend(const CollectingGpuBackend&) = delete;
+    CollectingGpuBackend& operator=(const CollectingGpuBackend&) = delete;
+
+    void normal_equations(std::span<const int> runs, std::span<const double> x, std::span<double> a,
+                          std::span<double> g) override {
+        inner_.normal_equations(runs, x, a, g);
+    }
+    void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
+               std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override {
+        inner_.merit(runs, x, merit, failed, hard_failed);
+    }
+
+private:
+    GpuLmBackend inner_;
+    LmGpuStats& total_;
+};
+
+} // namespace
+
 LmResult optimize_lm_gpu(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
                          std::span<const double> x0, const LmOptions& options, LmGpuStats* stats) {
-    check_lm_base(base, set.size(), x0.size());
-    GpuLmBackend backend(engine, set, base, options);
-    const LmBounds bounds{set.lower(), set.upper(), set.typical()};
-    LmResult result = levenberg_marquardt(backend, set.size(), bounds, x0, options);
+    LmGpuStats total{};
+    const LmBackendFactory factory = [&](const LmOptions& o, const SystemBatchHost& b) {
+        return std::unique_ptr<LmBackend>(
+            std::make_unique<CollectingGpuBackend>(engine, set, b, o, total));
+    };
+    LmResult result = optimize_lm_rounds(factory, set, base, x0, options);
     if (stats != nullptr) {
-        *stats = backend.stats();
+        *stats = total;
     }
     return result;
 }

@@ -271,6 +271,15 @@ TEST(LevenbergMarquardt, FailuresAndNonFiniteMerit) {
     const LmRunResult r2 = run_dense(problem, bounds, x0, o).runs[0];
     EXPECT_NEAR(r2.x[0], 1.0, 1e-8);
     EXPECT_EQ(r2.failed_rays, 1);
+    // Weich versagte Strahlen (M4-T2) zählen für die Ablehnung nicht, nur hart versagte
+    DenseProblem soft = problem;
+    soft.hard_failed = [](std::span<const double>) -> std::int64_t { return 0; };
+    const LmRunResult r3 = run_dense(soft, bounds, x0).runs[0];
+    EXPECT_NEAR(r3.x[0], 1.0, 1e-8);
+    EXPECT_EQ(r3.failed_rays, 1);
+    EXPECT_EQ(r3.hard_failed_rays, 0);
+    EXPECT_EQ(r.hard_failed_rays, 0);
+    EXPECT_EQ(r2.hard_failed_rays, 1);
 
     DenseProblem nan_problem = rosenbrock_problem();
     const auto base_eval = nan_problem.evaluate;

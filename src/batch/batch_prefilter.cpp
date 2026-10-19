@@ -246,6 +246,7 @@ PrefilterResult prefilter_decide(PrefilterStats stats, const SystemBatchHost& ba
     const PrefilterCriteria& c = options.criteria;
     const PrefilterMargins& m = options.margins;
     const std::int64_t R = stats.rays_per_variant;
+    const bool soft_failure = layout.soft_failure();
 
     PrefilterResult res;
     res.merit_lower.assign(n, 0.0);
@@ -261,9 +262,14 @@ PrefilterResult prefilter_decide(PrefilterStats stats, const SystemBatchHost& ba
         const double extra = extra_at(extra_merit, v);
         res.merit_lower[i] = lower * lower + extra;
         // Unsichere Strahlen: ihre OPL in FP64 ist unbekannt, also keine obere Schranke. NaN
-        // in den Rohdaten (z. B. Überlauf) macht beide Schranken unbrauchbar.
+        // in den Rohdaten (z. B. Überlauf) macht beide Schranken unbrauchbar. Weiches Versagen
+        // (M4-T2): Versagte Strahlen tragen in FP64 Straf- und (weich versagt) Wellenfront-
+        // residuen, die der Vorfilter nicht rechnet; dann ebenfalls keine obere Schranke. Die
+        // untere bleibt gültig, weil beide Anteile >= 0 sind und weitere Strahlen im Kolben die
+        // Quadratsumme nur vergrößern (docs/numerik.md, Abschnitt 12).
         const bool finite = std::isfinite(root) && std::isfinite(delta);
-        res.merit_upper[i] = stats.uncertain(v) == 0 && finite
+        const bool penalties = soft_failure && stats.failed[i] > 0;
+        res.merit_upper[i] = stats.uncertain(v) == 0 && finite && !penalties
                                  ? upper * upper + extra
                                  : std::numeric_limits<double>::infinity();
         if (!finite) {

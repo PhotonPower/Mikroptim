@@ -5,6 +5,7 @@
 #include "mikroptim/merit/ray_residual.hpp"
 
 #include <climits>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,13 @@ ResidualLayout::ResidualLayout(const BatchTopology& topology, const ResidualSett
     }
     if (settings.spokes > 0 && settings.rings > INT_MAX / settings.spokes) {
         throw std::invalid_argument("ResidualLayout: zu viele Stützstellen pro Feld");
+    }
+    if (settings.failure != FailureMode::Soft && settings.failure != FailureMode::Hard) {
+        throw std::invalid_argument("ResidualLayout: unbekannte Behandlung des Strahlversagens");
+    }
+    if (!(settings.fail_weight >= 0.0) || !std::isfinite(settings.fail_weight)) {
+        throw std::invalid_argument(
+            "ResidualLayout: fail_weight muss endlich und >= 0 sein (Strafgewicht w_fail)");
     }
     std::int64_t offset = 0;
     for (int f = 0; f < fields_; ++f) {
@@ -103,6 +111,14 @@ std::size_t ResidualResult::failed_count() const {
     return n;
 }
 
+std::size_t ResidualResult::hard_failed_count() const {
+    std::size_t n = 0;
+    for (const std::uint8_t s : status) {
+        n += is_hard_failure(static_cast<TraceStatus>(s)) ? 1 : 0;
+    }
+    return n;
+}
+
 std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
                                              const ResidualLayout& layout, int v) {
     if (v < 0 || v >= result.variants) {
@@ -133,12 +149,14 @@ std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
             double sum_sq = 0.0;
             for (int k = 0; k < n; ++k) {
                 const std::size_t i = result.ray_index(v, o + k);
-                if (static_cast<TraceStatus>(result.status[i]) == TraceStatus::Ok) {
+                const auto st = static_cast<TraceStatus>(result.status[i]);
+                if (in_piston(st)) {
                     const double w = sample(q, k).weight;
                     const double e = result.opd[i];
                     t.valid_weight += w;
                     sum_sq += w * e * e; // wie opd_statistics
-                } else {
+                }
+                if (st != TraceStatus::Ok) {
                     ++t.failed;
                 }
             }
@@ -158,13 +176,18 @@ std::vector<TupleWavefront> tuple_wavefronts(const ResidualResult& result,
 
 namespace {
 
-// Schreibt die Residuen, OPD und Status der Variante v ab den Zeigern (Ablage des Layouts).
+// Schreibt die Residuen (Strahl- und im weichen Modus Strafresiduen), OPD und Status der
+// Variante v ab den Zeigern (Ablage des Layouts; Strafresiduen ab residuals + rays).
 void variant_residuals(const SystemBatchHost& batch, int v, const ResidualLayout& layout,
                        double* residuals, double* opd, std::uint8_t* status) {
     const SystemBatchView<double> view = batch.view();
     const SurfaceTableView<double> table = view.surface_table(v);
+    const bool soft_mode = layout.soft_failure();
+    const std::size_t rays = to_size(layout.rays_per_variant());
+    NoSurfaceObserver* const no_observer = nullptr;
     std::vector<double> opl;
     std::vector<double> weight;
+    std::vector<double> penalty;
     std::vector<TraceStatus> st;
     std::vector<PupilSample<double>> pupil;
     for (int f = 0; f < layout.fields(); ++f) {
@@ -174,6 +197,7 @@ void variant_residuals(const SystemBatchHost& batch, int v, const ResidualLayout
         pupil.resize(nu);
         weight.resize(nu);
         opl.resize(nu);
+        penalty.resize(nu);
         st.resize(nu);
         for (std::size_t k = 0; k < nu; ++k) {
             pupil[k] = sample(q, static_cast<int>(k));
@@ -183,15 +207,24 @@ void variant_residuals(const SystemBatchHost& batch, int v, const ResidualLayout
         for (int l = 0; l < layout.wavelengths(); ++l) {
             const std::size_t o = to_size(layout.offset(f, l));
             for (std::size_t k = 0; k < nu; ++k) {
-                st[k] = batch_ray_opl(view, table, l, v, f, l, pupil[k], center, &opl[k]);
+                SoftFailure<double> soft{0.0, TraceStatus::Ok};
+                st[k] = batch_ray_opl(view, table, l, v, f, l, pupil[k], center, &opl[k],
+                                      no_observer, soft_mode ? &soft : nullptr);
+                penalty[k] = soft.penalty;
             }
-            // Kolbenabzug mit hartem Versagen; OPD versagter Strahlen (und aller Strahlen eines
-            // Tupels ohne gültigen Strahl) wird 0.
+            // Kolbenabzug ohne hart versagte Strahlen; deren OPD (und die aller Strahlen eines
+            // Tupels ohne Strahl im Kolben) wird 0.
             opd_statistics(opl.data(), weight.data(), st.data(), n, opd + o);
             const double scale = residual_scale(view, f, l);
             for (std::size_t k = 0; k < nu; ++k) {
                 residuals[o + k] = ray_residual(scale, pupil[k], opd[o + k]);
                 status[o + k] = static_cast<std::uint8_t>(st[k]);
+            }
+            if (soft_mode) {
+                const double pscale = penalty_scale(view, f, l, layout.settings().fail_weight);
+                for (std::size_t k = 0; k < nu; ++k) {
+                    residuals[rays + o + k] = ray_penalty(pscale, pupil[k], st[k], penalty[k]);
+                }
             }
         }
     }
@@ -224,9 +257,11 @@ ResidualResult make_result(int variants, const ResidualLayout& layout) {
     ResidualResult r;
     r.variants = variants;
     r.rays_per_variant = layout.rays_per_variant();
-    r.stride = r.rays_per_variant;
-    const std::size_t total = static_cast<std::size_t>(variants) * to_size(r.rays_per_variant);
-    r.residuals.assign(total, 0.0);
+    r.penalty_rows = layout.penalty_rows();
+    r.stride = layout.trace_rows();
+    const auto V = static_cast<std::size_t>(variants);
+    const std::size_t total = V * to_size(r.rays_per_variant);
+    r.residuals.assign(V * to_size(r.stride), 0.0);
     r.opd.assign(total, 0.0);
     r.status.assign(total, static_cast<std::uint8_t>(TraceStatus::Ok));
     return r;
@@ -248,7 +283,8 @@ ResidualResult residuals_cpu(const SystemBatchHost& batch, const ResidualLayout&
     ResidualResult r = make_result(batch.variants(), layout);
     for (int v = 0; v < batch.variants(); ++v) {
         const std::size_t o = r.ray_index(v, 0);
-        variant_residuals(batch, v, layout, r.residuals.data() + o, r.opd.data() + o,
+        const std::size_t ro = static_cast<std::size_t>(v) * to_size(r.stride);
+        variant_residuals(batch, v, layout, r.residuals.data() + ro, r.opd.data() + o,
                           r.status.data() + o);
     }
     return r;

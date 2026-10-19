@@ -43,6 +43,7 @@ using mko::cuda::TraceSettings;
 using mko::test::FdProblem;
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
+using mko::test::kCpuGpuPenaltyRelative;
 
 namespace {
 
@@ -86,8 +87,10 @@ std::vector<double> run_vectors(const FdProblem& p, int runs) {
 // Abweichung eines Strahlresiduums zwischen GPU und CPU (Toleranz von RESIDUALS, M2-T2, für die
 // OPD in mm): Mit r = u·OPD (M4-T1, u = s_{f,l}·√W aus residual_units) ist das
 // max(u·kCpuGpuFp64, kCpuGpuFp64Relative·|r|).
-double residual_tolerance(double unit, double r) {
-    return mko::test::residual_bound(unit, r, kCpuGpuFp64, kCpuGpuFp64Relative);
+// Strafresiduen (weiches Versagen, M4-T2): p = v·π mit penalty_units, relativ
+// kCpuGpuPenaltyRelative (tests/tolerances.hpp).
+double residual_tolerance(double unit, double r, double rel = kCpuGpuFp64Relative) {
+    return mko::test::residual_bound(unit, r, kCpuGpuFp64, rel);
 }
 
 // Schranke für |J_GPU − J_CPU| eines Elements, abgeleitet aus den Residuen-Toleranzen: Die
@@ -97,7 +100,7 @@ double residual_tolerance(double unit, double r) {
 // Zusatzresiduen, die auf dem Host gleich ausgewertet werden). Dazu die Rundung der Formel
 // selbst (FMA-Kontraktion im Kernel): 8ε·Σ_x |c_x·r_x|. `unit` ist u der Zeile (Strahlzeilen).
 double element_bound(FdStencil s, double da, double db, double r0, double ra, double rb,
-                     bool ray_row, double unit) {
+                     bool ray_row, double unit, double rel = kCpuGpuFp64Relative) {
     double c0 = 0.0;
     double ca = 0.0;
     double cb = 0.0;
@@ -123,9 +126,9 @@ double element_bound(FdStencil s, double da, double db, double r0, double ra, do
     if (!ray_row) {
         return formula;
     }
-    return std::abs(c0) * residual_tolerance(unit, r0) +
-           std::abs(ca) * residual_tolerance(unit, ra) +
-           std::abs(cb) * residual_tolerance(unit, rb) + formula;
+    return std::abs(c0) * residual_tolerance(unit, r0, rel) +
+           std::abs(ca) * residual_tolerance(unit, ra, rel) +
+           std::abs(cb) * residual_tolerance(unit, rb, rel) + formula;
 }
 
 // Vergleicht GPU- und CPU-Jacobi elementweise mit element_bound; Rückgabe: größtes Verhältnis
@@ -138,11 +141,19 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
     const mko::ResidualResult res =
         mko::residuals_cpu(fd.batch, ResidualLayout(p.base.topology(), opt.quadrature));
     const std::vector<double> extra = mko::test::extra_values(fd.batch, opt.extra);
-    const std::vector<double> units =
-        mko::test::residual_units(fd.batch, ResidualLayout(p.base.topology(), opt.quadrature));
+    const ResidualLayout layout(p.base.topology(), opt.quadrature);
+    const std::vector<double> units = mko::test::residual_units(fd.batch, layout);
+    // Strafzeilen (weiches Versagen, M4-T2) hinter den Strahlzeilen
+    const std::vector<double> punits = mko::test::penalty_units(fd.batch, layout);
+    const auto rays = static_cast<std::int64_t>(units.size());
     const auto unit = [&](std::int64_t r) {
-        return r < static_cast<std::int64_t>(units.size()) ? units[static_cast<std::size_t>(r)]
-                                                           : 0.0;
+        if (r < rays) {
+            return units[static_cast<std::size_t>(r)];
+        }
+        return r < layout.trace_rows() ? punits[static_cast<std::size_t>(r - rays)] : 0.0;
+    };
+    const auto rel = [&](std::int64_t r) {
+        return r < rays ? kCpuGpuFp64Relative : kCpuGpuPenaltyRelative;
     };
     const std::int64_t rv = cpu.shape.ray_rows;
     const std::int64_t R = cpu.shape.rows();
@@ -158,7 +169,7 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
     for (int i = 0; i < cpu.shape.runs; ++i) {
         const mko::FdPattern& pat = cpu.patterns[static_cast<std::size_t>(i)];
         for (std::int64_t r = 0; r < R; ++r) {
-            const double tol = residual_tolerance(unit(r), value(i * n, r));
+            const double tol = residual_tolerance(unit(r), value(i * n, r), rel(r));
             EXPECT_LE(std::abs(gpu.residual(i)[static_cast<std::size_t>(r)] -
                                cpu.residual(i)[static_cast<std::size_t>(r)]),
                       r < rv ? tol : 0.0);
@@ -170,8 +181,9 @@ double compare_gpu_cpu(const FdProblem& p, std::span<const double> x0, const FdJ
             const double da = pat.step_plus[kk];
             const double db = central ? pat.step_minus[kk] : 0.0;
             for (std::int64_t r = 0; r < R; ++r) {
-                const double bound = element_bound(pat.stencil[kk], da, db, value(i * n, r),
-                                                   value(va, r), value(vb, r), r < rv, unit(r));
+                const double bound =
+                    element_bound(pat.stencil[kk], da, db, value(i * n, r), value(va, r),
+                                  value(vb, r), r < rv, unit(r), rel(r));
                 const double diff = std::abs(gpu.at(i, r, k) - cpu.at(i, r, k));
                 EXPECT_LE(diff, bound) << "Lauf " << i << ", " << p.set[k].name << ", Zeile " << r;
                 if (bound > 0.0) {
@@ -197,6 +209,7 @@ std::size_t run_bytes(const mko::BatchTopology& t, int variants, const ResidualL
                       std::int64_t extra_residuals = 0) {
     mko::OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
+    r.penalty_residuals = layout.penalty_rows();
     r.extra_residuals = extra_residuals;
     r.residuals = true;
     r.ray_status = true;
@@ -223,7 +236,7 @@ TEST(CudaFdJacobian, MatchesCpu) {
     const FdJacobian gpu = mko::cuda::fd_jacobian_gpu(engine, p.set, p.base, x0, opt);
     const FdJacobian cpu = mko::fd_jacobian_cpu(p.set, p.base, x0, opt);
     ASSERT_EQ(gpu.shape.runs, 3);
-    ASSERT_EQ(gpu.shape.rows(), 680 + 2);
+    ASSERT_EQ(gpu.shape.rows(), 2 * 680 + 2); // Strahl- und Strafresiduen (M4-T2), 2 Zusatzresiduen
     const double worst = compare_gpu_cpu(p, x0, opt, gpu, cpu);
     double rel = 0.0; // größte relative Abweichung GPU/CPU pro Spalte (2-Norm)
     for (int i = 0; i < 3; ++i) {
@@ -493,7 +506,7 @@ TEST(TraceEngineOnDevice, TranchesAreMultiplesOfGranularity) {
     EXPECT_EQ(seen[1].count, 4);
     for (const Seen& t : seen) {
         EXPECT_EQ(t.rays, layout.rays_per_variant());
-        EXPECT_EQ(t.stride, layout.rays_per_variant() + 2);
+        EXPECT_EQ(t.stride, layout.trace_rows() + 2);
         EXPECT_TRUE(t.pointers);
     }
     const auto noop = [](const DeviceTranche&) {};

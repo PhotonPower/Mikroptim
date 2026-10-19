@@ -48,7 +48,7 @@ public:
     void normal_equations(std::span<const int> runs, std::span<const double> x, std::span<double> a,
                           std::span<double> g) override;
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
-               std::span<std::int64_t> failed) override;
+               std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override;
 
     // Größte Zahl von Läufen, deren Jacobi-Matrizen gemeinsam gerechnet werden (aus dem
     // Speicher, siehe oben; mindestens 1).
@@ -66,9 +66,11 @@ private:
     LmGpuStats stats_{};
 };
 
-// Optimiert runs = x0.size()/P Läufe auf dem Gerät von `engine` (Rechentyp FP64). `base` hat
-// eine Variante (für alle Läufe) oder eine pro Lauf; die Zusatzresiduen kommen aus
-// options.jacobian.extra. Wirft wie levenberg_marquardt, DeviceFdJacobian und TraceEngine.
+// Optimiert runs = x0.size()/P Läufe auf dem Gerät von `engine` (Rechentyp FP64;
+// optimize_lm_rounds mit GpuLmBackend, also mit dem äußeren Strafverfahren des weichen
+// Versagens). `base` hat eine Variante (für alle Läufe) oder eine pro Lauf; die Zusatzresiduen
+// kommen aus options.jacobian.extra. `stats` summiert alle Runden. Wirft wie
+// levenberg_marquardt, DeviceFdJacobian und TraceEngine.
 LmResult optimize_lm_gpu(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
                          std::span<const double> x0, const LmOptions& options = {},
                          LmGpuStats* stats = nullptr);

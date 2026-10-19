@@ -23,13 +23,15 @@
 namespace mko::test {
 
 // Residuenfunktion r(x) ∈ ℝ^m mit analytischer Jacobi-Matrix (m × P spaltenweise; `jac` ist leer,
-// wenn nur r gebraucht wird) und optionaler Zahl „versagter Strahlen“ an x.
+// wenn nur r gebraucht wird) und optionaler Zahl „versagter Strahlen“ an x, davon hart versagt
+// (ohne Funktion: alle versagten).
 struct DenseProblem {
     int rows = 0;
     int variables = 0;
     std::function<void(std::span<const double> x, std::span<double> r, std::span<double> jac)>
         evaluate;
     std::function<std::int64_t(std::span<const double> x)> failed;
+    std::function<std::int64_t(std::span<const double> x)> hard_failed;
 };
 
 // Backend aus einer DenseProblem: A und g mit normal_equations_host, F = Σ r² aufsteigend.
@@ -52,7 +54,7 @@ public:
     }
 
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
-               std::span<std::int64_t> failed) override {
+               std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override {
         const auto P = static_cast<std::size_t>(problem_.variables);
         std::vector<double> r(static_cast<std::size_t>(problem_.rows));
         for (std::size_t i = 0; i < runs.size(); ++i) {
@@ -64,6 +66,7 @@ public:
             }
             merit[i] = f;
             failed[i] = problem_.failed ? problem_.failed(xi) : 0;
+            hard_failed[i] = problem_.hard_failed ? problem_.hard_failed(xi) : failed[i];
             ++merit_points;
         }
     }

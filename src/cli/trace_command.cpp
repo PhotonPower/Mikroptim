@@ -203,6 +203,8 @@ WavefrontReport evaluate_wavefront_gpu(const LoadedSystem& loaded, const Wavefro
     cuda::TraceSettings settings;
     settings.quadrature.rings = options.rings;
     settings.quadrature.spokes = options.spokes;
+    // Auswertung wie der CPU-Pfad (evaluate_wavefront): hartes Versagen, ohne Strafresiduen
+    settings.quadrature.failure = FailureMode::Hard;
     settings.opd = true;
     settings.status = true;
     settings.precision = df64 ? cuda::Precision::Df64 : cuda::Precision::Fp64;

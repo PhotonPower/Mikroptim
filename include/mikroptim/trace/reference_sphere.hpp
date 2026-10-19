@@ -33,15 +33,34 @@ namespace mko {
 // Status Missed, wenn b² − g < 0 (Gerade verfehlt die Sphäre) oder σ (b + σ √(b² − g)) <= 0
 // (die Gerade trifft die zugewandte Kappe nicht; auch bei NaN). Der Strahl bleibt dann
 // unverändert.
+//
+// Weiches Versagen (`soft` gesetzt, numerik.md §11): Bei b² − g < 0 wird −(b² − g)/R_ref²
+// addiert (√(b² − g)/R_ref ist der Kosinus zwischen Strahl und Sphärennormale im Schnittpunkt,
+// die Größe entspricht also −D an einer Fläche) und mit b² − g := 0 fortgesetzt: s_ref = b,
+// der Punkt der Geraden mit dem kleinsten Abstand zu M (für b² − g → 0 gleich g/b, also
+// stetig, und anders als g/b auch für b → 0 endlich). Rückgabe SoftMissed. R_ref = 0
+// (Bildpunkt im Scheitel) und der Fall „zugewandte Kappe nicht getroffen“ bleiben hart.
 template <class R>
-MKO_HD inline TraceStatus reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n_image,
-                                                R* s_out = nullptr) {
+MKO_HD inline TraceStatus
+reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n_image,
+                      typename detail::NonDeduced<R>::type* s_out = nullptr,
+                      typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     const Vec3<R> q = ray.p - center;
     const R b = -dot(q, ray.d);
     const R g = dot(ray.p, ray.p - R(2) * center);
     const R disc = b * b - g;
     if (disc < R(0)) {
-        return TraceStatus::Missed;
+        const R radius_sq = dot(center, center);
+        if (soft == nullptr || !(radius_sq > R(0))) {
+            return TraceStatus::Missed;
+        }
+        soft->add(-disc / radius_sq, TraceStatus::SoftMissed);
+        ray.p += b * ray.d;
+        ray.opl += n_image * b;
+        if (s_out != nullptr) {
+            *s_out = b;
+        }
+        return TraceStatus::SoftMissed;
     }
     const R root = msqrt(disc);
     const bool real_image = center.z >= R(0);
@@ -69,13 +88,20 @@ MKO_HD inline TraceStatus reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n
 // Versagen *failed_surface = −1. Ende (Ok): Strahl auf der Referenzsphäre in lokalen
 // Koordinaten der letzten Fläche, OPL bis dorthin. `observer` wie bei trace_ray (die
 // Referenzsphäre sieht er nicht).
+//
+// Weiches Versagen (`soft` gesetzt, Start {0, Ok}): trace_ray und reference_sphere_step setzen
+// verfehlte Flächen, Totalreflexion und eine verfehlte Referenzsphäre fort. Rückgabe: hartes
+// Versagen wie oben (Strafe bis dahin in `soft`), sonst soft->first (Ok, SoftMissed, SoftTIR)
+// mit *failed_surface = Fläche des ersten weichen Ereignisses (S für die Referenzsphäre).
 template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
-MKO_HD inline TraceStatus trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index,
-                                                    Ray<R>& ray, Vec3<R> center,
-                                                    int* failed_surface = nullptr,
-                                                    Observer* observer = nullptr) {
-    const TraceStatus st = trace_ray(sys, wavelength_index, ray, nullptr, failed_surface, observer);
-    if (st != TraceStatus::Ok) {
+MKO_HD inline TraceStatus
+trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
+                          Vec3<R> center, int* failed_surface = nullptr,
+                          Observer* observer = nullptr,
+                          typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
+    const TraceStatus st =
+        trace_ray(sys, wavelength_index, ray, nullptr, failed_surface, observer, soft);
+    if (is_hard_failure(st)) {
         return st;
     }
     // trace_ray prüft d_z nur vor jedem Transfer; nach der letzten Brechung folgt keiner mehr.
@@ -87,7 +113,16 @@ MKO_HD inline TraceStatus trace_to_reference_sphere(const SurfaceTable& sys, int
     }
     const int last = sys.surfaces - 1;
     const R n_image = R(sys.index[last * sys.wavelengths + wavelength_index]);
-    const TraceStatus ref = reference_sphere_step(ray, center, n_image);
+    const TraceStatus ref = reference_sphere_step(ray, center, n_image, nullptr, soft);
+    if (is_hard_failure(ref)) {
+        if (failed_surface != nullptr) {
+            *failed_surface = sys.surfaces;
+        }
+        return ref;
+    }
+    if (st != TraceStatus::Ok) {
+        return st; // erstes weiches Ereignis vor der Referenzsphäre (failed_surface gesetzt)
+    }
     if (ref != TraceStatus::Ok && failed_surface != nullptr) {
         *failed_surface = sys.surfaces;
     }

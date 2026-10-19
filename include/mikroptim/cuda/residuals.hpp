@@ -24,8 +24,9 @@ inline constexpr int kResidualThreads = 128;
 // Optionen eines Laufs.
 struct ResidualRunOptions {
     bool opd = false;                      // rohe OPD pro Strahl zusätzlich ablegen
-    std::int64_t extra_residuals = 0;      // weitere Residuen pro Variante nach den Strahlresiduen
-                                           // (Paraxial, Strafen ab M3); run setzt sie auf 0
+    std::int64_t extra_residuals = 0;      // weitere Residuen pro Variante nach Strahl- und
+                                           // Strafresiduen (Paraxial usw., ab M3); run setzt
+                                           // sie auf 0
     bool extrema = false;                  // Max-Reduktionen pro Variante und Fläche (M2-T3,
                                            // ResidualResult::extrema; Definition batch_extrema.hpp)
     Precision precision = Precision::Fp64; // Rechentyp im Kernel (M7-T1); Ausgaben immer FP64
@@ -67,6 +68,9 @@ public:
     int device() const { return device_; }
     int variants() const { return variants_; }
     std::int64_t rays_per_variant() const { return rays_; }
+    // Strafresiduen pro Variante (weiches Versagen: rays_per_variant, sonst 0), ab Zeile
+    // rays_per_variant jeder Variante.
+    std::int64_t penalty_rows() const { return penalty_rows_; }
     std::int64_t stride() const { return stride_; }
     bool has_opd() const { return opd_; }
     bool has_extrema() const { return extrema_; }
@@ -91,6 +95,7 @@ private:
     int variants_ = 0;
     int surfaces_ = 0;
     std::int64_t rays_ = 0;
+    std::int64_t penalty_rows_ = 0;
     std::int64_t stride_ = 0;
     OutputLayout layout_{};
 };

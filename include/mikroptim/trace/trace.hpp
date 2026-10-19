@@ -16,15 +16,6 @@
 
 namespace mko {
 
-namespace detail {
-// Verhindert die Ableitung von R aus einem Argument (R folgt allein aus dem Strahl), damit
-// `record` als nullptr übergeben werden kann.
-template <class T>
-struct NonDeduced {
-    using type = T;
-};
-} // namespace detail
-
 // Optionale Aufzeichnung der Zwischenzustände eines Strahls (für den adjungierten Modus in M5
 // und für Strahlhöhen und Einfallswinkel pro Fläche in M4-T3).
 //
@@ -82,10 +73,16 @@ MKO_HD inline Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi) {
 // Flächenoperationen (an der Geisterplatte TIR bei negativem Radikanden); Unsupported für
 // unbekannte Flächentypen. Bei Versagen ist der Strahlzustand teilweise fortgeschrieben und
 // nicht weiter zu verwenden.
+//
+// Weiches Versagen (`soft` gesetzt, numerik.md §11): Fläche verfehlt (D < 0), Totalreflexion
+// und negativer Radikand der Geisterplatte addieren ihre Strafgröße in `soft` und werden
+// fortgesetzt (intersect_sphere, refract_sphere, phase_surface_step); die Rückgabe ist dann Ok.
+// Backward, Unsupported und der Fall D >= 0, B + √D <= 0 bleiben hart.
 template <class R>
 MKO_HD inline TraceStatus
 propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after,
-                  const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost = nullptr) {
+                  const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost = nullptr,
+                  typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     R curv;
     switch (kind) {
     case SurfaceKind::Stop:
@@ -110,15 +107,15 @@ propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after
     const R s0 = transfer_to_tangent_plane(ray, t);
     if (kind == SurfaceKind::GhostPlate) {
         ray.opl += n_before * s0; // Schnitt mit der Ebene: s = 0
-        return ghost_plate_step(ray, *ghost, n_before, n_after);
+        return ghost_plate_step(ray, *ghost, n_before, n_after, soft);
     }
     R s = R(0);
-    const TraceStatus hit = intersect_sphere(ray, curv, s);
-    if (hit != TraceStatus::Ok) {
+    const TraceStatus hit = intersect_sphere(ray, curv, s, soft);
+    if (hit != TraceStatus::Ok && hit != TraceStatus::SoftMissed) {
         return hit;
     }
     ray.opl += n_before * (s0 + s);
-    return refract_sphere(ray, curv, n_before / n_after);
+    return refract_sphere(ray, curv, n_before / n_after, soft, hit == TraceStatus::SoftMissed);
 }
 
 // Sequenzieller Trace durch die Flächen 1 … S−1 der Tabelle `sys` bei Wellenlänge
@@ -139,12 +136,23 @@ propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after
 // `observer` (optional, Schnittstelle in surface_extrema.hpp) sieht den Startzustand (s = 0)
 // und jede erfolgreich passierte Fläche; ohne Beobachter entfällt der Aufruf.
 // Vorbedingung: 2 <= S <= kMaxSurfaces (prüft der Host beim Aufbau der Tabelle).
+//
+// Weiches Versagen (`soft` gesetzt, Start {0, Ok}; numerik.md §11): Verfehlte Flächen,
+// Totalreflexion und negative Radikanden an Geisterplatten werden fortgesetzt und in `soft`
+// bestraft; Beobachter und Aufzeichnung sehen die fortgesetzten Flächen wie passierte. Endet
+// der Strahl ohne hartes Versagen, ist die Rückgabe soft->first (Ok ohne weiches Ereignis,
+// sonst SoftMissed oder SoftTIR) und *failed_surface die Fläche des ersten weichen Ereignisses
+// (−1 ohne). Hartes Versagen (Backward, Unsupported, Missed bei D >= 0) kehrt wie oben sofort
+// zurück; die bis dahin gesammelte Strafe bleibt in `soft`.
 template <class R, class SurfaceTable, class Observer = NoSurfaceObserver>
-MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
-                                    typename detail::NonDeduced<TraceRecord<R>>::type* record,
-                                    int* failed_surface = nullptr, Observer* observer = nullptr) {
+MKO_HD inline TraceStatus
+trace_ray(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
+          typename detail::NonDeduced<TraceRecord<R>>::type* record, int* failed_surface = nullptr,
+          Observer* observer = nullptr,
+          typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     const int L = sys.wavelengths;
     const int S = sys.surfaces;
+    int soft_surface = -1; // Fläche des ersten weichen Ereignisses
     if (record != nullptr) {
         record->count = 1;
         record->p[0] = ray.p;
@@ -172,13 +180,17 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
             ++ghost;
         }
         const Vec3<R> d_before = ray.d;
-        const TraceStatus st = propagate_surface(ray, R(sys.thickness[s - 1]), kind,
-                                                 R(sys.curvature[s]), n_before, n_after, plate_ptr);
+        const TraceStatus st =
+            propagate_surface(ray, R(sys.thickness[s - 1]), kind, R(sys.curvature[s]), n_before,
+                              n_after, plate_ptr, soft);
         if (st != TraceStatus::Ok) {
             if (failed_surface != nullptr) {
                 *failed_surface = s;
             }
             return st;
+        }
+        if (soft != nullptr && soft_surface < 0 && soft->first != TraceStatus::Ok) {
+            soft_surface = s;
         }
         if (observer != nullptr) {
             observer->surface(s, surface_curvature(kind, R(sys.curvature[s])), d_before, ray);
@@ -192,9 +204,9 @@ MKO_HD inline TraceStatus trace_ray(const SurfaceTable& sys, int wavelength_inde
         n_before = n_after;
     }
     if (failed_surface != nullptr) {
-        *failed_surface = -1;
+        *failed_surface = soft_surface;
     }
-    return TraceStatus::Ok;
+    return soft != nullptr ? soft->first : TraceStatus::Ok;
 }
 
 // Transfer vom Schnittpunkt der letzten Fläche (Ende von trace_ray) in die Bildebene im

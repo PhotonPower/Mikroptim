@@ -404,7 +404,7 @@ Für `planplatte_bk7.json` (afokal) sind in `paraxial` die Felder `focal_length`
 Mit `--gpu` entsteht die Wellenfront über die Host-API `mko::cuda::TraceEngine` ([architektur.md](architektur.md), Abschnitt „Host-API TraceEngine“) auf dem Gerät `--device N` (Standard 0):
 
 1. Sollbrennweite f_soll wie im CPU-Pfad mit `target_focal_length` (nur kollimierte Quelle), dann `make_system_batch(system, index, 1, f_soll)` – eine Variante mit den Feldzielen h_f = f_soll · tan θ_f, also denselben idealen Bildpunkten wie `evaluate_wavefront`.
-2. `TraceEngine::run(batch, TraceMode::Residuals, {quadrature = {N, M}, opd = true, status = true})`.
+2. `TraceEngine::run(batch, TraceMode::Residuals, {quadrature = {N, M, FailureMode::Hard}, opd = true, status = true})` – hartes Versagen wie `evaluate_wavefront` (das weiche Versagen der Optimierung, M4-T2, würde versagte Strahlen fortsetzen und den Kolben ändern).
 3. `tuple_wavefronts(out.residuals, out.layout, 0)` liefert RMS [mm] und versagte Strahlen pro Feld und Wellenlänge; RMS in Wellen = RMS / λ_ref wie im CPU-Pfad.
 
 Paraxialdaten, Sollbrennweite und Bildpunkte entstehen auf dem Host und sind bitgleich zur CPU-Variante; Text und JSON werden von denselben Ausgabefunktionen geschrieben. Unterschiede zur CPU-Variante:

@@ -51,11 +51,14 @@ struct EngineOptions {
 
 // Einstellungen eines Laufs.
 struct TraceSettings {
-    ResidualSettings quadrature{};    // Pupillenquadratur N × M (Achsfelder N × 1)
+    ResidualSettings quadrature{};    // Pupillenquadratur N × M (Achsfelder N × 1) und
+                                      // Strahlversagen (Standard weich mit Strafresiduen,
+                                      // M4-T2; Hard wie in M2)
     bool opd = false;                 // OPD pro Strahl ausgeben (z. B. RMS pro Tupel)
     bool status = true;               // Status pro Strahl ausgeben (TraceStatus, 1 Byte)
-    std::int64_t extra_residuals = 0; // weitere Residuen pro Variante (Paraxial, Strafen ab
-                                      // M3); der Lauf setzt sie auf 0
+    std::int64_t extra_residuals = 0; // weitere Residuen pro Variante nach Strahl- und
+                                      // Strafresiduen (Paraxial usw., ab M3); der Lauf setzt
+                                      // sie auf 0
     // opd, status und extra_residuals gelten nur im Modus Residuals.
     bool extrema = false; // beide Modi: Max-Reduktionen pro Variante und Fläche (M2-T3,
                           // batch_extrema.hpp), in residuals.extrema bzw. merit.extrema
@@ -109,7 +112,8 @@ struct DeviceTranche {
     int first = 0;                        // erste Variante der Tranche im Batch
     int count = 0;                        // Varianten der Tranche
     std::int64_t rays_per_variant = 0;    // Strahlresiduen pro Variante
-    std::int64_t stride = 0;              // rays_per_variant + extra_residuals
+    std::int64_t penalty_rows = 0;        // Strafresiduen pro Variante (weich: rays, sonst 0)
+    std::int64_t stride = 0;              // rays_per_variant + penalty_rows + extra_residuals
     const double* residuals = nullptr;    // [count · stride], weitere Residuen 0
     const std::uint8_t* status = nullptr; // [count · rays_per_variant], immer vorhanden
     const double* opd = nullptr;          // [count · rays_per_variant], nur mit opd

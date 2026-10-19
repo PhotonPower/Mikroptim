@@ -50,7 +50,7 @@ Die Merit ist F = ‖r‖². Der Residuenvektor einer Variante besteht aus:
 2. **Paraxiale Nebenbedingungen:** √w · (Ist − Soll) für Brennweite (3,29 mm, über die Brechkraft formuliert), Abgleichlänge (45 mm), ggf. Arbeitsabstand (Gleichung oder Untergrenze); Definitionen in Abschnitt 2.2.
 3. **Petzval:** √w · max(0, |κ_P| − κ_max), inklusive Beiträgen der Geisterplatten; Definition und Gewichtswahl in Abschnitt 2.3.
 4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°).
-5. **Weiches Versagen:** siehe numerik.md, Abschnitt 11.
+5. **Weiches Versagen** (ab M4-T2): ein Strafresiduum pro Strahl, p_k = √(w_fail · ŵ_f · ŵ_λ · W_i · V_j) · π_k, mit der Summe π_k der dimensionslosen Strafgrößen seiner Ereignisse (−D, −k, −Radikand, −disc/R_ref²; hart versagt zusätzlich 1). Die Strafresiduen stehen als eigener Block gleicher Länge direkt hinter den Wellenfrontresiduen (vor den Zusatzresiduen 2–7) und entstehen im Kernel; weich versagte Strahlen bleiben mit der OPL ihrer Fortsetzung in Kolben und Wellenfrontresiduen. Gewicht w_fail in Wellen² (`ResidualSettings::fail_weight`, Standard 10⁶), im LM mit äußerem Strafverfahren (Abschnitt 4). Regeln, Grenzfälle und Messungen: [numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen).
 6. **Geisterplatten (L1, geglättet):** im Plan √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist. Implementiert (ab M4-T6) ist die gleichwertige Form √(μ·w_k) · a/√(ε + √(a² + ε²)) mit dem Quadrat μ·w_k·(√(a² + ε²) − ε): gleicher Gradient, also gleiches Minimum, aber r(0) = 0 und eine Gauß-Newton-Krümmung, die bei a = 0 exakt stimmt (Begründung in Abschnitt 3).
 7. **Glas-Hülle:** √w · Abstand außerhalb der Hülle.
 
@@ -206,17 +206,19 @@ Dass die L1-Strafe bei monochromatischer Korrektur das Glas mit dem größten n 
 
 Host-API `include/mikroptim/optim/levenberg_marquardt.hpp` (`Mikroptim::optim`), GPU-Backend `include/mikroptim/cuda/levenberg_marquardt.hpp` und Normalgleichungen `include/mikroptim/cuda/normal_equations.hpp` (`Mikroptim::cuda`).
 
-**Zustand pro Lauf:** x, F = ‖r(x)‖² (Strahlresiduen und Zusatzresiduen, Abschnitt 2), Zahl versagter Strahlen, Dämpfung μ (Start `initial_damping` = 10⁻³) und ν (Start 2), Status, Zähler. Die Steuerlogik `levenberg_marquardt(backend, P, bounds, x0, options)` ist einmal implementiert; ein **Backend** (`LmBackend`) liefert für eine Liste von Läufen A = JᵀJ und g = Jᵀr an ihren Punkten (`normal_equations`) sowie F und versagte Strahlen (`merit`). Backends: `CpuLmBackend` (CPU, CI), `cuda::GpuLmBackend` (GPU) und in den Tests analytische Residuenfunktionen.
+**Zustand pro Lauf:** x, F = ‖r(x)‖² (Strahl-, Straf- und Zusatzresiduen, Abschnitt 2), Zahl versagter und hart versagter Strahlen, Dämpfung μ (Start `initial_damping` = 10⁻³) und ν (Start 2), Status, Zähler. Die Steuerlogik `levenberg_marquardt(backend, P, bounds, x0, options)` ist einmal implementiert; ein **Backend** (`LmBackend`) liefert für eine Liste von Läufen A = JᵀJ und g = Jᵀr an ihren Punkten (`normal_equations`) sowie F und versagte Strahlen (`merit`). Backends: `CpuLmBackend` (CPU, CI), `cuda::GpuLmBackend` (GPU) und in den Tests analytische Residuenfunktionen.
 
 **Zyklus** (alle aktiven Läufe gemeinsam):
 
 1. Für Läufe nach einem angenommenen Schritt (und am Anfang): J und r an x per finiten Differenzen (alle diese Läufe in einem FD-Batch), A = JᵀJ, g = Jᵀr. Danach Skalierung, Gradientenmaß und Modell-Kriterien (unten).
 2. Für jeden aktiven Lauf der Schritt mit aktiver Menge (unten), unabhängig pro Lauf auf Host-Threads.
 3. Alle Versuchspunkte gemeinsam bewerten: Modus MERIT der Engine bzw. `merit_cpu`, Zusatzresiduen als `extra_merit` = Σ e² (aufsteigend), sodass F genau die Quadratsumme des Residuenvektors ist (bis auf die Summationsreihenfolge).
-4. Gewinnverhältnis ρ = (F − F_neu)/(L(0) − L(Δx)) mit L(0) − L(Δx) = −(2Δxᵀg + ΔxᵀAΔx) für den tatsächlichen (projizierten) Schritt Δx. Angenommen, wenn F_neu endlich ist, F_neu < F, die Vorhersage positiv ist und (Standard `reject_new_failures`) am Versuchspunkt nicht mehr Strahlen versagen als bei x – hart versagte Strahlen haben r = 0 und würden F sonst scheinbar senken (weiches Versagen: M4-T2).
+4. Gewinnverhältnis ρ = (F − F_neu)/(L(0) − L(Δx)) mit L(0) − L(Δx) = −(2Δxᵀg + ΔxᵀAΔx) für den tatsächlichen (projizierten) Schritt Δx. Angenommen, wenn F_neu endlich ist, F_neu < F, die Vorhersage positiv ist und (Standard `reject_new_failures`) am Versuchspunkt nicht mehr Strahlen **hart** versagen als bei x – hart versagte Strahlen sind maskiert (r = 0) und könnten F sonst senken. Weich versagte Strahlen (M4-T2) zählen nicht: Ihre Wellenfront- und Strafresiduen sind stetig und stehen in F; eine Ablehnung jedes Schritts, der einen Strahl knapp über eine Grenze schiebt, würde den LM an Versagensgrenzen festhalten. Im harten Modus sind beide Zahlen gleich (Verhalten wie M3-T4).
 5. Nielsen: angenommen μ ← μ·max(1/3, 1 − (2ρ − 1)³), ν ← 2; verworfen (auch bei gescheiterter Cholesky-Zerlegung) μ ← μ·ν, ν ← 2ν.
 
 Fertige Läufe werden eingefroren und gehen in keinen weiteren Batch ein.
+
+**Äußeres Strafverfahren (ab M4-T2).** Die optischen Treiber `optimize_lm_cpu` und `cuda::optimize_lm_gpu` rufen die Steuerlogik über `optimize_lm_rounds` auf. Endet ein Lauf im weichen Modus mit versagten Strahlen (Status außer `NumericalError`), startet er an seinem Endpunkt neu, mit w_fail · `fail_weight_factor` (Standard 10) und frischem Zustand (μ₀, ν = 2, neue Jacobi-Matrix); alle betroffenen Läufe gemeinsam in einem Aufruf, mit ihrer Vorlage (`lm_template_batch`). Das wiederholt sich, bis kein Strahl mehr versagt oder w_fail `max_fail_weight` (10¹⁴) übersteigen würde. Begründung und Messungen: [numerik.md, Abschnitt 11](numerik.md#festlegungen-der-implementierung-m4-t2) (mit festem w_fail endet der LM je nach System in Minima mit versagten Strahlen oder hängt an der Kante zum harten Versagen; mit dem Verfahren enden 108 von 108 bzw. 36 von 36 Starts der Testfamilien versagensfrei). Ergebnis eines Laufs: x, F, Zahlen versagter Strahlen, Status, μ, Gradientenmaß und Modellabnahme der letzten Runde; Zyklen, angenommene Schritte und Jacobi-Auswertungen summiert; `history` aneinandergehängt (jede Runde beginnt mit F am Endpunkt unter dem neuen Gewicht, deshalb springt F dort nach oben, solange Strahlen versagen); `fail_weight` und `penalty_rounds`. `on_iteration` erhält den ursprünglichen Laufindex und fortlaufende Zyklen. Die Entscheidung über einen Neustart hängt nur vom Lauf selbst ab; Gruppe und Einzellauf bleiben bitgleich. `fail_weight_factor` ≤ 1 oder hartes Versagen: ein Durchgang wie in M3-T4.
 
 **Marquardt-Skalierung:** (A + μD)δ = −g mit D_kk = max(A_kk, `diag_floor`·max_j(A_jj s_j²)/s_k²), s_k = max(|x_k|, x_typ,k), `diag_floor` = 10⁻¹². Die Untergrenze hält das System regulär, wenn eine Spalte von J verschwindet (Variable ohne Einfluss, alle Strahlen versagt); sie ist in Einheiten der Variablen formuliert (A_jj s_j² ist die Empfindlichkeit pro relativer Änderung) und damit unabhängig von deren Einheiten. Sind alle A_jj = 0, ist D_kk = 1/s_k².
 
@@ -237,7 +239,7 @@ Die Kriterien prüfen bewusst das *ungedämpfte* Modell: Ein schwer gewichteter 
 
 **Kondition und Gewichte.** Die Normalgleichungen quadrieren die Kondition von J. Werden Nebenbedingungen so hoch gewichtet, dass ihre Spalten die Wellenfrontspalten um mehr als etwa 10⁶ übertreffen, verschwinden die Richtungen, die nur die Wellenfront sieht, in der Rundung von JᵀJ (Einzellinse mit Brennweiten-Gewicht 100/mm² gegen OPD-Residuen von 10⁻⁶ mm: Verhältnis der Diagonalen ~10¹⁸, die Biegung bleibt bei q = 0). Mit Gewicht 10⁻⁸/mm² hält die Bedingung f trotzdem auf 1,6·10⁻⁶ mm; die Konvergenz wird mit wachsendem Gewicht langsamer (10⁻⁸: 54 Zyklen, 10⁻⁶: 132, 10⁻⁴: > 400). Diese Zahlen gelten für die Residuen in mm von M3; seit M4-T1 sind die Residuen in Wellen, dieselben Verhältnisse ergeben sich mit den Gewichten × 1/(F·L·λ_ref²) (10⁻⁸/mm² ↔ 0,029/mm² bei der Einzellinse). Faustregel für die Gewichte: Abschnitt 2.2.
 
-**Ergebnis** `LmRunResult`: x, F, versagte Strahlen, Status, Zyklen (`iterations`), angenommene Schritte, Jacobi-Auswertungen, μ am Ende, Gradientenmaß und Modellabnahme der letzten Jacobi-Matrix, Verlauf `history` (F(x₀) und F nach jedem Zyklus). Der Rückruf `on_iteration` erhält nach jedem Zyklus pro Lauf (in Laufreihenfolge) Zyklus, Annahme, F, F am Versuchspunkt, ρ, μ, Schrittnorm, versagte Strahlen und x (Iterationsprotokoll von `mikroptim optimize`, M3-T5, [cli.md](cli.md#mikroptim-optimize)).
+**Ergebnis** `LmRunResult`: x, F, versagte und hart versagte Strahlen, Status, Zyklen (`iterations`), angenommene Schritte, Jacobi-Auswertungen, μ am Ende, Gradientenmaß und Modellabnahme der letzten Jacobi-Matrix, Verlauf `history` (F(x₀) und F nach jedem Zyklus), w_fail und Runden des Strafverfahrens (M4-T2). Der Rückruf `on_iteration` erhält nach jedem Zyklus pro Lauf (in Laufreihenfolge) Zyklus, Annahme, F, F am Versuchspunkt, ρ, μ, Schrittnorm, versagte und hart versagte Strahlen und x (Iterationsprotokoll von `mikroptim optimize`, M3-T5, [cli.md](cli.md#mikroptim-optimize)).
 
 **Vorlagen:** `base` hat eine Variante für alle Läufe oder eine pro Lauf (z. B. Homotopie-Zweige mit verschiedener Apertur); `lm_template_batch` und `lm_point_batch` wählen die Vorlagen der Läufe eines Aufrufs.
 
@@ -270,18 +272,24 @@ enum class LmStatus { Running, ConvergedMerit, ConvergedStep, ConvergedGradient,
                       DampingLimit, NumericalError };
 struct LmOptions { int max_iterations = 100; double ftol = 1e-10, xtol = 1e-10, gtol = 1e-10;
                    double initial_damping = 1e-3, max_damping = 1e16, diag_floor = 1e-12;
-                   bool reject_new_failures = true; int threads = 0;
-                   FdJacobianOptions jacobian;          // Quadratur, Schema, Zusatzresiduen
+                   bool reject_new_failures = true; int threads = 0;   // vergleicht hart versagte
+                   FdJacobianOptions jacobian;          // Quadratur, Strahlversagen, Schema, Zusatzresiduen
+                   double fail_weight_factor = 10.0, max_fail_weight = 1e14;   // Strafverfahren (M4-T2)
                    LmIterationFn on_iteration; };
-struct LmRunResult { std::vector<double> x; double merit; int64_t failed_rays; LmStatus status;
-                     int iterations, accepted, jacobians; double damping, gradient_norm,
-                     model_decrease; std::vector<double> history; };
+struct LmRunResult { std::vector<double> x; double merit; int64_t failed_rays, hard_failed_rays;
+                     LmStatus status; int iterations, accepted, jacobians; double damping,
+                     gradient_norm, model_decrease; std::vector<double> history;
+                     double fail_weight; int penalty_rounds; };              // M4-T2
 struct LmResult { std::vector<LmRunResult> runs; int cycles; };
 class LmBackend { virtual void normal_equations(span<const int> runs, span<const double> x,
                                                 span<double> a, span<double> g) = 0;
                   virtual void merit(span<const int> runs, span<const double> x,
-                                     span<double> merit, span<int64_t> failed) = 0; };
+                                     span<double> merit, span<int64_t> failed,
+                                     span<int64_t> hard_failed) = 0; };     // hard_failed: M4-T2
 LmResult levenberg_marquardt(LmBackend&, int P, const LmBounds&, span<const double> x0, const LmOptions&);
+using LmBackendFactory = std::function<std::unique_ptr<LmBackend>(const LmOptions&, const SystemBatchHost&)>;
+LmResult optimize_lm_rounds(const LmBackendFactory&, const VariableSet&, const SystemBatchHost& base,
+                            span<const double> x0, const LmOptions&);   // Strafverfahren (M4-T2)
 LmResult optimize_lm_cpu(const VariableSet&, const SystemBatchHost& base, span<const double> x0,
                          const LmOptions& = {});
 // cuda/levenberg_marquardt.hpp
@@ -318,7 +326,7 @@ Rechentyp: FP64 (die Abnahme). df64 für Jacobi und Merit ist nicht angebunden (
 
 Host-API `include/mikroptim/optim/fd_jacobian.hpp` (`Mikroptim::optim`), Differenzenformeln header-only in `include/mikroptim/optim/fd_formula.hpp` (`fd_derivative`, `MKO_HD`, dieselbe Funktion auf CPU und GPU), GPU-Pfad `include/mikroptim/cuda/fd_jacobian.hpp` (`Mikroptim::cuda`).
 
-**Residuenvektor einer Variante.** R = R_v + E Zeilen: die R_v Strahlresiduen in der Ablage von `ResidualLayout`, danach die E Zusatzresiduen aus `ExtraResiduals` (Abschnitt [2.1](#21-zusatzresiduen-schnittstelle-ab-m3-t3), z. B. die paraxialen Nebenbedingungen `make_paraxial_residuals`, später Strafterme). Das ist dieselbe Ablage wie im Ausgabepuffer der TraceEngine mit `TraceSettings::extra_residuals = E`. Die Zusatzresiduen werden auf dem Host für jede Variante des FD-Batches ausgewertet (`evaluate_extra_residuals` aus M3-T3 auf `FdJacobianOptions::extra_threads` Host-Threads, bitgleich für jede Threadzahl, Ablage [V·E]).
+**Residuenvektor einer Variante.** R = R_v + E Zeilen: die R_v = `ResidualLayout::trace_rows` Zeilen des Traces (Strahlresiduen, im weichen Modus seit M4-T2 dahinter ebenso viele Strafresiduen), danach die E Zusatzresiduen aus `ExtraResiduals` (Abschnitt [2.1](#21-zusatzresiduen-schnittstelle-ab-m3-t3), z. B. die paraxialen Nebenbedingungen `make_paraxial_residuals`, später Strafterme). Das ist dieselbe Ablage wie im Ausgabepuffer der TraceEngine mit `TraceSettings::extra_residuals = E`. Die Zusatzresiduen werden auf dem Host für jede Variante des FD-Batches ausgewertet (`evaluate_extra_residuals` aus M3-T3 auf `FdJacobianOptions::extra_threads` Host-Threads, bitgleich für jede Threadzahl, Ablage [V·E]).
 
 **Schablonen.** Die Schrittweite bleibt h_k = ε_m^{1/3}·max(|x₀_k|, x_typ,k). Zu jeder Variable gehören zwei gestörte Punkte a und b (Varianten 2k + 1 und 2k + 2 des Laufs) mit den tatsächlichen Schritten d_a = fl(x_a − x₀), d_b = fl(x_b − x₀). `fd_pattern` wählt die Schablone (`FdStencil`) nach den Schranken:
 
@@ -350,7 +358,7 @@ J_i(r, p) = `jacobian`[(i·P + p)·R + r],  r₀_i(r) = `residuals`[i·R + r],  
 
 Das ist das Spaltenformat mit führender Dimension R und Abstand R·P zwischen den Läufen, wie `cublasDgemmStridedBatched` es für JᵀJ (P × P, Abstand P²) und Jᵀr (Abstand R für r₀) in M3-T4 braucht. Mehrere Läufe liegen in einem FD-Batch hintereinander: Lauf i belegt die Varianten [i·n, (i + 1)·n), n = 2P + 1 (vorwärts P + 1), Variante i·n ist sein x₀ (`make_fd_jacobian_batch`; die Vorlage hat eine Variante für alle Läufe oder eine pro Lauf).
 
-**Versagte Strahlen.** Hart versagte Strahlen haben r = 0 (M2); an einer Versagensgrenze wird die Jacobi dadurch unstetig. `status_changes` zählt pro Lauf und Spalte die Strahlen, deren Gültigkeit (Status `Ok` oder nicht) sich zwischen x₀ und einem der beiden gestörten Punkte ändert. Nur Diagnose (für M4-T2), keine Behandlung.
+**Versagte Strahlen.** Im harten Modus haben versagte Strahlen r = 0 (M2); an einer Versagensgrenze springt das Residuum, die Jacobi wird dort unbrauchbar. Im weichen Modus (Standard seit M4-T2) sind Wellenfront- und Strafresiduen an den Grenzen stetig, nur ihre Ableitung springt (Knick bzw. Wurzelsingularität auf der gültigen Seite, numerik.md, Abschnitt 11); FD-Spalten über eine Grenze hinweg mitteln dann die einseitigen Steigungen. `status_changes` zählt pro Lauf und Spalte die Strahlen, deren Gültigkeit (Status `Ok` oder nicht) sich zwischen x₀ und einem der beiden gestörten Punkte ändert (Diagnose).
 
 **Pfade.**
 

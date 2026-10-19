@@ -1,0 +1,22 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Startsystem mit Strahlversagen",
+  "description": "Frei erfundenes Testsystem (kein reales Objektiv) für das weiche Strahlversagen (M4-T2): Bikonvexlinse N-BK7, deren Vorderfläche (R = 9,615 mm) kleiner ist als die Blende (a = 10 mm). Die äußeren Strahlen verfehlen die Vorderfläche (12 von 90), weitere totalreflektieren an der Rückfläche (15 von 90); 30 % der Strahlen versagen. Variablen c[1], c[2] und w; die Optimierung muss ohne Eingriff in einen versagensfreien Zustand führen.",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0, 2.0], "field_weights": [1.0, 1.0] },
+  "target": { "focal_length": 17.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 10.0 },
+    { "type": "sphere", "curvature": 0.104, "thickness": 6.0, "material": "N-BK7", "semi_diameter": 12.5 },
+    { "type": "sphere", "curvature": -0.02, "thickness": 13.0, "material": "AIR", "semi_diameter": 12.5 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surface": 1, "min": -0.2, "max": 0.2 },
+      { "type": "curvature", "surface": 2, "min": -0.2, "max": 0.2 },
+      { "type": "working_distance", "min": 1.0, "max": 100.0, "typical": 10.0 }
+    ]
+  }
+}

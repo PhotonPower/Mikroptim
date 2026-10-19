@@ -49,6 +49,7 @@ OutputRequest output_request(TraceMode mode, const ResidualLayout& layout,
         r.opd = false;
         r.merit = true;
     } else {
+        r.penalty_residuals = layout.penalty_rows();
         r.extra_residuals = settings.extra_residuals;
         r.residuals = true;
         r.ray_status = true;
@@ -93,6 +94,7 @@ void clear(SurfaceExtremaResult& e) {
 void clear(ResidualResult& r) {
     r.variants = 0;
     r.rays_per_variant = 0;
+    r.penalty_rows = 0;
     r.stride = 0;
     r.residuals.clear();
     r.opd.clear();
@@ -104,6 +106,7 @@ void clear(MeritResult& m) {
     m.rays_per_variant = 0;
     m.merit.clear();
     m.failed.clear();
+    m.hard_failed.clear();
     clear(m.extrema);
 }
 
@@ -296,7 +299,7 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
     // ---- Host-Ausgabe anlegen (Ergebnis des anderen Modus leer) ----
     const int S = topology.surfaces;
     const std::int64_t rays = layout.rays_per_variant();
-    const std::int64_t stride = rays + settings.extra_residuals;
+    const std::int64_t stride = layout.trace_rows() + settings.extra_residuals;
     const auto rays_total = static_cast<std::size_t>(V) * static_cast<std::size_t>(rays);
     const std::size_t extrema_total =
         settings.extrema ? static_cast<std::size_t>(V) * static_cast<std::size_t>(S) * 2 : 0;
@@ -312,12 +315,14 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
         m.rays_per_variant = rays;
         m.merit.resize(static_cast<std::size_t>(V));
         m.failed.resize(static_cast<std::size_t>(V));
+        m.hard_failed.resize(static_cast<std::size_t>(V));
         m.extrema.variants = settings.extrema ? V : 0;
         m.extrema.surfaces = settings.extrema ? S : 0;
         m.extrema.values.resize(extrema_total);
     } else {
         r.variants = V;
         r.rays_per_variant = rays;
+        r.penalty_rows = layout.penalty_rows();
         r.stride = stride;
         r.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(stride));
         r.opd.resize(settings.opd ? rays_total : 0);
@@ -359,6 +364,8 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
             merit_.run(batch_, out.layout, merit_options);
             copy_to_host(m.merit.data() + v0, merit_.device_merit(), n * sizeof(double));
             copy_to_host(m.failed.data() + v0, merit_.device_failed(), n * sizeof(std::int64_t));
+            copy_to_host(m.hard_failed.data() + v0, merit_.device_hard_failed(),
+                         n * sizeof(std::int64_t));
             if (settings.extrema) {
                 copy_to_host(m.extrema.values.data() + v0 * extrema_stride, merit_.device_extrema(),
                              n * extrema_stride * sizeof(double));
@@ -429,6 +436,7 @@ TraceRunInfo TraceEngine::run_on_device(const SystemBatchHost& batch, const Trac
         tranche.first = first;
         tranche.count = count;
         tranche.rays_per_variant = residuals_.rays_per_variant();
+        tranche.penalty_rows = residuals_.penalty_rows();
         tranche.stride = residuals_.stride();
         tranche.residuals = residuals_.device_residuals();
         tranche.status = residuals_.device_status();

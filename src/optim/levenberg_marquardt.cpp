@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -39,6 +40,7 @@ struct RunState {
     std::vector<double> d;     // Marquardt-Skalierung (mit Untergrenze)
     double merit = 0.0;
     std::int64_t failed = 0;
+    std::int64_t hard_failed = 0;
     double mu = 0.0;
     double nu = 2.0;
     LmStatus status = LmStatus::Running;
@@ -228,6 +230,11 @@ void check_options(const LmOptions& o) {
         !(o.max_damping > o.initial_damping)) {
         invalid("Dämpfung: verlangt 0 < initial_damping < max_damping");
     }
+    if (std::isnan(o.fail_weight_factor) || !std::isfinite(o.max_fail_weight) ||
+        !(o.max_fail_weight >= 0.0)) {
+        invalid("Strafverfahren: fail_weight_factor muss eine Zahl sein, max_fail_weight "
+                "endlich und >= 0");
+    }
 }
 
 void check_problem(int P, const LmBounds& b, std::span<const double> x0) {
@@ -304,6 +311,7 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
     std::vector<double> buf_g;
     std::vector<double> buf_f;
     std::vector<std::int64_t> buf_failed;
+    std::vector<std::int64_t> buf_hard;
 
     // Punkte der Läufe in `list` hintereinander (x oder Versuchspunkt).
     const auto gather = [&](bool trial) {
@@ -324,7 +332,8 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
         gather(trial);
         buf_f.assign(list.size(), 0.0);
         buf_failed.assign(list.size(), 0);
-        backend.merit(list, xs, buf_f, buf_failed);
+        buf_hard.assign(list.size(), 0);
+        backend.merit(list, xs, buf_f, buf_failed, buf_hard);
     };
 
     // ---- Startpunkte ----
@@ -344,6 +353,7 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
         RunState& s = state[static_cast<std::size_t>(list[j])];
         s.merit = buf_f[j];
         s.failed = buf_failed[j];
+        s.hard_failed = buf_hard[j];
         s.history.push_back(s.merit);
         if (!std::isfinite(s.merit)) {
             s.status = LmStatus::NumericalError;
@@ -468,18 +478,21 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
             if (s.solved) {
                 const double f_new = buf_f[e];
                 const std::int64_t failed_new = buf_failed[e];
+                const std::int64_t hard_new = buf_hard[e];
                 ++e;
                 info.evaluated = true;
                 info.trial_merit = f_new;
                 info.failed_rays = failed_new;
+                info.hard_failed_rays = hard_new;
                 const double rho = (s.merit - f_new) / s.predicted;
                 info.gain_ratio = rho;
                 accept = std::isfinite(f_new) && s.predicted > 0.0 && f_new < s.merit &&
-                         !(options.reject_new_failures && failed_new > s.failed);
+                         !(options.reject_new_failures && hard_new > s.hard_failed);
                 if (accept) {
                     s.x = s.trial;
                     s.merit = f_new;
                     s.failed = failed_new;
+                    s.hard_failed = hard_new;
                     const double t = 2.0 * rho - 1.0;
                     s.mu *= std::max(1.0 / 3.0, 1.0 - t * t * t);
                     s.nu = 2.0;
@@ -521,6 +534,7 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
         r.x = std::move(s.x);
         r.merit = s.merit;
         r.failed_rays = s.failed;
+        r.hard_failed_rays = s.hard_failed;
         r.status = s.status;
         r.iterations = s.iterations;
         r.accepted = s.accepted;
@@ -640,17 +654,20 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
     ResidualResult rays;
     rays.variants = V;
     rays.rays_per_variant = rv;
-    rays.stride = rv;
-    rays.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(rv));
-    rays.status.resize(rays.residuals.size());
+    rays.penalty_rows = layout_.penalty_rows();
+    rays.stride = layout_.trace_rows();
+    rays.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(rays.stride));
+    rays.status.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(rv));
     const std::int64_t ray_work =
         static_cast<std::int64_t>(V) * rv * static_cast<std::int64_t>(fd.batch.surfaces());
     detail::parallel_for_variants(
         0, V, lm_host_threads(options_.threads, ray_work, kLmRaySurfacesPerThread), [&](int v) {
             const ResidualResult one = residuals_cpu(fd.batch, v, layout_);
             const std::size_t o = rays.ray_index(v, 0);
+            const std::size_t ro =
+                static_cast<std::size_t>(v) * static_cast<std::size_t>(rays.stride);
             std::copy(one.residuals.begin(), one.residuals.end(),
-                      rays.residuals.begin() + static_cast<std::ptrdiff_t>(o));
+                      rays.residuals.begin() + static_cast<std::ptrdiff_t>(ro));
             std::copy(one.status.begin(), one.status.end(),
                       rays.status.begin() + static_cast<std::ptrdiff_t>(o));
         });
@@ -676,7 +693,8 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
 }
 
 void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
-                         std::span<double> merit, std::span<std::int64_t> failed) {
+                         std::span<double> merit, std::span<std::int64_t> failed,
+                         std::span<std::int64_t> hard_failed) {
     const SystemBatchHost batch = lm_point_batch(set_, base_, runs, x);
     const std::vector<double> extra = extra_merit_values(
         options_.jacobian.extra, batch,
@@ -691,15 +709,97 @@ void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
             const auto vv = static_cast<std::size_t>(v);
             merit[vv] = extra.empty() ? m.merit[0] : m.merit[0] + extra[vv];
             failed[vv] = m.failed[0];
+            hard_failed[vv] = m.hard_failed[0];
         });
+}
+
+LmResult optimize_lm_rounds(const LmBackendFactory& make_backend, const VariableSet& set,
+                            const SystemBatchHost& base, std::span<const double> x0,
+                            const LmOptions& options) {
+    check_lm_base(base, set.size(), x0.size());
+    check_options(options);
+    const LmBounds bounds{set.lower(), set.upper(), set.typical()};
+    const int P = set.size();
+    LmResult result;
+    {
+        const std::unique_ptr<LmBackend> backend = make_backend(options, base);
+        result = levenberg_marquardt(*backend, P, bounds, x0, options);
+    }
+    double weight = options.jacobian.quadrature.fail_weight;
+    for (LmRunResult& r : result.runs) {
+        r.fail_weight = weight;
+        r.penalty_rounds = 1;
+    }
+    if (options.jacobian.quadrature.failure != FailureMode::Soft ||
+        !(options.fail_weight_factor > 1.0)) {
+        return result;
+    }
+    // Äußeres Strafverfahren: Läufe mit versagten Strahlen mit größerem w_fail neu starten
+    LmOptions round = options;
+    std::vector<int> again;
+    std::vector<double> xs;
+    for (;;) {
+        weight *= options.fail_weight_factor;
+        if (!(weight <= options.max_fail_weight)) {
+            break;
+        }
+        again.clear();
+        xs.clear();
+        for (std::size_t i = 0; i < result.runs.size(); ++i) {
+            const LmRunResult& r = result.runs[i];
+            if (r.failed_rays > 0 && r.status != LmStatus::NumericalError) {
+                again.push_back(static_cast<int>(i));
+                xs.insert(xs.end(), r.x.begin(), r.x.end());
+            }
+        }
+        if (again.empty()) {
+            break;
+        }
+        round.jacobian.quadrature.fail_weight = weight;
+        if (options.on_iteration) {
+            round.on_iteration = [&options, &again, &result](const LmIterationInfo& info) {
+                LmIterationInfo mapped = info;
+                const auto i = static_cast<std::size_t>(again[static_cast<std::size_t>(info.run)]);
+                mapped.run = static_cast<int>(i);
+                mapped.iteration += result.runs[i].iterations;
+                options.on_iteration(mapped);
+            };
+        }
+        const SystemBatchHost tmpl = lm_template_batch(base, again);
+        LmResult part;
+        {
+            const std::unique_ptr<LmBackend> backend = make_backend(round, tmpl);
+            part = levenberg_marquardt(*backend, P, bounds, xs, round);
+        }
+        for (std::size_t j = 0; j < again.size(); ++j) {
+            LmRunResult& r = result.runs[static_cast<std::size_t>(again[j])];
+            LmRunResult& q = part.runs[j];
+            r.x = std::move(q.x);
+            r.merit = q.merit;
+            r.failed_rays = q.failed_rays;
+            r.hard_failed_rays = q.hard_failed_rays;
+            r.status = q.status;
+            r.iterations += q.iterations;
+            r.accepted += q.accepted;
+            r.jacobians += q.jacobians;
+            r.damping = q.damping;
+            r.gradient_norm = q.gradient_norm;
+            r.model_decrease = q.model_decrease;
+            r.history.insert(r.history.end(), q.history.begin(), q.history.end());
+            r.fail_weight = weight;
+            ++r.penalty_rounds;
+        }
+        result.cycles += part.cycles;
+    }
+    return result;
 }
 
 LmResult optimize_lm_cpu(const VariableSet& set, const SystemBatchHost& base,
                          std::span<const double> x0, const LmOptions& options) {
-    check_lm_base(base, set.size(), x0.size());
-    CpuLmBackend backend(set, base, options);
-    const LmBounds bounds{set.lower(), set.upper(), set.typical()};
-    return levenberg_marquardt(backend, set.size(), bounds, x0, options);
+    const LmBackendFactory factory = [&set](const LmOptions& o, const SystemBatchHost& b) {
+        return std::unique_ptr<LmBackend>(std::make_unique<CpuLmBackend>(set, b, o));
+    };
+    return optimize_lm_rounds(factory, set, base, x0, options);
 }
 
 } // namespace mko

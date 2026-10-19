@@ -113,7 +113,11 @@ struct Df64Comparison {
     std::size_t above_1e10 = 0;      // Strahlen mit |ΔOPD| > 1e-10 mm (zur Information)
 };
 
-Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings& q = {}) {
+// Abnahme M7-T1 mit hartem Versagen (versagte Strahlen maskiert); df64 gegen FP64 im weichen
+// Modus (M4-T2): test_cuda_soft_failure.cpp.
+Df64Comparison compare_df64(const SystemBatchHost& batch, const ResidualSettings& settings = {}) {
+    ResidualSettings q = settings;
+    q.failure = mko::FailureMode::Hard;
     Df64Comparison c;
     const ResidualLayout layout(batch.topology(), q);
     TraceEngine engine(0);
@@ -219,6 +223,7 @@ std::size_t residual_run_bytes(const BatchTopology& t, int variants, const Resid
                                const TraceSettings& s) {
     mko::OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
+    r.penalty_residuals = layout.penalty_rows();
     r.residuals = true;
     r.ray_status = true;
     r.opd = s.opd;
@@ -374,7 +379,7 @@ TEST(CudaDf64, DISABLED_StressManySeeds) {
 // a* per Bisektion in FP64 auf der CPU), a = a* (1 + δ). Für |δ| >= 1e-10 stimmen die Status
 // von df64, FP64 (GPU) und FP64 (CPU) überein; näher an der Grenze darf der Status in df64
 // kippen (Prüfgröße mit relativem Fehler ~u² ≈ 4e-15 statt ~1e-16). Ein kippender Status ist
-// bei hartem Versagen ein Sprung in Kolben und Merit (weiches Versagen folgt in M4-T2).
+// bei hartem Versagen ein Sprung in Kolben und Merit; das weiche Versagen (M4-T2) macht ihn stetig.
 TEST(CudaDf64, StatusAtFailureBoundary) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem lens = mko::test::load_residual_system("einzellinse_bk7.json");
@@ -482,8 +487,8 @@ TEST(CudaDf64, MeritMatchesSumOfResiduals) {
     double max_rel = 0.0;
     for (int v = 0; v < batch.variants(); ++v) {
         double sum = 0.0;
-        double comp = 0.0; // Neumaier
-        for (std::int64_t i = 0; i < r.residuals.rays_per_variant; ++i) {
+        double comp = 0.0;                                            // Neumaier
+        for (std::int64_t i = 0; i < r.residuals.trace_rows(); ++i) { // mit Strafresiduen
             const double x = r.residuals.residual(v, i) * r.residuals.residual(v, i);
             const double t = sum + x;
             comp += std::abs(sum) >= std::abs(x) ? (sum - t) + x : (x - t) + sum;

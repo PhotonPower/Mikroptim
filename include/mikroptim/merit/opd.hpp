@@ -13,18 +13,20 @@ namespace mko {
 
 template <class R>
 struct OpdStatistics {
-    R valid_weight; // Σ W_k über die Strahlen mit Status Ok
+    R valid_weight; // Σ W_k über die Strahlen im Kolben (in_piston: Ok oder weich versagt)
     R piston;       // Kolben Σ W_k OPL_k / valid_weight [mm]; 0 ohne gültigen Strahl
     R rms;          // √(Σ W_k OPD_k² / valid_weight) [mm]; 0 ohne gültigen Strahl
-    int failed;     // Anzahl der Strahlen mit Status ≠ Ok
+    int failed;     // Anzahl der Strahlen mit Status ≠ Ok (weich und hart)
 };
 
 // Kolbenabzug und gewichteter RMS der OPD über `count` Stützstellen (Arrays opl, weight,
 // status der Länge count; Gewichte W_k aus PupilQuadrature, Summe 1).
 //
-// Versagte Strahlen (Status ≠ Ok) sind hart ausgeschlossen: Sie gehen weder in den Kolben
+// Hart versagte Strahlen (is_hard_failure) sind ausgeschlossen: Sie gehen weder in den Kolben
 // noch in den RMS ein, die Gewichte der übrigen werden renormiert (Division durch
-// valid_weight). Ihre OPD wird 0 gesetzt (maskiert, wie ein Residuum im Kernel).
+// valid_weight). Ihre OPD wird 0 gesetzt (maskiert, wie ein Residuum im Kernel). Weich
+// versagte Strahlen (M4-T2, nur aus dem weichen Modus) zählen wie gültige ("ok" unten heißt
+// in_piston); ohne sie ist das die Rechnung von M1-T7.
 //
 //   Pass 1: valid_weight = Σ_ok W_k,  S = Σ_ok W_k OPL_k,  piston = S / valid_weight
 //   Pass 2: OPD_k = OPL_k − piston (ok), 0 (versagt);  rms = √(Σ_ok W_k OPD_k² / valid_weight)
@@ -44,10 +46,11 @@ MKO_HD inline OpdStatistics<R> opd_statistics(const R* opl, const R* weight,
     OpdStatistics<R> st{R(0), R(0), R(0), 0};
     R sum = R(0);
     for (int k = 0; k < count; ++k) {
-        if (status[k] == TraceStatus::Ok) {
+        if (in_piston(status[k])) {
             st.valid_weight += weight[k];
             sum += weight[k] * opl[k];
-        } else {
+        }
+        if (status[k] != TraceStatus::Ok) {
             ++st.failed;
         }
     }
@@ -64,7 +67,7 @@ MKO_HD inline OpdStatistics<R> opd_statistics(const R* opl, const R* weight,
     R sum_sq = R(0);
     for (int k = 0; k < count; ++k) {
         R e = R(0);
-        if (status[k] == TraceStatus::Ok) {
+        if (in_piston(status[k])) {
             e = opl[k] - st.piston;
             sum_sq += weight[k] * e * e;
         }

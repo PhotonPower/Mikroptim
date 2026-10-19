@@ -88,14 +88,15 @@ void fd_jacobian_from_residuals(const FdJacobianBatch& fd, const ResidualResult&
         invalid("FD-Batch passt nicht zu seinen Mustern");
     }
     const int V = fd.batch.variants();
-    const std::int64_t rv = rays.rays_per_variant;
-    if (rays.variants != V || rays.stride < rv ||
+    const std::int64_t nrays = rays.rays_per_variant; // Strahlen (Status)
+    const std::int64_t rv = rays.trace_rows();        // Strahl- und Strafresiduen
+    if (rays.variants != V || rays.penalty_rows < 0 || rays.stride < rv ||
         rays.residuals.size() !=
             static_cast<std::size_t>(V) * static_cast<std::size_t>(rays.stride)) {
         invalid("Residuen passen nicht zum FD-Batch (" + std::to_string(rays.variants) + " statt " +
                 std::to_string(V) + " Varianten)");
     }
-    if (rays.status.size() != static_cast<std::size_t>(V) * static_cast<std::size_t>(rv)) {
+    if (rays.status.size() != static_cast<std::size_t>(V) * static_cast<std::size_t>(nrays)) {
         invalid("Status pro Strahl fehlt");
     }
     if (extra_count < 0 ||
@@ -122,7 +123,7 @@ void fd_jacobian_from_residuals(const FdJacobianBatch& fd, const ResidualResult&
         return extra[static_cast<std::size_t>(v) * e + static_cast<std::size_t>(r - rv)];
     };
     const auto valid = [&](int v, std::int64_t r) {
-        return rays.status[static_cast<std::size_t>(v) * static_cast<std::size_t>(rv) +
+        return rays.status[static_cast<std::size_t>(v) * static_cast<std::size_t>(nrays) +
                            static_cast<std::size_t>(r)] ==
                static_cast<std::uint8_t>(TraceStatus::Ok);
     };
@@ -147,7 +148,7 @@ void fd_jacobian_from_residuals(const FdJacobianBatch& fd, const ResidualResult&
                 col[r] = fd_derivative(stencil, r0[r], value(va, r), value(vb, r), da, db);
             }
             std::int64_t changes = 0;
-            for (std::int64_t r = 0; r < rv; ++r) {
+            for (std::int64_t r = 0; r < nrays; ++r) {
                 const bool ok0 = valid(v0, r);
                 if (valid(va, r) != ok0 || valid(vb, r) != ok0) {
                     ++changes;
