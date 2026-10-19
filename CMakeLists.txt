@@ -160,7 +160,9 @@ add_library(mikroptim_optim STATIC
     src/optim/glass_snap.cpp
     src/optim/glass_variables.cpp
     src/optim/levenberg_marquardt.cpp
+    src/optim/mechanical_constraints.cpp
     src/optim/paraxial_residuals.cpp
+    src/optim/trace_extra_residuals.cpp
     src/optim/variable_set.cpp
     src/optim/variant_generator.cpp)
 add_library(Mikroptim::optim ALIAS mikroptim_optim)

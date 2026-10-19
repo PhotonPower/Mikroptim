@@ -643,6 +643,7 @@ CpuLmBackend::CpuLmBackend(const VariableSet& set, const SystemBatchHost& base,
         (options.jacobian.extra.count > 0 && !options.jacobian.extra.evaluate)) {
         invalid("ungültige Zusatzresiduen");
     }
+    check_trace_extra_residuals(options.jacobian.trace_extra, "Levenberg-Marquardt");
 }
 
 void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const double> x,
@@ -658,6 +659,15 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
     rays.stride = layout_.trace_rows();
     rays.residuals.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(rays.stride));
     rays.status.resize(static_cast<std::size_t>(V) * static_cast<std::size_t>(rv));
+    // Extrema jeder FD-Variante aus ihrem eigenen Trace (nur für trace-abhängige Residuen)
+    const bool traced = options_.jacobian.trace_extra.count > 0;
+    SurfaceExtremaResult extrema;
+    if (traced) {
+        extrema.variants = V;
+        extrema.surfaces = fd.batch.surfaces();
+        extrema.values.resize(static_cast<std::size_t>(V) *
+                              static_cast<std::size_t>(extrema.surfaces) * 2);
+    }
     const std::int64_t ray_work =
         static_cast<std::int64_t>(V) * rv * static_cast<std::int64_t>(fd.batch.surfaces());
     detail::parallel_for_variants(
@@ -670,14 +680,18 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
                       rays.residuals.begin() + static_cast<std::ptrdiff_t>(ro));
             std::copy(one.status.begin(), one.status.end(),
                       rays.status.begin() + static_cast<std::ptrdiff_t>(o));
+            if (traced) {
+                const SurfaceExtremaResult e = surface_extrema_cpu(fd.batch, v, layout_);
+                std::copy(e.values.begin(), e.values.end(),
+                          extrema.values.begin() +
+                              static_cast<std::ptrdiff_t>(extrema.index(v, 0)));
+            }
         });
-    const ExtraResiduals& extra = options_.jacobian.extra;
-    std::vector<double> ev(static_cast<std::size_t>(V) * static_cast<std::size_t>(extra.count));
-    evaluate_extra_residuals(
-        extra, fd.batch, ev, 0, -1,
-        lm_host_threads(options_.jacobian.extra_threads, V, kLmExtraPerThread));
+    FdJacobianOptions fo = options_.jacobian;
+    fo.extra_threads = lm_host_threads(fo.extra_threads, V, kLmExtraPerThread);
+    const std::vector<double> ev = fd_extra_residuals(fo, fd.batch, extrema);
     FdJacobian jac;
-    fd_jacobian_from_residuals(fd, rays, ev, extra.count, jac);
+    fd_jacobian_from_residuals(fd, rays, ev, fo.extra_count(), jac);
     const auto P = static_cast<std::size_t>(set_.size());
     const auto R = static_cast<std::size_t>(jac.shape.rows());
     const std::int64_t gram_work = static_cast<std::int64_t>(runs.size()) *
@@ -702,12 +716,17 @@ void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
     const std::int64_t ray_work = static_cast<std::int64_t>(batch.variants()) *
                                   layout_.rays_per_variant() *
                                   static_cast<std::int64_t>(batch.surfaces());
+    const TraceExtraResiduals& traced = options_.jacobian.trace_extra;
     detail::parallel_for_variants(
         0, batch.variants(), lm_host_threads(options_.threads, ray_work, kLmRaySurfacesPerThread),
         [&](int v) {
-            const MeritResult m = merit_cpu(batch, v, layout_, false);
+            const MeritResult m = merit_cpu(batch, v, layout_, traced.count > 0);
             const auto vv = static_cast<std::size_t>(v);
             merit[vv] = extra.empty() ? m.merit[0] : m.merit[0] + extra[vv];
+            if (traced.count > 0) {
+                // Trace-abhängige Residuen aus den Extrema desselben Laufs, nach Σ e²
+                merit[vv] += trace_extra_merit(traced, batch, v, variant_extrema(m.extrema, 0));
+            }
             failed[vv] = m.failed[0];
             hard_failed[vv] = m.hard_failed[0];
         });

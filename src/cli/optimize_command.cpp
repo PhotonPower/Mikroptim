@@ -3,6 +3,7 @@
 // Iterationsprotokoll und Zusammenfassung als Text oder JSON. Formate: docs/cli.md.
 
 #include "cli/optimize_command.hpp"
+#include "mikroptim/batch/batch_extrema.hpp"
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
@@ -15,6 +16,7 @@
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
+#include "mikroptim/optim/mechanical_constraints.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
@@ -205,6 +207,22 @@ struct ConstraintReport {
     double residual_after = 0.0;
 };
 
+// Eine mechanische Bedingung vorher und nachher (M4-T3). Istgröße und Grenze in mm, beim
+// Einfallswinkel in Grad; `violation` ist g in den Einheiten der Residuenformel (mm bzw. cos),
+// `residual` √w·max(0, g); `height` der Halbdurchmesser h der Randdicke (sonst NaN).
+struct MechanicalReport {
+    MechanicalConstraint constraint;
+    double limit = 0.0;
+    double value_before = 0.0;
+    double value_after = 0.0;
+    double violation_before = 0.0;
+    double violation_after = 0.0;
+    double residual_before = 0.0;
+    double residual_after = 0.0;
+    double height_before = 0.0;
+    double height_after = 0.0;
+};
+
 struct WavefrontReport {
     std::optional<WavefrontResult> before;
     std::optional<WavefrontResult> after;
@@ -228,6 +246,7 @@ struct OptimizeReport {
     GlassHullPenalty glass_penalty;                 // Strafe außerhalb der Glas-Hülle
     std::vector<double> glass_excess_before;        // max(0, φ) je Element, Start und Ergebnis
     std::vector<double> glass_excess_after;
+    MechanicalConstraints mechanical; // mechanische Bedingungen (M4-T3)
     std::vector<double> x0;
     std::vector<double> starts; // Startpunkte aller Läufe hintereinander
     LmResult result;
@@ -236,6 +255,7 @@ struct OptimizeReport {
     int best = 0;
     std::vector<IterationRecord> iterations;
     std::vector<ConstraintReport> constraint_reports;
+    std::vector<MechanicalReport> mechanical_reports;
     WavefrontReport wavefront;
     std::optional<GhostDiagnosis> ghost; // nur mit Geisterplatten
     std::vector<std::string> warnings;   // Lader und Befehl
@@ -292,6 +312,55 @@ std::vector<ConstraintReport> constraint_reports(const ParaxialConstraints& cons
         out.push_back(r);
     }
     return out;
+}
+
+// Mechanische Bedingungen vorher und nachher (Variante 0 der Batches). Die Extrema kommen aus
+// surface_extrema_cpu mit derselben Quadratur wie die Optimierung.
+std::vector<MechanicalReport> mechanical_reports(const MechanicalConstraints& constraints,
+                                                 const ResidualSettings& quadrature,
+                                                 const SystemBatchHost& before,
+                                                 const SystemBatchHost& after) {
+    std::vector<MechanicalReport> out;
+    if (constraints.empty()) {
+        return out;
+    }
+    const ResidualLayout layout(before.topology(), quadrature);
+    SurfaceExtremaResult eb;
+    SurfaceExtremaResult ea;
+    if (constraints.needs_extrema()) {
+        eb = surface_extrema_cpu(before, 0, layout);
+        ea = surface_extrema_cpu(after, 0, layout);
+    }
+    const VariantExtrema vb = eb.empty() ? VariantExtrema{} : variant_extrema(eb, 0);
+    const VariantExtrema va = ea.empty() ? VariantExtrema{} : variant_extrema(ea, 0);
+    for (const MechanicalConstraint& c : constraints.items) {
+        MechanicalReport m;
+        m.constraint = c;
+        const double raw_before = mechanical_value(c, before, 0, &vb);
+        const double raw_after = mechanical_value(c, after, 0, &va);
+        m.violation_before = mechanical_violation(c, raw_before);
+        m.violation_after = mechanical_violation(c, raw_after);
+        m.residual_before = mechanical_residual(c, before, 0, &vb);
+        m.residual_after = mechanical_residual(c, after, 0, &va);
+        const bool angle = c.type == ConstraintType::MaxIncidenceAngle;
+        m.limit = angle ? c.angle_deg : c.limit;
+        m.value_before = angle ? incidence_angle_deg(raw_before) : raw_before;
+        m.value_after = angle ? incidence_angle_deg(raw_after) : raw_after;
+        const bool edge = c.type == ConstraintType::MinEdgeThickness;
+        m.height_before = edge ? mechanical_edge_height(c, &vb) : std::nan("");
+        m.height_after = edge ? mechanical_edge_height(c, &va) : std::nan("");
+        out.push_back(m);
+    }
+    return out;
+}
+
+// Fläche einer mechanischen Bedingung für Berichte: "i" bzw. "i-(i+1)" bei Dicken.
+std::string mechanical_surface_text(const MechanicalConstraint& c) {
+    const bool gap = c.type == ConstraintType::MinCenterThickness ||
+                     c.type == ConstraintType::MaxCenterThickness ||
+                     c.type == ConstraintType::MinEdgeThickness;
+    return gap ? std::to_string(c.file_surface) + "-" + std::to_string(c.file_surface + 1)
+               : std::to_string(c.file_surface);
 }
 
 // Bester Lauf: endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen
@@ -366,6 +435,9 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
                             " Wellen² (Strafverfahren x10 bis 1e14)");
     kv(out, "Variablen", std::to_string(r.set.size()));
     kv(out, "Nebenbedingungen (paraxial)", std::to_string(r.constraints.size()));
+    if (!r.mechanical.empty()) {
+        kv(out, "Nebenbedingungen (mechanisch)", std::to_string(r.mechanical.size()));
+    }
     if (!sys.ghost_plates.empty()) {
         kv(out, "Geisterplatten",
            std::to_string(sys.ghost_plates.size()) +
@@ -514,6 +586,25 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
             out << "  Fläche " << g.elements[i].file_surface << ": Überschreitung vorher "
                 << sci(r.glass_excess_before[i], 3) << ", nachher "
                 << sci(r.glass_excess_after[i], 3) << '\n';
+        }
+    }
+
+    if (!r.mechanical_reports.empty()) {
+        out << '\n'
+            << "Mechanische Nebenbedingungen (Grenze und Ist in mm, Einfallswinkel in Grad; "
+               "r = Wurzel(w) max(0, g))\n";
+        out << "  " << pad_left("Nr", 3) << "  " << pad_right("Typ", 21) << pad_right("Fläche", 7)
+            << pad_left("Gewicht", 11) << pad_left("Grenze", 12) << pad_left("Ist vorher", 12)
+            << pad_left("Ist nachher", 12) << pad_left("r vorher", 13) << pad_left("r nachher", 13)
+            << '\n';
+        for (const MechanicalReport& m : r.mechanical_reports) {
+            const MechanicalConstraint& c = m.constraint;
+            out << "  " << pad_left(std::to_string(c.item), 3) << "  "
+                << pad_right(to_string(c.type), 21) << pad_right(mechanical_surface_text(c), 7)
+                << pad_left(sci(c.weight, 3), 11) << pad_left(fixed(m.limit, 4), 12)
+                << pad_left(fixed(m.value_before, 4), 12) << pad_left(fixed(m.value_after, 4), 12)
+                << pad_left(sci(m.residual_before, 3), 13) << pad_left(sci(m.residual_after, 3), 13)
+                << (m.violation_after > 0.0 ? "  verletzt" : "") << '\n';
         }
     }
 
@@ -671,6 +762,31 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
                  {"vertices", g.hull.vertex_names()}, {"weight", number(g.weight)},
                  {"margin", number(g.margin)},        {"elements", std::move(elements)}};
     }
+    Json mech = Json::array();
+    for (const MechanicalReport& m : r.mechanical_reports) {
+        const MechanicalConstraint& c = m.constraint;
+        const bool angle = c.type == ConstraintType::MaxIncidenceAngle;
+        const bool gap = c.next_surface != c.surface;
+        Json e;
+        e["item"] = c.item;
+        e["type"] = std::string(to_string(c.type));
+        e["surface"] = c.file_surface;
+        e["next_surface"] = gap ? Json(c.file_surface + 1) : Json(nullptr);
+        e["weight"] = number(c.weight);
+        e["unit"] = angle ? "deg" : "mm";
+        e["limit"] = number(m.limit);
+        e["value_start"] = number(m.value_before);
+        e["value_result"] = number(m.value_after);
+        e["violation_start"] = number(m.violation_before);
+        e["violation_result"] = number(m.violation_after);
+        e["residual_start"] = number(m.residual_before);
+        e["residual_result"] = number(m.residual_after);
+        e["height_start"] = number(m.height_before);
+        e["height_result"] = number(m.height_after);
+        e["satisfied"] = !(m.violation_after > 0.0);
+        mech.push_back(std::move(e));
+    }
+    j["mechanical_constraints"] = std::move(mech);
     j["ghost_diagnosis"] = r.ghost ? Json::parse(ghost_diagnosis_json(*r.ghost)) : Json(nullptr);
 
     if (a.quiet) {
@@ -897,6 +1013,8 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
                 }
             }
         }
+        r.mechanical = make_mechanical_constraints(sys);
+        check_mechanical_constraints(r.mechanical, base.topology());
         r.x0 = r.set.extract(base, 0);
 
         // Feldziele h_f = f_soll · tan θ_f bleiben während der Optimierung fest. Ohne
@@ -925,10 +1043,14 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         options.jacobian.quadrature.failure =
             a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
         options.jacobian.quadrature.fail_weight = a.fail_weight;
-        // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe und die Glas-Hülle
+        // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe, die Glas-Hülle und
+        // die mechanischen Bedingungen ohne Strahlbezug; die trace-abhängigen mechanischen
+        // Bedingungen (aus den Extrema) stehen ganz hinten (docs/optimierung.md, Abschnitt 2.1).
+        MechanicalResiduals mechanical = make_mechanical_residuals(r.mechanical);
         options.jacobian.extra = concat_extra_residuals(
             {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty),
-             make_glass_hull_residuals(r.glass_penalty)});
+             make_glass_hull_residuals(r.glass_penalty), std::move(mechanical.geometric)});
+        options.jacobian.trace_extra = std::move(mechanical.traced);
 
         // Startpunkte: Lauf 0 ist x₀, Lauf j ≥ 1 gestört (perturbed_vector mit first_is_base).
         std::vector<double>& starts = r.starts;
@@ -1036,6 +1158,8 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             r.glass_excess_after.push_back(glass_hull_excess(
                 r.glass_penalty, batch_glass_coordinates(after, 0, e.batch_surface)));
         }
+        r.mechanical_reports =
+            mechanical_reports(r.mechanical, options.jacobian.quadrature, base, after);
 
         // Diagnose der Geisterplatten am Ergebnis (Merit auf der CPU wie die Wellenfront)
         // Die Merit enthält beim weichen Versagen dieselben Strafresiduen wie die letzte Runde
@@ -1045,8 +1169,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             if (!a.hard_failure) {
                 diagnosis.fail_weight = best.fail_weight;
             }
-            r.ghost = diagnose_ghost_plates(sys, r.loaded.catalog, after, 0, r.penalty,
-                                            make_cpu_merit(diagnosis, options.jacobian.extra));
+            r.ghost = diagnose_ghost_plates(
+                sys, r.loaded.catalog, after, 0, r.penalty,
+                make_cpu_merit(diagnosis, options.jacobian.extra, 0, options.jacobian.trace_extra));
         }
 
         // Ergebnis als Systembeschreibung (Glaskataloge noch relativ zur Eingabedatei)

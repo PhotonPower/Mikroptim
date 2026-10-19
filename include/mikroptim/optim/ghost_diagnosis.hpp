@@ -11,6 +11,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/optim/extra_residuals.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
+#include "mikroptim/optim/trace_extra_residuals.hpp"
 
 #include <functional>
 #include <ostream>
@@ -131,9 +132,10 @@ struct GhostDiagnosisOptions {
 using BatchMeritFn = std::function<std::vector<double>(const SystemBatchHost& batch)>;
 
 // CPU-Merit wie CpuLmBackend::merit: merit_cpu (Quadratur `quadrature`) plus Σ e² der
-// Zusatzresiduen `extra`, Varianten auf `threads` Host-Threads (≤ 0: Hardware).
+// Zusatzresiduen `extra`, plus Σ t² der trace-abhängigen Zusatzresiduen `trace_extra` (M4-T3,
+// aus den Extrema desselben Laufs), Varianten auf `threads` Host-Threads (≤ 0: Hardware).
 BatchMeritFn make_cpu_merit(const ResidualSettings& quadrature, ExtraResiduals extra,
-                            int threads = 0);
+                            int threads = 0, TraceExtraResiduals trace_extra = {});
 
 // Bericht für Variante v von `batch` (z. B. lm_point_batch am Ergebnis). `system` und
 // `catalog` liefern Lage und Glas der Platten (die Datei, aus der der Batch gebaut ist),

@@ -11,6 +11,7 @@
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_snap.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
+#include "mikroptim/optim/mechanical_constraints.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/version.hpp"
@@ -568,12 +569,16 @@ int run_snap_command(std::span<const std::string_view> args, std::ostream& out, 
         r.hull_dimension = hull.dimension();
 
         // Zusatzresiduen wie mikroptim optimize ohne die Glas-Hülle: paraxiale Nebenbedingungen,
-        // L1-Strafe der Geisterkoeffizienten
+        // L1-Strafe der Geisterkoeffizienten, mechanische Bedingungen (ohne Strahlbezug als
+        // Zusatzresiduen, die trace-abhängigen aus den Extrema dahinter, M4-T3)
         const BatchTopology topology = topology_of(sys, loaded.index);
         const ParaxialConstraints constraints = make_paraxial_constraints(sys);
         check_paraxial_constraints(constraints, topology);
         const GhostPenalty penalty = make_ghost_penalty(sys);
         check_ghost_penalty(penalty, topology);
+        const MechanicalConstraints mechanical_constraints = make_mechanical_constraints(sys);
+        check_mechanical_constraints(mechanical_constraints, topology);
+        MechanicalResiduals mechanical = make_mechanical_residuals(mechanical_constraints);
 
         GlassSnapOptions options;
         options.neighbors = a.neighbors;
@@ -584,8 +589,10 @@ int run_snap_command(std::span<const std::string_view> args, std::ostream& out, 
         options.lm.jacobian.quadrature.failure =
             a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
         options.lm.jacobian.quadrature.fail_weight = a.fail_weight;
-        options.lm.jacobian.extra = concat_extra_residuals(
-            {make_paraxial_residuals(constraints), make_ghost_penalty_residuals(penalty)});
+        options.lm.jacobian.extra = concat_extra_residuals({make_paraxial_residuals(constraints),
+                                                            make_ghost_penalty_residuals(penalty),
+                                                            std::move(mechanical.geometric)});
+        options.lm.jacobian.trace_extra = std::move(mechanical.traced);
 
         // Feldziele aus der paraxialen Brennweite (ohne target.focal_length) ändern sich beim
         // erneuten Laden des Ergebnisses (wie bei mikroptim optimize)

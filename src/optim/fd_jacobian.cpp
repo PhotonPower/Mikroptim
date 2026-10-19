@@ -160,17 +160,39 @@ void fd_jacobian_from_residuals(const FdJacobianBatch& fd, const ResidualResult&
     }
 }
 
+std::vector<double> fd_extra_residuals(const FdJacobianOptions& options,
+                                       const SystemBatchHost& batch,
+                                       const SurfaceExtremaResult& extrema) {
+    check_extra(options.extra);
+    check_trace_extra_residuals(options.trace_extra, "FD-Jacobi");
+    const int V = batch.variants();
+    std::vector<double> extra(static_cast<std::size_t>(V) *
+                              static_cast<std::size_t>(options.extra.count));
+    evaluate_extra_residuals(options.extra, batch, extra, 0, -1, options.extra_threads);
+    if (options.trace_extra.count == 0) {
+        return extra;
+    }
+    std::vector<double> traced(static_cast<std::size_t>(V) *
+                               static_cast<std::size_t>(options.trace_extra.count));
+    evaluate_trace_extra_residuals(options.trace_extra, batch, extrema, 0, traced, 0, -1,
+                                   options.extra_threads);
+    return join_extra_rows(extra, options.extra.count, traced, options.trace_extra.count, V);
+}
+
 FdJacobian fd_jacobian_cpu(const VariableSet& set, const SystemBatchHost& base,
                            std::span<const double> x0, const FdJacobianOptions& options) {
     check_extra(options.extra);
+    check_trace_extra_residuals(options.trace_extra, "FD-Jacobi");
     const ResidualLayout layout(base.topology(), options.quadrature);
     const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, options.scheme);
     const ResidualResult rays = residuals_cpu(fd.batch, layout);
-    std::vector<double> extra(static_cast<std::size_t>(fd.batch.variants()) *
-                              static_cast<std::size_t>(options.extra.count));
-    evaluate_extra_residuals(options.extra, fd.batch, extra, 0, -1, options.extra_threads);
+    // Extrema jeder FD-Variante aus ihrem eigenen Trace (nur für trace-abhängige Residuen)
+    const SurfaceExtremaResult extrema = options.trace_extra.count > 0
+                                             ? surface_extrema_cpu(fd.batch, layout)
+                                             : SurfaceExtremaResult{};
+    const std::vector<double> extra = fd_extra_residuals(options, fd.batch, extrema);
     FdJacobian out;
-    fd_jacobian_from_residuals(fd, rays, extra, options.extra.count, out);
+    fd_jacobian_from_residuals(fd, rays, extra, options.extra_count(), out);
     return out;
 }
 

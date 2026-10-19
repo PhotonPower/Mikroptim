@@ -534,7 +534,10 @@ private:
         if (!t) {
             fail(type_path, "unbekannter Typ einer Nebenbedingung \"" + type +
                                 "\" (erlaubt: focal_length, parfocal_length, working_distance, "
-                                "paraxial_focus, petzval, ghost_penalty, glass_hull)");
+                                "paraxial_focus, petzval, ghost_penalty, glass_hull, "
+                                "max_semi_diameter, min_center_thickness, "
+                                "max_center_thickness, min_edge_thickness, "
+                                "max_incidence_angle)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -572,12 +575,48 @@ private:
         if (const Json* d = member(j, "margin")) {
             c.margin = as_number(*d, join(path, "margin"));
         }
+        // Mechanische Bedingungen (M4-T3)
+        c.surface_selection =
+            read_selection(j, path, "surface", "surfaces", "Flächenindizes", c.surfaces);
+        if (const Json* m = member(j, "medium")) {
+            const std::string medium_path = join(path, "medium");
+            const std::string medium = as_string(*m, medium_path);
+            const std::optional<ConstraintMedium> cm = constraint_medium_from_string(medium);
+            if (!cm) {
+                fail(medium_path, "unbekanntes Medium \"" + medium + "\" (erlaubt: glass, air)");
+            }
+            c.medium = *cm;
+        }
+        if (const Json* d = member(j, "semi_diameter")) {
+            c.semi_diameter = as_number(*d, join(path, "semi_diameter"));
+        }
+        if (const Json* th = member(j, "thickness")) {
+            c.thickness = as_number(*th, join(path, "thickness"));
+        }
+        if (const Json* a = member(j, "angle")) {
+            c.angle = as_number(*a, join(path, "angle"));
+        }
+        if (const Json* k = member(j, "clearance")) {
+            c.clearance = as_number(*k, join(path, "clearance"));
+        }
+        if (const Json* h = member(j, "height")) {
+            const std::string height_path = join(path, "height");
+            const std::string height = as_string(*h, height_path);
+            const std::optional<EdgeHeight> eh = edge_height_from_string(height);
+            if (!eh) {
+                fail(height_path,
+                     "unbekannte Höhe \"" + height + "\" (erlaubt: semi_diameter, rays)");
+            }
+            c.height = *eh;
+        }
         if (const Json* m = member(j, "comment")) {
             c.comment = as_string(*m, join(path, "comment"));
         }
         warn_unknown(j, path,
-                     {"type", "mode", "weight", "reference_surface", "offset", "max_curvature",
-                      "plate", "plates", "order_weight", "order_factor", "smoothing", "margin",
+                     {"type",          "mode",      "weight",  "reference_surface", "offset",
+                      "max_curvature", "plate",     "plates",  "order_weight",      "order_factor",
+                      "smoothing",     "margin",    "surface", "surfaces",          "medium",
+                      "semi_diameter", "thickness", "angle",   "clearance",         "height",
                       "comment"});
         return c;
     }
@@ -693,6 +732,25 @@ Json constraints_to_json(const Constraints& cons) {
         }
         if (c.margin) {
             j["margin"] = *c.margin;
+        }
+        selection_to_json(j, c.surface_selection, c.surfaces, "surface", "surfaces");
+        if (c.medium) {
+            j["medium"] = std::string(to_string(*c.medium));
+        }
+        if (c.semi_diameter) {
+            j["semi_diameter"] = *c.semi_diameter;
+        }
+        if (c.thickness) {
+            j["thickness"] = *c.thickness;
+        }
+        if (c.angle) {
+            j["angle"] = *c.angle;
+        }
+        if (c.clearance) {
+            j["clearance"] = *c.clearance;
+        }
+        if (c.height) {
+            j["height"] = std::string(to_string(*c.height));
         }
         if (c.comment) {
             j["comment"] = *c.comment;

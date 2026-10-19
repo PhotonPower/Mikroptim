@@ -6,9 +6,11 @@
 // Genauigkeit: docs/optimierung.md, Abschnitt „Finite-Differenzen-Jacobi“. Der GPU-Pfad mit
 // J im Gerätespeicher steht in mikroptim/cuda/fd_jacobian.hpp.
 
+#include "mikroptim/batch/batch_extrema.hpp"
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/optim/extra_residuals.hpp"
+#include "mikroptim/optim/trace_extra_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
 
@@ -22,12 +24,13 @@ namespace mko {
 // Größen der Jacobi-Matrizen mehrerer Läufe. Der Residuenvektor einer Variante hat
 // R = R_v + E Zeilen: die R_v = ResidualLayout::trace_rows Zeilen des Traces (Strahlresiduen,
 // im weichen Modus danach die Strafresiduen, M4-T2), danach die E Zusatzresiduen
-// (ExtraResiduals), wie der Ausgabepuffer der TraceEngine mit extra_residuals = E.
+// (ExtraResiduals, dahinter die trace-abhängigen TraceExtraResiduals, M4-T3), wie der
+// Ausgabepuffer der TraceEngine mit extra_residuals = E.
 struct JacobianShape {
     int runs = 0;              // Läufe
     int variables = 0;         // P
     std::int64_t ray_rows = 0; // R_v (Strahl- und Strafresiduen, trace_rows)
-    int extra_rows = 0;        // E (Zusatzresiduen)
+    int extra_rows = 0;        // E (Zusatzresiduen einschließlich der trace-abhängigen)
 
     std::int64_t rows() const { return ray_rows + extra_rows; } // R
     // Einträge von J (runs·P·R), von r₀ (runs·R) und der Status-Wechsel (runs·P).
@@ -43,9 +46,16 @@ struct FdJacobianOptions {
     ResidualSettings quadrature{};       // Pupillenquadratur der Strahlresiduen
     FdScheme scheme = FdScheme::Central; // Central (Standard) oder Forward
     ExtraResiduals extra{};              // Zusatzresiduen (count = 0: keine)
+    // Trace-abhängige Zusatzresiduen (M4-T3, count = 0: keine): für jede FD-Variante aus den
+    // Max-Reduktionen ihres eigenen Traces (CPU: surface_extrema_cpu, GPU: Extrema der Tranche),
+    // im Residuenvektor hinter `extra`.
+    TraceExtraResiduals trace_extra{};
     // Host-Threads für die Zusatzresiduen aller FD-Varianten (evaluate_extra_residuals aus
     // paraxial_residuals.hpp, <= 0: Hardware); das Ergebnis ist für jede Zahl bitgleich.
     int extra_threads = 0;
+
+    // Zahl aller Zusatzresiduen E = extra.count + trace_extra.count.
+    int extra_count() const { return extra.count + trace_extra.count; }
 };
 
 // FD-Batch mehrerer Läufe: Lauf i belegt die Varianten [i·n, (i + 1)·n) mit
@@ -119,10 +129,19 @@ struct FdJacobian {
 void fd_jacobian_from_residuals(const FdJacobianBatch& fd, const ResidualResult& rays,
                                 std::span<const double> extra, int extra_count, FdJacobian& out);
 
+// Zusatzresiduen aller Varianten des FD-Batches in der Ablage [v · E + i] mit
+// E = options.extra_count(): evaluate_extra_residuals für options.extra, dahinter die
+// trace-abhängigen Residuen aus `extrema` (Max-Reduktionen aller Varianten des Batches, nur
+// nötig bei trace_extra.count > 0). Host-Threads options.extra_threads.
+std::vector<double> fd_extra_residuals(const FdJacobianOptions& options,
+                                       const SystemBatchHost& batch,
+                                       const SurfaceExtremaResult& extrema);
+
 // CPU-Pfad (CI ohne GPU und Referenz): make_fd_jacobian_batch, residuals_cpu für alle
-// Varianten, evaluate_extra_residuals (Host-Threads options.extra_threads),
-// fd_jacobian_from_residuals. Wirft wie die Bausteine (std::invalid_argument auch bei
-// extra.count < 0 oder count > 0 ohne evaluate).
+// Varianten, bei trace-abhängigen Zusatzresiduen surface_extrema_cpu für alle Varianten,
+// fd_extra_residuals (Host-Threads options.extra_threads), fd_jacobian_from_residuals. Wirft
+// wie die Bausteine (std::invalid_argument auch bei extra.count < 0 oder count > 0 ohne
+// evaluate, ebenso für trace_extra).
 FdJacobian fd_jacobian_cpu(const VariableSet& set, const SystemBatchHost& base,
                            std::span<const double> x0, const FdJacobianOptions& options = {});
 
