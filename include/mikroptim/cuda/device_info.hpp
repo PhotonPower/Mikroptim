@@ -28,4 +28,8 @@ struct DeviceMemoryInfo {
 // unverändert. Wirft CudaError (mikroptim/cuda/cuda_error.hpp) bei CUDA-Fehlern.
 DeviceMemoryInfo device_memory_info(int device = -1);
 
+// Kopiert `bytes` Byte aus Gerätespeicher (z. B. Zeiger aus DeviceTranche) in Host-Speicher
+// (synchron, cudaMemcpy). Für Tests und Rückrufe ohne CUDA-Header. Wirft CudaError.
+void copy_device_to_host(void* host, const void* device, std::size_t bytes);
+
 } // namespace mko::cuda

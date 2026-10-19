@@ -419,6 +419,7 @@ TraceRunInfo TraceEngine::run_on_device(const SystemBatchHost& batch, const Trac
     options.opd = settings.opd;
     options.extra_residuals = settings.extra_residuals;
     options.extrema = settings.extrema;
+    options.precision = settings.precision;
     const detail::DeviceGuard guard(device_);
     for (int first = 0; first < V; first += plan.tranche) {
         const int count = std::min(plan.tranche, V - first);

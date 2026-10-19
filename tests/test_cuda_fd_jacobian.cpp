@@ -509,3 +509,31 @@ TEST(TraceEngineOnDevice, TranchesAreMultiplesOfGranularity) {
     empty.resize(0);
     EXPECT_EQ(engine.run_on_device(empty, s, 3, noop).tranches, 0);
 }
+
+// run_on_device rechnet im gewählten Zahlentyp: Residuen bitgleich zu run() mit derselben
+// precision (FP64 und df64), und df64 unterscheidet sich von FP64 (früher ignorierte
+// run_on_device settings.precision und rechnete immer FP64).
+TEST(TraceEngineOnDevice, HonoursPrecision) {
+    MKO_REQUIRE_GPU();
+    const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
+    const SystemBatchHost batch = mko::test::perturbed_batch(ls, 9, 78);
+    TraceEngine engine(0);
+    std::vector<std::vector<double>> on_device(2);
+    for (const mko::cuda::Precision precision :
+         {mko::cuda::Precision::Fp64, mko::cuda::Precision::Df64}) {
+        TraceSettings s;
+        s.precision = precision;
+        const mko::cuda::TraceOutput ref = engine.run(batch, mko::cuda::TraceMode::Residuals, s);
+        std::vector<double>& got = on_device[precision == mko::cuda::Precision::Fp64 ? 0 : 1];
+        got.assign(ref.residuals.residuals.size(), 0.0);
+        (void)engine.run_on_device(batch, s, 1, [&](const DeviceTranche& t) {
+            const auto offset =
+                static_cast<std::size_t>(t.first) * static_cast<std::size_t>(t.stride);
+            mko::cuda::copy_device_to_host(got.data() + offset, t.residuals,
+                                           static_cast<std::size_t>(t.count) *
+                                               static_cast<std::size_t>(t.stride) * sizeof(double));
+        });
+        EXPECT_TRUE(same_bytes(got, ref.residuals.residuals)) << mko::cuda::to_string(precision);
+    }
+    EXPECT_FALSE(same_bytes(on_device[0], on_device[1]));
+}
