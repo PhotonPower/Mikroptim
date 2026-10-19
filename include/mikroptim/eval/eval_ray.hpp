@@ -142,7 +142,11 @@ MKO_HD inline EvalRay<R> eval_ray(const SystemBatchView<B>& b, const SurfaceTabl
     EvalRay<R> out{};
     Ray<R> ray = eval_source_ray(b, v, f, l, x, y);
     int failed = -1;
-    TraceStatus st = trace_ray(table, table_l, ray, nullptr, &failed);
+    // Modus EVAL: jedes Versagen ist hart (docs/numerik.md, Abschnitt 11; FailureMode::Hard),
+    // also ohne Akkumulator des weichen Versagens (soft = nullptr)
+    NoSurfaceObserver* const no_observer = nullptr;
+    SoftFailure<R>* const hard_failure = nullptr;
+    TraceStatus st = trace_ray(table, table_l, ray, nullptr, &failed, no_observer, hard_failure);
     const int S = table.surfaces;
     if (st == TraceStatus::Ok && !(ray.d.z > R(0))) {
         st = TraceStatus::Backward;

@@ -68,6 +68,7 @@ std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout
                       const TraceSettings& s) {
     OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
+    r.penalty_residuals = layout.penalty_rows();
     r.extra_residuals = s.extra_residuals;
     r.residuals = true;
     r.ray_status = true;
@@ -84,6 +85,7 @@ std::size_t merit_run_bytes(const BatchTopology& t, int variants, const Residual
                             const TraceSettings& s) {
     OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
+    r.penalty_residuals = layout.penalty_rows();
     r.residuals = false;
     r.ray_status = false;
     r.opd = false;
@@ -171,7 +173,7 @@ TEST(TraceEngine, TranchesMatchSingleRun) {
             violations +=
                 (out.residuals.status_at(v, i) != cpu.status_at(v, i) || !(d <= bound)) ? 1 : 0;
         }
-        for (std::int64_t e = layout.rays_per_variant(); e < out.residuals.stride; ++e) {
+        for (std::int64_t e = layout.trace_rows(); e < out.residuals.stride; ++e) {
             EXPECT_EQ(out.residuals.residual(v, e), 0.0);
         }
     }

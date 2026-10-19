@@ -42,15 +42,40 @@ MKO_HD inline auto batch_image_point(const SystemBatchView<B>& b, const SurfaceT
 // RaySurfaceRecord für die Max-Reduktionen (Kernel MERIT, M2-T3); die OPL hängt nicht davon ab.
 // Rechentyp R (Stützstelle, Tabelle, Ergebnis) und Speichertyp B des Batches dürfen verschieden
 // sein (Kernel mit R = df64, M7-T1; batch_source_ray).
+// `soft` (optional, Start {0, Ok}): weiches Versagen (numerik.md §11). Dann ist *opl auch für
+// weich versagte Strahlen (in_piston) gültig, und soft->penalty enthält die Summe der
+// Strafgrößen; ohne `soft` hartes Versagen wie in M2.
 template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserver>
-MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table,
-                                        int table_l, int v, int f, int l, const PupilSample<R>& s,
-                                        Vec3<R> center, R* opl, Observer* observer = nullptr) {
+MKO_HD inline TraceStatus
+batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table, int table_l, int v, int f,
+              int l, const PupilSample<R>& s, Vec3<R> center, R* opl, Observer* observer = nullptr,
+              typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
     const TraceStatus st =
-        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer);
+        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer, soft);
     *opl = ray.opl;
     return st;
+}
+
+// Normiertes Gewicht ŵ_f · ŵ_λ = (w_f / Σ w_f') · (w_λ / Σ w_λ') eines Tupels (0, wenn w_f = 0
+// oder w_λ = 0, ohne Division). Gemeinsamer Teil von residual_scale und penalty_scale; Summen in
+// aufsteigender Reihenfolge, kein a·b + c.
+template <class B>
+MKO_HD inline B tuple_weight(const SystemBatchView<B>& b, int f, int l) {
+    const B wf = b.field_weight[f];
+    const B wl = b.wavelength_weight[l];
+    if (!(wf > B(0)) || !(wl > B(0))) {
+        return B(0);
+    }
+    B sum_f = B(0);
+    for (int i = 0; i < b.shape.fields; ++i) {
+        sum_f += b.field_weight[i];
+    }
+    B sum_l = B(0);
+    for (int i = 0; i < b.shape.wavelengths; ++i) {
+        sum_l += b.wavelength_weight[i];
+    }
+    return (wf / sum_f) * (wl / sum_l);
 }
 
 // Gewichtsfaktor s_{f,l} eines Tupels (Feld f, Wellenlänge l), M4-T1 (docs/numerik.md,
@@ -70,21 +95,12 @@ MKO_HD inline TraceStatus batch_ray_opl(const SystemBatchView<B>& b, const Surfa
 // Kernel mit anderem Rechentyp wandelt es einmal pro Block um (M7-T1).
 template <class B>
 MKO_HD inline B residual_scale(const SystemBatchView<B>& b, int f, int l) {
-    const B wf = b.field_weight[f];
-    const B wl = b.wavelength_weight[l];
-    if (!(wf > B(0)) || !(wl > B(0))) {
+    const B w = tuple_weight(b, f, l);
+    if (!(w > B(0))) {
         return B(0);
     }
-    B sum_f = B(0);
-    for (int i = 0; i < b.shape.fields; ++i) {
-        sum_f += b.field_weight[i];
-    }
-    B sum_l = B(0);
-    for (int i = 0; i < b.shape.wavelengths; ++i) {
-        sum_l += b.wavelength_weight[i];
-    }
     const B lambda_ref_mm = b.reference_wavelength_nm * B(1e-6);
-    return msqrt((wf / sum_f) * (wl / sum_l)) / lambda_ref_mm;
+    return msqrt(w) / lambda_ref_mm;
 }
 
 // Residuum eines Strahls: scale · √(W_i V_j) · OPD_k. Versagte Strahlen übergeben OPD = 0
@@ -92,6 +108,62 @@ MKO_HD inline B residual_scale(const SystemBatchView<B>& b, int f, int l) {
 template <class R>
 MKO_HD inline R ray_residual(R scale, const PupilSample<R>& s, R opd) {
     return scale * residual_weight(s) * opd;
+}
+
+// ---- Strafresiduen des weichen Versagens (M4-T2, docs/numerik.md, Abschnitt 11) ----------
+//
+// Jeder Strahl hat im weichen Modus genau ein Strafresiduum
+//
+//     p_k = √(w_fail · ŵ_f · ŵ_λ) · √(W_i V_j) · π_k   [Wellen bei λ_ref],
+//
+// π_k = 0 (Ok), Σ der Strafgrößen seiner weichen Ereignisse (weich versagt) bzw. diese Summe
+// plus kHardFailurePenalty (hart versagt). Die Gewichtung wie bei den Wellenfrontresiduen macht
+// Σ p_k² = w_fail · Σ_(f,l) ŵ_f ŵ_λ Σ_k W_k π_k² zum gewichteten Mittel von π² über Pupille, Felder
+// und Wellenlängen, unabhängig von der Quadratur; w_fail hat die Einheit Wellen².
+
+// Strafgröße eines hart versagten Strahls (d_z <= 0, verfehlte Kappe der Referenzsphäre,
+// Unsupported), zusätzlich zu den weichen Ereignissen davor. 1 entspricht einer voll
+// ausgebildeten Totalreflexion (k = −1) bzw. einem Verfehlen mit D = −1: größer als
+// die Strafen nahe an jeder Versagensgrenze, sodass ein hart versagter Strahl teurer ist als ein
+// gerade eben weich versagter. Mit dem Standard w_fail = 10⁶ Wellen² kostet ein hart versagter
+// Strahl so viel wie ein Wellenfrontfehler von 1.000 Wellen (≈ 0,55 mm OPD) auf demselben Strahl.
+inline constexpr double kHardFailurePenalty = 1.0;
+
+// Standardgewicht w_fail [Wellen²] (ResidualSettings::fail_weight): Eine Strafgröße von 10⁻³
+// (z. B. k = −10⁻³ knapp hinter dem Grenzwinkel) auf allen Strahlen kostet 1 Welle²; Strafen
+// dominieren also, solange Strahlen merklich versagen, und verschwinden ohne Versagen.
+inline constexpr double kDefaultFailWeight = 1e6;
+
+// Gewichtsfaktor der Strafresiduen eines Tupels: √(w_fail · ŵ_f · ŵ_λ) (0 für ein Tupel mit
+// Gewicht 0, dessen Strahlen dann auch nicht bestraft werden). Speichertyp B des Batches wie
+// residual_scale.
+template <class B>
+MKO_HD inline B penalty_scale(const SystemBatchView<B>& b, int f, int l, B fail_weight) {
+    const B w = tuple_weight(b, f, l);
+    if (!(w > B(0))) {
+        return B(0);
+    }
+    return msqrt(fail_weight * w);
+}
+
+// Strafgröße π_k eines Strahls aus Status und gesammelter Strafe der weichen Ereignisse
+// (SoftFailure::penalty): 0 für Ok, `soft_penalty` für weich versagt, `soft_penalty` +
+// kHardFailurePenalty für hart versagt.
+template <class R>
+MKO_HD inline R failure_penalty(TraceStatus st, R soft_penalty) {
+    if (st == TraceStatus::Ok) {
+        return R(0);
+    }
+    if (is_soft_failure(st)) {
+        return soft_penalty;
+    }
+    return soft_penalty + R(kHardFailurePenalty);
+}
+
+// Strafresiduum p_k = scale · √(W_i V_j) · π_k mit scale = penalty_scale des Tupels.
+template <class R>
+MKO_HD inline R ray_penalty(R scale, const PupilSample<R>& s, TraceStatus st, R soft_penalty) {
+    return scale * residual_weight(s) * failure_penalty(st, soft_penalty);
 }
 
 } // namespace mko

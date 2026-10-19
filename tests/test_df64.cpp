@@ -479,9 +479,11 @@ std::vector<NamedBatch> cpu_test_batches(int variants) {
 // <= kDf64VsFp64 für alle gültigen Strahlen. Der Pfad mit R = double ist bitgleich zur
 // CPU-Referenz residuals_cpu (die verallgemeinerten Batch-Funktionen ändern FP64 nicht).
 TEST(Df64, CpuTraceMatchesFp64) {
+    mko::ResidualSettings hard;
+    hard.failure = mko::FailureMode::Hard; // typed_rays traced hart wie M2 (M4-T2)
     for (const NamedBatch& nb : cpu_test_batches(150)) {
         SCOPED_TRACE(nb.name);
-        const ResidualLayout layout(nb.batch.topology());
+        const ResidualLayout layout(nb.batch.topology(), hard);
         double max_opl = 0.0;
         double max_opd = 0.0;
         std::size_t rays = 0;

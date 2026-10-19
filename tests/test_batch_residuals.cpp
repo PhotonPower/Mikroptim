@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -53,12 +54,21 @@ BatchTopology lens_topology(std::vector<PupilMode> modes) {
     return t;
 }
 
-// Vergleicht residuals_cpu (Variante v von `batch`) mit evaluate_wavefront für `system`:
-// Status gleich, OPD gültiger Strahlen bitgleich, Residuum = s_{f,l} · √(W) · OPD bitgleich
-// (s = residual_scale, M4-T1; gegen die Formel geprüft in ResidualScale.*), versagte Strahlen
-// OPD = Residuum = 0. Liefert die Zahl versagter Strahlen.
+// Einstellungen mit hartem Versagen (wie M1-T7 und M2; die Vergleiche mit evaluate_wavefront
+// prüfen dieses Verhalten, das weiche Versagen steht in test_soft_failure.cpp).
+ResidualSettings hard(ResidualSettings s = {}) {
+    s.failure = mko::FailureMode::Hard;
+    return s;
+}
+
+// Vergleicht residuals_cpu (Variante v von `batch`, hartes Versagen) mit evaluate_wavefront für
+// `system`: Status gleich, OPD gültiger Strahlen bitgleich, Residuum = s_{f,l} · √(W) · OPD
+// bitgleich (s = residual_scale, M4-T1; gegen die Formel geprüft in ResidualScale.*), versagte
+// Strahlen OPD = Residuum = 0. Ohne Versagen liefert der weiche Modus (M4-T2) dieselben
+// Residuen und Strafresiduen 0. Liefert die Zahl versagter Strahlen.
 std::size_t expect_matches_wavefront(const mko::LoadedSystem& system, const SystemBatchHost& batch,
-                                     int v, const ResidualSettings& settings) {
+                                     int v, const ResidualSettings& soft_settings) {
+    const ResidualSettings settings = hard(soft_settings);
     WavefrontOptions opt;
     opt.rings = settings.rings;
     opt.spokes = settings.spokes;
@@ -68,6 +78,17 @@ std::size_t expect_matches_wavefront(const mko::LoadedSystem& system, const Syst
     EXPECT_EQ(r.variants, 1);
     EXPECT_EQ(r.rays_per_variant, layout.rays_per_variant());
     EXPECT_EQ(r.stride, layout.rays_per_variant());
+    EXPECT_EQ(r.penalty_rows, 0);
+    if (wf.failed_count() == 0) {
+        const ResidualLayout soft_layout(batch.topology(), soft_settings);
+        const ResidualResult s = mko::residuals_cpu(batch, v, soft_layout);
+        EXPECT_EQ(s.stride, 2 * layout.rays_per_variant());
+        for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
+            EXPECT_TRUE(same_bits(s.residual(0, i), r.residual(0, i)));
+            EXPECT_TRUE(same_bits(s.opd_at(0, i), r.opd_at(0, i)));
+            EXPECT_EQ(s.penalty(0, i), 0.0);
+        }
+    }
     EXPECT_EQ(wf.fields, layout.fields());
     EXPECT_EQ(wf.wavelengths, layout.wavelengths());
     std::size_t failed = 0;
@@ -146,6 +167,16 @@ TEST(ResidualLayout, OffsetsFollowFieldMajorOrder) {
     EXPECT_EQ(a.plan()[0].mode, PupilMode::Axis);
     EXPECT_EQ(a.quadrature(0).spokes, 1);
     EXPECT_EQ(a.quadrature(2).spokes, 8);
+    // Weiches Versagen (Standard, M4-T2): ein Strafresiduum pro Strahl hinter den Strahlresiduen
+    EXPECT_TRUE(a.soft_failure());
+    EXPECT_EQ(a.penalty_rows(), 510);
+    EXPECT_EQ(a.trace_rows(), 1020);
+    const ResidualLayout a_hard(lens_topology({PupilMode::Axis, PupilMode::Half, PupilMode::Half}),
+                                hard());
+    EXPECT_FALSE(a_hard.soft_failure());
+    EXPECT_EQ(a_hard.penalty_rows(), 0);
+    EXPECT_EQ(a_hard.trace_rows(), 510);
+    EXPECT_EQ(a_hard.offset(2, 2), a.offset(2, 2));
 
     // Achsfeld nicht an erster Stelle, volle Pupille, andere Quadratur: die Ablage folgt der
     // Feldreihenfolge, die Gesamtzahl bleibt die Formel von rays_per_variant.
@@ -186,6 +217,18 @@ TEST(ResidualLayout, InvalidInputThrows) {
     EXPECT_THROW(ResidualLayout(ok, ResidualSettings{17, 8}), std::invalid_argument);
     EXPECT_THROW(ResidualLayout(ok, ResidualSettings{10, 0}), std::invalid_argument);
     EXPECT_THROW(ResidualLayout(ok, ResidualSettings{16, 1 << 30}), std::invalid_argument);
+    for (const double w : {-1.0, std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::infinity()}) {
+        ResidualSettings s;
+        s.fail_weight = w;
+        EXPECT_THROW(ResidualLayout(ok, s), std::invalid_argument) << w;
+    }
+    ResidualSettings unknown;
+    unknown.failure = static_cast<mko::FailureMode>(7);
+    EXPECT_THROW(ResidualLayout(ok, unknown), std::invalid_argument);
+    ResidualSettings zero;
+    zero.fail_weight = 0.0; // erlaubt: Fortsetzung ohne Strafe
+    EXPECT_NO_THROW(ResidualLayout(ok, zero));
 
     const ResidualLayout layout(ok);
     EXPECT_THROW((void)layout.offset(3, 0), std::out_of_range);
@@ -317,12 +360,13 @@ TEST(ResidualsCpu, FailedRaysAreMaskedLikeWavefront) {
     EXPECT_LT(failed, static_cast<std::size_t>(layout.rays_per_variant()));
 }
 
-// Alle Strahlen eines Tupels versagen: Kolben undefiniert → OPD und Residuen 0, Status gesetzt.
+// Alle Strahlen eines Tupels versagen (harter Modus): Kolben undefiniert → OPD und Residuen 0,
+// Status gesetzt.
 TEST(ResidualsCpu, AllRaysFailedGiveZeroResiduals) {
     const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");
     SystemBatchHost b = mko::make_system_batch(ls, 2);
     b.pupil_radius(1) = 1e4; // jeder Strahl liegt außerhalb der Sphäre (R = 103 mm)
-    const ResidualLayout layout(b.topology());
+    const ResidualLayout layout(b.topology(), hard());
     const ResidualResult r = mko::residuals_cpu(b, 1, layout);
     ASSERT_EQ(r.failed_count(), static_cast<std::size_t>(layout.rays_per_variant()));
     for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
@@ -339,13 +383,14 @@ TEST(ResidualsCpu, AllVariantsMatchSingleCalls) {
     const ResidualLayout layout(b.topology());
     const ResidualResult all = mko::residuals_cpu(b, layout);
     ASSERT_EQ(all.variants, 40);
-    ASSERT_EQ(all.residuals.size(), 40u * static_cast<std::size_t>(layout.rays_per_variant()));
+    ASSERT_EQ(all.residuals.size(), 40u * static_cast<std::size_t>(layout.trace_rows()));
     std::size_t failed = 0;
     for (int v = 0; v < b.variants(); ++v) {
         const ResidualResult one = mko::residuals_cpu(b, v, layout);
         failed += one.failed_count();
         for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
             ASSERT_TRUE(same_bits(all.residual(v, i), one.residual(0, i)));
+            ASSERT_TRUE(same_bits(all.penalty(v, i), one.penalty(0, i)));
             ASSERT_TRUE(same_bits(all.opd_at(v, i), one.opd_at(0, i)));
             ASSERT_EQ(all.status_at(v, i), one.status_at(0, i));
         }
@@ -488,7 +533,7 @@ TEST(ResidualsCpu, TupleWavefrontsMatchEvaluateWavefront) {
             opt.spokes = settings.spokes;
             const WavefrontResult wf = mko::evaluate_wavefront(ls, opt);
             const SystemBatchHost b = mko::make_system_batch(ls, 2);
-            const ResidualLayout layout(b.topology(), settings);
+            const ResidualLayout layout(b.topology(), hard(settings));
             const ResidualResult r = mko::residuals_cpu(b, layout);
             for (int v = 0; v < 2; ++v) {
                 const std::vector<mko::TupleWavefront> t = mko::tuple_wavefronts(r, layout, v);

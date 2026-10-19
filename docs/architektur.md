@@ -101,12 +101,20 @@ template <class R> struct TraceRecord {          // optional, z. B. Local Memory
 template <class R> MKO_HD Ray<R> collimated_ray(R a, R theta, R rho, R phi);        // OPL₀ = p₀·d₀
 template <class R> MKO_HD Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi); // OPL₀ = 0
 template <class R> MKO_HD TraceStatus propagate_surface(Ray<R>&, R t, SurfaceKind, R c, R n_before, R n_after,
-                                                        const GhostPlateParams<R>* ghost = nullptr);
+                                                        const GhostPlateParams<R>* ghost = nullptr,
+                                                        SoftFailure<R>* soft = nullptr);
 template <class R, class T, class Obs = NoSurfaceObserver>
 MKO_HD TraceStatus trace_ray(const T& sys, int l, Ray<R>&, TraceRecord<R>*, int* failed_surface = nullptr,
-                             Obs* observer = nullptr);   // Beobachter: surface_extrema.hpp (M2-T3)
+                             Obs* observer = nullptr,    // Beobachter: surface_extrema.hpp (M2-T3)
+                             SoftFailure<R>* soft = nullptr);   // weiches Versagen (M4-T2)
 template <class R, class T> MKO_HD TraceStatus transfer_to_image_plane(const T& sys, int l, Ray<R>&);
+// surface_ops.hpp (M4-T2): Akkumulator und Statushilfen
+template <class R> struct SoftFailure { R penalty; TraceStatus first; void add(R, TraceStatus); };
+constexpr bool is_soft_failure(TraceStatus), in_piston(TraceStatus), is_hard_failure(TraceStatus);
+enum class FailureMode : unsigned char { Soft = 0, Hard = 1 };
 ```
+
+**Weiches Versagen (M4-T2):** Ein Zeiger auf `SoftFailure<R>` (Start {0, Ok}) schaltet die Fortsetzungsregeln aus [numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen) ein; ohne ihn (nullptr, Standard) bleibt jede Funktion bitgleich zum harten Versagen. Der Zeiger reicht von `batch_ray_opl` über `trace_to_reference_sphere`, `trace_ray`, `propagate_surface` bis zu `intersect_sphere`, `refract_sphere`, `phase_surface_step` und `reference_sphere_step`; alle Parameter dieser Art sind nicht ableitbar (`detail::NonDeduced`), damit `nullptr` übergeben werden kann.
 
 Erweiterungspunkte: Ein neuer Flächentyp bekommt einen Zweig in `propagate_surface` und seine Daten als zusätzliche Felder der Tabelle (so umgesetzt für die Geisterplatte, M4-T5). Der adjungierte Modus (M5) liest Schnittpunkte und Richtungen aus `TraceRecord` (die Richtung vor der Brechung an Fläche s ist `d[s − 1]`). Strahlhöhe und Einfallswinkel pro Fläche (M4-T3) liefert der Beobachter `RaySurfaceRecord` ohne `TraceRecord` (Abschnitt [Max-Reduktionen](#max-reduktionen-m2-t3)); dieselben Werte folgen aus `p[s]`, `d[s − 1]` und der Flächennormale (Test `SurfaceExtrema.ObserverMatchesTraceRecord`).
 
@@ -394,7 +402,7 @@ SurfaceMap make_surface_map(const SystemDescription&); int table_surface_count(c
 - **Block:** `kResidualThreads` = 128 Threads (Konstante in `include/mikroptim/cuda/residuals.hpp`, zu tunen in M7). Thread t bearbeitet die Stützstellen k = t, t + 128, … < n_f in aufsteigender Reihenfolge. Bei der Standardquadratur (n_f = 80, auf der Achse 10) bleibt ein Teil der Threads leer; das ist ein Thema für M7.
 - **Shared Memory:** Flächentabelle der Variante mit den Brechzahlen nur der Wellenlänge l des Blocks, Quadratur des Feldes, Teilsummen pro Warp, Kolben (Belegung unten, ca. 1,9 KB).
 - **Pupillenstützstellen** werden im Thread aus dem Index berechnet (`sample`: Ring i, Speiche j, Gewicht).
-- **Versagen:** Strahlen, die eine Fläche verfehlen, totalreflektieren oder rückwärts laufen, laufen maskiert weiter: kein früher Ausstieg aus Schleifen oder Reduktion, jeder Thread erreicht jedes `__syncthreads` und jeden Warp-Shuffle. In M2 ist Versagen hart (wie `opd_statistics`); weiches Versagen mit Strafresiduen folgt in M4-T2 (numerik.md, Abschnitt 11).
+- **Versagen:** Strahlen, die eine Fläche verfehlen, totalreflektieren oder rückwärts laufen, laufen maskiert weiter: kein früher Ausstieg aus Schleifen oder Reduktion, jeder Thread erreicht jedes `__syncthreads` und jeden Warp-Shuffle. Seit M4-T2 ist Versagen in RESIDUALS und MERIT standardmäßig weich: verfehlte Flächen, Totalreflexion und negative Radikanden an Geisterplatten werden fortgesetzt, der Strahl bleibt im Kolben und trägt ein Strafresiduum; `ResidualSettings::failure = FailureMode::Hard` schaltet auf das harte Versagen von M2 zurück ([numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen)). Der Schalter ist ein Laufzeitflag des Kernels; im gültigen Pfad kostet er nur die Prüfungen auf ein weiches Ereignis pro Fläche.
 
 ## Kernel RESIDUALS (M2-T2)
 
@@ -406,22 +414,26 @@ Der Residuenvektor einer Variante ist die Konkatenation der Tupel (f, l), f-majo
 
 offset(f, l) = L · Σ_{f′ < f} n_f′ + l · n_f,  R_v = L · Σ_f n_f = `rays_per_variant(F, L, N·M, F_Achse, N)`.
 
-Die Ablage ist für alle Varianten eines Batches gleich, weil die Pupillenart pro Feld zur Topologie gehört (`BatchTopology::pupil_mode`, oben). Nach den R_v Strahlresiduen folgen optional E weitere Residuen pro Variante (Paraxial, Strafen, ab M3; `ResidualRunOptions::extra_residuals`), Stride pro Variante R_v + E; der Lauf setzt sie auf 0. OPD (optional) und Status (1 Byte, `TraceStatus`) liegen ohne die weiteren Residuen ab v·R_v. Der Speicher folgt `make_output_layout` mit `OutputRequest{residuals, ray_status, opd}`.
+Die Ablage ist für alle Varianten eines Batches gleich, weil die Pupillenart pro Feld zur Topologie gehört (`BatchTopology::pupil_mode`, oben). Im weichen Modus (Standard, M4-T2) folgen auf die R_v Strahlresiduen P_v = R_v **Strafresiduen** in derselben Ablage (Strafresiduum des Strahls i in Zeile R_v + i, `ResidualLayout::penalty_rows`, im harten Modus P_v = 0); die Zeilen des Traces pro Variante sind `trace_rows` = R_v + P_v. Danach folgen optional E weitere Residuen pro Variante (Paraxial usw., ab M3; `ResidualRunOptions::extra_residuals`), Stride pro Variante R_v + P_v + E; der Lauf setzt sie auf 0. OPD (optional) und Status (1 Byte, `TraceStatus`) liegen ohne Straf- und weitere Residuen ab v·R_v. Der Speicher folgt `make_output_layout` mit `OutputRequest{residuals, ray_status, opd, penalty_residuals}`. Ein Strafresiduum pro Strahl (Summe der Strafgrößen seiner Ereignisse) statt eines pro Ereignis hält den Residuenvektor bei genau einem zusätzlichen Block fester Größe; FD-Jacobi und Normalgleichungen sehen ihn als R = R_v + P_v + E Zeilen.
 
 ```cpp
 // include/mikroptim/batch/batch_residuals.hpp
-struct ResidualSettings { int rings = 10, spokes = 8; };
+struct ResidualSettings { int rings = 10, spokes = 8;
+                          FailureMode failure = FailureMode::Soft;          // M4-T2
+                          double fail_weight = kDefaultFailWeight; };      // w_fail = 10⁶ Wellen²
 struct ResidualFieldPlan { int64_t offset; int samples; PupilMode mode; };   // [F], für den Kernel
 class ResidualLayout {                              // aus Topologie + Einstellungen
     ResidualLayout(const BatchTopology&, const ResidualSettings& = {});   // wirft ohne pupil_mode
     int fields(), wavelengths(), axis_fields(); PupilMode pupil_mode(f); int samples(f);
     const PupilQuadrature<double>& quadrature(f); int64_t offset(f, l), rays_per_variant();
+    bool soft_failure(); int64_t penalty_rows(), trace_rows();          // M4-T2
     std::span<const ResidualFieldPlan> plan();
 };
-struct ResidualResult { int variants; int64_t rays_per_variant, stride;
+struct ResidualResult { int variants; int64_t rays_per_variant, penalty_rows, stride;
     std::vector<double> residuals /*[V·stride]*/, opd /*[V·R_v] oder leer*/;
     std::vector<uint8_t> status /*[V·R_v]*/;
-    double residual(v, i), opd_at(v, i); TraceStatus status_at(v, i); size_t failed_count(); };
+    double residual(v, i), penalty(v, i), opd_at(v, i); int64_t trace_rows();
+    TraceStatus status_at(v, i); size_t failed_count(), hard_failed_count(); };
 ResidualResult residuals_cpu(const SystemBatchHost&, int v, const ResidualLayout&); // CPU-Referenz
 ResidualResult residuals_cpu(const SystemBatchHost&, const ResidualLayout&);        // alle Varianten
 void check_residual_layout(const BatchTopology&, const ResidualLayout&);
@@ -431,25 +443,29 @@ void check_pupil_modes(const SystemBatchHost&, int first = 0, int count = -1);  
 // Rechentyp R (Tabelle, Stützstelle) und Speichertyp B des Batches dürfen verschieden sein (M7-T1)
 template <class B, class T> Vec3<R> batch_image_point(const SystemBatchView<B>&, const T& table, int v, int f);
 template <class R, class B, class T> TraceStatus batch_ray_opl(const SystemBatchView<B>&, const T& table, int table_l,
-                                                      int v, int f, int l, const PupilSample<R>&, Vec3<R> center, R* opl);
+                                                      int v, int f, int l, const PupilSample<R>&, Vec3<R> center, R* opl,
+                                                      Observer* = nullptr, SoftFailure<R>* soft = nullptr);
 template <class B> B residual_scale(const SystemBatchView<B>&, int f, int l);   // √(ŵ_f ŵ_λ)/λ_ref (M4-T1)
 template <class R> R ray_residual(R scale, const PupilSample<R>&, R opd);       // scale·√(W)·OPD
+// weiches Versagen (M4-T2)
+template <class B> B penalty_scale(const SystemBatchView<B>&, int f, int l, B fail_weight); // √(w_fail ŵ_f ŵ_λ)
+template <class R> R ray_penalty(R scale, const PupilSample<R>&, TraceStatus, R soft_penalty);
 ```
 
-`residuals_cpu` ist zugleich der CPU-Pfad für eine Optimierung ohne GPU (CI). Sie rechnet mit denselben Funktionen wie der Kernel (`batch_ray_opl`, `ray_residual`, `residual_scale`) und dem sequenziellen `opd_statistics`; für eine aus einem System gebaute Variante ist ihre OPD bitgleich zu `evaluate_wavefront` (Test `ResidualsCpu.MatchesEvaluateWavefront`).
+`residuals_cpu` ist zugleich der CPU-Pfad für eine Optimierung ohne GPU (CI). Sie rechnet mit denselben Funktionen wie der Kernel (`batch_ray_opl`, `ray_residual`, `residual_scale`, `ray_penalty`, `penalty_scale`) und dem sequenziellen `opd_statistics`; im harten Modus ist ihre OPD für eine aus einem System gebaute Variante bitgleich zu `evaluate_wavefront` (Test `ResidualsCpu.MatchesEvaluateWavefront`), im weichen Modus ohne Versagen ebenfalls (Strafresiduen 0).
 
 ### Ablauf im Block
 
 1. **Laden:** Threads s = t, t + 128, … kopieren `type[s]`, `curvature[v][s]`, `thickness[v][s]` und `index[v][s][l]` in den Shared Memory, die ersten N Threads die Knoten u_i und Gewichte W_i, Thread 0 Ringzahl, Speichenzahl (1 auf der Achse) und Pupillenart aus `ResidualFieldPlan[f]`; danach `__syncthreads`. Die Sicht auf die Tabelle hat `wavelengths = 1` (Wellenlängenindex 0) und liefert dieselben Zahlen wie `surface_table(v)` auf der CPU.
-2. **Durchlauf 1:** pro Stützstelle `batch_ray_opl` (Startstrahl `batch_source_ray`, `trace_to_reference_sphere` um **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`)); die OPL wird vorläufig auf den Residuenplatz geschrieben, der Status in das Statusfeld. Jeder Thread summiert (W_k, W_k·OPL_k) seiner gültigen Strahlen in aufsteigender Reihenfolge.
+2. **Durchlauf 1:** pro Stützstelle `batch_ray_opl` (Startstrahl `batch_source_ray`, `trace_to_reference_sphere` um **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), im weichen Modus mit einem `SoftFailure<R>` im Register); die OPL wird vorläufig auf den Residuenplatz geschrieben, der Status in das Statusfeld, im weichen Modus das Strafresiduum p_k = `ray_penalty(penalty_scale(f, l, w_fail), sample_k, Status, Strafe)` direkt auf seinen Platz (es hängt nicht vom Kolben ab). Jeder Thread summiert (W_k, W_k·OPL_k) seiner Strahlen im Kolben (`in_piston`: Ok oder weich versagt) in aufsteigender Reihenfolge.
 3. **Reduktion:** Baumreduktion im Warp mit `__shfl_down_sync` (Abstände 16, 8, 4, 2, 1, volle Maske), Lane 0 schreibt die Warp-Summe in den Shared Memory, `__syncthreads`, Thread 0 summiert die 4 Warp-Summen in fester Reihenfolge und schreibt den Kolben OPL̄ = Σ W·OPL / W_ok und ein Gültigkeitsflag, `__syncthreads`. Keine Gleitkomma-Atomics (ADR-0007): Zwei Läufe mit gleichen Eingaben sind auf derselben GPU bitgleich (Test `CudaResiduals.RepeatedRunsAreBitIdentical`, 10 Läufe). Die Summationsreihenfolge hängt von `kResidualThreads` ab, nicht von der Batchgröße oder der Lage der Variante im Batch.
-4. **Durchlauf 2:** derselbe Thread liest OPL und Status seiner Stützstellen zurück und schreibt OPD_k = OPL_k − OPL̄ (0 bei Versagen) und r_k = `ray_residual(residual_scale(f, l), sample_k, OPD_k)`.
+4. **Durchlauf 2:** derselbe Thread liest OPL und Status seiner Stützstellen zurück und schreibt OPD_k = OPL_k − OPL̄ (0 bei hartem Versagen) und r_k = `ray_residual(residual_scale(f, l), sample_k, OPD_k)`.
 
-**Tupel ohne gültigen Strahl** (W_ok = 0, Kolben undefiniert): alle OPD und Residuen des Tupels sind 0, der Status bleibt gesetzt (gleiche Regel wie `opd_statistics`).
+**Tupel ohne Strahl im Kolben** (W_ok = 0, Kolben undefiniert): alle OPD und Wellenfrontresiduen des Tupels sind 0, Status und Strafresiduen bleiben gesetzt (gleiche Regel wie `opd_statistics`).
 
 **Shared Memory** (statisch, unabhängig von S bis `kMaxSurfaces` = 64), für R = double: Typ 64 B + Krümmung, Dicke, Brechzahl 3 · 64 · 8 B = 1.536 B + Quadratur 272 B + Teilsummen 2 · 4 · 8 B + Kolben und Flag 12 B, zusammen ca. 1,9 KB. Dazu **dynamisch** die Geisterplatten der Variante (M4-T5): Koeffizienten G·K, Brechzahlen der Gläser bei der Wellenlänge des Blocks G und Normierungsradien G, also (G·K + 2G)·8 B, höchstens (64·32 + 128)·8 B = 17 KiB; ohne Geisterplatten 0 B. Zusammen ≤ 19 KB < 48 KB auf beiden Karten (kein Opt-in; `static_assert` und Prüfung beim Start). Geladen werden sie in Schritt 1 zusammen mit der Flächentabelle; die Sicht im Shared Memory hat dieselben Geisterfelder wie `surface_table(v)` mit `wavelengths = 1`.
 
-**Abweichung CPU/GPU:** Die Pro-Strahl-Rechnung ist dieselbe Funktion; Unterschiede kommen aus FMA-Kontraktion, `sin`/`cos` der CUDA-Bibliothek und der Summationsreihenfolge des Kolbens (≈ 10⁻¹⁶·OPL); der Faktor `residual_scale` ist bitgleich. Für je 1.000 gestörte Varianten der Testsysteme liegen alle Strahlen innerhalb `kCpuGpuFp64` = 10⁻¹² mm (OPD; Residuen r_k = u_k·OPD_k mit u_k = s_{f,l}√(W_i V_j) entsprechend innerhalb u_k·10⁻¹², Testhilfe `residual_units`), außer einzelnen schlecht konditionierten Strahlen (nahe Totalreflexion oder streifend, |OPD| von mm), die relativ ≤ 1,3·10⁻¹² abweichen (`kCpuGpuFp64Relative`, Test `CudaResiduals.MatchCpuForPerturbedVariants`).
+**Abweichung CPU/GPU:** Die Pro-Strahl-Rechnung ist dieselbe Funktion; Unterschiede kommen aus FMA-Kontraktion, `sin`/`cos` der CUDA-Bibliothek und der Summationsreihenfolge des Kolbens (≈ 10⁻¹⁶·OPL); der Faktor `residual_scale` ist bitgleich. Für je 1.000 gestörte Varianten der Testsysteme liegen alle Strahlen innerhalb `kCpuGpuFp64` = 10⁻¹² mm (OPD; Residuen r_k = u_k·OPD_k mit u_k = s_{f,l}√(W_i V_j) entsprechend innerhalb u_k·10⁻¹², Testhilfe `residual_units`), außer einzelnen schlecht konditionierten Strahlen (nahe Totalreflexion oder streifend, |OPD| von mm), die relativ ≤ 1,3·10⁻¹² abweichen (`kCpuGpuFp64Relative`, Test `CudaResiduals.MatchCpuForPerturbedVariants`). Im weichen Modus (M4-T2) gelten für Tupel mit weich versagten Strahlen absolut `kCpuGpuSoftTuple` = 10⁻⁹ mm (gemessen ≤ 1,35·10⁻¹⁰ mm: die fortgesetzten Strahlen laufen weit außerhalb des Systems und wirken über den Kolben auf das Tupel) und für die Strafgrößen relativ `kCpuGpuPenaltyRelative` = 10⁻⁶ (gemessen ≤ 5,6·10⁻¹⁰, ein Strahl tief im Versagensbereich 7·10⁻⁸).
 
 ### Host-API
 
@@ -465,6 +481,7 @@ class DeviceResiduals {                  // Ausgabepuffer auf dem Gerät, RAII, 
     const double* device_residuals() const; const uint8_t* device_status() const;
     const double* device_opd() const;     // für Folgekernel (M3), gültig bis zum nächsten run
     const double* device_extrema() const; // [V][S][2], nur mit extrema (M2-T3)
+    int64_t rays_per_variant(), penalty_rows(), stride();   // Ablage der Ausgabe (M4-T2)
 };
 ResidualResult run_residuals(const DeviceSystemBatch&, const ResidualLayout&,
                              const ResidualRunOptions& = {});   // ein Lauf mit Download
@@ -472,7 +489,7 @@ ResidualResult run_residuals(const DeviceSystemBatch&, const ResidualLayout&,
 
 `run` legt einen Puffer an (ein `cudaMalloc`, Layout `make_output_layout` plus `ResidualFieldPlan[F]`) oder verwendet ihn weiter, lädt die Feldablage hoch, startet den Kernel auf dem Gerät des Batches, prüft `cudaGetLastError` und wartet auf das Ende (`cudaDeviceSynchronize`; Streams und Überlappung sind Sache von M2-T4/M7). Fehler: `CudaError` (CUDA), `std::invalid_argument` (Layout passt nicht, zu großes Grid, negative Zahl weiterer Residuen), `std::logic_error` (leerer Batch, Download ohne Lauf). Die Werte der Varianten prüft der Aufrufer auf dem Host (`validate_values`; `check_pupil_modes` läuft beim Upload). Die [TraceEngine](#host-api-traceengine-m2-t4) (M2-T4) kapselt Gerätewahl, Prüfung, Tranchen und diese Klasse; Programme benutzen nur sie.
 
-**Gewichte (M4-T1):** `residual_scale(view, f, l)` = √(ŵ_f·ŵ_λ)/λ_ref mit auf Summe 1 normierten Gewichten (CPU und Kernel gemeinsam, einmal pro Block in den Rechentyp gewandelt); die Residuen sind damit in Wellen bei λ_ref, die OPD-Ausgabe bleibt in mm ([numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)). **Erweiterungspunkte:** Weiches Versagen (M4-T2) ersetzt die harte Maske in den Durchläufen 1 und 2 und hängt Strafresiduen an. Der Kernel `MERIT` (M2-T3, unten) bildet aus denselben Größen die Quadratsumme pro Block; Laden, Kolben und Reduktionen teilen sich beide Kernel in `src/cuda/wavefront_block.hpp`. Mit `extrema` liefert auch `RESIDUALS` die [Max-Reduktionen](#max-reduktionen-m2-t3) (`ResidualResult::extrema`, bitgleich zu denen aus `MERIT`).
+**Gewichte (M4-T1):** `residual_scale(view, f, l)` = √(ŵ_f·ŵ_λ)/λ_ref mit auf Summe 1 normierten Gewichten (CPU und Kernel gemeinsam, einmal pro Block in den Rechentyp gewandelt); die Residuen sind damit in Wellen bei λ_ref, die OPD-Ausgabe bleibt in mm ([numerik.md, Abschnitt 7](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)). **Weiches Versagen (M4-T2):** Kernelparameter `soft` und `fail_weight` aus `ResidualLayout::settings()`; die Maske in den Durchläufen 1 und 2 ist `in_piston(Status)` statt `Status == Ok`, die Strafresiduen entstehen in Durchlauf 1. Der Kernel `MERIT` (M2-T3, unten) bildet aus denselben Größen die Quadratsumme pro Block; Laden, Kolben und Reduktionen teilen sich beide Kernel in `src/cuda/wavefront_block.hpp`. Mit `extrema` liefert auch `RESIDUALS` die [Max-Reduktionen](#max-reduktionen-m2-t3) (`ResidualResult::extrema`, bitgleich zu denen aus `MERIT`).
 
 **Erste Durchsatzzahl** (RTX 3090, FP64, Test `CudaResiduals.LargeBatch`, kein Benchmark): 10.000 Varianten von `testsystem_mehrlinser.json` (S = 8, 680 Strahlen pro Variante) in ca. 26 ms für den Kernel allein, also ca. 2,6·10⁸ Strahlen/s; über die TraceEngine mit Upload und Download (seit M2-T4) ca. 33 ms, 2,1·10⁸ Strahlen/s. Messungen über Flächenzahl und Batchgröße: [benchmarks.md](benchmarks.md) (M2-T6, `bench/trace_throughput`).
 
@@ -482,9 +499,9 @@ Implementiert in `src/cuda/merit.cu` (Kernel `merit_kernel<R, kExtrema>` und `me
 
 **Definition.** Pro Variante v
 
-F_v = Σ_k r_k² (+ E_v),
+F_v = Σ_k r_k² + Σ_k p_k² (+ E_v),
 
-über alle R_v Strahlresiduen in der Ablage von `ResidualLayout`, mit denselben r_k wie im Kernel `RESIDUALS` (r_k = s_{f,l}·√(W_i V_j)·OPD_k, hartes Versagen: versagte Strahlen r_k = 0, Tupel ohne gültigen Strahl alle r_k = 0). E_v ist der optionale Anteil weiterer Residuen (Paraxial, Strafen ab M3/M4), den der Aufrufer pro Variante liefert (`MeritRunOptions::extra_merit` bzw. `TraceSettings::extra_merit`); der Kernel berechnet ihn nicht. Zusätzlich `failed[v]` = Zahl der Strahlen mit Status ≠ Ok. **Eine Variante ohne gültigen Strahl hat F_v = 0 (+ E_v)**; sie ist nur an `failed[v] = R_v` erkennbar, deshalb muss jeder Aufrufer (Liniensuche, Screening) `failed` prüfen, bis M4-T2 Strafresiduen für versagte Strahlen einführt.
+über alle R_v Strahlresiduen in der Ablage von `ResidualLayout`, mit denselben r_k wie im Kernel `RESIDUALS` (r_k = s_{f,l}·√(W_i V_j)·OPD_k; hart versagte Strahlen r_k = 0, Tupel ohne Strahl im Kolben alle r_k = 0) und im weichen Modus (M4-T2) den Strafresiduen p_k. E_v ist der optionale Anteil weiterer Residuen (Paraxial usw.), den der Aufrufer pro Variante liefert (`MeritRunOptions::extra_merit` bzw. `TraceSettings::extra_merit`); der Kernel berechnet ihn nicht. Zusätzlich `failed[v]` = Zahl der Strahlen mit Status ≠ Ok (weich und hart) und `hard_failed[v]` = Zahl der hart versagten (seit M4-T2; im harten Modus gleich `failed[v]`). Im harten Modus hat **eine Variante ohne gültigen Strahl F_v = 0 (+ E_v)** und ist nur an `failed[v] = R_v` erkennbar; im weichen Modus tragen versagte Strahlen Strafen.
 
 **Ablauf im Block** (b = (v·F + f)·L + l, 128 Threads, wie RESIDUALS):
 
@@ -492,9 +509,9 @@ F_v = Σ_k r_k² (+ E_v),
    Geisterplatten (M4-T5) lädt `load_block_ghosts` wie in RESIDUALS an den Anfang des dynamischen Shared Memory ((G·K + 2G)·8 Byte, höchstens 17 KiB).
 2. Durchlauf 1: `batch_ray_opl` pro Stützstelle; OPL und Status in den **Shared Memory** (dynamisch hinter den Geisterdaten, n_max·9 Byte, n_max = größte Stützstellenzahl eines Feldes), Teilsummen (W_k, W_k·OPL_k) der gültigen Strahlen in aufsteigender Reihenfolge der eigenen Stützstellen.
 3. Kolben per `block_piston` – dieselbe Funktion, Threadzuordnung und Reihenfolge wie in RESIDUALS. Daher sind Kolben, OPD und r_k in beiden Kernels **bitgleich**; MERIT braucht keinen Residuenvektor im globalen Speicher.
-4. Durchlauf 2: r_k aus der OPL im Shared Memory, Teilsumme Σ r_k² pro Thread in aufsteigender Reihenfolge, Zähler versagter Strahlen.
-5. Blocksumme `block_sum`: Baumreduktion im Warp mit `__shfl_down_sync` (Abstände 16, 8, 4, 2, 1, volle Maske), Thread 0 summiert die 4 Warp-Summen in fester Reihenfolge; Ablage `merit_partial[b]` und `failed_rays_partial[b]` (int32).
-6. **Zweite Stufe** (`merit_finalize_kernel`, ein Thread pro Variante): F_v = ((Σ_{b = f·L + l} partial in der Reihenfolge f, dann l) + E_v), `failed[v]` als int64.
+4. Durchlauf 2: r_k aus der OPL im Shared Memory, Teilsumme Σ r_k² pro Thread in aufsteigender Reihenfolge, Zähler versagter und hart versagter Strahlen. Im weichen Modus hat jeder Thread schon in Durchlauf 1 Σ p_k² seiner Stützstellen gebildet (in aufsteigender Reihenfolge, ohne zusätzlichen Shared Memory) und addiert sie zuletzt zu seiner Teilsumme.
+5. Blocksumme `block_sum`: Baumreduktion im Warp mit `__shfl_down_sync` (Abstände 16, 8, 4, 2, 1, volle Maske), Thread 0 summiert die 4 Warp-Summen in fester Reihenfolge; Ablage `merit_partial[b]`, `failed_rays_partial[b]` und `hard_failed_rays_partial[b]` (int32).
+6. **Zweite Stufe** (`merit_finalize_kernel`, ein Thread pro Variante): F_v = ((Σ_{b = f·L + l} partial in der Reihenfolge f, dann l) + E_v), `failed[v]` und `hard_failed[v]` als int64.
 
 Keine Gleitkomma-Atomics (ADR-0007). Die Summationsreihenfolge hängt nur von `kMeritThreads` = `kResidualThreads` = 128, F und L ab, nicht von der Batchgröße, der Lage der Variante oder der Aufteilung in Tranchen: zehn Läufe sind bitgleich (Test `CudaMerit.RepeatedRunsAreBitIdentical`), ebenso dieselben Varianten an anderer Stelle eines Batches und über mehrere Tranchen (`TraceEngine.MeritTranchesMatchSingleRun`).
 
@@ -529,6 +546,7 @@ class DeviceMerit {                      // Ausgabepuffer auf dem Gerät, RAII, 
     void run(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
     MeritResult download() const; void download(MeritResult&) const; void release() noexcept;
     const double* device_merit() const; const int64_t* device_failed() const;
+    const int64_t* device_hard_failed() const;   // M4-T2
     const double* device_extrema() const; // [V][S][2] oder nullptr
 };
 MeritResult run_merit(const DeviceSystemBatch&, const ResidualLayout&, const MeritRunOptions& = {});
@@ -537,7 +555,7 @@ int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0,
 
 // include/mikroptim/batch/batch_merit.hpp, batch_extrema.hpp (Host, auch ohne CUDA)
 struct MeritResult { int variants; int64_t rays_per_variant; std::vector<double> merit;  // [V]
-                     std::vector<int64_t> failed; SurfaceExtremaResult extrema; };
+                     std::vector<int64_t> failed, hard_failed; SurfaceExtremaResult extrema; };
 struct SurfaceExtremaResult { int variants, surfaces; std::vector<double> values;   // [V][S][2]
     double max_height(v, s), min_cos_incidence(v, s), max_incidence_angle(v, s); };
 MeritResult merit_cpu(const SystemBatchHost&, int v, const ResidualLayout&, bool extrema = true);
@@ -556,7 +574,7 @@ Pro Variante v und Fläche s über alle **gültigen** Strahlen (Status Ok, einsc
 - {0} **größte Strahlhöhe** h = √(x² + y²) [mm] im Schnittpunkt mit Fläche s (lokale Koordinaten),
 - {1} **kleinster cos I** = **d**·**N**, **d** = Richtung vor der Brechung, **N** = (−c x, −c y, 1 − c z) die Einheitsnormale (numerik.md, Abschnitt 5), also der größte Einfallswinkel I = arccos(cos I) (`max_incidence_angle` begrenzt cos I auf [−1, 1]).
 
-**Flächen sind Tabellenflächen** (wie `failed_surface` seit M4-T5): Dateiflächen plus Geisterplatten in Tracerichtung, s = 0 … S − 1 der `SurfaceTableView`; die Zuordnung zu Dateiflächen liefert `SurfaceMap` (`make_surface_map`, Modell). Eine Geisterplatte ist eine Ebene (c = 0): Höhe im Durchstoßpunkt, cos I = d_z vor dem Phasenschritt. Fläche 0 (Blende, keine Brechung): Startpunkt in ihrer Ebene und cos I = d_z des Startstrahls (c = 0). Versagte Strahlen tragen nichts bei, auch nicht zu den Flächen vor der versagenden (hartes Versagen wie M2-T2; weiches Versagen M4-T2 kann hier Strafen anhängen). Ohne gültigen Strahl bleiben die neutralen Elemente h = 0 und cos I = 1. Gespeichert wird cos I statt des Winkels: die Reduktion bleibt exakt und ohne `acos` im Kernel, und eine Nebenbedingung „I ≤ I_max“ lautet cos I ≥ cos I_max (M4-T3).
+**Flächen sind Tabellenflächen** (wie `failed_surface` seit M4-T5): Dateiflächen plus Geisterplatten in Tracerichtung, s = 0 … S − 1 der `SurfaceTableView`; die Zuordnung zu Dateiflächen liefert `SurfaceMap` (`make_surface_map`, Modell). Eine Geisterplatte ist eine Ebene (c = 0): Höhe im Durchstoßpunkt, cos I = d_z vor dem Phasenschritt. Fläche 0 (Blende, keine Brechung): Startpunkt in ihrer Ebene und cos I = d_z des Startstrahls (c = 0). Versagte Strahlen tragen nichts bei, auch nicht zu den Flächen vor der versagenden (nur Strahlen mit Status Ok, in beiden Modi des Strahlversagens; weich versagte Strahlen sind fortgesetzt und laufen nicht durch das System). Ohne gültigen Strahl bleiben die neutralen Elemente h = 0 und cos I = 1. Gespeichert wird cos I statt des Winkels: die Reduktion bleibt exakt und ohne `acos` im Kernel, und eine Nebenbedingung „I ≤ I_max“ lautet cos I ≥ cos I_max (M4-T3).
 
 **Pro-Strahl-Teil** (`include/mikroptim/trace/surface_extrema.hpp`, header-only, `MKO_HD`): `trace_ray`, `trace_to_reference_sphere` und `batch_ray_opl` nehmen einen optionalen Beobachter (Template-Parameter, Standard `NoSurfaceObserver`; ohne Beobachter entfällt der Aufruf zur Übersetzungszeit). Er wird nach jeder passierten Fläche mit (s, wirksame Krümmung `surface_curvature(kind, c)`, Richtung vor der Brechung, Strahl im Schnittpunkt) aufgerufen, für s = 0 mit dem Startzustand. `RaySurfaceRecord<R>` legt pro Strahl x² + y² und cos I ab; erst nach dem Status Ok übernimmt `SurfaceExtrema<R>::add_ray` die Werte (Maximum der Höhenquadrate, Minimum von cos I mit `extremum_max`/`extremum_min`). Dieselben Bausteine nutzen später M4-T3 (mechanische Nebenbedingungen) und M5 (eigener Beobachter für die Adjungierte).
 
@@ -759,13 +777,13 @@ Jedes Feld wird auf A = `kBatchAlignment` = 256 Byte aufgerundet, ⌈x⌉_A = A�
 - **Batch** (`make_batch_layout(topology, V).total_bytes`):
   ⌈S⌉ + ⌈4G⌉ + ⌈8G⌉ + 2·⌈8L⌉ + ⌈8F⌉ + 2·⌈8VS⌉ + ⌈8VSL⌉ + ⌈8V⌉ + 2·⌈8VF⌉ + ⌈8VGK⌉ + ⌈8VGL⌉ + ⌈8VS⌉ + ⌈8VG⌉ (jeweils ⌈·⌉_A, leere Felder 0; die letzten beiden sind die Brechzahlen bei λ_ref, ab M3-T3).
 - **Ausgaben** (`make_output_layout(topology, V, OutputRequest, extra)`), jede einzeln abschaltbar:
-  Residuen ⌈8V(R_v + E)⌉, Status pro Strahl ⌈V·R_v⌉ (1 Byte), rohe OPD pro Strahl ⌈8V·R_v⌉ (nur auf Anforderung, `opd`, ab M2-T2), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉ + versagte Strahlen ⌈8V⌉ (int64) + pro Block ⌈4VB⌉ (int32, ab M2-T3, `failed_rays`, `failed_rays_partial`), Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
+  Residuen ⌈8V(R_v + P_v + E)⌉ (P_v = R_v Strafresiduen im weichen Modus, M4-T2, sonst 0), Status pro Strahl ⌈V·R_v⌉ (1 Byte), rohe OPD pro Strahl ⌈8V·R_v⌉ (nur auf Anforderung, `opd`, ab M2-T2), Merit ⌈8V⌉ + Teilsummen pro Block ⌈8VB⌉ + versagte Strahlen ⌈8V⌉ (int64) + pro Block ⌈4VB⌉ (int32, ab M2-T3, `failed_rays`, `failed_rays_partial`), dasselbe für die hart versagten (ab M4-T2, `hard_failed_rays`, `hard_failed_rays_partial`), Max-Reduktionen (Strahlhöhe, Einfallswinkel) ⌈16VS⌉ + pro Block ⌈16VBS⌉, Arbeitsspeicher des Aufrufers ⌈V·extra⌉. E = weitere Residuen pro Variante (Paraxial, Strafen).
 - **Strahlen pro Variante:** `rays_per_variant(F, L, N·M, F_Achse, N)` = L·(F_Achse·N + (F − F_Achse)·N·M), wenn die F_Achse Achsfelder (an beliebiger Stelle) die Achsquadratur (M = 1) nutzen (`sample_count` in `include/mikroptim/pupil/quadrature.hpp`); gleich `ResidualLayout::rays_per_variant()`.
 - `estimate_device_bytes` = Batch + Ausgaben. Der Kernel `RESIDUALS` legt seine Ausgaben nach diesem Schema an (Residuen, Status, optional OPD und Max-Reduktionen), der Kernel `MERIT` ebenso (Merit, Teilsummen, versagte Strahlen, optional Max-Reduktionen; keine Residuen, kein Status); `extra_merit` von `MERIT` belegt 8 Byte pro Variante (in der TraceEngine als `extra_bytes_per_variant`).
 
 Größte Batchgröße: `max_variants(free, topology, outputs, reserve, extra)` sucht (Bisektion, die Abschätzung ist monoton in V) das größte V mit Abschätzung ≤ free − max(`min_bytes`, `fraction`·free); Standardreserve max(256 MiB, 5 %) für Kontext, Kernel-Stacks, Local Memory (`TraceRecord`) und Fragmentierung. Zusätzlich gilt V·F·L ≤ 2³¹ − 1 (größtes Grid). Auf dem Gerät: `max_variants_on_device` mit `device_memory_info().free_bytes`; nie fest verdrahten (AGENTS.md, Abschnitt 7). Die TraceEngine bestimmt daraus die Tranchengröße (zusätzlich eigene Puffer, künstliche Grenze und Feldablage, Abschnitt [Host-API TraceEngine](#host-api-traceengine-m2-t4)).
 
-Beispiel (Test `BatchMemory.MaxVariantsRespectsLimit`): Zielsystem-Topologie S = 30, L = 7, F = 5 (ein Achsfeld), G = 6, K = 8, N = 10, M = 8 ergibt 2.310 Strahlen und ca. 42,0 kB pro Variante mit allen Ausgaben, also ca. 391.000 Varianten bei 16 GiB und 586.000 bei 24 GiB freiem Speicher. Der Batch selbst ist klein (ca. 3,3 kB pro Variante); die Ausgaben dominieren.
+Beispiel (Test `BatchMemory.MaxVariantsRespectsLimit`): Zielsystem-Topologie S = 30, L = 7, F = 5 (ein Achsfeld), G = 6, K = 8, N = 10, M = 8 ergibt 2.310 Strahlen und ca. 42,0 kB pro Variante mit allen Ausgaben, also ca. 391.000 Varianten bei 16 GiB und 586.000 bei 24 GiB freiem Speicher (ohne Strafresiduen; im weichen Modus kommen im Modus RESIDUALS 8·R_v = 18,5 kB pro Variante dazu, MERIT braucht keine). Der Batch selbst ist klein (ca. 3,3 kB pro Variante); die Ausgaben dominieren.
 
 ## Host-API TraceEngine (M2-T4)
 
@@ -775,13 +793,13 @@ Einziger Einstieg für Programme, die auf der GPU tracen (CLI ab M2-T5, Optimier
 namespace mko::cuda {
 enum class TraceMode { Residuals, Merit /* M2-T3 */ };
 struct EngineOptions { std::optional<size_t> memory_limit_bytes; MemoryReserve reserve; };
-struct TraceSettings { ResidualSettings quadrature;   // N × M
+struct TraceSettings { ResidualSettings quadrature;   // N × M, Strahlversagen und w_fail (M4-T2)
                        bool opd = false, status = true; int64_t extra_residuals = 0;   // nur RESIDUALS
                        bool extrema = false;                     // beide Modi (M2-T3)
                        std::span<const double> extra_merit;     // nur MERIT: leer oder [V]
                        Precision precision = Precision::Fp64; }; // beide Modi: Fp64 | Df64 (M7-T1)
 struct TraceRunInfo { int variants, tranches, tranche_variants; size_t budget_bytes, device_bytes; };
-struct DeviceTranche { int first, count; int64_t rays_per_variant, stride;   // M3-T2
+struct DeviceTranche { int first, count; int64_t rays_per_variant, penalty_rows, stride;   // M3-T2, M4-T2
                        const double* residuals; const uint8_t* status; const double *opd, *extrema; };
 using DeviceTrancheFn = std::function<void(const DeviceTranche&)>;
 struct TraceOutput { TraceMode mode; ResidualLayout layout;
@@ -933,7 +951,8 @@ FdJacobian fd_jacobian_gpu(TraceEngine&, const VariableSet&, const SystemBatchHo
 
 Verfahren, Kriterien und Messungen: [optimierung.md](optimierung.md#verfahren-ab-m3-t4); Abweichung vom Plan (kein cuBLAS/cuSOLVER): [ADR-0010](adr/0010-normalgleichungen-ohne-cublas.md).
 
-- **Steuerlogik** `levenberg_marquardt` (`src/optim/levenberg_marquardt.cpp`, `Mikroptim::optim`): Zustand pro Lauf auf dem Host, Schritte (Cholesky mit aktiver Menge) pro Lauf unabhängig auf Host-Threads. Rechnungen an Punkten über die Schnittstelle `LmBackend` (`normal_equations`, `merit`; virtuell, nur Host-Code).
+- **Steuerlogik** `levenberg_marquardt` (`src/optim/levenberg_marquardt.cpp`, `Mikroptim::optim`): Zustand pro Lauf auf dem Host, Schritte (Cholesky mit aktiver Menge) pro Lauf unabhängig auf Host-Threads. Rechnungen an Punkten über die Schnittstelle `LmBackend` (`normal_equations`, `merit` mit versagten und hart versagten Strahlen seit M4-T2; virtuell, nur Host-Code).
+- **Optische Treiber** `optimize_lm_cpu`, `cuda::optimize_lm_gpu`, `cuda::optimize_lm_multi_gpu`: gemeinsamer Ablauf `optimize_lm_rounds` mit einer Fabrik für das Backend einer Runde; im weichen Modus das äußere Strafverfahren (M4-T2): Läufe mit versagten Strahlen starten an ihrem Endpunkt mit w_fail · `fail_weight_factor` neu (eigener Backend-Aufbau pro Runde, Vorlagen per `lm_template_batch`), bis kein Strahl mehr versagt oder `max_fail_weight` erreicht ist; die GPU-Backends summieren ihre Statistik (pro Slot) über die Runden.
 - **CPU-Backend** `CpuLmBackend`: FD-Batch wie `fd_jacobian_cpu` (Varianten auf Host-Threads, bitgleich), `normal_equations_host`, `merit_cpu` plus Σ e².
 - **GPU-Backend** `cuda::GpuLmBackend` (`src/cuda/levenberg_marquardt.cpp`, reines Host-C++ in `Mikroptim::cuda`): Teilstücke aus ganzen Läufen nach dem Speicher (J höchstens die Hälfte des nutzbaren Speichers), pro Teilstück `DeviceFdJacobian::compute` → `DeviceNormalEquations::compute` → Download von A und g; Merit über `TraceEngine::run` im Modus MERIT mit `extra_merit`.
 - **Kernel `gram_kernel`** (`src/cuda/normal_equations.cu`): G = [J r₀]ᵀ[J r₀] pro Lauf, (P + 1) × (P + 1) spaltenweise, Abstand (P + 1)². Grid: Läufe · T(T + 1)/2 Blöcke (T = ⌈(P + 1)/16⌉ Kacheln, nur Kachelpaare tp ≤ tq), Block 16 × 16 Threads, Shared Memory 2 · 16 · 17 · 8 = 4.352 Byte. Thread (ty, tx) lädt Zeile r₀ + tx der Spalten 16·tp + ty und 16·tq + ty (zusammenhängend über tx) und führt die FMA-Kette für G(16·tp + ty, 16·tq + tx) über die Zeilen in aufsteigender Reihenfolge fort; die letzte Kachel endet bei R − 1 (kein Polster in der Summe). Keine Reduktion über Threads, keine Atomics; bitgleich zu `normal_equations_host`. Puffer in `DeviceNormalEquations` (8·Läufe·(P + 1)² Byte), wiederverwendet.
@@ -1002,7 +1021,7 @@ LmResult optimize_lm_multi_gpu(MultiTraceEngine&, const VariableSet&, const Syst
 
 **Schätzungen pro Art:** Das Verhältnis der Geräte hängt von Modus und Zahlentyp ab (RTX 3090 in df64 etwa 4-mal so schnell wie in FP64, die P100 in FP64 schneller als in df64, [hardware.md](hardware.md)), deshalb gibt es eine Schätzung pro (`WorkKind`, `Precision`). Ohne Schätzung gelten gleiche Anteile (gespeichert wird eine Schätzung erst nach einer Kalibrierung oder einem Lauf, der sie tatsächlich aktualisiert); `Jacobian` (Jacobi-Matrizen und Normalgleichungen im LM, ohne eigene Kalibrierung) übernimmt dann die Schätzung von `Residuals`. Die Schätzungen leben so lange wie die Engine; `set_shares` setzt sie z. B. aus einer früheren Sitzung.
 
-**LM auf mehreren GPUs:** `MultiGpuLmBackend` besitzt ein `GpuLmBackend` pro Slot. `normal_equations` und `merit` teilen die Läufe des Aufrufs nach `plan(·, Jacobian bzw. Merit, Fp64)` in zusammenhängende Bereiche, rechnen sie mit `run_parallel` und melden die Zeiten an `record`. Da die Ergebnisse eines Laufs nur von seinem Index und seinem Punkt abhängen (Vertrag von `LmBackend`), ist `optimize_lm_multi_gpu` bitgleich zu `optimize_lm_gpu` (Test `MultiTraceEngine.LmBitIdenticalToSingleGpu`). Die Zusatzresiduen werden dabei aus mehreren Threads gleichzeitig ausgewertet (`make_paraxial_residuals` ist dafür geeignet). Eine eigenständige mehrgerätige FD-Jacobi (`fd_jacobian_gpu` mit Download) gibt es nicht; der LM ist ihr einziger Verbraucher.
+**LM auf mehreren GPUs:** `MultiGpuLmBackend` besitzt ein `GpuLmBackend` pro Slot. `normal_equations` und `merit` teilen die Läufe des Aufrufs nach `plan(·, Jacobian bzw. Merit, Fp64)` in zusammenhängende Bereiche, rechnen sie mit `run_parallel` und melden die Zeiten an `record`. Da die Ergebnisse eines Laufs nur von seinem Index und seinem Punkt abhängen (Vertrag von `LmBackend`), ist `optimize_lm_multi_gpu` bitgleich zu `optimize_lm_gpu` (Test `MultiTraceEngine.LmBitIdenticalToSingleGpu`); auch mit dem äußeren Strafverfahren des weichen Versagens (M4-T2): `optimize_lm_multi_gpu` läuft über `optimize_lm_rounds` mit einem `MultiGpuLmBackend` pro Runde, Statistik pro Slot über die Runden summiert (Test `CudaSoftFailure.MultiGpuRoundsBitIdenticalToSingleGpu`). Die Zusatzresiduen werden dabei aus mehreren Threads gleichzeitig ausgewertet (`make_paraxial_residuals` ist dafür geeignet). Eine eigenständige mehrgerätige FD-Jacobi (`fd_jacobian_gpu` mit Download) gibt es nicht; der LM ist ihr einziger Verbraucher.
 
 **Fehler:** Ungültige Argumente werfen vor jeder Gerätearbeit wie bei `TraceEngine`. Scheitert ein Slot, rechnen die anderen ihren Bereich zu Ende (bei `run_on_device` ohne weitere Rückrufe: Der nächste Rückruf bricht den Slot ab), alle Threads werden zusammengeführt, dann wirft die Engine die Ausnahme des kleinsten fehlerhaften Slots mit gleichem Typ (`CudaError`, `std::invalid_argument`, …) und vorangestelltem „Gerät d (Name, Slot k): “. Ausnahmen aus Rückrufen des Aufrufers werden unverändert weitergereicht. Danach bleibt die Engine benutzbar.
 

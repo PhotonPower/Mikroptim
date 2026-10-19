@@ -40,7 +40,7 @@ public:
     void normal_equations(std::span<const int> runs, std::span<const double> x, std::span<double> a,
                           std::span<double> g) override;
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
-               std::span<std::int64_t> failed) override;
+               std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override;
 
     // Statistik pro Slot (Summen über alle Aufrufe) und über alle Slots summiert
     // (max_runs_per_chunk als Maximum).
@@ -59,7 +59,9 @@ private:
 };
 
 // Optimiert runs = x0.size()/P Läufe auf allen Geräten von `engines` (Rechentyp FP64); sonst
-// wie optimize_lm_gpu. `stats` (optional) erhält die Statistik pro Slot.
+// wie optimize_lm_gpu (optimize_lm_rounds, also mit dem äußeren Strafverfahren des weichen
+// Versagens, M4-T2; ein MultiGpuLmBackend pro Runde). `stats` (optional) erhält die Statistik
+// pro Slot, summiert über alle Runden.
 LmResult optimize_lm_multi_gpu(MultiTraceEngine& engines, const VariableSet& set,
                                const SystemBatchHost& base, std::span<const double> x0,
                                const LmOptions& options = {},

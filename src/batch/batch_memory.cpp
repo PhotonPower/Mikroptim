@@ -94,14 +94,15 @@ OutputLayout make_output_layout(const BatchTopology& t, int variants, const Outp
                                 std::size_t extra_bytes_per_variant) {
     validate_topology(t);
     check_variants(variants);
-    if (out.rays_per_variant < 0 || out.extra_residuals < 0) {
+    if (out.rays_per_variant < 0 || out.extra_residuals < 0 || out.penalty_residuals < 0) {
         throw std::invalid_argument("Speicherabschätzung: negative Ausgabegröße");
     }
     const std::size_t V = to_size(variants);
     const std::size_t S = to_size(t.surfaces);
     const std::size_t blocks = to_size(t.fields) * to_size(t.wavelengths); // pro Variante
     const std::size_t rays = to_size(out.rays_per_variant);
-    const std::size_t residuals = add_sat(rays, to_size(out.extra_residuals));
+    const std::size_t residuals =
+        add_sat(add_sat(rays, to_size(out.penalty_residuals)), to_size(out.extra_residuals));
     constexpr std::size_t d = sizeof(double);
 
     OutputLayout o;
@@ -113,6 +114,9 @@ OutputLayout make_output_layout(const BatchTopology& t, int variants, const Outp
     o.merit_partial = place(end, out.merit ? mul_sat(mul_sat(V, blocks), d) : 0);
     o.failed_rays = place(end, out.merit ? mul_sat(V, sizeof(std::int64_t)) : 0);
     o.failed_rays_partial =
+        place(end, out.merit ? mul_sat(mul_sat(V, blocks), sizeof(std::int32_t)) : 0);
+    o.hard_failed_rays = place(end, out.merit ? mul_sat(V, sizeof(std::int64_t)) : 0);
+    o.hard_failed_rays_partial =
         place(end, out.merit ? mul_sat(mul_sat(V, blocks), sizeof(std::int32_t)) : 0);
     o.surface_max = place(end, out.surface_max ? mul_sat(V, 2 * S * d) : 0);
     o.surface_max_partial =

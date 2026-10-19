@@ -23,13 +23,15 @@
 namespace mko::test {
 
 // Residuenfunktion r(x) ∈ ℝ^m mit analytischer Jacobi-Matrix (m × P spaltenweise; `jac` ist leer,
-// wenn nur r gebraucht wird) und optionaler Zahl „versagter Strahlen“ an x.
+// wenn nur r gebraucht wird) und optionaler Zahl „versagter Strahlen“ an x, davon hart versagt
+// (ohne Funktion: alle versagten).
 struct DenseProblem {
     int rows = 0;
     int variables = 0;
     std::function<void(std::span<const double> x, std::span<double> r, std::span<double> jac)>
         evaluate;
     std::function<std::int64_t(std::span<const double> x)> failed;
+    std::function<std::int64_t(std::span<const double> x)> hard_failed;
 };
 
 // Backend aus einer DenseProblem: A und g mit normal_equations_host, F = Σ r² aufsteigend.
@@ -52,7 +54,7 @@ public:
     }
 
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
-               std::span<std::int64_t> failed) override {
+               std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override {
         const auto P = static_cast<std::size_t>(problem_.variables);
         std::vector<double> r(static_cast<std::size_t>(problem_.rows));
         for (std::size_t i = 0; i < runs.size(); ++i) {
@@ -64,6 +66,7 @@ public:
             }
             merit[i] = f;
             failed[i] = problem_.failed ? problem_.failed(xi) : 0;
+            hard_failed[i] = problem_.hard_failed ? problem_.hard_failed(xi) : failed[i];
             ++merit_points;
         }
     }
@@ -133,12 +136,14 @@ inline bool same_bits(double a, double b) {
     return std::memcmp(&a, &b, sizeof(double)) == 0;
 }
 
-// Ergebnisse zweier Läufe bitgleich (x, F, Verlauf, Zähler, Status).
+// Ergebnisse zweier Läufe bitgleich (x, F, Verlauf, Zähler, Status, Strafverfahren M4-T2).
 inline bool same_run(const LmRunResult& a, const LmRunResult& b) {
     if (a.x.size() != b.x.size() || a.history.size() != b.history.size() || a.status != b.status ||
         a.iterations != b.iterations || a.accepted != b.accepted || a.jacobians != b.jacobians ||
-        a.failed_rays != b.failed_rays || !same_bits(a.merit, b.merit) ||
-        !same_bits(a.damping, b.damping) || !same_bits(a.gradient_norm, b.gradient_norm)) {
+        a.failed_rays != b.failed_rays || a.hard_failed_rays != b.hard_failed_rays ||
+        a.penalty_rounds != b.penalty_rounds || !same_bits(a.fail_weight, b.fail_weight) ||
+        !same_bits(a.merit, b.merit) || !same_bits(a.damping, b.damping) ||
+        !same_bits(a.gradient_norm, b.gradient_norm)) {
         return false;
     }
     for (std::size_t k = 0; k < a.x.size(); ++k) {

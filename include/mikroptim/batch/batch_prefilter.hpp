@@ -123,6 +123,11 @@ void check_prefilter_options(const PrefilterOptions& options);
 //   (c) L_v > max_merit_factor · min_u U_u  über die Varianten u ohne unsichere Strahlen, die (a)
 //       nicht erfüllen und mindestens einen gültigen Strahl haben.
 //
+// Weiches Versagen (layout.soft_failure(), M4-T2): Die FP64-Merit enthält dann Strafresiduen
+// und die Wellenfrontresiduen weich versagter Strahlen. L_v bleibt eine untere Schranke (beide
+// Anteile >= 0, mehr Strahlen im Kolben vergrößern die Quadratsumme); U_v ist +∞ für Varianten
+// mit sicher versagten Strahlen. Der Vorfilter selbst rechnet hart (Strahlen nur in float).
+//
 // `extra_merit` (E_v) ist leer oder hat V Werte in FP64 (z. B. Σ e² der paraxialen
 // Nebenbedingungen). `batch` und `layout` liefern R_v und s_(f,l). Wirft std::invalid_argument
 // bei unpassenden Größen oder ungültigen Optionen (Brüche oder Faktoren < 0 bzw. NaN, η < 0,

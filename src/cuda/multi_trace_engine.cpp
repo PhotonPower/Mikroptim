@@ -527,7 +527,7 @@ void MultiTraceEngine::run(const SystemBatchHost& batch, TraceMode mode,
     // ---- Host-Ausgabe anlegen (wie TraceEngine::run) ----
     const int S = batch.topology().surfaces;
     const std::int64_t rays = layout.rays_per_variant();
-    const std::int64_t stride = rays + settings.extra_residuals;
+    const std::int64_t stride = layout.trace_rows() + settings.extra_residuals;
     const auto Vs = static_cast<std::size_t>(V);
     const auto rays_total = Vs * static_cast<std::size_t>(rays);
     const auto extrema_stride = static_cast<std::size_t>(S) * 2;
@@ -544,12 +544,14 @@ void MultiTraceEngine::run(const SystemBatchHost& batch, TraceMode mode,
         m.rays_per_variant = rays;
         m.merit.resize(Vs);
         m.failed.resize(Vs);
+        m.hard_failed.resize(Vs);
         m.extrema.variants = settings.extrema ? V : 0;
         m.extrema.surfaces = settings.extrema ? S : 0;
         m.extrema.values.resize(extrema_total);
     } else {
         r.variants = V;
         r.rays_per_variant = rays;
+        r.penalty_rows = layout.penalty_rows();
         r.stride = stride;
         r.residuals.resize(Vs * static_cast<std::size_t>(stride));
         r.opd.resize(settings.opd ? rays_total : 0);
@@ -569,6 +571,7 @@ void MultiTraceEngine::run(const SystemBatchHost& batch, TraceMode mode,
         if (merit_mode) {
             place(o.merit.merit, m.merit, range.first, 1);
             place(o.merit.failed, m.failed, range.first, 1);
+            place(o.merit.hard_failed, m.hard_failed, range.first, 1);
             place(o.merit.extrema.values, m.extrema.values, range.first, extrema_stride);
         } else {
             place(o.residuals.residuals, r.residuals, range.first,

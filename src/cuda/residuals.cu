@@ -36,7 +36,9 @@ struct ResidualKernelArgs {
     PupilQuadrature<double> pupil; // Knoten und Gewichte (N, M); Pupillenart pro Feld aus plan
     const ResidualFieldPlan* plan; // [F]
     std::int64_t rays;             // Strahlresiduen pro Variante
-    std::int64_t stride;           // Residuen pro Variante (rays + weitere)
+    std::int64_t stride;           // Residuen pro Variante (rays + Strafresiduen + weitere)
+    int soft;                      // 1: weiches Versagen, Strafresiduen ab Zeile rays (M4-T2)
+    double fail_weight;            // w_fail [Wellen²]
     double* residuals;             // [V][stride]
     double* opd;                   // [V][rays] oder nullptr
     std::uint8_t* status;          // [V][rays]
@@ -91,23 +93,35 @@ __global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const Residual
     if constexpr (kExtrema) {
         extrema.reset(S);
     }
+    // Weiches Versagen (M4-T2): Strafresiduen direkt in Durchlauf 1 (sie hängen nicht vom
+    // Kolben ab), Ablage ab Zeile rays derselben Variante.
+    double* const penalties = a.soft ? residuals + a.rays : nullptr;
+    const R pscale = a.soft ? R(penalty_scale(a.batch, f, l, a.fail_weight)) : R(0);
     R weight_ok = R(0);
     R weighted_opl = R(0);
     for (int k = tid; k < n; k += kBlockThreads) {
         const PupilSample<R> s = sample(sh_table.pupil, k);
         R opl = R(0);
+        SoftFailure<R> soft{R(0), TraceStatus::Ok};
+        SoftFailure<R>* const soft_ptr = a.soft ? &soft : nullptr;
         TraceStatus st;
         if constexpr (kExtrema) {
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, &record);
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, &record, soft_ptr);
         } else {
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl);
+            NoSurfaceObserver* const none = nullptr;
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, none, soft_ptr);
         }
-        if (st == TraceStatus::Ok) {
+        if (in_piston(st)) {
             weight_ok += s.weight;
             weighted_opl += s.weight * opl;
-            if constexpr (kExtrema) {
+        }
+        if constexpr (kExtrema) {
+            if (st == TraceStatus::Ok) {
                 extrema.add_ray(record, S);
             }
+        }
+        if (penalties != nullptr) {
+            penalties[k] = static_cast<double>(ray_penalty(pscale, s, st, soft.penalty));
         }
         opl_scratch[k] = opl;
         status[k] = static_cast<std::uint8_t>(st);
@@ -124,7 +138,7 @@ __global__ void __launch_bounds__(kBlockThreads) residuals_kernel(const Residual
     // Schreibzugriffe), Ausgabe in FP64.
     for (int k = tid; k < n; k += kBlockThreads) {
         R e = R(0);
-        if (valid && static_cast<TraceStatus>(status[k]) == TraceStatus::Ok) {
+        if (valid && in_piston(static_cast<TraceStatus>(status[k]))) {
             e = opl_scratch[k] - piston;
         }
         if (opd != nullptr) {
@@ -162,8 +176,8 @@ DeviceResiduals::~DeviceResiduals() {
 DeviceResiduals::DeviceResiduals(DeviceResiduals&& other) noexcept
     : device_(other.device_), buffer_(other.buffer_), capacity_(other.capacity_), ran_(other.ran_),
       opd_(other.opd_), extrema_(other.extrema_), variants_(other.variants_),
-      surfaces_(other.surfaces_), rays_(other.rays_), stride_(other.stride_),
-      layout_(other.layout_) {
+      surfaces_(other.surfaces_), rays_(other.rays_), penalty_rows_(other.penalty_rows_),
+      stride_(other.stride_), layout_(other.layout_) {
     other.buffer_ = nullptr;
     other.capacity_ = 0;
     other.ran_ = false;
@@ -181,6 +195,7 @@ DeviceResiduals& DeviceResiduals::operator=(DeviceResiduals&& other) noexcept {
         variants_ = other.variants_;
         surfaces_ = other.surfaces_;
         rays_ = other.rays_;
+        penalty_rows_ = other.penalty_rows_;
         stride_ = other.stride_;
         layout_ = other.layout_;
         other.buffer_ = nullptr;
@@ -223,6 +238,7 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
 
     OutputRequest request;
     request.rays_per_variant = layout.rays_per_variant();
+    request.penalty_residuals = layout.penalty_rows();
     request.extra_residuals = options.extra_residuals;
     request.residuals = true;
     request.ray_status = true;
@@ -263,7 +279,9 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
                                                    layout.settings().spokes, PupilMode::Half);
         args.plan = region_ptr<ResidualFieldPlan>(buffer_, plan_region);
         args.rays = layout.rays_per_variant();
-        args.stride = layout.rays_per_variant() + options.extra_residuals;
+        args.stride = layout.trace_rows() + options.extra_residuals;
+        args.soft = layout.soft_failure() ? 1 : 0;
+        args.fail_weight = layout.settings().fail_weight;
         args.residuals = region_ptr<double>(buffer_, out.residuals);
         args.opd = region_ptr<double>(buffer_, out.opd);
         args.status = region_ptr<std::uint8_t>(buffer_, out.ray_status);
@@ -296,7 +314,8 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     variants_ = V;
     surfaces_ = view.shape.surfaces;
     rays_ = layout.rays_per_variant();
-    stride_ = rays_ + options.extra_residuals;
+    penalty_rows_ = layout.penalty_rows();
+    stride_ = layout.trace_rows() + options.extra_residuals;
     opd_ = options.opd;
     extrema_ = options.extrema;
     ran_ = true;
@@ -314,6 +333,7 @@ void DeviceResiduals::download(ResidualResult& r) const {
     }
     r.variants = variants_;
     r.rays_per_variant = rays_;
+    r.penalty_rows = penalty_rows_;
     r.stride = stride_;
     r.residuals.resize(layout_.residuals.bytes / sizeof(double));
     r.status.resize(layout_.ray_status.bytes);

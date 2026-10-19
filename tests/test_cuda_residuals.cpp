@@ -44,6 +44,8 @@ using mko::cuda::TraceOutput;
 using mko::cuda::TraceSettings;
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
+using mko::test::kCpuGpuPenaltyRelative;
+using mko::test::kCpuGpuSoftTuple;
 
 namespace {
 
@@ -55,20 +57,25 @@ namespace {
     } while (0)
 
 struct Comparison {
-    double max_residual = 0.0;      // max |r_GPU − r_CPU| / u_k über alle Strahlen [mm]
-    double max_opd = 0.0;           // max |OPD_GPU − OPD_CPU| über alle Strahlen [mm]
-    double max_relative = 0.0;      // max |Δ| / |x| der Strahlen mit |Δ| > kCpuGpuFp64
-    std::size_t above_absolute = 0; // Strahlen mit |Δr| oder |ΔOPD| > kCpuGpuFp64
-    std::size_t violations = 0;     // Strahlen außerhalb von max(kCpuGpuFp64, rel · |x|)
+    double max_residual = 0.0;         // max |r_GPU − r_CPU| / u_k über alle Strahlen [mm]
+    double max_opd = 0.0;              // max |OPD_GPU − OPD_CPU| über alle Strahlen [mm]
+    double max_penalty = 0.0;          // max |π_GPU − π_CPU| der Strafgrößen (weiches Versagen)
+    double max_penalty_relative = 0.0; // max |Δπ| / |π| der Strafen mit |Δπ| > kCpuGpuFp64
+    std::size_t soft = 0;              // weich versagte Strahlen
+    double max_relative = 0.0;         // max |Δ| / |x| der Strahlen mit |Δ| > kCpuGpuFp64
+    std::size_t above_absolute = 0;    // Strahlen mit |Δr| oder |ΔOPD| > kCpuGpuFp64
+    std::size_t violations = 0;        // Strahlen außerhalb von max(kCpuGpuFp64, rel · |x|)
     std::size_t rays = 0;
     std::size_t failed = 0;            // versagte Strahlen
     int variants_with_failures = 0;    // Varianten mit mindestens einem versagten Strahl
     int variants_all_failed_tuple = 0; // Varianten mit einem Tupel ohne gültigen Strahl
 };
 
-// Prüft |gpu − cpu| <= max(kCpuGpuFp64, kCpuGpuFp64Relative · |cpu|) (tests/tolerances.hpp)
-// und führt die Statistik nach. Rückgabe: |gpu − cpu| (NaN als sehr groß).
-double check_value(double gpu, double cpu, Comparison& c, bool& above) {
+// Prüft |gpu − cpu| <= max(abs_tol, kCpuGpuFp64Relative · |cpu|) mit abs_tol = kCpuGpuFp64,
+// in Tupeln mit weich versagten Strahlen kCpuGpuSoftTuple (tests/tolerances.hpp), und führt die
+// Statistik nach. Rückgabe: |gpu − cpu| (NaN als sehr groß).
+double check_value(double gpu, double cpu, Comparison& c, bool& above,
+                   double abs_tol = kCpuGpuFp64) {
     double d = std::abs(gpu - cpu);
     if (std::isnan(d)) {
         d = 1e300;
@@ -77,8 +84,26 @@ double check_value(double gpu, double cpu, Comparison& c, bool& above) {
         above = true;
         c.max_relative = std::max(c.max_relative, d / std::abs(cpu));
     }
-    if (d > std::max(kCpuGpuFp64, kCpuGpuFp64Relative * std::abs(cpu))) {
+    if (d > std::max(abs_tol, kCpuGpuFp64Relative * std::abs(cpu))) {
         ++c.violations;
+    }
+    return d;
+}
+
+// Dasselbe für die Strafgrößen π des weichen Versagens (M4-T2) mit kCpuGpuPenaltyRelative.
+double check_penalty(double gpu, double cpu, Comparison& c) {
+    double d = std::abs(gpu - cpu);
+    if (std::isnan(d)) {
+        d = 1e300;
+    }
+    if (d > kCpuGpuFp64) {
+        c.max_penalty_relative = std::max(c.max_penalty_relative, d / std::abs(cpu));
+    }
+    if (d > std::max(kCpuGpuFp64, kCpuGpuPenaltyRelative * std::abs(cpu))) {
+        ++c.violations;
+        std::printf(
+            "[ Info     ] Strafgröße außerhalb der Schranke: π_CPU = %.17g, π_GPU = %.17g\n", cpu,
+            gpu);
     }
     return d;
 }
@@ -93,10 +118,15 @@ double check_value(double gpu, double cpu, Comparison& c, bool& above) {
 Comparison compare(const ResidualResult& gpu, const ResidualResult& cpu,
                    const SystemBatchHost& batch, const ResidualLayout& layout) {
     const std::vector<double> units = mko::test::residual_units(batch, layout);
+    // Strafresiduen (weiches Versagen, M4-T2) p_k = v_k · π_k: verglichen wird π_k mit derselben
+    // Schranke max(kCpuGpuFp64, kCpuGpuFp64Relative · |π|) (π dimensionslos)
+    const std::vector<double> punits = mko::test::penalty_units(batch, layout);
     Comparison c;
     EXPECT_EQ(gpu.variants, cpu.variants);
     EXPECT_EQ(gpu.rays_per_variant, cpu.rays_per_variant);
     EXPECT_EQ(gpu.rays_per_variant, layout.rays_per_variant());
+    EXPECT_EQ(gpu.penalty_rows, layout.penalty_rows());
+    EXPECT_EQ(cpu.penalty_rows, layout.penalty_rows());
     const bool with_opd = !gpu.opd.empty();
     int mismatches = 0;
     for (int v = 0; v < cpu.variants; ++v) {
@@ -106,6 +136,13 @@ Comparison compare(const ResidualResult& gpu, const ResidualResult& cpu,
             for (int l = 0; l < layout.wavelengths(); ++l) {
                 const std::int64_t o = layout.offset(f, l);
                 int ok = 0;
+                // Weich versagte Strahlen sind fortgesetzt und oft schlecht konditioniert; über
+                // den Kolben wirkt das auf alle OPD des Tupels (kCpuGpuSoftTuple)
+                bool soft_tuple = false;
+                for (int k = 0; k < layout.samples(f); ++k) {
+                    soft_tuple = soft_tuple || mko::is_soft_failure(cpu.status_at(v, o + k));
+                }
+                const double abs_tol = soft_tuple ? kCpuGpuSoftTuple : kCpuGpuFp64;
                 for (int k = 0; k < layout.samples(f); ++k) {
                     const std::int64_t i = o + k;
                     ++c.rays;
@@ -121,37 +158,55 @@ Comparison compare(const ResidualResult& gpu, const ResidualResult& cpu,
                     } else {
                         ++c.failed;
                         variant_failed = true;
-                        if (sg == sc) {
+                        if (sg == sc && mko::is_hard_failure(sc)) {
                             EXPECT_EQ(gpu.residual(v, i), 0.0);
                         }
                     }
                     bool above = false;
+                    const std::size_t violations_before = c.violations;
+                    if (layout.penalty_rows() > 0) {
+                        const double pu = punits[static_cast<std::size_t>(i)];
+                        if (pu > 0.0) {
+                            c.max_penalty =
+                                std::max(c.max_penalty, check_penalty(gpu.penalty(v, i) / pu,
+                                                                      cpu.penalty(v, i) / pu, c));
+                        } else {
+                            EXPECT_EQ(gpu.penalty(v, i), 0.0);
+                        }
+                        if (sc == TraceStatus::Ok) {
+                            EXPECT_EQ(gpu.penalty(v, i), 0.0);
+                        }
+                        c.soft += mko::is_soft_failure(sc) ? 1 : 0;
+                    }
                     const double u = units[static_cast<std::size_t>(i)];
                     if (u > 0.0) {
-                        c.max_residual =
-                            std::max(c.max_residual, check_value(gpu.residual(v, i) / u,
-                                                                 cpu.residual(v, i) / u, c, above));
+                        c.max_residual = std::max(
+                            c.max_residual, check_value(gpu.residual(v, i) / u,
+                                                        cpu.residual(v, i) / u, c, above, abs_tol));
                     } else {
                         EXPECT_EQ(gpu.residual(v, i), 0.0);
                         EXPECT_EQ(cpu.residual(v, i), 0.0);
                     }
                     if (with_opd) {
-                        c.max_opd = std::max(
-                            c.max_opd, check_value(gpu.opd_at(v, i), cpu.opd_at(v, i), c, above));
+                        c.max_opd =
+                            std::max(c.max_opd, check_value(gpu.opd_at(v, i), cpu.opd_at(v, i), c,
+                                                            above, abs_tol));
                     }
-                    if (above) {
+                    if (above || c.violations != violations_before) {
                         ++c.above_absolute;
-                        std::printf("[ Info     ] |GPU - CPU| > kCpuGpuFp64: v=%d f=%d l=%d k=%d, "
-                                    "OPD = %.6e mm, |dr| = %.3e, |dOPD| = %.3e mm\n",
-                                    v, f, l, k, cpu.opd_at(v, i),
-                                    std::abs(gpu.residual(v, i) - cpu.residual(v, i)),
+                        std::printf("[ Info     ] |GPU - CPU| > kCpuGpuFp64%s: v=%d f=%d l=%d k=%d "
+                                    "(%s), OPD = %.6e mm, |dr|/u = %.3e mm, |dOPD| = %.3e mm\n",
+                                    c.violations != violations_before ? " (außerhalb)" : "", v, f,
+                                    l, k, mko::trace_status_name(sc), cpu.opd_at(v, i),
+                                    u > 0.0 ? std::abs(gpu.residual(v, i) - cpu.residual(v, i)) / u
+                                            : 0.0,
                                     with_opd ? std::abs(gpu.opd_at(v, i) - cpu.opd_at(v, i)) : 0.0);
                     }
                 }
                 tuple_failed = tuple_failed || ok == 0;
             }
         }
-        for (std::int64_t e = gpu.rays_per_variant; e < gpu.stride; ++e) {
+        for (std::int64_t e = gpu.trace_rows(); e < gpu.stride; ++e) {
             EXPECT_EQ(gpu.residual(v, e), 0.0) << "weiteres Residuum " << e;
         }
         c.variants_with_failures += variant_failed ? 1 : 0;
@@ -198,30 +253,41 @@ TEST(CudaResiduals, MatchCpuForPerturbedVariants) {
         ResidualSettings settings;
         std::int64_t extra;
     };
+    // Weiches Versagen (Standard, M4-T2) und hartes wie in M2; im weichen Modus zusätzlich die
+    // Strafresiduen gegen die CPU
     const Case cases[] = {{"einzellinse_bk7.json", 1001, {}, 0},
                           {"testsystem_mehrlinser.json", 2002, {}, 0},
-                          {"testsystem_mehrlinser.json", 3003, {6, 5}, 7}};
+                          {"testsystem_mehrlinser.json", 3003, {6, 5, mko::FailureMode::Hard}, 7},
+                          {"testsystem_mehrlinser.json", 4004, {6, 5}, 3},
+                          {"einzellinse_bk7.json", 5005, {10, 8, mko::FailureMode::Hard}, 0}};
     int index = 0;
     for (const Case& cs : cases) {
         SCOPED_TRACE(cs.file);
+        SCOPED_TRACE(mko::failure_mode_name(cs.settings.failure));
         const mko::LoadedSystem ls = mko::test::load_residual_system(cs.file);
         const SystemBatchHost batch = mko::test::perturbed_batch(ls, 1000, cs.seed);
         ASSERT_NO_THROW(batch.validate_values());
         const ResidualLayout layout(batch.topology(), cs.settings);
         const ResidualResult gpu = gpu_residuals(batch, cs.settings, cs.extra);
-        EXPECT_EQ(gpu.stride, layout.rays_per_variant() + cs.extra);
+        EXPECT_EQ(gpu.stride, layout.trace_rows() + cs.extra);
         const ResidualResult cpu = mko::residuals_cpu(batch, layout);
         const Comparison c = compare(gpu, cpu, batch, layout);
         EXPECT_EQ(c.rays, 1000u * static_cast<std::size_t>(layout.rays_per_variant()));
         EXPECT_GT(c.failed, 0u) << "Versagenspfad nicht geprüft";
         EXPECT_GT(c.variants_with_failures, 10);
         EXPECT_LT(c.failed, c.rays / 2);
-        std::printf("[ Info     ] %s (N=%d, M=%d): %zu Strahlen, %zu versagt (%d Varianten, "
-                    "%d mit Tupel ohne gültigen Strahl), max |dr| = %.3e mm, max |dOPD| = %.3e "
-                    "mm, %zu Strahlen über kCpuGpuFp64 (max. relativ %.2e)\n",
-                    cs.file, cs.settings.rings, cs.settings.spokes, c.rays, c.failed,
-                    c.variants_with_failures, c.variants_all_failed_tuple, c.max_residual,
-                    c.max_opd, c.above_absolute, c.max_relative);
+        if (layout.soft_failure()) {
+            EXPECT_GT(c.soft, 0u) << "weiches Versagen nicht geprüft";
+        }
+        std::printf(
+            "[ Info     ] %s (N=%d, M=%d, %s): %zu Strahlen, %zu versagt (%zu weich, %d "
+            "Varianten, %d mit Tupel ohne gültigen Strahl), max |dr| = %.3e mm, max "
+            "|dOPD| = %.3e mm, max |dπ| = %.3e (relativ %.2e), %zu Strahlen über kCpuGpuFp64 (max. "
+            "relativ %.2e)\n",
+            cs.file, cs.settings.rings, cs.settings.spokes,
+            mko::failure_mode_name(cs.settings.failure), c.rays, c.failed, c.soft,
+            c.variants_with_failures, c.variants_all_failed_tuple, c.max_residual, c.max_opd,
+            c.max_penalty, c.max_penalty_relative, c.above_absolute, c.max_relative);
         const std::string key = "case" + std::to_string(index++);
         RecordProperty(key + "_max_residual_diff", std::to_string(c.max_residual));
         RecordProperty(key + "_max_opd_diff", std::to_string(c.max_opd));
@@ -382,8 +448,9 @@ TEST(CudaResiduals, DeviceBufferReuse) {
 }
 
 // Grenzfälle: Varianten mit vielen versagten Strahlen und mit Tupeln, deren Strahlen alle
-// versagen (Kolben undefiniert → Residuen und OPD 0, Status gesetzt); Nachbarvarianten bleiben
-// unberührt.
+// versagen (harter Modus: Kolben undefiniert → Residuen und OPD 0, Status gesetzt);
+// Nachbarvarianten bleiben unberührt. Im weichen Modus (M4-T2) sind dieselben Strahlen
+// fortgesetzt und tragen Strafresiduen; GPU und CPU stimmen in beiden Modi überein.
 TEST(CudaResiduals, FailedBlocksAreMasked) {
     MKO_REQUIRE_GPU();
     const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");
@@ -391,8 +458,10 @@ TEST(CudaResiduals, FailedBlocksAreMasked) {
     batch.pupil_radius(1) = 1e4;   // alle Strahlen verfehlen die Linse (R = 103 mm)
     batch.pupil_radius(2) = 110.0; // äußere Ringe verfehlen
     batch.curvature(3, 1) = 0.2;   // R = 5 mm: fast alle Strahlen verfehlen oder reflektieren
-    const ResidualLayout layout(batch.topology());
-    const ResidualResult gpu = gpu_residuals(batch);
+    ResidualSettings hard;
+    hard.failure = mko::FailureMode::Hard;
+    const ResidualLayout layout(batch.topology(), hard);
+    const ResidualResult gpu = gpu_residuals(batch, hard);
     const ResidualResult cpu = mko::residuals_cpu(batch, layout);
     const Comparison c = compare(gpu, cpu, batch, layout);
     for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
@@ -406,6 +475,21 @@ TEST(CudaResiduals, FailedBlocksAreMasked) {
     EXPECT_GE(c.variants_all_failed_tuple, 1);
     std::printf("[ Info     ] Grenzfälle: %zu von %zu Strahlen versagt, max |dr| = %.3e mm\n",
                 c.failed, c.rays, c.max_residual);
+
+    const ResidualLayout soft_layout(batch.topology());
+    const ResidualResult soft = gpu_residuals(batch);
+    const Comparison cs = compare(soft, mko::residuals_cpu(batch, soft_layout), batch, soft_layout);
+    EXPECT_EQ(cs.failed, c.failed);
+    EXPECT_GT(cs.soft, 0u);
+    for (std::int64_t i = 0; i < layout.rays_per_variant(); ++i) {
+        EXPECT_NE(soft.status_at(1, i), TraceStatus::Ok);
+        EXPECT_GT(soft.penalty(1, i), 0.0);
+        EXPECT_EQ(soft.penalty(0, i), 0.0);
+        EXPECT_EQ(soft.residual(0, i), gpu.residual(0, i)); // ohne Versagen bitgleich
+    }
+    std::printf("[ Info     ] Grenzfälle weich: %zu weich versagt, max |dr| = %.3e mm, max |dπ| = "
+                "%.3e\n",
+                cs.soft, cs.max_residual, cs.max_penalty);
 }
 
 // S = kMaxSurfaces (größte Flächentabelle im Shared Memory).

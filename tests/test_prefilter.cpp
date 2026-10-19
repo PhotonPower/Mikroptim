@@ -120,9 +120,13 @@ TEST(Prefilter, RayClassesAndErrorModel) {
     const double eta = options.margins.boundary;
     const double kappa = options.margins.opl_error_factor;
     const double m = options.margins.merit_relative;
+    // Fehlermodell der OPD gültiger Strahlen: Vergleich mit dem harten FP64-Pfad (der Vorfilter
+    // rechnet hart; im weichen Modus wäre der Kolben auch über weich versagte Strahlen gebildet)
+    mko::ResidualSettings hard;
+    hard.failure = mko::FailureMode::Hard;
     for (const auto& set : mko::test::prefilter_test_sets(600, 77)) {
         SCOPED_TRACE(set.name);
-        const ResidualLayout layout(set.batch.topology());
+        const ResidualLayout layout(set.batch.topology(), hard);
         std::size_t rays = 0;
         std::size_t failed64 = 0;
         std::size_t uncertain = 0;

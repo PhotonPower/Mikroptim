@@ -57,45 +57,69 @@ mko::LoadedSystem lens_with_fields(std::vector<double> angles_deg) {
 } // namespace
 
 // merit_cpu ist die Quadratsumme der CPU-Residuen in der dokumentierten Reihenfolge
-// (pro Tupel aufsteigend in k, Tupel f-major); versagte Strahlen wie residuals_cpu.
+// (pro Tupel aufsteigend in k erst die Wellenfront-, dann die Strafresiduen, Tupel f-major);
+// versagte Strahlen wie residuals_cpu. Weicher (Standard) und harter Modus.
 TEST(MeritCpu, EqualsSumOfCpuResiduals) {
     const mko::LoadedSystem ls = mko::test::load_residual_system("testsystem_mehrlinser.json");
     const SystemBatchHost batch = mko::test::perturbed_batch(ls, 60, 8008);
-    const ResidualLayout layout(batch.topology());
-    const MeritResult m = mko::merit_cpu(batch, layout, false);
-    const ResidualResult r = mko::residuals_cpu(batch, layout);
-    ASSERT_EQ(m.variants, 60);
-    EXPECT_EQ(m.rays_per_variant, layout.rays_per_variant());
-    EXPECT_TRUE(m.extrema.empty());
-    std::int64_t total_failed = 0;
-    for (int v = 0; v < batch.variants(); ++v) {
-        double sum = 0.0;
-        std::int64_t failed = 0;
-        for (int f = 0; f < layout.fields(); ++f) {
-            for (int l = 0; l < layout.wavelengths(); ++l) {
-                double tuple = 0.0;
-                for (int k = 0; k < layout.samples(f); ++k) {
-                    const std::int64_t i = layout.offset(f, l) + k;
-                    tuple += r.residual(v, i) * r.residual(v, i);
-                    failed += r.status_at(v, i) != TraceStatus::Ok ? 1 : 0;
+    for (const mko::FailureMode mode : {mko::FailureMode::Soft, mko::FailureMode::Hard}) {
+        SCOPED_TRACE(mko::failure_mode_name(mode));
+        mko::ResidualSettings settings;
+        settings.failure = mode;
+        const ResidualLayout layout(batch.topology(), settings);
+        const MeritResult m = mko::merit_cpu(batch, layout, false);
+        const ResidualResult r = mko::residuals_cpu(batch, layout);
+        ASSERT_EQ(m.variants, 60);
+        EXPECT_EQ(m.rays_per_variant, layout.rays_per_variant());
+        EXPECT_EQ(r.penalty_rows, mode == mko::FailureMode::Soft ? layout.rays_per_variant() : 0);
+        EXPECT_TRUE(m.extrema.empty());
+        std::int64_t total_failed = 0;
+        std::int64_t total_soft = 0;
+        for (int v = 0; v < batch.variants(); ++v) {
+            double sum = 0.0;
+            std::int64_t failed = 0;
+            std::int64_t hard = 0;
+            for (int f = 0; f < layout.fields(); ++f) {
+                for (int l = 0; l < layout.wavelengths(); ++l) {
+                    double tuple = 0.0;
+                    double pen = 0.0;
+                    for (int k = 0; k < layout.samples(f); ++k) {
+                        const std::int64_t i = layout.offset(f, l) + k;
+                        tuple += r.residual(v, i) * r.residual(v, i);
+                        if (r.penalty_rows > 0) {
+                            pen += r.penalty(v, i) * r.penalty(v, i);
+                        }
+                        failed += r.status_at(v, i) != TraceStatus::Ok ? 1 : 0;
+                        hard += mko::is_hard_failure(r.status_at(v, i)) ? 1 : 0;
+                        total_soft += mko::is_soft_failure(r.status_at(v, i)) ? 1 : 0;
+                    }
+                    if (r.penalty_rows > 0) {
+                        tuple += pen;
+                    }
+                    sum += tuple;
                 }
-                sum += tuple;
+            }
+            EXPECT_TRUE(same_bits(m.merit[static_cast<std::size_t>(v)], sum)) << "v = " << v;
+            EXPECT_EQ(m.failed[static_cast<std::size_t>(v)], failed) << "v = " << v;
+            EXPECT_EQ(m.hard_failed[static_cast<std::size_t>(v)], hard) << "v = " << v;
+            total_failed += failed;
+            // Einzelaufruf liefert dasselbe
+            if (v % 20 == 0) {
+                const MeritResult single = mko::merit_cpu(batch, v, layout, true);
+                EXPECT_TRUE(same_bits(single.merit[0], sum));
+                EXPECT_EQ(single.extrema.variants, 1);
+                EXPECT_EQ(single.extrema.surfaces, batch.surfaces());
             }
         }
-        EXPECT_TRUE(same_bits(m.merit[static_cast<std::size_t>(v)], sum)) << "v = " << v;
-        EXPECT_EQ(m.failed[static_cast<std::size_t>(v)], failed) << "v = " << v;
-        total_failed += failed;
-        // Einzelaufruf liefert dasselbe
-        if (v % 20 == 0) {
-            const MeritResult single = mko::merit_cpu(batch, v, layout, true);
-            EXPECT_TRUE(same_bits(single.merit[0], sum));
-            EXPECT_EQ(single.extrema.variants, 1);
-            EXPECT_EQ(single.extrema.surfaces, batch.surfaces());
+        EXPECT_GT(total_failed, 0) << "Versagenspfad nicht geprüft";
+        if (mode == mko::FailureMode::Soft) {
+            EXPECT_GT(total_soft, 0) << "weiches Versagen nicht geprüft";
+        } else {
+            EXPECT_EQ(total_soft, 0);
         }
+        EXPECT_THROW((void)mko::merit_cpu(batch, 60, layout), std::out_of_range);
+        EXPECT_THROW((void)mko::surface_extrema_cpu(batch, -1, layout), std::out_of_range);
     }
-    EXPECT_GT(total_failed, 0) << "Versagenspfad nicht geprüft";
-    EXPECT_THROW((void)mko::merit_cpu(batch, 60, layout), std::out_of_range);
-    EXPECT_THROW((void)mko::surface_extrema_cpu(batch, -1, layout), std::out_of_range);
 }
 
 // Abnahme M4-T1: Die Merit ist die gewichtete Summe der RMS-Werte aus M1-T7,
@@ -204,17 +228,29 @@ TEST(SurfaceExtrema, CollimatedBeamMatchesClosedForm) {
 }
 
 // Versagte Strahlen tragen nicht bei: Variante ohne gültigen Strahl behält die neutralen
-// Elemente (Höhe 0, cos I = 1) und hat die Merit 0; bei teilweisem Versagen ist die
-// Blendenhöhe das Maximum von a·ρ_k über die gültigen Strahlen.
+// Elemente (Höhe 0, cos I = 1) und hat im harten Modus die Merit 0; bei teilweisem Versagen
+// ist die Blendenhöhe das Maximum von a·ρ_k über die gültigen Strahlen. Im weichen Modus
+// (M4-T2) sind die Max-Reduktionen bitgleich (nur Strahlen mit Status Ok), die Merit enthält
+// dann die Strafen.
 TEST(SurfaceExtrema, FailedRaysDoNotContribute) {
     const mko::LoadedSystem ls = mko::test::load_residual_system("einzellinse_bk7.json");
     SystemBatchHost batch = mko::make_system_batch(ls, 3);
     batch.pupil_radius(1) = 1e4;   // alle Strahlen verfehlen die Linse (R = 103 mm)
     batch.pupil_radius(2) = 110.0; // äußere Ringe verfehlen
-    const ResidualLayout layout(batch.topology());
+    mko::ResidualSettings hard_settings;
+    hard_settings.failure = mko::FailureMode::Hard;
+    const ResidualLayout layout(batch.topology(), hard_settings);
     const MeritResult m = mko::merit_cpu(batch, layout, true);
     const ResidualResult r = mko::residuals_cpu(batch, layout);
     const int S = batch.surfaces();
+    {
+        const MeritResult soft = mko::merit_cpu(batch, ResidualLayout(batch.topology()), true);
+        EXPECT_EQ(soft.extrema.values, m.extrema.values);
+        EXPECT_EQ(soft.failed, m.failed);
+        EXPECT_GT(soft.merit[1], 0.0);
+        EXPECT_GT(soft.merit[2], m.merit[2]);
+        EXPECT_EQ(soft.merit[0], m.merit[0]); // ohne Versagen bitgleich
+    }
 
     EXPECT_EQ(m.failed[0], 0);
     EXPECT_EQ(m.failed[1], layout.rays_per_variant());

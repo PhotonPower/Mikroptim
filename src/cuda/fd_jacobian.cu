@@ -28,7 +28,8 @@ struct FdKernelArgs {
     const double* residuals;    // Tranche: [count · stride], Variante first_variant + j ab j·stride
     const std::uint8_t* status; // Tranche: [count · rays]
     std::int64_t stride;        // Residuen pro Variante im Puffer der Engine
-    std::int64_t rays;          // Strahlresiduen pro Variante (R_v)
+    std::int64_t rays;          // Strahlen pro Variante (Status)
+    std::int64_t rows;          // Zeilen des Traces pro Variante (R_v: Strahl- und Strafresiduen)
     const double* extra;        // [V · E], ganzer Batch (nullptr bei E = 0)
     int extra_count;            // E
     int variables;              // P
@@ -47,10 +48,10 @@ struct FdKernelArgs {
 // Zeile r der Variante v (Index im ganzen Batch): Strahlresiduum aus der Tranche oder
 // Zusatzresiduum.
 __device__ inline double row_value(const FdKernelArgs& a, std::int64_t v, std::int64_t r) {
-    if (r < a.rays) {
+    if (r < a.rows) {
         return a.residuals[(v - a.first_variant) * a.stride + r];
     }
-    return a.extra[v * a.extra_count + (r - a.rays)];
+    return a.extra[v * a.extra_count + (r - a.rows)];
 }
 
 __device__ inline bool ray_ok(const FdKernelArgs& a, std::int64_t v, std::int64_t r) {
@@ -66,7 +67,7 @@ __global__ void __launch_bounds__(kFdJacobianThreads) fd_difference_kernel(const
     const int P = a.variables;
     const std::int64_t run = a.first_run + static_cast<std::int64_t>(blockIdx.x) / (P + 1);
     const int p = static_cast<int>(blockIdx.x % static_cast<unsigned>(P + 1));
-    const std::int64_t R = a.rays + a.extra_count;
+    const std::int64_t R = a.rows + a.extra_count;
     const std::int64_t v0 = run * a.variants_per_run;
     if (p == P) { // ganzer Block: r₀ kopieren (kein __syncthreads danach)
         for (std::int64_t r = threadIdx.x; r < R; r += blockDim.x) {
@@ -214,7 +215,7 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
     evaluate_extra_residuals(options.extra, fd.batch, extra, 0, -1, options.extra_threads);
     const int P = set.size();
     const int n = fd.variants_per_run;
-    const JacobianShape shape{fd.runs, P, layout.rays_per_variant(), options.extra.count};
+    const JacobianShape shape{fd.runs, P, layout.trace_rows(), options.extra.count};
     if (static_cast<std::int64_t>(fd.runs) * (P + 1) > std::numeric_limits<int>::max()) {
         throw std::invalid_argument("DeviceFdJacobian: zu viele Läufe und Variablen für ein Grid");
     }
@@ -280,6 +281,7 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
         a.status = t.status;
         a.stride = t.stride;
         a.rays = t.rays_per_variant;
+        a.rows = t.rays_per_variant + t.penalty_rows;
         a.first_run = t.first / n;
         a.first_variant = t.first;
         const int runs = t.count / n;

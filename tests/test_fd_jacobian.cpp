@@ -113,7 +113,7 @@ void check_against_richardson(const FdProblem& p, const char* name,
     EXPECT_EQ(j.shape.runs, 1);
     EXPECT_EQ(j.shape.extra_rows, extra.count);
     EXPECT_EQ(j.shape.variables, p.set.size());
-    EXPECT_EQ(j.shape.ray_rows, layout.rays_per_variant());
+    EXPECT_EQ(j.shape.ray_rows, layout.trace_rows());
     for (int k = 0; k < p.set.size(); ++k) {
         EXPECT_EQ(j.status_change(0, k), 0) << p.set[k].name;
         EXPECT_EQ(j.patterns[0].stencil[static_cast<std::size_t>(k)], FdStencil::Central);
@@ -213,7 +213,7 @@ TEST(FdJacobian, LayoutAndBaseResiduals) {
     const ResidualLayout layout(p.base.topology());
     const FdJacobian j = mko::fd_jacobian_cpu(p.set, p.base, p.x0);
     const std::int64_t R = j.shape.rows();
-    ASSERT_EQ(R, layout.rays_per_variant());
+    ASSERT_EQ(R, layout.trace_rows());
     ASSERT_EQ(j.jacobian.size(), static_cast<std::size_t>(p.set.size() * R));
     ASSERT_EQ(j.residuals.size(), static_cast<std::size_t>(R));
     const mko::ResidualResult base = mko::residuals_cpu(p.base, layout);
@@ -345,20 +345,36 @@ TEST(FdJacobian, MultipleRunsMatchSingleRuns) {
 }
 
 // Versagensgrenze: Der FD-Punkt c[2] − h totalreflektiert genau den äußersten Ring; die
-// Spalte c[2] zählt einen Status-Wechsel, w keinen. Keine Behandlung (Diagnose für M4-T2).
+// Spalte c[2] zählt einen Status-Wechsel, w keinen. Im weichen Modus (Standard, M4-T2) ist der
+// Strahl dort weich versagt (SoftTIR) und trägt ein Strafresiduum, im harten Modus TIR.
 TEST(FdJacobian, StatusChangesAtTotalReflection) {
     const FdProblem p = mko::test::tir_problem();
-    const ResidualLayout layout(p.base.topology());
-    ASSERT_EQ(mko::residuals_cpu(p.base, layout).failed_count(), 0u);
-    const FdJacobian j = mko::fd_jacobian_cpu(p.set, p.base, p.x0);
-    ASSERT_EQ(p.set[0].name, "c[2]");
-    EXPECT_EQ(j.status_change(0, 0), 1);
-    EXPECT_EQ(j.status_change(0, 1), 0);
-    // Der versagte Strahl ist der äußerste Ring in der Variante x₀ − h (Variante 2).
-    const mko::FdBatch fd = mko::make_fd_batch(p.set, p.base, 0, p.x0);
-    const mko::ResidualResult r = mko::residuals_cpu(fd.batch, layout);
-    EXPECT_EQ(r.status_at(2, layout.rays_per_variant() - 1), mko::TraceStatus::TIR);
-    EXPECT_EQ(r.failed_count(), 1u);
+    for (const mko::FailureMode mode : {mko::FailureMode::Soft, mko::FailureMode::Hard}) {
+        SCOPED_TRACE(mko::failure_mode_name(mode));
+        mko::ResidualSettings settings;
+        settings.failure = mode;
+        const ResidualLayout layout(p.base.topology(), settings);
+        ASSERT_EQ(mko::residuals_cpu(p.base, layout).failed_count(), 0u);
+        FdJacobianOptions opt;
+        opt.quadrature = settings;
+        const FdJacobian j = mko::fd_jacobian_cpu(p.set, p.base, p.x0, opt);
+        ASSERT_EQ(p.set[0].name, "c[2]");
+        EXPECT_EQ(j.status_change(0, 0), 1);
+        EXPECT_EQ(j.status_change(0, 1), 0);
+        // Der versagte Strahl ist der äußerste Ring in der Variante x₀ − h (Variante 2).
+        const mko::FdBatch fd = mko::make_fd_batch(p.set, p.base, 0, p.x0);
+        const mko::ResidualResult r = mko::residuals_cpu(fd.batch, layout);
+        const std::int64_t last = layout.rays_per_variant() - 1;
+        EXPECT_EQ(r.status_at(2, last), mode == mko::FailureMode::Soft ? mko::TraceStatus::SoftTIR
+                                                                       : mko::TraceStatus::TIR);
+        EXPECT_EQ(r.failed_count(), 1u);
+        if (mode == mko::FailureMode::Soft) {
+            EXPECT_GT(r.penalty(2, last), 0.0);
+            EXPECT_NE(r.residual(2, last), 0.0); // bleibt im Kolben
+        } else {
+            EXPECT_EQ(r.residual(2, last), 0.0);
+        }
+    }
 }
 
 // Vorwärtsschema (P + 1 Varianten, erste Ordnung) gegen Richardson.

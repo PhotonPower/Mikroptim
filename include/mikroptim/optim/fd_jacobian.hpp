@@ -20,13 +20,13 @@
 namespace mko {
 
 // Größen der Jacobi-Matrizen mehrerer Läufe. Der Residuenvektor einer Variante hat
-// R = R_v + E Zeilen: die Strahlresiduen in der Ablage von ResidualLayout, danach die E
-// Zusatzresiduen (ExtraResiduals), wie der Ausgabepuffer der TraceEngine mit
-// extra_residuals = E.
+// R = R_v + E Zeilen: die R_v = ResidualLayout::trace_rows Zeilen des Traces (Strahlresiduen,
+// im weichen Modus danach die Strafresiduen, M4-T2), danach die E Zusatzresiduen
+// (ExtraResiduals), wie der Ausgabepuffer der TraceEngine mit extra_residuals = E.
 struct JacobianShape {
     int runs = 0;              // Läufe
     int variables = 0;         // P
-    std::int64_t ray_rows = 0; // R_v (Strahlresiduen)
+    std::int64_t ray_rows = 0; // R_v (Strahl- und Strafresiduen, trace_rows)
     int extra_rows = 0;        // E (Zusatzresiduen)
 
     std::int64_t rows() const { return ray_rows + extra_rows; } // R
@@ -74,8 +74,9 @@ FdJacobianBatch make_fd_jacobian_batch(const VariableSet& set, const SystemBatch
 // also pro Lauf eine R × P-Matrix spaltenweise mit führender Dimension R und Abstand R·P
 // zwischen den Läufen (passt zu cublasDgemmStridedBatched für JᵀJ und Jᵀr, M3-T4).
 // status_changes[i·P + p]: Strahlen, deren Gültigkeit (Status Ok oder nicht) sich zwischen
-// x₀ und einem der gestörten Punkte der Spalte p ändert (Diagnose für Unstetigkeiten der
-// Jacobi an Versagensgrenzen, M4-T2; keine Behandlung).
+// x₀ und einem der gestörten Punkte der Spalte p ändert (Diagnose: Im weichen Modus, M4-T2,
+// sind Residuen und Strafen dort stetig, die Ableitung springt; im harten Modus springt das
+// Residuum selbst).
 struct FdJacobian {
     JacobianShape shape;
     FdScheme scheme = FdScheme::Central;
@@ -109,8 +110,8 @@ struct FdJacobian {
 };
 
 // Differenzbildung auf dem Host aus den Residuen aller Varianten des FD-Batches:
-// `rays` mit Strahlresiduen (Ablage wie ResidualResult, beliebiger stride ≥ rays_per_variant,
-// die Zeilen nach rays_per_variant werden nicht gelesen) und Status; `extra` [V·E] aus
+// `rays` mit Strahl- und Strafresiduen (Ablage wie ResidualResult, R_v = trace_rows(),
+// beliebiger stride ≥ R_v, die Zeilen danach werden nicht gelesen) und Status; `extra` [V·E] aus
 // evaluate_extra_residuals(extra, fd.batch, …) (paraxial_residuals.hpp, Ablage
 // [(v)·E + i], E = extra_count). Für jede Spalte J = fd_derivative(Schablone, r₀,
 // r_a, r_b, d_a, d_b) elementweise. Wirft std::invalid_argument, wenn die Größen nicht zum

@@ -404,7 +404,7 @@ Für `planplatte_bk7.json` (afokal) sind in `paraxial` die Felder `focal_length`
 Mit `--gpu` entsteht die Wellenfront über die Host-API `mko::cuda::TraceEngine` ([architektur.md](architektur.md), Abschnitt „Host-API TraceEngine“) auf dem Gerät `--device N` (Standard 0):
 
 1. Sollbrennweite f_soll wie im CPU-Pfad mit `target_focal_length` (nur kollimierte Quelle), dann `make_system_batch(system, index, 1, f_soll)` – eine Variante mit den Feldzielen h_f = f_soll · tan θ_f, also denselben idealen Bildpunkten wie `evaluate_wavefront`.
-2. `TraceEngine::run(batch, TraceMode::Residuals, {quadrature = {N, M}, opd = true, status = true})`.
+2. `TraceEngine::run(batch, TraceMode::Residuals, {quadrature = {N, M, FailureMode::Hard}, opd = true, status = true})` – hartes Versagen wie `evaluate_wavefront` (das weiche Versagen der Optimierung, M4-T2, würde versagte Strahlen fortsetzen und den Kolben ändern).
 3. `tuple_wavefronts(out.residuals, out.layout, 0)` liefert RMS [mm] und versagte Strahlen pro Feld und Wellenlänge; RMS in Wellen = RMS / λ_ref wie im CPU-Pfad.
 
 Paraxialdaten, Sollbrennweite und Bildpunkte entstehen auf dem Host und sind bitgleich zur CPU-Variante; Text und JSON werden von denselben Ausgabefunktionen geschrieben. Unterschiede zur CPU-Variante:
@@ -456,7 +456,7 @@ Implementierung: `src/cli/trace_command.cpp` (Bibliothek `mikroptim_cli`, intern
 
 Optimiert die Variablen einer Systemdatei (Abschnitt `variables`, [dateiformat.md](dateiformat.md)) mit dem gebündelten Levenberg-Marquardt ([optimierung.md, Abschnitt 4](optimierung.md#4-gebündelter-levenberg-marquardt)) und schreibt das Ergebnis als neue Systemdatei. Ausgegeben werden ein Iterationsprotokoll und eine Zusammenfassung: Status, Zyklen, Merit vorher/nachher, Variablen vorher/nachher mit Schranken, Nebenbedingungen Ist/Soll, bei Systemen mit Geisterplatten der Diagnosebericht (ab M4-T6, siehe [Geisterplatten](#geisterplatten-diagnosebericht-ab-m4-t6)) und RMS-Wellenfront pro Feld und Wellenlänge vorher/nachher.
 
-Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu`): F = ‖r‖² aus den Strahlresiduen der Wellenfront (Pupillenquadratur `--rings` × `--spokes`) und den Zusatzresiduen: paraxiale Nebenbedingungen (Abschnitt `constraints`, `make_paraxial_residuals(make_paraxial_constraints(system))`), dahinter die L1-Strafe der Geisterkoeffizienten (Einträge `ghost_penalty`, `make_ghost_penalty_residuals(make_ghost_penalty(system))`, ab M4-T6), verkettet mit `concat_extra_residuals` ([optimierung.md, Abschnitte 2 und 3](optimierung.md#2-residuenvektor)). Die Einheit ist die der Bibliothek: seit M4-T1 **Wellen² bei λ_ref** (Strahlresiduen √(ŵ_f ŵ_λ W_i V_j)·OPD/λ_ref, paraxiale Zusatzresiduen √w·q mit w in 1/mm²; Wahl der Gewichte: [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)). Text und JSON nennen sie (`[Wellen²]`, `merit_unit`). Gerechnet wird in FP64.
+Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu`): F = ‖r‖² aus den Strahlresiduen der Wellenfront (Pupillenquadratur `--rings` × `--spokes`), beim weichen Strahlversagen den Strafresiduen der versagten Strahlen (ab M4-T2, siehe [Strahlversagen](#strahlversagen-ab-m4-t2)) und den Zusatzresiduen: paraxiale Nebenbedingungen (Abschnitt `constraints`, `make_paraxial_residuals(make_paraxial_constraints(system))`), dahinter die L1-Strafe der Geisterkoeffizienten (Einträge `ghost_penalty`, `make_ghost_penalty_residuals(make_ghost_penalty(system))`, ab M4-T6), verkettet mit `concat_extra_residuals` ([optimierung.md, Abschnitte 2 und 3](optimierung.md#2-residuenvektor)). Die Einheit ist die der Bibliothek: seit M4-T1 **Wellen² bei λ_ref** (Strahlresiduen √(ŵ_f ŵ_λ W_i V_j)·OPD/λ_ref, paraxiale Zusatzresiduen √w·q mit w in 1/mm²; Wahl der Gewichte: [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)). Text und JSON nennen sie (`[Wellen²]`, `merit_unit`). Gerechnet wird in FP64.
 
 ### Optionen
 
@@ -471,13 +471,17 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--runs K` | Multistart mit K ≥ 1 Läufen (siehe unten) | 1 |
 | `--perturbation s` | relative Störung der Startpunkte, s ≥ 0; nur mit `--runs` ≥ 2 | 0,05 |
 | `--seed n` | Startwert der Störungen (0 … 2⁶⁴ − 1); nur mit `--runs` ≥ 2 | 0 |
+| `--fail-weight w` | Start-Strafgewicht w_fail des weichen Strahlversagens in Wellen², endlich und > 0 (`ResidualSettings::fail_weight`, siehe [Strahlversagen](#strahlversagen-ab-m4-t2)); nicht mit `--hard-failure` | 10⁶ (`kDefaultFailWeight`) |
+| `--hard-failure` | hartes Strahlversagen wie vor M4-T2: versagte Strahlen maskiert (r = 0), keine Strafresiduen, kein Strafverfahren (`FailureMode::Hard`) | aus (weich) |
 | `--gpu` | auf der GPU rechnen (`cuda::optimize_lm_gpu`: Jacobi-Matrix und Normalgleichungen auf dem Gerät, Merit im Modus MERIT der TraceEngine) | aus (CPU, `optimize_lm_cpu`) |
 | `--device N` | CUDA-Gerät für `--gpu`; nur zusammen mit `--gpu` | 0 |
 | `--help`, `-h` | Hilfe | – |
 
-Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrale finite Differenzen, Ablehnung neuer versagter Strahlen) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
+Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrale finite Differenzen, Ablehnung neuer hart versagter Strahlen, Faktor 10 und Obergrenze 10¹⁴ des Strafverfahrens) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
 
-**Multistart.** Mit `--runs K` laufen K Läufe gemeinsam: Lauf 0 startet im Punkt x₀ der Datei, Lauf j ≥ 1 im gestörten Punkt `perturbed_vector(set, x₀, options, j)` mit `relative = s` für alle Variablentypen (Geisterkoeffizienten a = 0 bleiben ungestört), `seed = n` und `first_is_base` (gleichverteilt, plattformunabhängig, auf die Schranken projiziert; [optimierung.md, Variantengenerator](optimierung.md#variantengenerator-ab-m3-t1)). Lauf 0 ist bitgleich zum Aufruf ohne `--runs` (die Läufe sind voneinander unabhängig), der Multistart ist also nie schlechter. **Bester Lauf:** endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen haben r = 0, eine Merit mit mehr versagten Strahlen ist nicht vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. Die Auswahl ist deterministisch; zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe.
+**Strahlversagen (ab M4-T2).** <a id="strahlversagen-ab-m4-t2"></a>Standard ist weiches Versagen ([numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen), [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor)): Verfehlte Flächen und Totalreflexion werden fortgesetzt, jeder Strahl trägt ein Strafresiduum p = √(w_fail ŵ_f ŵ_λ W)·π bei, F enthält Σp². Endet ein Lauf mit versagten Strahlen, startet die Bibliothek ihn an seinem Endpunkt mit zehnfachem w_fail neu (äußeres Strafverfahren, `optimize_lm_rounds`), bis kein Strahl mehr versagt oder w_fail 10¹⁴ überschritte; `--max-iterations` gilt pro Runde, Zyklen und Protokoll laufen über die Runden fort. Für Systeme ohne versagte Strahlen sind alle Strafresiduen null und die Ergebnisse bitgleich zu `--hard-failure`. Die Spalte `versagt` zählt weich und hart versagte Strahlen, `hart` nur die hart versagten (Strahl läuft rückwärts, Fläche verfehlt bei D ≥ 0, nicht unterstützt); nur diese lehnt LM an einem Versuchspunkt als neu versagt ab. Die Wellenfronttabelle rechnet immer hart wie `mikroptim trace`.
+
+**Multistart.** Mit `--runs K` laufen K Läufe gemeinsam: Lauf 0 startet im Punkt x₀ der Datei, Lauf j ≥ 1 im gestörten Punkt `perturbed_vector(set, x₀, options, j)` mit `relative = s` für alle Variablentypen (Geisterkoeffizienten a = 0 bleiben ungestört), `seed = n` und `first_is_base` (gleichverteilt, plattformunabhängig, auf die Schranken projiziert; [optimierung.md, Variantengenerator](optimierung.md#variantengenerator-ab-m3-t1)). Lauf 0 ist bitgleich zum Aufruf ohne `--runs` (die Läufe sind voneinander unabhängig), der Multistart ist also nie schlechter. **Bester Lauf:** endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen haben r = 0, beim weichen Versagen enthält F Strafen mit dem w_fail der letzten Runde des Laufs; in beiden Fällen ist eine Merit mit mehr versagten Strahlen nicht vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. Die Auswahl ist deterministisch; zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe.
 
 ### Ergebnisdatei
 
@@ -495,7 +499,7 @@ Wie bei `trace`:
 |---|---|
 | 0 | Optimierung abgeschlossen, auch ohne Konvergenz (Status `max_iterations`, `damping_limit`; siehe `result.status`) |
 | 1 | Fehler beim Laden (wie `trace`), **keine Variablen** (Abschnitt `variables` fehlt oder ist leer), Nebenbedingung passt nicht zum System, Merit in keinem Lauf endlich, Fehler beim Schreiben der Ergebnisdatei (z. B. Verzeichnis fehlt); mit `--gpu` auch: Gerät `--device N` existiert nicht, CUDA-Fehler |
-| 2 | ungültige Kommandozeile (wie `trace`; zusätzlich `-o` ohne Datei oder gleich der Eingabedatei, `--runs` < 1, `--max-iterations` < 0, `--perturbation` < 0, `--perturbation`/`--seed` ohne `--runs` ≥ 2) |
+| 2 | ungültige Kommandozeile (wie `trace`; zusätzlich `-o` ohne Datei oder gleich der Eingabedatei, `--runs` < 1, `--max-iterations` < 0, `--perturbation` < 0, `--perturbation`/`--seed` ohne `--runs` ≥ 2, `--fail-weight` nicht endlich oder ≤ 0 oder zusammen mit `--hard-failure`) |
 | 3 | `--gpu`, aber ohne CUDA gebaut oder kein CUDA-Gerät (vor dem Laden geprüft) |
 
 Fehlermeldungen beginnen mit `mikroptim optimize: Fehler: `, z. B.
@@ -519,16 +523,17 @@ Zahlenformat wie bei `trace` (C-Locale, plattformunabhängig; Linux/GCC und Wind
 | `Gewinn` | Gewinnverhältnis ρ = (F − F_neu)/(L(0) − L(Δx)) |
 | `Dämpfung` | μ, mit dem der Schritt gerechnet wurde |
 | `Schrittnorm` | max_k \|Δx_k\|/s_k des Versuchsschritts |
-| `versagt` | versagte Strahlen am Versuchspunkt |
+| `versagt` | versagte Strahlen am Versuchspunkt (weich und hart) |
+| `hart` | davon hart versagte Strahlen (`LmIterationInfo::hard_failed_rays`, ab M4-T2) |
 | `Status` | Endstatus, wenn der Lauf in diesem Zyklus endet; das meldet die Bibliothek nur für `damping_limit` und `converged_merit` bei F = 0. Die übrigen Endzustände (`converged_*`, `max_iterations`) stellt sie erst vor dem nächsten Zyklus fest, ohne Rückruf; sie stehen in der Zusammenfassung |
 
-Im Kopf steht bei Systemen mit Geisterplatten zusätzlich die Zeile `Geisterplatten  G (L1-Strafe: n Koeffizienten)`.
+Der Kopf nennt die Versagensart (`Strahlversagen  weich, w_fail ab …` bzw. `hart (versagte Strahlen maskiert)`), bei Systemen mit Geisterplatten zusätzlich die Zeile `Geisterplatten  G (L1-Strafe: n Koeffizienten)`. Die Zusammenfassung enthält neben den versagten Strahlen vorher/nachher die hart versagten (`davon hart vorher/nachher`) und im weichen Modus die Runden des Strafverfahrens und das w_fail der letzten Runde; die Tabelle der Läufe (Multistart) hat dafür die Spalten `hart` und `Runden`.
 
 Die Wellenfronttabelle der Zusammenfassung rechnet immer die CPU (`evaluate_wavefront` mit den idealen Bildpunkten, wie `mikroptim trace` ohne `--gpu`) für das Start- und das Ergebnissystem; „nachher“ ist also genau das, was `mikroptim trace <ergebnis.json>` ausgibt.
 
 ### Geisterplatten: Diagnosebericht (ab M4-T6)
 
-Hat das System Geisterplatten, folgt nach den Nebenbedingungen der Bericht von `diagnose_ghost_plates` am Ergebnis des besten Laufs ([optimierung.md, Abschnitt 5](optimierung.md#diagnosebericht-ab-m4-t6)), Text aus `write_ghost_diagnosis_text`. Die Merit-Werte (F, F mit a = 0 je Platte) rechnet immer die CPU mit derselben Quadratur und denselben Zusatzresiduen wie die Optimierung (`make_cpu_merit`), auch mit `--gpu`. Inhalt: Merit und Merit-Wellenlängen, eine Zeile pro Platte (Platte, Dateifläche `after_surface`, Abstand, K, Σ|a| [mm], dominante Ordnungen, φ_G [1/mm], paraxiale Randstrahlhöhe y_R [mm], Hauptstrahlhöhe y_H für 1 rad, Strafe Σ r², Gewinn F(a = 0 für diese Platte) − F in Wellen², aktiv, n_ref, ν_d, ΔP_g,F, Glas), die Koeffizienten der aktiven Platten, pro Lage (gleiches `after_surface` und `distance`) Platten, aktive Platten, Operator (`none`, `A`, `B`, `B_anomalous`), Befund und Begründung, zuletzt die Empfehlung. Beispiel (`mikroptim optimize data/systems/einzellinse_na05_geisterplatten.json --quiet`, gekürzt):
+Hat das System Geisterplatten, folgt nach den Nebenbedingungen der Bericht von `diagnose_ghost_plates` am Ergebnis des besten Laufs ([optimierung.md, Abschnitt 5](optimierung.md#diagnosebericht-ab-m4-t6)), Text aus `write_ghost_diagnosis_text`. Die Merit-Werte (F, F mit a = 0 je Platte) rechnet immer die CPU mit derselben Quadratur, derselben Versagensart und denselben Zusatzresiduen wie die Optimierung (`make_cpu_merit`), beim weichen Versagen mit dem w_fail der letzten Runde des besten Laufs (ab M4-T2), auch mit `--gpu`. Inhalt: Merit und Merit-Wellenlängen, eine Zeile pro Platte (Platte, Dateifläche `after_surface`, Abstand, K, Σ|a| [mm], dominante Ordnungen, φ_G [1/mm], paraxiale Randstrahlhöhe y_R [mm], Hauptstrahlhöhe y_H für 1 rad, Strafe Σ r², Gewinn F(a = 0 für diese Platte) − F in Wellen², aktiv, n_ref, ν_d, ΔP_g,F, Glas), die Koeffizienten der aktiven Platten, pro Lage (gleiches `after_surface` und `distance`) Platten, aktive Platten, Operator (`none`, `A`, `B`, `B_anomalous`), Befund und Begründung, zuletzt die Empfehlung. Beispiel (`mikroptim optimize data/systems/einzellinse_na05_geisterplatten.json --quiet`, gekürzt):
 
 ```
 Geisterplatten (Diagnose, docs/optimierung.md Abschnitt 5)
@@ -566,24 +571,25 @@ Optimierung: Einzellinse N-BK7, Biegung
   Ergebnisdatei                               einzellinse_bk7_biegung_opt.json
   Backend                                     CPU, FP64
   Quadratur                                   10 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
   Variablen                                   3
   Nebenbedingungen (paraxial)                 1
   Läufe                                       1
   Zyklen höchstens                            100
 
 Iterationsprotokoll (Merit F = Summe r² in Wellen² bei 587.560 nm, docs/optimierung.md)
-  Lauf  Zyklus     Schritt            Merit        Testmerit     Gewinn   Dämpfung Schrittnorm versagt  Status
-     0       1  angenommen  6.747402936e-06  6.747402936e-06  9.999e-01  1.000e-03   1.116e-02       0
-     0       2  angenommen  3.797180076e-06  3.797180076e-06  1.000e+00  3.333e-04   9.135e-05       0
-     0       3  angenommen  3.796146522e-06  3.796146522e-06  9.999e-01  1.111e-04   1.312e-04       0
+  Lauf  Zyklus     Schritt            Merit        Testmerit     Gewinn   Dämpfung Schrittnorm versagt  hart  Status
+     0       1  angenommen  6.747402936e-06  6.747402936e-06  9.999e-01  1.000e-03   1.116e-02       0     0
+     0       2  angenommen  3.797180076e-06  3.797180076e-06  1.000e+00  3.333e-04   9.135e-05       0     0
+     0       3  angenommen  3.796146522e-06  3.796146522e-06  9.999e-01  1.111e-04   1.312e-04       0     0
 …
-     0      42  angenommen  1.557334269e-06  1.557334269e-06  6.601e-01  1.914e-08   4.349e-04       0
-     0      43  angenommen  1.557334158e-06  1.557334158e-06  8.857e-01  1.851e-08   1.135e-04       0
-     0      44  angenommen  1.557334153e-06  1.557334153e-06  4.909e-02  1.001e-08   1.489e-04       0
-     0      45  angenommen  1.557334135e-06  1.557334135e-06  5.096e-01  1.735e-08   6.196e-05       0
+     0      42  angenommen  1.557334269e-06  1.557334269e-06  6.601e-01  1.914e-08   4.349e-04       0     0
+     0      43  angenommen  1.557334158e-06  1.557334158e-06  8.857e-01  1.851e-08   1.135e-04       0     0
+     0      44  angenommen  1.557334153e-06  1.557334153e-06  4.909e-02  1.001e-08   1.489e-04       0     0
+     0      45  angenommen  1.557334135e-06  1.557334135e-06  5.096e-01  1.735e-08   6.196e-05       0     0
 …
-     0      53   verworfen  1.557334134e-06  1.557334138e-06 -1.405e+04  4.738e-05   3.283e-09       0
-     0      54   verworfen  1.557334134e-06  1.557334137e-06 -1.006e+05  3.790e-04   4.109e-10       0
+     0      53   verworfen  1.557334134e-06  1.557334138e-06 -1.405e+04  4.738e-05   3.283e-09       0     0
+     0      54   verworfen  1.557334134e-06  1.557334137e-06 -1.006e+05  3.790e-04   4.109e-10       0     0
 
 Ergebnis
   Status                                      converged_step
@@ -594,6 +600,9 @@ Ergebnis
   Merit nachher [Wellen²]                     1.557334134e-06
   Merit nachher/vorher                        4.968341e-05
   Versagte Strahlen vorher/nachher            0 / 0
+  davon hart vorher/nachher                   0 / 0
+  Runden des Strafverfahrens                  1
+  w_fail am Ende [Wellen²]                    1.000e+06
 
 Variablen
   Name    Einheit   untere Schranke           vorher          nachher   obere Schranke
@@ -657,15 +666,15 @@ Die RMS-Wellenfront sinkt auf ein Sechstel; die Endmerit 1,557·10⁻⁶ Wellen�
 
 ```
 Läufe
-  Lauf  Status               Zyklen      Merit Start       Merit Ende  versagt
-     0  converged_step           54  3.134515536e-02  1.557334134e-06        0
-     1  converged_step           55  1.544867972e+00  1.557334136e-06        0
-     2  converged_step           52  5.204384846e+00  1.557334136e-06        0
-     3  converged_step           59  4.067522266e+00  1.557334134e-06        0
-     4  converged_step           51  1.154977668e+00  1.557334134e-06        0  bester
-     5  converged_step           51  4.200103488e+00  1.557334136e-06        0
-     6  converged_step           63  7.160670488e+00  1.557334135e-06        0
-     7  converged_step           47  2.021973972e+00  1.557334135e-06        0
+  Lauf  Status               Zyklen      Merit Start       Merit Ende  versagt  hart  Runden
+     0  converged_step           54  3.134515536e-02  1.557334134e-06        0     0       1
+     1  converged_step           55  1.544867972e+00  1.557334136e-06        0     0       1
+     2  converged_step           52  5.204384846e+00  1.557334136e-06        0     0       1
+     3  converged_step           59  4.067522266e+00  1.557334134e-06        0     0       1
+     4  converged_step           51  1.154977668e+00  1.557334134e-06        0     0       1  bester
+     5  converged_step           51  4.200103488e+00  1.557334136e-06        0     0       1
+     6  converged_step           63  7.160670488e+00  1.557334135e-06        0     0       1
+     7  converged_step           47  2.021973972e+00  1.557334135e-06        0     0       1
 ```
 
 **GPU** (`--gpu`, RTX 3090): Kopfzeile `Backend  GPU 0 (NVIDIA GeForce RTX 3090), FP64`; konvergiert nach 56 Zyklen (`converged_step`) mit q = 0,720768 und Endmerit 1,557334138·10⁻⁶ Wellen² (CPU: 54 Zyklen, q = 0,720808, 1,557334134·10⁻⁶; die Rundungsunterschiede der Strahlresiduen ändern den Weg im flachen Tal, nicht das Optimum). Die GPU-Ergebnisdatei ergibt auf der CPU eine um 1,1·10⁻¹⁵ Wellen² andere Merit (Schranke oben: 4,2·10⁻¹²).
@@ -683,14 +692,14 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `backend`, `device`, `precision` | | wie bei `trace` (`precision` immer `"fp64"`) |
 | `merit_unit` | string | Einheit aller Merit-Werte (`merit`, `trial_merit`, `start_merit`): `"waves^2"` (Wellen² bei λ_ref, seit M4-T1) |
 | `quadrature` | object | `{"rings": N, "spokes": M}` |
-| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1) |
+| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1), `failure` (`"soft"` oder `"hard"`, ab M4-T2), `fail_weight` (Start-w_fail in Wellen², `null` bei `"hard"`) |
 | `variables` | object[] | pro Variable k: `name` (`"c[1]"`, `"t[2]"`, `"w"`, `"a[g,k]"`), `type`, `surface` (Dateifläche; `null` bei Geisterkoeffizienten), `plate` und `order` (nur Geisterkoeffizienten, sonst `null`; ab M4-T6), `lower`, `upper` (`null` = offen), `typical`, `start` (x₀), `result` (x des besten Laufs) |
 | `constraints` | object[] | pro paraxialer Nebenbedingung: `item` (Eintrag in `constraints.items`), `type`, `mode`, `weight`, `target` (Soll), `value_start`, `value_result` (Ist: Brennweite 1/φ, Arbeitsabstand, Abgleichlänge; bei `paraxial_focus` die Randstrahlhöhe q in der Bildebene), `residual_start`, `residual_result` (r = √w·q̃ wie im Residuenvektor) |
 | `ghost_diagnosis` | object \| null | Diagnosebericht der Geisterplatten (ab M4-T6; `null` ohne Geisterplatten), Objekt aus `ghost_diagnosis_json`: `merit`, `reference_nm`, `merit_wavelengths`, `short_nm`, `long_nm`; `plates` (pro Platte `plate`, `after_surface`, `distance`, `table_surface`, `norm_radius`, `order`, `glass` {`name`, `n_ref`, `dispersion`, `n_d`, `abbe`, `partial_gf`, `delta_partial_gf`}, `coefficients`, `sum_abs`, `max_abs`, `activity_threshold`, `active`, `dominant_orders`, `power`, `petzval`, `marginal_height`, `chief_height_per_rad`, `penalized`, `penalty`, `merit_without`, `merit_gain`); `positions` (pro Lage `after_surface`, `distance`, `plates`, `active_plates`, `chromatic_ratio`, `single_glass_ratio`, `merit_gain`, `sum_abs`, `recommendation`, `finding`, `reason`); `recommended_position` (Index in `positions` oder `null`), `recommendation` (`"none"`, `"A"`, `"B"`, `"B_anomalous"`), `recommendation_text` |
-| `iterations` | object[] \| null | Protokoll in der Reihenfolge der Rückrufe: `run`, `iteration`, `status`, `evaluated`, `accepted`, `merit`, `trial_merit`, `gain_ratio`, `damping`, `step_norm`, `failed_rays` (wie `LmIterationInfo`); `null` mit `--quiet` |
-| `runs` | object[] | pro Lauf: `run`, `status`, `iterations`, `accepted`, `jacobians`, `start_merit` (F am Startpunkt), `merit`, `failed_rays`, `start` (Startpunkt), `x` (Endpunkt) |
+| `iterations` | object[] \| null | Protokoll in der Reihenfolge der Rückrufe: `run`, `iteration`, `status`, `evaluated`, `accepted`, `merit`, `trial_merit`, `gain_ratio`, `damping`, `step_norm`, `failed_rays`, `hard_failed_rays` (wie `LmIterationInfo`; `iteration` läuft über die Runden des Strafverfahrens fort); `null` mit `--quiet` |
+| `runs` | object[] | pro Lauf: `run`, `status`, `iterations`, `accepted`, `jacobians`, `start_merit` (F am Startpunkt), `merit`, `failed_rays`, `hard_failed_rays`, `penalty_rounds` (Runden des Strafverfahrens, 1 ohne Neustart), `fail_weight` (w_fail der letzten Runde, `null` bei hartem Versagen), `start` (Startpunkt), `x` (Endpunkt) |
 | `best_run` | integer | Index des besten Laufs |
-| `result` | object | bester Lauf: `status`, `converged` (einer der drei Converged-Zustände), `iterations`, `accepted`, `jacobians`, `start_merit` (F(x₀) der Datei, = `runs[0].start_merit`), `merit`, `start_failed_rays`, `failed_rays`, `damping`, `gradient_norm`, `model_decrease` (wie `LmRunResult`) |
+| `result` | object | bester Lauf: `status`, `converged` (einer der drei Converged-Zustände), `iterations`, `accepted`, `jacobians`, `start_merit` (F(x₀) der Datei, = `runs[0].start_merit`), `merit`, `start_failed_rays`, `failed_rays`, `start_hard_failed_rays`, `hard_failed_rays`, `penalty_rounds`, `fail_weight`, `damping`, `gradient_norm`, `model_decrease` (wie `LmRunResult`) |
 | `reference_nm` | number | λ_ref für `rms_waves` |
 | `wavefront` | object \| null | `{"start": [...], "result": [...]}`, Einträge pro Feld und Wellenlänge (Reihenfolge f · L + l): `field`, `field_angle_deg`, `wavelength`, `wavelength_nm`, `rays`, `failed_rays`, `rms_waves`, `rms_mm` (wie bei `trace`); `null`, wenn nicht auswertbar |
 | `wavefront_error` | string \| null | Grund, warum `wavefront` `null` ist (afokales System ohne `target.focal_length`) |
@@ -712,7 +721,8 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
   "precision": "fp64",
   "merit_unit": "waves^2",
   "quadrature": { "rings": 10, "spokes": 8 },
-  "settings": { "max_iterations": 100, "runs": 1, "perturbation": null, "seed": null },
+  "settings": { "max_iterations": 100, "runs": 1, "perturbation": null, "seed": null,
+                "failure": "soft", "fail_weight": 1000000.0 },
   "variables": [
     { "name": "c[1]", "type": "curvature", "surface": 1, "plate": null, "order": null,
       "lower": -0.05, "upper": 0.05, "typical": 0.01, "start": 0.00967,
@@ -743,6 +753,10 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
     "merit": 1.557334133980554e-06,
     "start_failed_rays": 0,
     "failed_rays": 0,
+    "start_hard_failed_rays": 0,
+    "hard_failed_rays": 0,
+    "penalty_rounds": 1,
+    "fail_weight": 1000000.0,
     "damping": 0.0060647987285953695,
     "gradient_norm": 5.76557505989509e-09,
     "model_decrease": 8.035301977234237e-06
@@ -767,8 +781,9 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
 - `CliOptimize.JsonIterationsMatchLibraryHistory`: ein Protokolleintrag pro Zyklus, Merit bitgleich zu `LmRunResult::history`; `--quiet` ohne Protokoll.
 - `CliOptimize.ConstraintsReportedBeforeAndAfter`: Istwerte und Residuen gegen `compute_paraxial` und die Dicken (`einzellinse_bk7_nebenbedingungen.json`).
 - `CliOptimize.MultistartIsDeterministic`: zwei Aufrufe gleiche Ausgabe, Startpunkte bitgleich zu `perturbed_vector`, bester Lauf nach der Regel oben, Lauf 0 gleich dem Einzellauf.
+- `CliOptimize.SoftFailureStartBecomesFailureFree` (M4-T2): `weiches_versagen_start.json` mit 27 von 90 versagenden Strahlen wird versagensfrei (F 2,160648·10⁶ → 1,878483·10³ Wellen², 146 Zyklen, 4 Runden bis w_fail = 10⁹), x und Merit bitgleich zu `optimize_lm_cpu`, Protokoll mit fortlaufenden Zyklen; `--hard-failure` behält 27 hart versagte Strahlen (eine Runde, `fail_weight: null`), `--fail-weight 1e9` setzt das Startgewicht; Text mit Versagensart, Runden und w_fail.
 - `CliOptimize.WarnsAboutFieldTargetsFromStartFocalLength`, `CliOptimize.TextOutput`, `CliOptimize.Errors` (keine Variablen, fehlende Datei, `-o` gleich der Eingabe, fehlendes Ausgabeverzeichnis, Kommandozeilenfehler), `CliOptimize.GpuUnavailableWithoutCuda` (CPU-Build).
-- Im CUDA-Build `CliOptimizeGpu.MatchesCpuAndReproducesMerit` (übersprungen ohne Gerät): GPU-Optimierung konvergiert mit demselben Formfaktor; Neuladen auf der GPU bitgleich, auf der CPU innerhalb der Schranke oben; Multistart auf der GPU deterministisch. `CliOptimizeGpu.InvalidDevice`.
+- Im CUDA-Build `CliOptimizeGpu.MatchesCpuAndReproducesMerit` (übersprungen ohne Gerät): GPU-Optimierung konvergiert mit demselben Formfaktor; Neuladen auf der GPU bitgleich, auf der CPU innerhalb der Schranke oben; Multistart auf der GPU deterministisch. `CliOptimizeGpu.SoftFailureStartBecomesFailureFree` (M4-T2): versagensfrei auf der GPU, Ausgabe deterministisch. `CliOptimizeGpu.InvalidDevice`.
 
 ctest-Kommandos mit dem gebauten Programm: `cli_optimize_text` (schreibt `einzellinse_bk7_biegung_opt.json` ins Build-Verzeichnis), danach `cli_optimize_result_trace` (`mikroptim trace` auf dieser Ergebnisdatei, f′ = 100,0000 mm) und `cli_optimize_no_variables`; im CPU-Build `cli_optimize_gpu_unavailable` (Exit-Code 3), im CUDA-Build `cli_optimize_gpu_json` (übersprungen ohne Gerät) und `cli_optimize_gpu_no_device`.
 

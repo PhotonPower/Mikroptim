@@ -58,16 +58,19 @@ SystemBatchLayout make_batch_layout(const BatchTopology& topology, int variants)
 // docs/architektur.md). Die Zahl der Strahlen pro Variante gibt der Aufrufer vor, z. B. mit
 // rays_per_variant().
 struct OutputRequest {
-    std::int64_t rays_per_variant = 0; // Σ_f L · n_f (n_f = Stützstellen von Feld f)
-    std::int64_t extra_residuals = 0;  // weitere Residuen pro Variante (Paraxial, Strafen)
-    bool residuals = true;             // Residuenvektor: rays + extra Werte (FP64)
-    bool ray_status = true;            // Status pro Strahl (1 Byte, TraceStatus)
-    bool opd = false;                  // rohe OPD pro Strahl nach Kolbenabzug (FP64), z. B.
-                                       // für Tests und Auswertung (Kernel RESIDUALS, M2-T2)
-    bool merit = true;                 // Merit (FP64) + Teilsumme pro Block (v, f, l), dazu
-                                       // versagte Strahlen pro Variante (int64) und Block (int32)
-    bool surface_max = true;           // max. Strahlhöhe und Einfallswinkel pro Fläche (2 · S FP64)
-                                       // + dasselbe pro Block (v, f, l)
+    std::int64_t rays_per_variant = 0;  // Σ_f L · n_f (n_f = Stützstellen von Feld f)
+    std::int64_t penalty_residuals = 0; // Strafresiduen pro Variante (weiches Versagen, M4-T2:
+                                        // ResidualLayout::penalty_rows, 0 oder rays)
+    std::int64_t extra_residuals = 0;   // weitere Residuen pro Variante (Paraxial usw.)
+    bool residuals = true;              // Residuenvektor: rays + penalty + extra Werte (FP64)
+    bool ray_status = true;             // Status pro Strahl (1 Byte, TraceStatus)
+    bool opd = false;                   // rohe OPD pro Strahl nach Kolbenabzug (FP64), z. B.
+                                        // für Tests und Auswertung (Kernel RESIDUALS, M2-T2)
+    bool merit = true;                  // Merit (FP64) + Teilsumme pro Block (v, f, l), dazu
+                                        // versagte und hart versagte Strahlen pro Variante
+                                        // (int64) und Block (int32)
+    bool surface_max = true; // max. Strahlhöhe und Einfallswinkel pro Fläche (2 · S FP64)
+                             // + dasselbe pro Block (v, f, l)
 };
 
 // Strahlen pro Variante: L · (axis_fields · axis_samples + (fields − axis_fields) · samples).
@@ -82,16 +85,18 @@ std::int64_t rays_per_variant(int fields, int wavelengths, int samples, int axis
 // angeforderte Ausgaben haben 0 Byte). `extra` = V · extra_bytes_per_variant (z. B.
 // Arbeitsspeicher eines Aufrufers wie des LM in M3).
 struct OutputLayout {
-    BufferRegion residuals;           // V · (rays + extra_residuals) · 8
-    BufferRegion ray_status;          // V · rays · 1
-    BufferRegion opd;                 // V · rays · 8
-    BufferRegion merit;               // V · 8
-    BufferRegion merit_partial;       // V · F · L · 8
-    BufferRegion failed_rays;         // V · 8 (int64, mit merit)
-    BufferRegion failed_rays_partial; // V · F · L · 4 (int32, mit merit)
-    BufferRegion surface_max;         // V · 2 · S · 8
-    BufferRegion surface_max_partial; // V · F · L · 2 · S · 8
-    BufferRegion extra;               // V · extra_bytes_per_variant
+    BufferRegion residuals;                // V · (rays + penalty + extra_residuals) · 8
+    BufferRegion ray_status;               // V · rays · 1
+    BufferRegion opd;                      // V · rays · 8
+    BufferRegion merit;                    // V · 8
+    BufferRegion merit_partial;            // V · F · L · 8
+    BufferRegion failed_rays;              // V · 8 (int64, mit merit)
+    BufferRegion failed_rays_partial;      // V · F · L · 4 (int32, mit merit)
+    BufferRegion hard_failed_rays;         // V · 8 (int64, mit merit; M4-T2)
+    BufferRegion hard_failed_rays_partial; // V · F · L · 4 (int32, mit merit)
+    BufferRegion surface_max;              // V · 2 · S · 8
+    BufferRegion surface_max_partial;      // V · F · L · 2 · S · 8
+    BufferRegion extra;                    // V · extra_bytes_per_variant
     std::size_t total_bytes = 0;
 };
 

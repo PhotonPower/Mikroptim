@@ -78,7 +78,7 @@ Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_su
 - **Schritt** für s = 1 … S−1: Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l]. Bei einer Geisterplatte (Typ GhostPlate, g-te ihrer Art in Tracerichtung) statt Schnitt und Brechung der Schritt aus Abschnitt 6 mit den Daten der Geisterplatte g.
 - **Ende:** im Schnittpunkt mit der letzten Fläche S−1, in deren lokalen Koordinaten, Richtung nach der Brechung, OPL bis zu diesem Punkt. Hier setzt die Referenzsphäre an (Abschnitt 7, Mittelpunkt **M**_f in denselben Koordinaten).
 - **Bildebene:** `transfer_to_image_plane` transportiert um thickness[S−1] im Medium index[S−1][l] in die Ebene z = 0 der Bildebene (OPL += n_B · s₀).
-- **Versagen:** Der Trace kehrt bei der ersten versagenden Fläche mit deren Status und Nummer zurück (hartes Versagen, kein Werfen). Der Strahlzustand ist dann teilweise fortgeschrieben und wird nicht weiter verwendet. Weiches Versagen (Abschnitt 11) folgt in M4-T2.
+- **Versagen:** Der Trace kehrt bei der ersten versagenden Fläche mit deren Status und Nummer zurück (hartes Versagen, kein Werfen). Der Strahlzustand ist dann teilweise fortgeschrieben und wird nicht weiter verwendet. Im weichen Modus (M4-T2, Abschnitt 11) werden verfehlte Flächen, Totalreflexion und negative Radikanden an Geisterplatten fortgesetzt und bestraft; hart bleiben d_z ≤ 0, nicht unterstützte Flächen und NaN.
 
 ### Statusmaske
 
@@ -91,8 +91,10 @@ Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_su
 | 2 | `TIR` | Totalreflexion, k < 0; an einer Geisterplatte Radikand 1 − \|d′_⊥\|² < 0 (Abschnitt 6) |
 | 3 | `Backward` | d_z ≤ 0 (oder NaN) vor einem Transfer oder nach der Brechung an der letzten Fläche (vor dem Schritt auf die Referenzsphäre, dann versagende Fläche S); Abschnitt 11 |
 | 4 | `Unsupported` | Flächentyp vom Tracer nicht unterstützt (z. B. Fläche vom Typ GhostPlate ohne Geisterdaten in der Tabelle) |
+| 5 | `SoftMissed` | weiches Versagen (M4-T2): erstes Ereignis „Fläche verfehlt“ (D < 0) oder „Referenzsphäre verfehlt“ (b² − g < 0), fortgesetzt |
+| 6 | `SoftTIR` | weiches Versagen (M4-T2): erstes Ereignis Totalreflexion bzw. negativer Radikand an einer Geisterplatte, fortgesetzt |
 
-Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen).
+Zu jedem Strahl wird die Nummer der versagenden Fläche gemeldet (−1 ohne Versagen; bei weichem Versagen die Fläche des ersten weichen Ereignisses, S für die Referenzsphäre). `in_piston(s)` (Ok oder weich versagt) entscheidet, ob ein Strahl in Kolben und Wellenfrontresiduen eingeht; alle anderen Werte sind hartes Versagen. Die Werte 5 und 6 kommen nur im weichen Modus vor.
 
 ## 6. Geisterplatte
 
@@ -186,7 +188,7 @@ $$s_{\mathrm{ref}} = \frac{g}{\,b + \sigma\sqrt{b^2 - g}\,},\qquad \sigma = \beg
 
 $$W_{\mathrm{ok}} = \sum_{k\,\mathrm{ok}} W_k,\qquad \overline{\mathrm{OPL}} = \frac{1}{W_{\mathrm{ok}}}\sum_{k\,\mathrm{ok}} W_k\,\mathrm{OPL}_k,\qquad \mathrm{OPD}_k = \mathrm{OPL}_k - \overline{\mathrm{OPL}},\qquad \mathrm{RMS} = \sqrt{\frac{1}{W_{\mathrm{ok}}}\sum_{k\,\mathrm{ok}} W_k\,\mathrm{OPD}_k^2}$$
 
-Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug oben. Gemeldet werden zusätzlich die Zahl der versagten Strahlen und W_ok. Ohne gültigen Strahl ist der RMS ungültig (Host: NaN). In `opd_statistics` ist die OPD versagter Strahlen 0 (maskiert), in der Host-API NaN. Weiches Versagen (Abschnitt 11) folgt in M4-T2.
+Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug oben. Gemeldet werden zusätzlich die Zahl der versagten Strahlen und W_ok. Ohne gültigen Strahl ist der RMS ungültig (Host: NaN). In `opd_statistics` ist die OPD versagter Strahlen 0 (maskiert), in der Host-API NaN. Die Auswertung `evaluate_wavefront` (wie die CLI `mikroptim trace` und der Modus EVAL) bleibt beim harten Versagen; im weichen Modus der Optimierung (M4-T2, Abschnitt 11) zählen weich versagte Strahlen in `opd_statistics` wie gültige („ok“ heißt dann `in_piston`).
 
 **Summationsreihenfolge und Determinismus.** Zwei Durchläufe: (1) W_ok und Σ W_k OPL_k, daraus der Kolben; (2) Σ W_k OPD_k². Die Formel √(⟨OPL²⟩ − ⟨OPL⟩²) wäre bei OPL ≈ 100 mm und OPD ≈ 10⁻⁶ mm vollständig ausgelöscht. Die CPU summiert in aufsteigender Reihenfolge des Quadraturindex k (ringweise, innen nach außen). Der Kernel (M2-T2) bildet dieselben Summen als Baumreduktion im Block in fester Reihenfolge (ADR-0007): erst die Paare (W_k, W_k OPL_k), dann den Kolben per Shared Memory an alle Threads, dann W_k OPD_k². Er ist damit bitgleich reproduzierbar, weicht aber von der CPU um Rundungsfehler ab (`kCpuGpuFp64`).
 
@@ -211,13 +213,13 @@ Festlegung für den Kernel `RESIDUALS` und seine CPU-Referenz (M2-T2, `include/m
 
 $$r_k = s_{f,l}\,\sqrt{W_i V_j}\;\mathrm{OPD}_k \quad [\text{Wellen bei } \lambda_{\mathrm{ref}}],\qquad s_{f,l} = \frac{\sqrt{\hat w_f\,\hat w_\lambda}}{\lambda_{\mathrm{ref}}},\qquad \hat w_f = \frac{w_f}{\sum_{f'} w_{f'}},\quad \hat w_\lambda = \frac{w_\lambda}{\sum_{l'} w_{\lambda'}}$$
 
-mit OPD_k nach Kolbenabzug wie oben (hartes Versagen: versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne gültigen Strahl im Tupel alle OPD und Residuen 0) und √(W_i V_j) = `residual_weight(sample)`. w_f = `field_weight[f]` (`source.field_weights`, Punktquelle: ein Feld mit Gewicht 1), w_λ = `wavelength_weight[l]` (`spectrum.weights`), λ_ref = `reference_wavelength_nm`·10⁻⁶ mm (`spectrum.reference_nm`, wie die Ausgabe in Wellen in M1-T7). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches. Die OPD in den Ausgaben (`ResidualResult::opd`, `tuple_wavefronts`, `mikroptim trace --gpu`) bleibt in mm und ungewichtet.
+mit OPD_k nach Kolbenabzug wie oben (hart versagte Strahlen aus dem Kolben ausgeschlossen, Gewichte renormiert, OPD_k = r_k = 0, Status gesetzt; ohne Strahl im Kolben im Tupel alle OPD und Residuen 0; weich versagte Strahlen, M4-T2, gehören zum Kolben und tragen zusätzlich ein Strafresiduum, Abschnitt 11) und √(W_i V_j) = `residual_weight(sample)`. w_f = `field_weight[f]` (`source.field_weights`, Punktquelle: ein Feld mit Gewicht 1), w_λ = `wavelength_weight[l]` (`spectrum.weights`), λ_ref = `reference_wavelength_nm`·10⁻⁶ mm (`spectrum.reference_nm`, wie die Ausgabe in Wellen in M1-T7). Bildpunkt **M**_f = (0, `field_target[v][f]`, `thickness[v][S−1]`), Pupillenart pro Feld aus der Topologie des Batches. Die OPD in den Ausgaben (`ResidualResult::opd`, `tuple_wavefronts`, `mikroptim trace --gpu`) bleibt in mm und ungewichtet.
 
-**Merit:** F_v = Σ_k r_k² über alle Strahlresiduen der Variante (plus einem vom Aufrufer gelieferten Anteil weiterer Residuen); ohne gültigen Strahl ist F_v = 0 und nur an der Zahl versagter Strahlen erkennbar. Ohne Versagen ist Σ_k W_k OPD_k² = RMS² des Tupels (Quadraturgewichte mit Summe 1), also
+**Merit:** F_v = Σ_k r_k² über alle Strahlresiduen der Variante, im weichen Modus plus Σ_k p_k² der Strafresiduen (M4-T2, Abschnitt 11), plus einem vom Aufrufer gelieferten Anteil weiterer Residuen; im harten Modus ist F_v ohne gültigen Strahl 0 und nur an der Zahl versagter Strahlen erkennbar. Ohne Versagen ist Σ_k W_k OPD_k² = RMS² des Tupels (Quadraturgewichte mit Summe 1), also
 
 $$F_v = \sum_f \sum_\lambda \hat w_f\,\hat w_\lambda \Big(\frac{\mathrm{RMS}_{f\lambda}}{\lambda_{\mathrm{ref}}}\Big)^2 \quad [\text{Wellen}^2],$$
 
-der gewichtete mittlere quadratische RMS-Wellenfrontfehler in Wellen bei λ_ref (Maréchal-Kriterium RMS ≤ λ/14 ⇔ F ≤ 5,1·10⁻³ bei gleichem RMS in allen Tupeln). Mit Versagen ist der Beitrag eines Tupels W_ok·RMS² (die Gewichte der Residuen werden nicht renormiert). Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
+der gewichtete mittlere quadratische RMS-Wellenfrontfehler in Wellen bei λ_ref (Maréchal-Kriterium RMS ≤ λ/14 ⇔ F ≤ 5,1·10⁻³ bei gleichem RMS in allen Tupeln). Mit hartem Versagen ist der Beitrag eines Tupels W_ok·RMS² (die Gewichte der Residuen werden nicht renormiert). Summationsreihenfolge, Max-Reduktionen (größte Strahlhöhe, kleinster cos I pro Fläche) und Toleranzen: [architektur.md, „Kernel MERIT“](architektur.md#kernel-merit-m2-t3).
 
 **Normierung der Gewichte (M4-T1).** w_f und w_λ werden jeweils auf Summe 1 normiert, nicht in der Datei, sondern in `residual_scale`. Gründe: (1) Die Wellenfrontmerit hat damit eine feste Bedeutung (mittlerer RMS² in Wellen²), unabhängig von der Zahl der Felder und Wellenlängen und vom Maßstab der Gewichte in der Datei (Gewichte 1, 1, 1 und 2, 2, 2 sind gleich). (2) Die Homotopie über Feld und Spektrum (optimierung.md, Abschnitt 7) fügt Felder und Wellenlängen hinzu; ohne Normierung würde dabei der Wellenfrontanteil gegenüber den Nebenbedingungen wachsen (bei F·L Tupeln um den Faktor F·L) und deren Gewichte müssten mitgeführt werden. (3) Die Gewichte der Nebenbedingungen lassen sich einmal gegen einen RMS in Wellen wählen (Faustregel in optimierung.md, Abschnitt 2.2). λ_ref statt der Wellenlänge des Tupels, damit alle Tupel dieselbe Längeneinheit haben (wie die Ausgabe in Wellen, Abschnitt 1).
 
@@ -500,7 +502,61 @@ Nur in den Optimierungsmodi (`MERIT`, `RESIDUALS`, `ADJOINT`):
 | Geisterplatte: Radikand < 0 | √w_fail · (−Radikand) | mit Radikand := 0 |
 | d_z ≤ 0 (Strahl läuft rückwärts) | hartes Versagen, festes Strafresiduum | Strahl maskiert |
 
-Im Modus `EVAL` ist jedes Versagen hart. Die Statusmaske pro Strahl wird immer mitgeführt.
+Im Modus `EVAL` ist jedes Versagen hart (`eval_ray` ruft `trace_ray` ausdrücklich ohne Akkumulator, `FailureMode::Hard`; ebenso `evaluate_wavefront` und `mikroptim trace`). Die Statusmaske pro Strahl wird immer mitgeführt.
+
+### Festlegungen der Implementierung (M4-T2)
+
+Pro Strahl header-only für alle Zahlentypen (double, df64; `MKO_HD`): Akkumulator `SoftFailure<R>` und Statushilfen in `include/mikroptim/trace/surface_ops.hpp`, Fortsetzungen in `intersect_sphere`, `refract_sphere` (ebenda), `phase_surface_step` (`ghost_plate.hpp`), `reference_sphere_step` (`reference_sphere.hpp`), Weitergabe durch `propagate_surface`, `trace_ray`, `trace_to_reference_sphere` und `batch_ray_opl` (optionaler Zeiger, nullptr = hart und bitgleich zu M2). Strafresiduen in `include/mikroptim/merit/ray_residual.hpp`, Ablage in `ResidualLayout` ([architektur.md, „Residuenlayout“](architektur.md#residuenlayout)). Schalter `ResidualSettings::failure` (`FailureMode::Soft`, Standard in RESIDUALS und MERIT; `Hard` für Auswertung, CLI `trace` und den Modus EVAL), Gewicht `ResidualSettings::fail_weight`. Die FP32-Vorfilterung rechnet weiter hart (Abschnitt 12).
+
+**Fortsetzungsregeln** (Strafgröße π dimensionslos; geprüft gegen geometrische Orakel, Tests `SoftFailure.*Continuation`):
+
+| Ereignis | Strafgröße | Fortsetzung (Festlegung) | Grenze und Grenzfälle |
+|---|---|---|---|
+| Fläche verfehlt, D = B² − cH < 0 | −D | D := 0 in der Form s = (B − √D)/c, also s = B/c: der Punkt der Geraden mit dem kleinsten Abstand zum Krümmungsmittelpunkt **C** = (0, 0, 1/c) (Scheitel der Parabel H − 2Bs + cs²); die Normale **N** = (−cx, −cy, 1 − cz) wird dort normiert (\|**N**\| = \|c\|·\|**p** − **C**\| > 1), so dass cos I = **d**·**N** = 0 ist; danach Brechung wie sonst (μ < 1: unter dem Grenzwinkel ins Glas; μ > 1: zusätzlich Totalreflexion) | Bei D = 0 ist B = √(cH) > 0 und B/c = H/B der Berührpunkt der Tangente, \|**N**\| = 1: stetig. Die algebraisch gleiche Form H/(B + √D) ergäbe mit D := 0 s = H/B, unbeschränkt für B → 0; B ≤ 0 tritt tief im Versagensbereich auf (z. B. c = 0,1/mm, y = 5 mm, Richtung 70° nach außen: B = −0,128). Mit B/c bleibt \|s\| < √(x² + y²), weil D < 0 nur bei \|B\| < \|c\|·√(x² + y²) möglich ist. Der zweite Fall „verfehlt“ (D ≥ 0, B + √D ≤ 0, auch NaN) bleibt hart: Für d_z > 0 lägen beide Nullstellen bei z ≤ 0, er entsteht nur durch Rundung. |
+| Totalreflexion, k < 0 | −k | k := 0 und Normierung: **d**′ = (**d** − cos I **N**)/\|**d** − cos I **N**\| (ohne Normierung wäre \|**d**′\|² = 1 − k > 1), also tangential zur Fläche, **d**′·**N** = 0 | An der Grenze k = 0 ist der gebrochene Strahl bereits tangential: stetig. In der Meridionalebene ist d′_z = sin α · sin I (α Neigung der Normale): an Ebenen 0, bei „falsch“ geneigter Normale < 0; der Strahl versagt dann an der nächsten Prüfung hart (Backward). |
+| Geisterplatte, Radikand 1 − \|**d**′_⊥\|² < 0 | −Radikand | Radikand := 0 mit Normierung: **d**′ = (d′_x, d′_y, 0)/\|**d**′_⊥\| | d′_z = 0, also stets hartes Versagen an der nächsten Prüfung von d_z; −Radikand bleibt aber im Strafresiduum (plus Festanteil) und liefert einen Gradienten. |
+| Referenzsphäre verfehlt, b² − g < 0 (in der Tabelle oben nicht aufgeführt) | −(b² − g)/R_ref² | b² − g := 0: s_ref = b, Punkt kleinsten Abstands zu **M**_f, OPL += n_B·b | √(b² − g)/R_ref ist der Kosinus zwischen Strahl und Sphärennormale, die Strafe also das Gegenstück zu −D. Bei b² − g = 0 ist g/b = b: stetig, auch für b → 0 endlich. R_ref = 0 und „zugewandte Kappe nicht getroffen“ bleiben hart. |
+| d_z ≤ 0 (vor einem Transfer oder nach der letzten Brechung), Unsupported, NaN | Σ der bisherigen Strafen + `kHardFailurePenalty` = 1 | maskiert (aus Kolben und Wellenfrontresiduen ausgeschlossen, Gewichte renormiert wie in M2) | Sprung im Wert (gewollt, Tabelle oben). 1 entspricht einer voll ausgebildeten Totalreflexion (k = −1); damit ist ein hart versagter Strahl teurer als einer, der gerade eben weich versagt. |
+
+**Status:** Ein weich versagter Strahl, der die Referenzsphäre erreicht, hat den Status seines ersten weichen Ereignisses (`SoftMissed` = 5, `SoftTIR` = 6, Abschnitt 5) und als versagende Fläche dessen Fläche; ein späteres hartes Versagen überschreibt beides. `MeritResult::failed` und `ResidualResult::failed_count` zählen weich und hart versagte Strahlen, `hard_failed` bzw. `hard_failed_count` nur die harten (für die Ablehnung im LM, Abschnitt 4 in optimierung.md).
+
+**Kolben:** Weich versagte Strahlen gehen mit ihrer OPL (aus der Fortsetzung, stetig) in Kolben und Wellenfrontresiduen ein; hart versagte bleiben ausgeschlossen. Ein Ausschluss weich versagter Strahlen wäre an jeder Grenze ein Sprung (Residuum und Kolben).
+
+**Strafresiduen:** genau eines pro Strahl, hinter den Strahlresiduen (Block gleicher Länge),
+
+$$p_k = \sqrt{w_{\mathrm{fail}}\,\hat w_f\,\hat w_\lambda\,W_i V_j}\;\pi_k \quad[\text{Wellen}],\qquad \pi_k = \begin{cases}0 & \text{Ok}\\ \sum_{\text{Ereignisse}} \pi & \text{weich versagt}\\ \sum_{\text{Ereignisse}} \pi + 1 & \text{hart versagt}\end{cases}$$
+
+Die Gewichtung wie bei den Wellenfrontresiduen macht Σ p_k² = w_fail·Σ ŵ_f ŵ_λ Σ_k W_k π_k² zum gewichteten Mittel von π² über Pupille, Felder und Wellenlängen (unabhängig von der Quadratur, w_fail in Wellen²); Tupel mit Gewicht 0 werden nicht bestraft. Die Summe über alle Ereignisse eines Strahls (nicht nur das erste) ist für die Stetigkeit nötig: Versagt ein Strahl an Fläche 1 weich und würde der gültige Strahl an Fläche 5 versagen, so ginge beim Überschreiten der Grenze von Fläche 1 die Strafe sonst von π₁ → 0 auf π₅ > 0 über. Merit: F = Σ r_k² + Σ p_k² (+ weitere Residuen); `merit_cpu` summiert pro Tupel erst Σ r², dann Σ p², der Kernel MERIT bildet Σ p² schon in Durchlauf 1.
+
+**Rechnung:** `penalty_scale(view, f, l, w_fail)` = √(w_fail·ŵ_f ŵ_λ) mit demselben normierten Tupelgewicht wie `residual_scale` (`tuple_weight`), `ray_penalty(scale, sample, Status, Strafe)`. Im gültigen Pfad kosten die Schalter nur Prüfungen; die Fortsetzungen (eine Division, eine Wurzel, Normierungen) laufen nur im Versagensfall. Die harte Rechnung (`soft = nullptr`) ist unverändert bitgleich zu M2/M3 (Tests `ResidualsCpu.MatchesEvaluateWavefront`, `SoftFailure.TraceMatchesHardModeAndReportsFirstEvent`: ohne Versagen sind OPL, Kolben und Residuen in beiden Modi bitgleich).
+
+**Stetigkeit (Abnahme).** Merit entlang einer Geraden durch eine Versagensgrenze, 10⁴ Punkte, danach das Intervall des Übergangs (erste Änderung der Zahl versagter Strahlen) noch einmal mit 10⁴ Punkten; Kriterien: kein Nachbarsprung größer als das 10-fache des größeren seiner beiden Nachbarn (`kContinuityNeighborRatio`; eine Wurzelsingularität ergibt höchstens 1/(√2 − 1) ≈ 2,4) und Sprung am Übergang nach der Verfeinerung höchstens 5 % des vorigen (`kContinuityShrink`; stetig mindestens wie √Δt). Auf der gültigen Seite ist die Merit nur Hölder-stetig mit Exponent ½ (Richtung des gebrochenen Strahls ∝ √k, Schnittpunkt ∝ √D), eine Lipschitz-Schranke aus der Steigung gilt dort nicht; die weiche Seite ist glatt. Tests `MeritContinuity.*Cpu` (CI) und `CudaSoftFailure.MeritContinuity` (RTX 3090):
+
+| Gerade | Modus | Merit-Skala [Wellen²] | größtes Nachbarverhältnis | Sprung am Übergang bei Δt = 6·10⁻⁹ → 6·10⁻¹³ |
+|---|---|---|---|---|
+| Totalreflexion (Plankonvexlinse, c₂·(1 + t)) | weich, CPU und GPU FP64 | 4,1·10³ | 2,32 | 4,89 → 1,09·10⁻² |
+| | weich, GPU df64 | | 2,32 | 4,89 → 1,09·10⁻² |
+| | hart | 4,1·10³ | 1.681 | 3.548 → 3.553 |
+| Fläche verfehlt (Meniskus, c₁·(1 + t)) | weich, CPU und GPU FP64 | 3,2·10⁵ | 2,40 | 1,76·10⁻² → 1,76·10⁻⁶ |
+| | weich, GPU df64 | | 2,39 | 1,89·10⁻² → 1,35·10⁻³ (Auflösung von df64) |
+| | hart | 3,1·10⁵ | 2.320 | 8.164 → 8.164 |
+
+Eine weitere Verfeinerung erreicht die Auflösung der Krümmung (ulp ≈ 10⁻¹⁶ relativ); dort streut die Rundung von √k bzw. √D nahe 0 die Merit um ~10⁻³ Wellen².
+
+**Gewicht w_fail und äußeres Strafverfahren.** Standard w_fail = `kDefaultFailWeight` = 10⁶ Wellen² (eine Strafgröße von 10⁻³ auf allen Strahlen kostet 1 Welle²). Ein fester Wert reicht nicht: Die quadratische Strafe lässt am Optimum eine Verletzung ∝ (Gradient der Wellenfront)/w_fail zu, und die Wellenfrontresiduen weich versagter (fortgesetzter) Strahlen sind in schlechten Startsystemen groß (hier 10³ Wellen und mehr). Mit kleinem w_fail endet der LM in Minima mit versagten Strahlen, mit sehr großem bleibt er an der Kante hängen, an der die tangentiale Fortsetzung einer Totalreflexion an einer fast ebenen Fläche (d′_z → 0) in hartes Versagen übergeht. Deshalb starten die optischen Treiber des LM (`optimize_lm_cpu`, `cuda::optimize_lm_gpu`) einen Lauf, der mit versagten Strahlen endet, an seinem Endpunkt mit dem zehnfachen w_fail neu (`LmOptions::fail_weight_factor` = 10, höchstens `max_fail_weight` = 10¹⁴; optimierung.md, Abschnitt 4). Gemessen (Test `SoftFailure.AcceptanceManyStartsCpu`, Standard-LM-Optionen):
+
+| Starts | festes w_fail 10⁶ | 10⁸ | 10⁹ | 10¹⁰ | 10¹² | Strafverfahren ab 10⁶ |
+|---|---|---|---|---|---|---|
+| 108 um `weiches_versagen_start.json` (102 mit Versagen) | 10 | 18 | 97 | 42 | 49 | 108 (CPU), 107 (GPU), höchstens 5 Runden |
+| je 12 Plankonvexlinsen an der Totalreflexion (2, 5, 8 von 10 Strahlen versagt) | 0 | 0 | 0 | 0 | 12 | 12 |
+
+Das Ergebnis hängt kaum vom Startgewicht ab (Starts mit 10⁴ und 10⁸ ebenso). Erprobt und verworfen: die „gespiegelte“ Fortsetzung **d**′·**N** = √(−k) statt 0 (vermeidet die Kante, ist aber mit Strafverfahren deutlich schlechter: 146 statt 216 von 216 Starts eines dichteren Gitters).
+
+**Abnahme-Optimierung** (Test `SoftFailure.AcceptanceOptimizationCpu`, CI; GPU `CudaSoftFailure.AcceptanceOptimizationGpu`): `weiches_versagen_start.json` (frei erfunden: Bikonvexlinse N-BK7, Vorderfläche R = 9,6 mm kleiner als die Blende a = 10 mm, zwei Felder, eine Wellenlänge, Variablen c₁, c₂, w): 27 von 90 Strahlen (30 %) versagen weich (12 verfehlen die Vorderfläche, 15 totalreflektieren an der Rückfläche). LM mit Standardoptionen: versagensfrei nach 103 angenommenen Schritten, Ende nach 146 Zyklen in 4 Runden (w_fail bis 10⁹) mit `converged_merit`, F 2,16·10⁶ → 1,88·10³ Wellen², x = (0,05874; −0,04328; 14,77 mm); CPU und GPU gleich. Am Ende sind alle Strafen 0, die Merit ist bitgleich zu der im harten Modus. Zum Vergleich der harte Modus aus demselben Start: Er senkt F nur über die gültigen Strahlen (2,7·10⁴ → 709) und endet mit allen 27 versagten Strahlen.
+
+**CPU gegen GPU, df64, Determinismus:** Status und Strafen wie die übrigen Größen; die Strafgrößen tief im Versagensbereich sind schlecht konditioniert (fortgesetzte Strahlen weit außerhalb des Systems), Toleranzen `kCpuGpuPenaltyRelative` und `kCpuGpuSoftTuple` (tests/tolerances.hpp). df64 gegen FP64 (1.000 Varianten, 16.298 weich versagte Strahlen): Status gleich, gültige Strahlen ≤ 4,3·10⁻¹¹ mm, weich versagte ≤ 7,2·10⁻¹⁰ mm, Strafen relativ ≤ 2,7·10⁻⁸. Wiederholte Läufe und Tranchen bitgleich (`CudaSoftFailure.RepeatedRunsAndTranchesAreBitIdentical`).
+
+**Grenzen:** Tief im Versagensbereich wachsen die Strafen mit der Verfehlung (−D ≈ c²r², an Geisterplatten weit außerhalb von r_g bis 10²⁶); die Merit bleibt stetig, kann aber sehr groß werden (Einzellinse mit Pupille 10⁴ mm: F ≈ 10¹⁴ Wellen²). Hartes Versagen (insbesondere nach einer tangentialen Fortsetzung) bleibt ein Sprung; der Festanteil hat keinen Gradienten, nur die Strafen der weichen Ereignisse davor.
 
 ## 12. Genauigkeit
 
@@ -590,6 +646,8 @@ $$L_v = \Big(\frac{\max(0,\ \sqrt{F_{32}} - \Delta_v)}{1 + m}\Big)^2 + E_v \;\le
 
 U_v nur ohne unsichere Strahlen (sonst +∞); E_v ist der optionale Anteil weiterer Residuen (FP64 vom Aufrufer, exakt addiert). NaN in den Rohdaten (Überlauf) ergibt L_v = E_v, U_v = +∞.
 
+**Weiches Versagen (M4-T2).** Die Vorfilterung selbst rechnet hart. Ist die FP64-Wahrheit weich (Layout mit `FailureMode::Soft`, Standard), enthält F_FP64 zusätzlich die Strafresiduen und die Wellenfrontresiduen weich versagter Strahlen, deren Kolben auch über diese Strahlen gebildet wird. L_v bleibt gültig: Die Strafen sind ≥ 0, und mit der Menge B der Strahlen im FP64-Kolben (C ⊆ FP64-gültig ⊆ B) gilt nach (1) Σ_B W_k (OPL_k − x_B)² ≥ min_x Σ_C W_k (OPL_k − x)² = F64(C). U_v ist dagegen nur ohne versagte Strahlen eine obere Schranke; im weichen Modus ist U_v = +∞ für jede Variante mit sicher versagten Strahlen (sonst wie oben), und die Referenzmenge von (c) enthält nur versagensfreie Varianten (dort sind F weich und hart gleich). Die Zahl versagter Strahlen ist in beiden Modi dieselbe (Kriterium (a) unverändert). Strafen gehen nicht in L_v ein: Eine Untergrenze der FP64-Strafe aus dem FP32-Grenzabstand bräuchte eine stärkere Annahme als (A) (gleiche erste versagende Fläche und Größe der Verletzung). Folge: Die Merit-Kriterien sortieren im weichen Modus weniger aus (Tabelle unten); wer mit hartem Versagen weiterrechnet, setzt `PrefilterSettings::quadrature.failure = FailureMode::Hard` und erhält das Verhalten von M7-T2.
+
 **Entscheidungsregel** (`prefilter_decide`; „Wahrheit“ `prefilter_decide_exact` = dieselbe Regel auf FP64-Werten ohne Margen):
 
 | Kriterium | FP32 sortiert aus, wenn | FP64-Wahrheit | warum konservativ |
@@ -607,10 +665,15 @@ F_best der Wahrheit ist die kleinste Merit der Varianten ohne (a) mit mindestens
 | Einzellinse | 65.266 | 0 | 480 | 12.660 von 5,1·10⁶ |
 | Mehrlinser | 64.944 | 0 | 727 | 16.995 von 6,8·10⁶ |
 | Geisterplatte | 67.781 | 0 | 478 | 7.401 von 5,1·10⁶ |
+| Einzellinse, FP64-Wahrheit weich (M4-T2) | 65.302 | 0 | 1.670 | 12.660 von 5,1·10⁶ |
+| Mehrlinser, weich | 64.975 | 0 | 2.164 | 16.995 von 6,8·10⁶ |
+| Geisterplatte, weich | 68.009 | 0 | 2.188 | 7.401 von 5,1·10⁶ |
 
-Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (1 ± m)² und Δ_v) und beim Kriterium 10⁴-mal die beste (U der besten Variante enthält Δ_v ≈ 10⁻⁴ mm gegen √F_best ≈ 5·10⁻⁴ mm, gemessen mit den Residuen in mm vor M4-T1; beide skalieren mit s). Stresstest mit 10 weiteren Seeds (3·10⁵ Varianten, 390 Entscheidungsläufe): 0 falsch aussortiert, 16.834 von 1.978.009 FP64-Ablehnungen zusätzlich behalten (0,85 %), 0,22 % unsichere Strahlen; L_v ≤ F_FP64 ≤ U_v und die Klammer der versagten Strahlen für alle Varianten. CPU in der CI (`Prefilter.CpuAcceptanceNoFalseRejections`, je 1.000 Varianten gegen `merit_cpu`): 0 falsch aussortiert, 137 von 18.139 zusätzlich behalten. GPU gegen CPU-Referenz (`CudaPrefilter.MatchesCpuReference`): Klassen in allen 900 Varianten gleich, |F_GPU/F_CPU − 1| ≤ 9·10⁻⁵ (FMA-Kontraktion und Summationsreihenfolge). Determinismus: zehn Läufe und vier Tranchen bitgleich (`CudaPrefilter.RepeatedRunsAndTranchesAreBitIdentical`, Baumreduktionen wie MERIT, ADR-0007).
+Die ersten drei Zeilen sind die Messung von M7-T2 mit harter Wahrheit, die letzten drei der heutige Stand des Tests (Layout mit Standardeinstellungen, also weich). Mit weicher Wahrheit wird vor allem beim Kriterium „Merit über dem 0,9-Quantil“ fast nichts mehr aussortiert (die oberen Quantile bestehen aus Varianten mit großen Strafen, die L_v nicht enthält).
 
-**Grenzen.** Annahme (A) und die Konstanten κ, m sind empirisch belegt, nicht bewiesen; wer η, κ oder m verkleinert, verlässt den getesteten Bereich. float läuft bei |x| > 3,4·10³⁸ über (Geisterplatten weit außerhalb von r_g, wie df64); das ergibt NaN, also unsicher. Hartes Versagen wie in M2: Mit dem weichen Versagen (M4-T2, Strafresiduen) muss die Vorfilterung die Strafen in L_v aufnehmen. Kriterium (c) wird nur angewandt, wenn mindestens eine Variante ohne unsichere Strahlen in die Referenzmenge fällt.
+Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (1 ± m)² und Δ_v) und beim Kriterium 10⁴-mal die beste (U der besten Variante enthält Δ_v ≈ 10⁻⁴ mm gegen √F_best ≈ 5·10⁻⁴ mm, gemessen mit den Residuen in mm vor M4-T1; beide skalieren mit s). Stresstest mit 10 weiteren Seeds (3·10⁵ Varianten, 390 Entscheidungsläufe): 0 falsch aussortiert, 16.834 von 1.978.009 FP64-Ablehnungen zusätzlich behalten (0,85 %), 0,22 % unsichere Strahlen; L_v ≤ F_FP64 ≤ U_v und die Klammer der versagten Strahlen für alle Varianten. CPU in der CI (`Prefilter.CpuAcceptanceNoFalseRejections`, je 1.000 Varianten gegen `merit_cpu`): 0 falsch aussortiert, 137 von 18.139 zusätzlich behalten (mit weicher Wahrheit seit M4-T2: 545 von 18.164). GPU gegen CPU-Referenz (`CudaPrefilter.MatchesCpuReference`): Klassen in allen 900 Varianten gleich, |F_GPU/F_CPU − 1| ≤ 9·10⁻⁵ (FMA-Kontraktion und Summationsreihenfolge). Determinismus: zehn Läufe und vier Tranchen bitgleich (`CudaPrefilter.RepeatedRunsAndTranchesAreBitIdentical`, Baumreduktionen wie MERIT, ADR-0007).
+
+**Grenzen.** Annahme (A) und die Konstanten κ, m sind empirisch belegt, nicht bewiesen; wer η, κ oder m verkleinert, verlässt den getesteten Bereich. float läuft bei |x| > 3,4·10³⁸ über (Geisterplatten weit außerhalb von r_g, wie df64); das ergibt NaN, also unsicher. Hartes Versagen im FP32-Pfad, Schranken für eine weiche FP64-Wahrheit siehe „Weiches Versagen (M4-T2)“ oben. Kriterium (c) wird nur angewandt, wenn mindestens eine Variante ohne unsichere Strahlen in die Referenzmenge fällt.
 
 ## 13. Literatur
 

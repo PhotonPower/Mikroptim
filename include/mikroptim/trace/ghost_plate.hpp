@@ -122,15 +122,26 @@ MKO_HD inline R ghost_plate_petzval(const R* coeff, int terms, R norm_radius, R 
 // ist n = n' = n_m (Luftspalt); n ≠ n' ergibt eine brechende Ebene mit Phase.
 // Status TIR, wenn der Radikand 1 − |d'_⊥|² negativ ist (evaneszente Welle wie bei der
 // Totalreflexion); der Strahl ist dann teilweise fortgeschrieben (OPL) und nicht zu verwenden.
+// Weiches Versagen (`soft` gesetzt, numerik.md §11): −Radikand wird addiert und mit
+// Radikand := 0 fortgesetzt, d' = (d'_x, d'_y, 0)/|d'_⊥| (Status Ok). Wegen d'_z = 0 versagt der
+// Strahl an der nächsten Prüfung von d_z hart (Backward); das Strafresiduum enthält dann
+// −Radikand und den festen Anteil des harten Versagens.
 template <class R>
-MKO_HD inline TraceStatus phase_surface_step(Ray<R>& ray, R phase, R grad_x, R grad_y, R n_before,
-                                             R n_after) {
+MKO_HD inline TraceStatus
+phase_surface_step(Ray<R>& ray, R phase, R grad_x, R grad_y, R n_before, R n_after,
+                   typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     ray.opl += phase;
     const R dx = (n_before * ray.d.x + grad_x) / n_after;
     const R dy = (n_before * ray.d.y + grad_y) / n_after;
     const R radicand = R(1) - dx * dx - dy * dy;
     if (radicand < R(0)) {
-        return TraceStatus::TIR;
+        if (soft == nullptr) {
+            return TraceStatus::TIR;
+        }
+        soft->add(-radicand, TraceStatus::SoftTIR);
+        const R inv = R(1) / msqrt(dx * dx + dy * dy); // |d'_⊥|² = 1 − Radikand > 1
+        ray.d = Vec3<R>{dx * inv, dy * inv, R(0)};
+        return TraceStatus::Ok;
     }
     ray.d = Vec3<R>{dx, dy, msqrt(radicand)};
     return TraceStatus::Ok;
@@ -139,17 +150,18 @@ MKO_HD inline TraceStatus phase_surface_step(Ray<R>& ray, R phase, R grad_x, R g
 // Schritt an einer Geisterplatte im Strahlschnittpunkt (Ebene z = 0, Medium n_m = n_before):
 // u = (x² + y²)/r_g², Φ = (n_G − n_m) t(u),
 // ∇Φ = (n_G − n_m) (dt/du) (2/r_g²) (x, y) = (n_G − n_m) (4/r_g²) Σ_k a_k P'_k(2u − 1) (x, y),
-// danach phase_surface_step. Status wie dort.
+// danach phase_surface_step. Status und weiches Versagen wie dort.
 template <class R>
-MKO_HD inline TraceStatus ghost_plate_step(Ray<R>& ray, const GhostPlateParams<R>& g, R n_before,
-                                           R n_after) {
+MKO_HD inline TraceStatus
+ghost_plate_step(Ray<R>& ray, const GhostPlateParams<R>& g, R n_before, R n_after,
+                 typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
     const R inv_r2 = R(1) / (g.norm_radius * g.norm_radius);
     const R u = (ray.p.x * ray.p.x + ray.p.y * ray.p.y) * inv_r2;
     const GhostProfile<R> prof = ghost_profile(g.coeff, g.terms, u);
     const R dn = g.n_glass - n_before;
     const R radial = dn * prof.dt_du * R(2) * inv_r2; // ∇Φ = radial · (x, y)
     return phase_surface_step(ray, dn * prof.t, radial * ray.p.x, radial * ray.p.y, n_before,
-                              n_after);
+                              n_after, soft);
 }
 
 } // namespace mko

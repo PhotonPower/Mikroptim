@@ -43,8 +43,11 @@ struct MeritKernelArgs {
     const ResidualFieldPlan* plan; // [F]
     int max_samples;               // Plätze für OPL und Status im dynamischen Shared Memory
     unsigned ghost_bytes;          // Geisterdaten am Anfang des dynamischen Shared Memory
-    double* partial;               // [V · F · L] Σ r_k² des Blocks
+    int soft;                      // 1: weiches Versagen mit Strafresiduen (M4-T2)
+    double fail_weight;            // w_fail [Wellen²]
+    double* partial;               // [V · F · L] Σ r_k² (+ Σ p_k²) des Blocks
     std::int32_t* failed_partial;  // [V · F · L] versagte Strahlen des Blocks
+    std::int32_t* hard_partial;    // [V · F · L] hart versagte Strahlen des Blocks
     double* extrema_partial;       // [V · F · L][S][2] (nur mit kExtrema)
 };
 
@@ -58,6 +61,7 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
     __shared__ detail::PistonShared<R> sh_piston;
     __shared__ R sh_sum[kBlockWarps];
     __shared__ std::int32_t sh_failed[kBlockWarps];
+    __shared__ std::int32_t sh_hard[kBlockWarps];
     __shared__ detail::ExtremaSharedIf<R, kExtrema> sh_extrema;
     // Dynamisch: Geisterplatten (ghost_bytes, Vielfaches von 8), OPL [max_samples] (R), danach
     // Status [max_samples] (1 Byte)
@@ -90,23 +94,36 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
     if constexpr (kExtrema) {
         extrema.reset(S);
     }
+    // Weiches Versagen (M4-T2): Σ p_k² der eigenen Stützstellen schon in Durchlauf 1 (die
+    // Strafresiduen hängen nicht vom Kolben ab), in aufsteigender Reihenfolge.
+    const R pscale = a.soft ? R(penalty_scale(a.batch, f, l, a.fail_weight)) : R(0);
+    R penalty_sum = R(0);
     R weight_ok = R(0);
     R weighted_opl = R(0);
     for (int k = tid; k < n; k += kBlockThreads) {
         const PupilSample<R> s = sample(sh_table.pupil, k);
         R opl = R(0);
+        SoftFailure<R> soft{R(0), TraceStatus::Ok};
+        SoftFailure<R>* const soft_ptr = a.soft ? &soft : nullptr;
         TraceStatus st;
         if constexpr (kExtrema) {
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, &record);
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, &record, soft_ptr);
         } else {
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl);
+            NoSurfaceObserver* const none = nullptr;
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, none, soft_ptr);
         }
-        if (st == TraceStatus::Ok) {
+        if (in_piston(st)) {
             weight_ok += s.weight;
             weighted_opl += s.weight * opl;
-            if constexpr (kExtrema) {
+        }
+        if constexpr (kExtrema) {
+            if (st == TraceStatus::Ok) {
                 extrema.add_ray(record, S);
             }
+        }
+        if (a.soft) {
+            const R p = ray_penalty(pscale, s, st, soft.penalty);
+            penalty_sum += p * p;
         }
         sh_opl[k] = opl;
         sh_status[k] = static_cast<std::uint8_t>(st);
@@ -119,24 +136,30 @@ __global__ void __launch_bounds__(kBlockThreads) merit_kernel(const MeritKernelA
 
     // Durchlauf 2: Residuen derselben Stützstellen wie in RESIDUALS, Quadratsumme in
     // aufsteigender Reihenfolge der eigenen Stützstellen, versagte Strahlen zählen.
+    // Die Strafresiduen kommen nach der Quadratsumme der Wellenfrontresiduen hinzu.
     R sum = R(0);
     std::int32_t failed = 0;
+    std::int32_t hard = 0;
     for (int k = tid; k < n; k += kBlockThreads) {
-        const bool ok = static_cast<TraceStatus>(sh_status[k]) == TraceStatus::Ok;
+        const auto st = static_cast<TraceStatus>(sh_status[k]);
         R e = R(0);
-        if (valid && ok) {
+        if (valid && in_piston(st)) {
             e = sh_opl[k] - piston;
         }
         const R r = ray_residual(scale, sample(sh_table.pupil, k), e);
         sum += r * r;
-        failed += ok ? 0 : 1;
+        failed += st == TraceStatus::Ok ? 0 : 1;
+        hard += is_hard_failure(st) ? 1 : 0;
     }
+    sum += penalty_sum;
 
     const R total = detail::block_sum(sh_sum, sum, tid);
     const std::int32_t total_failed = detail::block_sum(sh_failed, failed, tid);
+    const std::int32_t total_hard = detail::block_sum(sh_hard, hard, tid);
     if (tid == 0) {
         a.partial[tu.block] = static_cast<double>(total);
         a.failed_partial[tu.block] = total_failed;
+        a.hard_partial[tu.block] = total_hard;
     }
     if constexpr (kExtrema) {
         detail::block_extrema(sh_extrema, extrema, S, tid,
@@ -152,9 +175,11 @@ struct MeritFinalizeArgs {
     int blocks_per_variant;
     const R* partial;
     const std::int32_t* failed_partial;
+    const std::int32_t* hard_partial;
     const R* extra; // [V] oder nullptr
     R* merit;
     std::int64_t* failed;
+    std::int64_t* hard_failed;
 };
 
 template <class R>
@@ -167,15 +192,18 @@ __global__ void merit_finalize_kernel(const MeritFinalizeArgs<R> a) {
     const std::int64_t first = v * a.blocks_per_variant;
     R sum = R(0);
     std::int64_t failed = 0;
+    std::int64_t hard = 0;
     for (int b = 0; b < a.blocks_per_variant; ++b) {
         sum += a.partial[first + b];
         failed += a.failed_partial[first + b];
+        hard += a.hard_partial[first + b];
     }
     if (a.extra != nullptr) {
         sum += a.extra[v];
     }
     a.merit[v] = sum;
     a.failed[v] = failed;
+    a.hard_failed[v] = hard;
 }
 
 // Statisches Shared Memory der Kernel-Variante (Kernelattribut).
@@ -358,8 +386,11 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
         args.plan = region_ptr<ResidualFieldPlan>(buffer_, plan_region);
         args.max_samples = max_samples;
         args.ghost_bytes = static_cast<unsigned>(ghost_bytes);
+        args.soft = layout.soft_failure() ? 1 : 0;
+        args.fail_weight = layout.settings().fail_weight;
         args.partial = region_ptr<double>(buffer_, out.merit_partial);
         args.failed_partial = region_ptr<std::int32_t>(buffer_, out.failed_rays_partial);
+        args.hard_partial = region_ptr<std::int32_t>(buffer_, out.hard_failed_rays_partial);
         args.extrema_partial = region_ptr<double>(buffer_, out.surface_max_partial);
         if (options.precision == Precision::Df64) {
             launch_merit<df64>(args, options.extrema, static_cast<unsigned>(blocks), dynamic);
@@ -372,9 +403,11 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
         fin.blocks_per_variant = B;
         fin.partial = args.partial;
         fin.failed_partial = args.failed_partial;
+        fin.hard_partial = args.hard_partial;
         fin.extra = region_ptr<double>(buffer_, extra_region);
         fin.merit = region_ptr<double>(buffer_, out.merit);
         fin.failed = region_ptr<std::int64_t>(buffer_, out.failed_rays);
+        fin.hard_failed = region_ptr<std::int64_t>(buffer_, out.hard_failed_rays);
         const auto grid =
             static_cast<unsigned>((static_cast<std::int64_t>(V) + detail::kFinalizeThreads - 1) /
                                   detail::kFinalizeThreads);
@@ -415,6 +448,7 @@ void DeviceMerit::download(MeritResult& r) const {
     r.rays_per_variant = rays_;
     r.merit.resize(static_cast<std::size_t>(variants_));
     r.failed.resize(static_cast<std::size_t>(variants_));
+    r.hard_failed.resize(static_cast<std::size_t>(variants_));
     r.extrema.variants = extrema_ ? variants_ : 0;
     r.extrema.surfaces = extrema_ ? surfaces_ : 0;
     r.extrema.values.resize(extrema_ ? layout_.surface_max.bytes / sizeof(double) : 0);
@@ -428,6 +462,7 @@ void DeviceMerit::download(MeritResult& r) const {
     };
     copy(r.merit.data(), layout_.merit);
     copy(r.failed.data(), layout_.failed_rays);
+    copy(r.hard_failed.data(), layout_.hard_failed_rays);
     if (extrema_) {
         copy(r.extrema.values.data(), layout_.surface_max);
     }
@@ -439,6 +474,12 @@ const double* DeviceMerit::device_merit() const {
 
 const std::int64_t* DeviceMerit::device_failed() const {
     return ran_ ? region_ptr<std::int64_t>(static_cast<const void*>(buffer_), layout_.failed_rays)
+                : nullptr;
+}
+
+const std::int64_t* DeviceMerit::device_hard_failed() const {
+    return ran_ ? region_ptr<std::int64_t>(static_cast<const void*>(buffer_),
+                                           layout_.hard_failed_rays)
                 : nullptr;
 }
 

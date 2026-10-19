@@ -142,6 +142,25 @@ inline std::vector<double> residual_units(const SystemBatchHost& batch,
     return u;
 }
 
+// Dasselbe für die Strafresiduen des weichen Versagens (M4-T2): p_k = v_k · π_k mit
+// v_k = penalty_scale(f, l, w_fail) · √(W_i V_j) und der dimensionslosen Strafgröße π_k.
+inline std::vector<double> penalty_units(const SystemBatchHost& batch,
+                                         const ResidualLayout& layout) {
+    const SystemBatchView<double> view = batch.view();
+    std::vector<double> u(static_cast<std::size_t>(layout.rays_per_variant()));
+    for (int f = 0; f < layout.fields(); ++f) {
+        const PupilQuadrature<double>& q = layout.quadrature(f);
+        for (int l = 0; l < layout.wavelengths(); ++l) {
+            const double s = penalty_scale(view, f, l, layout.settings().fail_weight);
+            const std::int64_t o = layout.offset(f, l);
+            for (int k = 0; k < layout.samples(f); ++k) {
+                u[static_cast<std::size_t>(o + k)] = s * residual_weight(sample(q, k));
+            }
+        }
+    }
+    return u;
+}
+
 // Schranke pro Strahlresiduum aus einer Toleranz der Form max(abs_mm, rel · |OPD|)
 // (z. B. kCpuGpuFp64, kCpuGpuFp64Relative): max(u · abs_mm, rel · |r|), weil r = u · OPD.
 inline double residual_bound(double unit, double r, double abs_mm, double rel) {

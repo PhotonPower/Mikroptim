@@ -49,6 +49,8 @@ using mko::cuda::TraceOutput;
 using mko::cuda::TraceSettings;
 using mko::test::kCpuGpuFp64;
 using mko::test::kCpuGpuFp64Relative;
+using mko::test::kCpuGpuPenaltyRelative;
+using mko::test::kCpuGpuSoftTuple;
 using mko::test::kMeritVsResidualSum;
 using mko::test::kWeightedMerit;
 
@@ -70,6 +72,7 @@ bool same_bytes(const std::vector<T>& a, const std::vector<T>& b) {
 bool identical(const MeritResult& a, const MeritResult& b) {
     return a.variants == b.variants && a.extrema.surfaces == b.extrema.surfaces &&
            same_bytes(a.merit, b.merit) && same_bytes(a.failed, b.failed) &&
+           same_bytes(a.hard_failed, b.hard_failed) &&
            same_bytes(a.extrema.values, b.extrema.values);
 }
 
@@ -97,13 +100,13 @@ ResidualResult gpu_residuals(const SystemBatchHost& batch, const ResidualSetting
     return engine_run(batch, TraceMode::Residuals, quadrature, extrema).residuals;
 }
 
-// Σ r_k² der Variante v über alle Strahlresiduen in der Ablage (f, l, k), kompensiert
-// summiert (Neumaier). Fehler ~ ε · F unabhängig von der Zahl der Summanden; Vergleichswert
-// für die Abnahme "Merit = Σ RESIDUALS²".
+// Σ r_k² der Variante v über alle Strahlresiduen in der Ablage (f, l, k) und (weiches
+// Versagen, M4-T2) die Strafresiduen dahinter, kompensiert summiert (Neumaier). Fehler ~ ε · F
+// unabhängig von der Zahl der Summanden; Vergleichswert für die Abnahme "Merit = Σ RESIDUALS²".
 double compensated_sum_of_squares(const ResidualResult& r, int v) {
     double sum = 0.0;
     double c = 0.0;
-    for (std::int64_t i = 0; i < r.rays_per_variant; ++i) {
+    for (std::int64_t i = 0; i < r.trace_rows(); ++i) {
         const double x = r.residual(v, i) * r.residual(v, i);
         const double t = sum + x;
         c += std::abs(sum) >= std::abs(x) ? (sum - t) + x : (x - t) + sum;
@@ -123,10 +126,21 @@ double emulate_kernel_sum(const ResidualResult& r, const ResidualLayout& layout,
     for (int f = 0; f < layout.fields(); ++f) {
         for (int l = 0; l < layout.wavelengths(); ++l) {
             std::array<double, kThreads> acc{};
+            std::array<double, kThreads> pen{}; // Strafresiduen, im Kernel in Durchlauf 1
             for (int k = 0; k < layout.samples(f); ++k) {
                 const double x = r.residual(v, layout.offset(f, l) + k);
                 acc[static_cast<std::size_t>(k % kThreads)] =
                     std::fma(x, x, acc[static_cast<std::size_t>(k % kThreads)]);
+                if (r.penalty_rows > 0) {
+                    const double p = r.penalty(v, layout.offset(f, l) + k);
+                    pen[static_cast<std::size_t>(k % kThreads)] =
+                        std::fma(p, p, pen[static_cast<std::size_t>(k % kThreads)]);
+                }
+            }
+            if (r.penalty_rows > 0) {
+                for (std::size_t t = 0; t < acc.size(); ++t) {
+                    acc[t] += pen[t];
+                }
             }
             double block = 0.0;
             for (int w = 0; w < kThreads / 32; ++w) {
@@ -168,10 +182,13 @@ MeritComparison compare_with_residuals(const MeritResult& m, const ResidualResul
     for (int v = 0; v < r.variants; ++v) {
         const auto vi = static_cast<std::size_t>(v);
         std::int64_t failed = 0;
+        std::int64_t hard = 0;
         for (std::int64_t i = 0; i < r.rays_per_variant; ++i) {
             failed += r.status_at(v, i) != TraceStatus::Ok ? 1 : 0;
+            hard += mko::is_hard_failure(r.status_at(v, i)) ? 1 : 0;
         }
         EXPECT_EQ(m.failed[vi], failed) << "v = " << v;
+        EXPECT_EQ(m.hard_failed[vi], hard) << "v = " << v;
         c.failed += failed;
         c.with_failures += failed > 0 ? 1 : 0;
         c.all_failed += failed == r.rays_per_variant ? 1 : 0;
@@ -204,19 +221,43 @@ struct CpuComparison {
 // (kMeritVsResidualSum · √F). Extrema: max ist 1-Lipschitz, also dieselben Toleranzen wie pro
 // Strahl (Höhe absolut bzw. relativ, cos I absolut).
 CpuComparison compare_with_cpu(const MeritResult& gpu, const MeritResult& cpu,
-                               const ResidualResult& cpu_residuals,
-                               const std::vector<double>& units) {
+                               const ResidualResult& cpu_residuals, const SystemBatchHost& batch,
+                               const ResidualLayout& layout) {
+    const std::vector<double> units = mko::test::residual_units(batch, layout);
+    // Strafresiduen (weiches Versagen, M4-T2): Toleranz max(v_k · kCpuGpuFp64,
+    // kCpuGpuFp64Relative · |p|) wie in test_cuda_residuals.cpp
+    const std::vector<double> punits = mko::test::penalty_units(batch, layout);
     CpuComparison c;
     EXPECT_EQ(gpu.variants, cpu.variants);
     EXPECT_TRUE(same_bytes(gpu.failed, cpu.failed));
+    EXPECT_TRUE(same_bytes(gpu.hard_failed, cpu.hard_failed));
     for (int v = 0; v < cpu.variants; ++v) {
         const auto vi = static_cast<std::size_t>(v);
         double bound_sq = 0.0;
-        for (std::int64_t i = 0; i < cpu_residuals.rays_per_variant; ++i) {
-            const double t = mko::test::residual_bound(units[static_cast<std::size_t>(i)],
-                                                       cpu_residuals.residual(v, i), kCpuGpuFp64,
-                                                       kCpuGpuFp64Relative);
-            bound_sq += t * t;
+        for (int f = 0; f < layout.fields(); ++f) {
+            for (int l = 0; l < layout.wavelengths(); ++l) {
+                const std::int64_t o = layout.offset(f, l);
+                // Tupel mit weich versagten Strahlen: kCpuGpuSoftTuple (wie test_cuda_residuals)
+                bool soft_tuple = false;
+                for (int k = 0; k < layout.samples(f); ++k) {
+                    soft_tuple =
+                        soft_tuple || mko::is_soft_failure(cpu_residuals.status_at(v, o + k));
+                }
+                const double abs_tol = soft_tuple ? kCpuGpuSoftTuple : kCpuGpuFp64;
+                for (int k = 0; k < layout.samples(f); ++k) {
+                    const std::int64_t i = o + k;
+                    const double t = mko::test::residual_bound(units[static_cast<std::size_t>(i)],
+                                                               cpu_residuals.residual(v, i),
+                                                               abs_tol, kCpuGpuFp64Relative);
+                    bound_sq += t * t;
+                    if (cpu_residuals.penalty_rows > 0) {
+                        const double tp = mko::test::residual_bound(
+                            punits[static_cast<std::size_t>(i)], cpu_residuals.penalty(v, i),
+                            kCpuGpuFp64, kCpuGpuPenaltyRelative);
+                        bound_sq += tp * tp;
+                    }
+                }
+            }
         }
         const double d = std::abs(std::sqrt(gpu.merit[vi]) - std::sqrt(cpu.merit[vi]));
         EXPECT_LE(d, std::sqrt(bound_sq) + kMeritVsResidualSum * std::sqrt(cpu.merit[vi]))
@@ -245,9 +286,11 @@ struct Case {
     ResidualSettings settings;
 };
 
+// Weiches Versagen (Standard, M4-T2) und hartes wie in M2/M3
 const Case kCases[] = {{"einzellinse_bk7.json", 1001, {}},
                        {"testsystem_mehrlinser.json", 2002, {}},
-                       {"testsystem_mehrlinser.json", 3003, {6, 5}}};
+                       {"testsystem_mehrlinser.json", 3003, {6, 5, mko::FailureMode::Hard}},
+                       {"einzellinse_bk7.json", 4004, {10, 8, mko::FailureMode::Hard}}};
 
 } // namespace
 
@@ -295,8 +338,8 @@ TEST(CudaMerit, MatchesCpu) {
         const ResidualLayout layout(batch.topology(), cs.settings);
         const MeritResult gpu = gpu_merit(batch, cs.settings);
         const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-        const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
-                                                 mko::test::residual_units(batch, layout));
+        const CpuComparison c =
+            compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
         std::printf("[ Info     ] %s: max |√F_GPU - √F_CPU| = %.3e Wellen, max |dh| = %.3e mm, "
                     "max |d cos I| = %.3e\n",
                     cs.file, c.max_sqrt_merit, c.max_height, c.max_cos);
@@ -334,8 +377,8 @@ TEST(CudaMerit, GhostPlates) {
     EXPECT_TRUE(same_bytes(r.extrema.values, gpu.extrema.values));
     EXPECT_EQ(gpu.extrema.surfaces, batch.surfaces()); // Tabellenflächen
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
-                                             mko::test::residual_units(batch, layout));
+    const CpuComparison d =
+        compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
     // Die Geisterplatten sind Ebenen (c = 0): cos I = d_z vor dem Phasenschritt, also <= 1
     for (int s = 0; s < batch.surfaces(); ++s) {
         if (batch.type(s) == mko::SurfaceKind::GhostPlate) {
@@ -369,8 +412,8 @@ TEST(CudaMerit, PointSourceAndMaxSurfaces) {
         const MeritResult gpu = gpu_merit(batch);
         const MeritComparison c = compare_with_residuals(gpu, gpu_residuals(batch), layout);
         const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-        const CpuComparison d = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
-                                                 mko::test::residual_units(batch, layout));
+        const CpuComparison d =
+            compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
         std::printf("[ Info     ] S = %d: max |F - Σr²| / Σr² = %.2e, max |√F_GPU - √F_CPU| = "
                     "%.3e Wellen, max |dh| = %.3e mm, max |d cos I| = %.3e\n",
                     batch.surfaces(), c.max_relative, d.max_sqrt_merit, d.max_height, d.max_cos);
@@ -477,12 +520,25 @@ TEST(CudaMerit, FailedRaysAndClosedForm) {
     batch.pupil_radius(1) = 1e4;   // alle Strahlen verfehlen die Linse (R = 103 mm)
     batch.pupil_radius(2) = 110.0; // äußere Ringe verfehlen
     batch.curvature(3, 1) = 0.2;   // R = 5 mm: fast alle Strahlen verfehlen oder reflektieren
-    const ResidualLayout layout(batch.topology());
-    const MeritResult gpu = gpu_merit(batch);
+    {
+        // Weiches Versagen (M4-T2): dieselben Strahlen versagt, Merit mit Strafen > 0
+        const ResidualLayout soft_layout(batch.topology());
+        const MeritResult soft = gpu_merit(batch);
+        compare_with_cpu(soft, mko::merit_cpu(batch, soft_layout, true),
+                         mko::residuals_cpu(batch, soft_layout), batch, soft_layout);
+        compare_with_residuals(soft, gpu_residuals(batch), soft_layout);
+        EXPECT_EQ(soft.failed[1], soft_layout.rays_per_variant());
+        EXPECT_GT(soft.merit[1], 0.0);
+        EXPECT_EQ(soft.failed[0], 0);
+    }
+    ResidualSettings hard;
+    hard.failure = mko::FailureMode::Hard;
+    const ResidualLayout layout(batch.topology(), hard);
+    const MeritResult gpu = gpu_merit(batch, hard);
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
-                     mko::test::residual_units(batch, layout));
-    compare_with_residuals(gpu, gpu_residuals(batch), layout);
+    compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
+    compare_with_residuals(gpu, gpu_residuals(batch, hard), layout);
+    EXPECT_EQ(gpu.hard_failed, gpu.failed);
     EXPECT_EQ(gpu.failed[0], 0);
     EXPECT_EQ(gpu.failed[4], 0);
     EXPECT_EQ(gpu.failed[1], layout.rays_per_variant());
@@ -563,8 +619,8 @@ TEST(CudaMerit, LargeBatch) {
     const MeritResult& gpu = merit_out.merit;
     ASSERT_EQ(gpu.variants, 10000);
     const MeritResult cpu = mko::merit_cpu(batch, layout, true);
-    const CpuComparison c = compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout),
-                                             mko::test::residual_units(batch, layout));
+    const CpuComparison c =
+        compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
     const MeritComparison r = compare_with_residuals(gpu, residual_out.residuals, layout);
     const double rays = 10000.0 * static_cast<double>(layout.rays_per_variant());
     std::printf(
