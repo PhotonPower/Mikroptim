@@ -754,6 +754,50 @@ Jeder CUDA-Aufruf ist mit `MKO_CUDA_CHECK`, jeder cuFFT-Aufruf mit `MKO_CUFFT_CH
 
 **Host-Speicher.** `PsfResult::psf` hat M² Werte pro Tupel; `mikroptim eval --psf` rechnet die Tupel deshalb einzeln und behält die PSF nur für das Tupel der Ausgabedateien.
 
+## Vektorielle PSF (M8-T5)
+
+Vektorielle Beugung nach Richards-Wolf aus denselben OPD-Karten (Nachbearbeitung wie die skalare PSF); Modell, Apodisation, Polarisationsdrehung, Normierung, Gültigkeit und Abnahme: [numerik.md, „Vektorielle PSF“](numerik.md#vektorielle-psf-m8-t5).
+
+| Baustein | Ort | Inhalt |
+|---|---|---|
+| Elementweise Schritte | `include/mikroptim/eval/vector_psf_ops.hpp` (header-only, `MKO_HD`) | `VectorPsfParams` (88 Byte pro Pupille), `VectorPsfJones`, `vector_psf_basis` (Richtung, 1/√s_z, Drehung **u** → **s**, Defokus-OPD), `vector_psf_pupil_value` (drei Feldkomponenten eines Rasterpunkts) |
+| Host, CPU-Referenz, Kennzahlen | `include/mikroptim/eval/vector_psf.hpp`, `src/eval/vector_psf.cpp` (`Mikroptim::eval`) | `Polarization`, `VectorPsfSettings`, `VectorPsfPupil`, `make_vector_psf_pupil(s)`, `vector_psf_reference_intensity`, `VectorPsfResult` (erbt `PsfResult`), `finish_vector_psf`, `vector_psf_intensity_at` (direkte Summe), `vector_psf_cpu`, `VectorPsfDeviceLayout` |
+| GPU | `include/mikroptim/cuda/vector_psf.hpp` (reines C++), `src/cuda/vector_psf.cu`; Prüfung der cuFFT-Aufrufe gemeinsam mit M8-T2 in `src/cuda/cufft_check.hpp` | `VectorPsfEngine` (Laufinfo `PsfRunInfo`) |
+| CLI | `src/cli/eval_command.cpp` | `mikroptim eval --vector [--polarization P] [--defocus Z] [--component-files P]` ([cli.md](cli.md#mikroptim-eval)) |
+
+```cpp
+// include/mikroptim/eval/vector_psf.hpp (Host, auch ohne CUDA)
+enum class Polarization { X, Y, Circular, Unpolarized };
+struct VectorPsfSettings { Polarization polarization = Polarization::X; double defocus = 0.0; /*mm, > 0: in +z*/ };
+struct VectorPsfPupil { PsfPupil pupil; double index, chief_x, chief_y, input_y, input_z; };
+VectorPsfPupil make_vector_psf_pupil(const SystemBatchHost&, const EvalResult&, int v, int f, int l, const PsfSettings& = {});
+struct VectorPsfResult : PsfResult {                    // psf = |E|²/I_0, MTF, Strehl, Energie, Maximum
+    Polarization polarization; double defocus, reference_intensity;   // I_0
+    std::array<std::vector<double>, 3> component;       // |E_x|², |E_y|², |E_z|² [M·M]
+    std::array<double, 3> energy_fraction, component_peak; double fwhm_x, fwhm_y; int64_t evanescent; };
+VectorPsfResult vector_psf_cpu(const VectorPsfPupil&, int fft_size, const VectorPsfSettings& = {});
+double vector_psf_intensity_at(const VectorPsfPupil&, const VectorPsfSettings&, double I0, double x, double y,
+                               std::array<double, 3>* components = nullptr);
+// include/mikroptim/cuda/vector_psf.hpp
+class VectorPsfEngine { explicit VectorPsfEngine(int device, const EngineOptions& = {});
+    std::vector<VectorPsfResult> compute(std::span<const VectorPsfPupil>, int fft_size, const VectorPsfSettings& = {});
+    std::vector<VectorPsfResult> compute(const SystemBatchHost&, const EvalResult&, int v,
+                                         const PsfSettings& = {}, const VectorPsfSettings& = {}); };
+```
+
+**Ablauf auf der GPU** (pro Tranche von T Pupillen mit K = 1 oder 2 Eingangsfeldern, gleiche Rasterkante N und FFT-Größe M):
+
+1. Host: I_0 jeder Pupille (`prepare_vector_psf_result`), Upload der OPD-Karten [T·N²] und der `VectorPsfParams` [T]; die Jones-Vektoren stehen in den Kernel-Argumenten.
+2. `vector_psf_pupil_kernel`: ein Thread pro (Pupille, Eingangsfeld, Pixel) schreibt die drei Feldkomponenten G_c in die Ecke der Felder (t, k, c), sonst 0 (Grid-Stride über T·K·M², 256 Threads).
+3. `cufftExecZ2Z` vorwärts mit einem Plan für alle T·K·3 Felder (Abstand M²).
+4. `vector_psf_intensity_kernel`: pro Pixel Σ_k w_k |E_c|² · (1/I_0) für c = x, y, z, Intensität als Summe, beide an die zentrierte (ggf. gespiegelte) Stelle; die Intensität reell in das Feld (t, 0, 0) (derselbe Thread liest und schreibt das Pixel).
+5. `cufftExecZ2Z` rückwärts mit einem zweiten Plan (Batch T, Abstand K·3·M², `inembed`/`onembed` = {M, M}) nur über die Felder (t, 0, 0), `vector_psf_mtf_kernel` für die MTF-Schnitte.
+6. Download von PSF, Komponenten [T·3·M²] und MTF, Kennzahlen mit `finish_vector_psf` auf dem Host (direkte Summen für Strehl und Halbwertsbreiten, dieselbe Funktion wie die CPU-Referenz).
+
+**Speicher und Tranchen** (`make_vector_psf_device_layout`): pro Pupille 16·3K + 8 + 24 Byte pro FFT-Punkt (Feldkomponenten, PSF, Komponenten; K = 2: 128 Byte, also das 5,3-Fache der skalaren PSF), 8 Byte pro Rasterpunkt, 88 Byte Parameter, MTF; dazu der Arbeitsspeicher von cuFFT, den sich beide Pläne teilen (sie laufen nacheinander im selben Strom). Tranchenwahl wie bei der `PsfEngine` (Abschätzung mit `cufftGetSizeMany64` für beide Pläne, dann exakt, bei Bedarf um ein Viertel kleiner). Beispiel N = 128, M = 512, unpolarisiert: 32 MiB pro Pupille plus Arbeitsspeicher.
+
+**Host-Speicher.** `VectorPsfResult` hält 4·M² Werte pro Tupel; `mikroptim eval --vector` behält PSF und Komponenten nur für das Tupel der Ausgabedateien.
+
 ## Kernel-Modi
 
 | Modus | Ausgabe | Zweck | Meilenstein |
@@ -761,7 +805,7 @@ Jeder CUDA-Aufruf ist mit `MKO_CUDA_CHECK`, jeder cuFFT-Aufruf mit `MKO_CUFFT_CH
 | `MERIT` | gewichtete Quadratsumme pro Variante | Liniensuche, Multistart-Screening | M2 |
 | `RESIDUALS` | Residuenvektor pro Variante | finite Differenzen, LM | M2 |
 | `ADJOINT` | Residuen plus Gradientenzeilen | analytische Jacobi-Matrix | M5 |
-| `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, Eingabe der PSF und MTF (M8-T2, `PsfEngine`), später Tolerierung | M8-T1 |
+| `EVAL` | OPD, Spot und Status pro Rasterpunkt, Feldstrahlen; Kennzahlen auf dem Host (`TraceEngine::evaluate`, oben) | Endbewertung, Eingabe der PSF und MTF (M8-T2, `PsfEngine`; vektoriell M8-T5, `VectorPsfEngine`), später Tolerierung | M8-T1 |
 
 Zusätzlich liefern die Optimierungsmodi optional pro Variante und Fläche die maximale Strahlhöhe und den maximalen Einfallswinkel (Max-Reduktion) für mechanische Nebenbedingungen. Die FP32-Vorfilterung (M7-T2) und EVAL (M8-T1) sind bewusst keine Werte von `TraceMode`, sondern eigene Funktionen der Engine.
 

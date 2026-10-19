@@ -289,7 +289,7 @@ Die Seidel-Abweichung von c₂ ist der Anteil höherer Ordnung wie in M1-T7; mit
 
 ### Beugung: PSF, MTF, Strehl (M8-T2)
 
-Skalare Beugung aus der OPD-Karte des Modus `EVAL` (Host-API und CPU-Referenz `include/mikroptim/eval/psf.hpp`, eigene Radix-2-FFT `include/mikroptim/eval/fft.hpp`, elementweise Schritte `include/mikroptim/eval/psf_ops.hpp`, GPU `include/mikroptim/cuda/psf.hpp` mit cuFFT; Ablauf und Speicher: [architektur.md, „PSF, MTF, Strehl“](architektur.md#psf-mtf-strehl-m8-t2)). Die vektorielle Rechnung für hohe NA (Richards-Wolf) ist M8-T5.
+Skalare Beugung aus der OPD-Karte des Modus `EVAL` (Host-API und CPU-Referenz `include/mikroptim/eval/psf.hpp`, eigene Radix-2-FFT `include/mikroptim/eval/fft.hpp`, elementweise Schritte `include/mikroptim/eval/psf_ops.hpp`, GPU `include/mikroptim/cuda/psf.hpp` mit cuFFT; Ablauf und Speicher: [architektur.md, „PSF, MTF, Strehl“](architektur.md#psf-mtf-strehl-m8-t2)). Die vektorielle Rechnung für hohe NA (Richards-Wolf) steht im Abschnitt [„Vektorielle PSF (M8-T5)“](#vektorielle-psf-m8-t5).
 
 **Pupillenfunktion.** Auf dem vollen N×N-Raster von EVAL (Zellmitten x_i = (2i + 1 − N)/N, halbe Pupille gespiegelt, `eval_opd_map` mit Kolbenabzug):
 
@@ -324,7 +324,7 @@ $$U_{pq} = \sum_{i,j} P_{ij}\, e^{-2\pi i (ip + jq)/M},\qquad \xi_p = p\,\Delta 
 **Grenzen der skalaren Näherung bei hoher NA** (Zielobjektiv NA 0,95; M8-T5):
 
 - *Polarisation:* Bei hoher NA haben die Feldkomponenten im Fokus verschiedene Verteilungen (E_z wächst mit sin²θ, der Fokus ist bei linearer Polarisation entlang der Polarisationsrichtung gestreckt, bei NA 0,95 um einige zehn Prozent); die skalare PSF ist rotationssymmetrisch und unterschätzt dort die Breite.
-- *Apodisation:* Bei aplanatischer Fokussierung eines gleichmäßig beleuchteten Bündels ist die Amplitude auf der Referenzsphäre ∝ √cos θ und das Flächenelement dΩ = dL dM / cos θ; in Richtungskosinus-Koordinaten (unser Raster bei Sinusbedingung) wird der Integrand also mit A = 1/√cos θ = (1 − (NA/n′)² ρ²)^{−1/4} gewichtet (Richards-Wolf). Bei NA 0,95 in Luft ist das am Rand ein Faktor 1,8 in der Amplitude. Mikroptim rechnet mit A = 1 (gleichmäßig, wie die Gewichte der Pupillenquadratur); der Faktor folgt mit M8-T5.
+- *Apodisation:* Bei aplanatischer Fokussierung eines gleichmäßig beleuchteten Bündels ist die Amplitude auf der Referenzsphäre ∝ √cos θ und das Flächenelement dΩ = dL dM / cos θ; in Richtungskosinus-Koordinaten (unser Raster bei Sinusbedingung) wird der Integrand also mit A = 1/√cos θ = (1 − (NA/n′)² ρ²)^{−1/4} gewichtet (Richards-Wolf). Bei NA 0,95 in Luft ist das am Rand ein Faktor 1,8 in der Amplitude. Die skalare PSF rechnet mit A = 1 (gleichmäßig, wie die Gewichte der Pupillenquadratur); die vektorielle PSF (M8-T5, nächster Abschnitt) enthält den Faktor.
 - *Pupillenabbildung:* Die lineare Abbildung (NA aus der Ableitung im Pupillenzentrum) setzt die Sinusbedingung voraus; ihre Verletzung (Koma, OSC) verzerrt die Abbildung zwischen Raster und Richtungen und wird nur über die OPD erfasst.
 - *Debye-Näherung:* gültig für große Fresnel-Zahlen (Pupillenradius² / (λ · Abstand) ≫ 1), bei Mikroskopobjektiven erfüllt.
 
@@ -349,6 +349,83 @@ $$U_{pq} = \sum_{i,j} P_{ij}\, e^{-2\pi i (ip + jq)/M},\qquad \xi_p = p\,\Delta 
 | (5) Determinismus | bitgleich | – | 10 Läufe bitgleich; 2 Tranchen à 7 Pupillen (anderer Plan) ebenfalls bitgleich zu einer Tranche (beobachtet, nicht zugesichert) |
 
 Die Abweichung der ersten Nullstelle von j₁,₁/(2π) λ/NA ist der Rasterfehler (äquivalenter Radius der Treppenpupille), nicht die Interpolation: Sie ist auf CPU und GPU, über EVAL und synthetisch dieselbe.
+
+### Vektorielle PSF (M8-T5)
+
+Vektorielle Beugung nach Debye-Wolf (Richards und Wolf 1959) aus derselben OPD-Karte wie die skalare PSF (Host-API und CPU-Referenz `include/mikroptim/eval/vector_psf.hpp`, elementweise Schritte `include/mikroptim/eval/vector_psf_ops.hpp`, GPU `include/mikroptim/cuda/vector_psf.hpp` mit cuFFT; Ablauf: [architektur.md, „Vektorielle PSF“](architektur.md#vektorielle-psf-m8-t5)). Berechnet wird das elektrische Feld **E** = (E_x, E_y, E_z) in der Bildebene (bzw. einer dazu parallelen Ebene) und die Intensität |**E**|².
+
+**Modell und Tracerichtung.** In Tracerichtung fokussiert das Objektiv ein im Unendlichraum gleichmäßig beleuchtetes Bündel (Eintrittspupille = Blende, Fläche 0) in den Bildpunkt **M**_f (die Objektebene des Mikroskops). Das Eingangsfeld ist eine ebene Welle mit dem Jones-Vektor **J** = (J_x, J_y) in der Basis x̂_in = (1, 0, 0), ŷ_in = **u** × x̂_in = (0, u_z, −u_y) senkrecht zur Richtung **u** = (0, sin θ_f, cos θ_f) des Eingangsbündels (Punktquelle: **u** = (0, 0, 1)). Polarisationen: x **J** = (1, 0), y **J** = (0, 1), zirkular **J** = (1, i)/√2 (kohärent; der Drehsinn hängt von der Zeitkonvention ab und spielt nur bei Aberrationen ohne Rotationssymmetrie eine Rolle), unpolarisiert als inkohärente Summe ½(|**E**(1, 0)|² + |**E**(0, 1)|²).
+
+**Richtungen.** Wie bei der skalaren PSF wird die Pupille affin auf die Richtungskosinus des Bildraums abgebildet (exakt bei erfüllter Sinusbedingung), jetzt einschließlich der Richtung **c** des Hauptstrahls (Feldstrahl aus EVAL, sonst 0):
+
+$$s_x = c_x + \frac{a_x\,x}{n'},\qquad s_y = c_y + \frac{a_y\,y}{n'},\qquad s_z = \sqrt{1 - s_x^2 - s_y^2}$$
+
+mit den vorzeichenbehafteten Steigungen a_x = ∓NA_x, a_y = ∓NA_y (negativ für eine konvergente Welle, positiv für eine divergente; NA aus den Feldstrahlen oder vorgegeben, wie M8-T2) und der Brechzahl n′ des Bildraums. Rasterpunkte mit s_x² + s_y² ≥ 1 sind nicht ausbreitungsfähig und zählen als undurchlässig (`evanescent`; bei NA 0,95 erst mit geneigtem Hauptstrahl).
+
+**Apodisation (Aplanatfaktor).** Bei aplanatischer Abbildung (Sinusbedingung) geht das Flächenelement dA der Eintrittspupille in das Raumwinkelelement dΩ = ds_x ds_y / s_z über, und dA ∝ ds_x ds_y (affine Abbildung). Energieerhaltung |**E**_in|² dA = |**a**|² R² dΩ für die Feldstärke **a** auf der Referenzsphäre (Radius R) ergibt |**a**| ∝ √s_z = √cos θ. Im Debye-Integral
+
+$$\mathbf{E}(\mathbf{r}) \propto \iint_\Omega \mathbf{a}(\mathbf{s})\, e^{i k n' \mathbf{s}\cdot\mathbf{r}}\, d\Omega = \iint \frac{\mathbf{a}(\mathbf{s})}{s_z}\, e^{i k n' \mathbf{s}\cdot\mathbf{r}}\, ds_x\, ds_y$$
+
+wird auf dem Raster (gleichmäßig in s_x, s_y) also mit W = √s_z / s_z = 1/√s_z gewichtet. Für die Gegenrichtung (Gebrauchsrichtung: eine isotrope Punktquelle im Objekt, vom Objektiv kollimiert) ist die Amplitude in der ebenen Pupille ∝ 1/√cos θ (dieselbe Leistung pro Raumwinkel verteilt sich auf dA = s_z dΩ); da die Pupillenkoordinaten bei Sinusbedingung proportional zu s_⊥ sind, ist das dieselbe Gewichtung 1/√cos θ auf dem Raster. Kurz: √cos θ auf der Kugel, 1/√cos θ in der Ebene – je nachdem, ob die Amplitude auf der Referenzsphäre (Fokussierung) oder in der ebenen Pupille (Kollimation) angegeben wird; im Richtungskosinus-Raster ist es in beiden Fällen 1/√cos θ. Bei NA 0,95 in Luft ist W am Rand 1,79.
+
+**Polarisationsdrehung.** Eine ideale aplanatische Linse dreht die Polarisation jedes Strahls mit der Rotation R, die **u** in **s** überführt (Drehachse **v** = **u** × **s**, cos des Winkels c = **u**·**s**); Komponenten in der Ebene von **u** und **s** (p) werden mitgedreht, die senkrechte (s) bleibt:
+
+$$R\,\mathbf{e} = \mathbf{e} + \mathbf{v}\times\mathbf{e} + \frac{\mathbf{v}\times(\mathbf{v}\times\mathbf{e})}{1 + c},\qquad \mathbf{e}_x = R\,\hat{x}_{\mathrm{in}},\quad \mathbf{e}_y = R\,\hat{y}_{\mathrm{in}}$$
+
+Für **u** = ẑ ist das die Richards-Wolf-Matrix (mit s_⊥² = s_x² + s_y², ohne Singularität auf der Achse):
+
+$$\mathbf{e}_x = \Big(1 - \frac{s_x^2}{1 + s_z},\; -\frac{s_x s_y}{1 + s_z},\; -s_x\Big),\qquad \mathbf{e}_y = \Big(-\frac{s_x s_y}{1 + s_z},\; 1 - \frac{s_y^2}{1 + s_z},\; -s_y\Big)$$
+
+**e**_x, **e**_y, **s** bilden ein rechtshändiges Orthonormalsystem (Test `VectorPsfOps.BasisIsRotationOntoRayDirection`). Fresnel-Verluste und Phasen an den Flächen (Beschichtungen) sind nicht modelliert.
+
+**Pupillenfeld und FFT.** Pro Rasterpunkt und Eingangsfeld **J**
+
+$$\mathbf{G} = \frac{1}{\sqrt{s_z}}\,\exp\!\Big(2\pi i\,\frac{\mathrm{OPD} + n' z\,(s_z - 1)}{\lambda}\Big)\,(\mathbf{e}_x J_x + \mathbf{e}_y J_y),\qquad n' z\,(s_z - 1) = -\frac{n' z\, s_\perp^2}{1 + s_z}$$
+
+(OPD wie M8-T2, Amplitude 0 bei versagten und nicht ausbreitungsfähigen Strahlen). In der Ebene z (Abstand von der Bildebene entlang der Achse, > 0 in +z, also in Tracerichtung hinter der Bildebene wie die Brennlinien von EVAL) ist E_c(ξ, η) = Σ G_c exp(i k n′ (s_x ξ + s_y η)); der Anteil c_x, c_y der Richtungen ergibt einen für alle Komponenten und Eingangsfelder gleichen Phasenfaktor pro Bildpunkt und fällt in allen Intensitäten weg, der Rest ist dieselbe DFT wie bei der skalaren PSF. Abtastung, Zero-Padding, Bildfenster, Lage im Feld und Spiegelung sind deshalb identisch (Δx = λ/(2Q NA_x), Fenster λN/(2 NA)); pro Eingangsfeld werden drei FFTs gerechnet (x, y, zirkular: 3; unpolarisiert: 6). Der Defokus ist eine Phase in der Pupille; für einen Fokusschnitt wird pro Ebene einmal gerechnet. Ein OPD-Anteil −n′z₀(s_z − 1) wird in der Ebene z = z₀ exakt aufgehoben (Test `VectorPsf.DefocusCompensatesPupilPhase`): Liegt der Fokus hinter der Bildebene (OPD am Rand positiv, Randstrahlen schneiden die Achse bei z₀ > 0), ist er bei `defocus` = z₀ scharf.
+
+**Intensität und Normierung.** Komponenten |E_c|² = Σ_k w_k |E_c⁽ᵏ⁾|² über die Eingangsfelder (Gewichte w_k: 1 bzw. ½), Intensität |**E**|² = (|E_x|² + |E_y|²) + |E_z|², beide geteilt durch die Bezugsintensität
+
+$$I_0 = \sum_k w_k \sum_c \Big|\sum_{\text{volle Pupille}} G_c^{(k)}\Big|^2_{\mathrm{OPD} = 0,\ z = 0},$$
+
+das Maximum der aberrationsfreien vektoriellen PSF derselben NA und Polarisation (alle Rasterpunkte der vollen Pupille). Die PSF steht damit in Strehl-Einheiten relativ zur perfekten vektoriellen PSF.
+
+**Kennzahlen** (`finish_vector_psf`, Host, für CPU und GPU dieselbe Funktion): `strehl_fft` (Mitte der FFT), `strehl_origin` (direkte Auswertung des Debye-Integrals im idealen Bildpunkt als Summe über die Rasterpunkte, mathematisch gleich `strehl_fft`), `strehl` (direkt im Bezugspunkt der Kippung wie M8-T2: Fit OPD ≈ c₀ + t_x x + t_y y, Punkt ((∓)t_x/NA_x, (∓)t_y/NA_y); wegen der affinen Abbildung ist das Abziehen der Kippung in der Pupille dasselbe wie die Auswertung im verschobenen Punkt), `peak` und Lage, `energy` (Parseval: Σ|**E**|² · I_0/(M² Σ_voll W²) = Σ_trans W²/Σ_voll W², 1 ohne Versagen; die Drehung ist normerhaltend, Σ_k w_k|**J**_k|² = 1), Energieanteile Σ|E_c|²/Σ|**E**|² in der Ebene, größte Abtastwerte der Komponenten, Halbwertsbreiten entlang x und y durch das abgetastete Maximum (Abtastwerte bis unter die halbe Höhe, dann 60 Bisektionsschritte auf dem direkt ausgewerteten Feld; die Linie wird einmal über die andere Koordinate vorsummiert, danach kostet jede Auswertung O(N)), `airy_radius` bleibt der skalare Wert.
+
+**Energieanteile der stetigen Pupille** (Orakel, x-Polarisation, c₀ = cos α = √(1 − (NA/n′)²)): Σ|E_c|² ∝ ∫ W² e_{x,c}² ds_x ds_y mit W² = 1/cos θ ergibt
+
+$$\frac{\Sigma|E_z|^2}{\Sigma|\mathbf{E}|^2} = \frac{(1 - c_0)(2 + c_0)}{6},\qquad \frac{\Sigma|E_y|^2}{\Sigma|\mathbf{E}|^2} = \frac{(1 - c_0)^2}{24},$$
+
+bei NA 0,95: 0,26504 und 0,019708; für kleine NA ≈ NA²/4.
+
+**Gültigkeit und Grenzen.**
+
+- *Debye-Näherung* wie M8-T2 (große Fresnel-Zahl, bei Mikroskopobjektiven erfüllt); die Bildebene steht senkrecht zur Achse.
+- *Sinusbedingung:* Die affine Abbildung Pupille → Richtungen ist für die aplanatische Abbildung exakt; ihre Verletzung (Koma, OSC) verzerrt die Abbildung und den Aplanatfaktor und wird nur über die OPD erfasst.
+- *Eingangsbündel außerhalb der Achse:* Die Basis x̂_in, ŷ_in steht senkrecht zum geneigten Bündel **u**, die Drehung führt **u** in die Richtung jedes Strahls über (für das Zielsystem θ_f ≤ 4,35°); die Polarisationswirkung realer Flächen (Fresnel-Koeffizienten, Beschichtungen, Spannungsdoppelbrechung) fehlt.
+- *Raster:* Der Treppenrand der Pupille wirkt wie bei der skalaren PSF (~N^{−4/3}); der Aplanatfaktor gewichtet den Rand bei hoher NA stärker, die Abweichung von der stetigen Pupille bleibt bei N = 256 unter 10⁻⁴ (Abnahme). Das Raster ist nur vierzählig symmetrisch: Bei rotationssymmetrischer Phase sind zirkular und unpolarisiert für die stetige Pupille gleich (der Kreuzterm Im(**E**⁽ˣ⁾*·**E**⁽ʸ⁾) verschwindet), auf dem Raster bleibt ein Rest von 1,1·10⁻⁴ (sphärisch 0,1 λ, NA 0,9, N = 64); ohne Aberration ist er exakt 0.
+- *Kleine NA:* Die vektorielle PSF geht in die skalare über, die Abweichung ist von zweiter Ordnung, 0,166·NA² (Strehl-Einheiten).
+
+**Maréchal bei hoher NA.** Für eine Phase mit Rotationssymmetrie verschwinden E_y und E_z im Bildpunkt, und S = |Σ a e^{iφ}|²/(Σ a)² mit den Amplituden a = W e_{x,x} (x-Polarisation, zum Rand wachsend: (1 + c)/(2√c) im Mittel über den Azimut, 1,17 am Rand bei NA 0,95). Damit gilt S ≈ exp(−σ_w²) mit der amplitudengewichteten Phasenvarianz σ_w² statt der gleichgewichteten. Tendenz: Für Aberrationen, die zum Rand wachsen (Defokus, sphärische Aberration), ist σ_w > σ und der vektorielle Strehl kleiner als der skalare (bei σ = 0,07 λ und NA 0,95: 0,8177 statt 0,8203 für Defokus, 0,8181 statt 0,8207 sphärisch, relativ −0,3 %); die Abweichung von exp(−σ_w²) folgt wie bei M8-T2 der s⁴-Entwicklung (≤ 4,1·10⁻³ relativ bei σ = 0,07 λ).
+
+**Determinismus und GPU.** Alle Kernel elementweise ohne Reduktionen, cuFFT pro Plan deterministisch; Kennzahlen, I_0 und die direkt ausgewerteten Größen (`strehl_origin`, `strehl`) rechnet der Host mit denselben Funktionen und sind auf CPU und GPU bitgleich. Toleranz GPU gegen CPU `kPsfCpuGpu` = 10⁻¹³ absolut.
+
+**Ergebnisse der Abnahme** (Tests `VectorPsf.*`, `VectorPsfOps.*`, `VectorPsfOracle.*` in `tests/test_vector_psf.cpp`, auf der GPU `CudaVectorPsf.*` in `tests/test_cuda_vector_psf.cpp` mit denselben Prüfungen aus `tests/vector_psf_test_systems.hpp`; Orakel: Quadratur des Richards-Wolf-Integrals (Novotny und Hecht, Kap. 3.6) E_x ∝ I₀ + I₂ cos 2ψ, E_y ∝ I₂ sin 2ψ, E_z ∝ −2i I₁ cos ψ mit I_n = ∫ √cos θ sin θ {1 + cos θ, sin θ, 1 − cos θ} J_n(kρ sin θ) e^{ikz(cos θ − 1)} dθ, zusammengesetzte Gauß-Legendre-Quadratur (24 × 16 Knoten), J_n aus der Integraldarstellung mit der Trapezregel über eine Periode (96 Punkte, Fehler ~J₉₆(x)), φ-Integration analytisch):
+
+| Kriterium | Orakel | Ergebnis CPU | Ergebnis GPU (RTX 3090) |
+|---|---|---|---|
+| (1) Kleine NA 0,05 und 0,1, perfekte Pupille, x-Pol., N = 128, Q = 4 | skalare PSF (M8-T2), Abweichung ≤ 0,25·NA² | 0,1660·NA² bzw. 0,1664·NA², Verhältnis 4,010 (NA²); Anteil \|E_z\|² 2,507·10⁻³ (stetig 2,502·10⁻³) | wie CPU |
+| (2) NA 0,95, x-Pol., aberrationsfrei, N = 256, Q = 4: Intensität und Komponenten auf x-, y-Achse und Diagonale bis 1,5 λ, Ebenen z = 0 und 0,5 λ | Quadratur, absolut < 5·10⁻⁴ | 8,4·10⁻⁵ bzw. 9,1·10⁻⁵ (Komponenten 1,5·10⁻⁴) | wie CPU |
+| (2) Halbwertsbreiten | Quadratur: FWHM_x = 0,730437 λ, FWHM_y = 0,502630 λ (Verhältnis 1,4532), relativ < 10⁻³ | 0,730483 λ (6,3·10⁻⁵), 0,502623 λ (−1,5·10⁻⁵) | wie CPU |
+| (2) Maximum von \|E_z\|² (Abtastpunkte der x-Achse) | Quadratur 0,182676 (stetig 0,183828 bei ρ ≈ 0,31 λ) | 0,182573 (rel. −5,6·10⁻⁴) | wie CPU |
+| (2) Energieanteile x/y/z | geschlossene Form 0,715250 / 0,019708 / 0,265042, absolut < 10⁻³ | 0,715325 / 0,019663 / 0,265012 | wie CPU |
+| (3) Defokus als Pupillenphase −z₀(s_z − 1), z₀ = 0,4 λ, NA 0,9, unpolarisiert | Strehl 1 in z₀, PSF = perfekte PSF; ±z symmetrisch | Strehl 1 (ΔPSF 2,2·10⁻¹⁶), in der Bildebene 0,8479 | wie CPU |
+| (4) Parseval und Identitäten: zufällige OPD bis 0,3 λ, 10 % Ausfall, NA 0,6 … 0,9, alle Polarisationen, mit Defokus | Energie = Σ_trans W²/Σ_voll W²; direkte Summe = FFT | rel. ≤ 1,5·10⁻¹⁴; ≤ 1,1·10⁻¹⁵ | rel. ≤ 1,5·10⁻¹⁴; ≤ 1,1·10⁻¹⁵ |
+| (5) Symmetrien, sphärisch 0,1 λ, NA 0,9, N = 64 | x-Pol. spiegelsymmetrisch in x und y; y-Pol. = x-Pol. um 90° gedreht; unpolarisiert = (x + y)/2; zirkular = unpolarisiert (aberrationsfrei) | 2,2·10⁻¹⁶; 3,3·10⁻¹⁵; 2,2·10⁻¹⁶; 5,4·10⁻¹⁵ (FWHM_x/FWHM_y = 1,347) | 1,7·10⁻¹⁶; 3,2·10⁻¹⁵; 2,2·10⁻¹⁶; 5,4·10⁻¹⁵ |
+| (6) Strehl bei kleinen Aberrationen, NA 0,95, x-Pol., σ = 0,02 … 0,07 λ | exp(−σ_w²), relativ < 1 % | Defokus ≤ 4,1·10⁻³, sphärisch ≤ 3,0·10⁻³ (Tendenz siehe oben) | wie CPU |
+| (7) Ende-zu-Ende über EVAL: aplanatischer Punkt n = 1,5, sin θ = 0,9, NA′ = 0,6 (gespiegelt), N = 256 | Quadratur bei NA 0,6 | max. 6,6·10⁻⁵; FWHM 0,928841 / 0,841621 λ (Quadratur 0,928782 / 0,841587); Strehl 1 | wie CPU (EVAL auf der GPU) |
+| (8) GPU gegen CPU: Einzellinse a = 3 mm, 3 Felder × 3 Wellenlängen (geneigter Hauptstrahl und Eingangsbündel), 5 % Ausfall, alle Polarisationen, Defokus, N = 32/64, Q = 2/4; NA 0,9/0,8 mit geneigtem Hauptstrahl (nicht ausbreitungsfähige Punkte), Spiegelung | `kPsfCpuGpu` = 10⁻¹³ | – | PSF, Komponenten, MTF ≤ 6,7·10⁻¹⁶, Kennzahlen ≤ 8,9·10⁻¹⁶; direkt ausgewertete Größen und I_0 bitgleich |
+| (8) Determinismus | bitgleich | – | 10 Läufe bitgleich; 5 Tranchen à 2 Pupillen bitgleich zu einer Tranche (beobachtet) |
 
 ## 8. Pupillenquadratur
 
@@ -687,3 +764,7 @@ Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (
 - T. J. Dekker: A floating-point technique for extending the available precision, Numerische Mathematik 18 (1971).
 - M. Joldes, J.-M. Muller, V. Popescu: Tight and rigorous error bounds for basic building blocks of double-word arithmetic, ACM Transactions on Mathematical Software 44 (2017).
 - V. Lefèvre, N. Louvet, J.-M. Muller, J. Picot, L. Rideau: Accurate calculation of Euclidean norms using double-word arithmetic, ACM Transactions on Mathematical Software 49 (2023).
+- B. Richards, E. Wolf: Electromagnetic diffraction in optical systems II. Structure of the image field in an aplanatic system, Proc. R. Soc. London A 253 (1959).
+- A. Boivin, E. Wolf: Electromagnetic field in the neighborhood of the focus of a coherent beam, Physical Review 138 (1965).
+- M. Leutenegger, R. Rao, R. A. Leitgeb, T. Lasser: Fast focus field calculations, Optics Express 14 (2006).
+- L. Novotny, B. Hecht: Principles of Nano-Optics, Kap. 3.6 (Fokussierung mit hoher NA).

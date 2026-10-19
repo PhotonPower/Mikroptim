@@ -824,6 +824,10 @@ Wertet ein System im Modus EVAL aus (M8-T1): dichtes kartesisches N×N-Raster ü
 | `--psf-tuple F,L` | Tupel für `--psf-file` und `--mtf-file` (setzt `--psf`) | 0,0 |
 | `--psf-file D` | PSF des Tupels als CSV (setzt `--psf`) | – |
 | `--mtf-file D` | MTF-Schnitte des Tupels als CSV (setzt `--psf`) | – |
+| `--vector` | vektorielle PSF nach Richards-Wolf statt der skalaren (M8-T5; setzt `--psf`) | aus |
+| `--polarization P` | Eingangsfeld der vektoriellen PSF: `x`, `y`, `circular` oder `unpolarized` (setzt `--vector`) | `x` |
+| `--defocus Z` | Auswerteebene Z mm von der Bildebene entlang der Achse, > 0 in +z (Tracerichtung, hinter der Bildebene; setzt `--vector`) | 0 |
+| `--component-files P` | \|E_x\|², \|E_y\|², \|E_z\|² des Tupels als CSV nach `P_ex.csv`, `P_ey.csv`, `P_ez.csv` (setzt `--vector`) | – |
 | `--gpu`, `--device N` | auf der GPU rechnen (Kernel EVAL, mit `--psf` auch die FFT über cuFFT), wie bei `trace` | aus, 0 |
 | `--help`, `-h` | Hilfe | – |
 
@@ -880,6 +884,20 @@ Bei voller Öffnung (RMS bis 4,9 Wellen) ist die Einzellinse weit von der Beugun
 
 In JSON steht bei `--psf` oben `psf` (`fft_size`, `padding`, `numerical_aperture` oder `null`) und pro Tupel `psf` mit `na` [NA_x, NA_y], `pixel_mm` [Δx, Δy], `airy_radius_mm`, `strehl`, `strehl_reference_mm` (Bezugspunkt nach Abzug der Kippung), `strehl_origin` (direkt im idealen Bildpunkt), `strehl_fft`, `peak`, `peak_mm`, `energy` (transmittierter Anteil), `cutoff_lpmm` [f_c,x, f_c,y], `mtf_half_cutoff` [sagittal, tangential]; ohne `--psf` sind beide `null`.
 
+Das Objekt `psf` oben enthält zusätzlich `model` (`"scalar"` oder `"vector"`), `polarization` und `defocus_mm` (beide `null` bei skalarer PSF); jedes Tupel `psf` hat zusätzlich `vector` (`null` bei skalarer PSF).
+
+**Vektorielle PSF** (`--vector`, M8-T5; Modell, Apodisation 1/√cos θ, Polarisationsdrehung und Gültigkeit: [numerik.md, „Vektorielle PSF“](numerik.md#vektorielle-psf-m8-t5)): Statt der skalaren Pupillenfunktion werden pro Eingangsfeld die drei Feldkomponenten in der Pupille transformiert (`make_vector_psf_pupils`, `vector_psf_cpu` bzw. mit `--gpu` `VectorPsfEngine`); Eingangsfeld gleichmäßig beleuchtet, linear (`x`, `y`), zirkular oder unpolarisiert (inkohärente Summe aus x und y). Die PSF ist |**E**|² normiert auf das Maximum der perfekten vektoriellen PSF derselben NA, Abtastung, Bildfenster und Warnung wie oben. `--defocus Z` rechnet die Ebene im Abstand Z von der Bildebene (Fokusschnitte: mehrere Aufrufe). Die Textausgabe ersetzt die PSF-Tabelle durch: NA (tangential), Strehl (im Bezugspunkt der Kippung), Strehl im idealen Bildpunkt, Maximum, Halbwertsbreiten in x und y durch das Maximum [mm] (bei linearer Polarisation in Polarisationsrichtung gestreckt), Anteil von |E_z|² an der Energie der Ebene, größter Wert von |E_z|² und MTF bei f_c/2. Beispiel (`mikroptim eval data/systems/einzellinse_geisterplatten_exakt.json --grid 256 --vector --gpu`, Ausschnitt; RTX 3090):
+
+```
+  PSF vektoriell (Richards-Wolf, Polarisation x, Ebene z = 0.0000e+00 mm; FFT 1024 x 1024, Zero-Padding 4.00), NA aus den Feldstrahlen; Strehl auf die perfekte vektorielle PSF normiert, Halbwertsbreiten durch das Maximum, Anteil von |E_z|² an der Energie der Ebene
+  Feld   λ [nm]       NA   Strehl  im Bildp.  Maximum  FWHM x [mm]  FWHM y [mm]  Anteil z  max |E_z|²   MTF_s   MTF_t
+     0   587.56  0.02478  0.99693    0.99693  0.99693   1.2197e-02   1.2195e-02   0.00015     0.00008  0.3893  0.3895
+```
+
+Bei NA 0,025 ist die vektorielle PSF praktisch die skalare (Strehl gleich auf fünf Stellen, FWHM_x/FWHM_y − 1 = 1,6·10⁻⁴, Anteil von |E_z|² ≈ NA²/4); bei NA 0,95 (Zielobjektiv) ist der Fokus bei linearer Polarisation in Polarisationsrichtung um 45 % gestreckt (FWHM 0,730 λ gegen 0,503 λ) und |E_z|² trägt 26,5 % der Energie ([numerik.md](numerik.md#vektorielle-psf-m8-t5)).
+
+In JSON steht pro Tupel `psf.vector` mit `fwhm_mm` [x, y], `energy_fraction` [x, y, z] (Σ|E_c|²/Σ|**E**|² in der Ebene), `component_peak` [x, y, z] (größte Abtastwerte in Strehl-Einheiten), `reference_intensity` (I_0) und `evanescent_points` (Rasterpunkte mit |s_⊥| ≥ 1). Die Felder von `psf` haben die vektorielle Bedeutung (Strehl relativ zur perfekten vektoriellen PSF, `energy` = Σ_trans W²/Σ_voll W²); `airy_radius_mm` bleibt der skalare Wert. **Komponentendateien** (`--component-files P`): `P_ex.csv`, `P_ey.csv`, `P_ez.csv` im Format der PSF-Datei; ihre Summe ist die PSF.
+
 **PSF-Datei** (`--psf-file D`): CSV mit M Zeilen zu je M Werten, normiert auf das Maximum der ungestörten PSF (Strehl-Einheiten), 17 Stellen; erste Zeile = größtes y, Spalte i bei x = (i − M/2)·Δx, Zeile von unten j bei y = (j − M/2)·Δy relativ zum idealen Bildpunkt. **MTF-Datei** (`--mtf-file D`): Kopfzeile `k,nu,f_sagittal_lpmm,mtf_sagittal,f_tangential_lpmm,mtf_tangential`, dann N + 1 Zeilen für ν = k/N.
 
-**Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, mit `--psf` Kennzahlen bitgleich zu `psf_cpu`, PSF- und MTF-Datei, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).
+**Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, mit `--psf` Kennzahlen bitgleich zu `psf_cpu`, PSF- und MTF-Datei, mit `--vector` Kennzahlen bitgleich zu `vector_psf_cpu` und Komponentendateien, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu`, `CliEvalGpu.PsfMatchesCpu`, `CliEvalGpu.VectorPsfMatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json`, `cli_eval_psf_json`, `cli_eval_vector_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).

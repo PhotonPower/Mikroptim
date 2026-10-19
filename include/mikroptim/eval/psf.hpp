@@ -130,6 +130,12 @@ PsfResult prepare_psf_result(const PsfPupil& pupil, int fft_size);
 // Funktion): transmitted, energy, strehl_fft, strehl_origin, strehl (mit Bezugspunkt), peak.
 void finish_psf(PsfResult& result, const PsfPupil& pupil);
 
+// Kleinste-Quadrate-Fit OPD ≈ c₀ + t_x x + t_y y über die transmittierenden Rasterpunkte (gleiche
+// Gewichte, zeilenweise summiert; Kippung t in mm pro normierter Pupillenkoordinate). false bei
+// weniger als drei Punkten oder singulärer Matrix. Bezugspunkt von PsfResult::strehl:
+// ((flip_x ? −t_x : t_x)/NA_x, (flip_y ? −t_y : t_y)/NA_y).
+bool psf_tilt_fit(const PsfPupil& pupil, double& tilt_x, double& tilt_y);
+
 // CPU-Referenz eines Tupels: Pupillenfunktion in ein M×M-Feld (Ecke (0, 0)), FFT vorwärts,
 // I = |U|²/n_voll², PSF zentriert (und gespiegelt bei divergenter Welle), FFT⁻¹ von I für die
 // MTF-Schnitte, dann finish_psf.

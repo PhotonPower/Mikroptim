@@ -230,6 +230,22 @@ inline constexpr double kPsfNaFieldRays = 1e-10;
 // (<= 2 ulp); erwartet einige ε·log₂(M²) ≈ 10⁻¹⁵, beobachtet 5,6·10⁻¹⁶ (RTX 3090).
 inline constexpr double kPsfCpuGpu = 1e-13;
 
+// Vektorielle PSF (M8-T5), kleine NA: max |I_vektoriell − I_skalar| in Strehl-Einheiten,
+// Schranke kVectorPsfScalarLimit · NA². Die Abweichung ist von zweiter Ordnung in der NA
+// (Aplanatfaktor 1/√cos θ ≈ 1 + s²/4, Drehung der Polarisation 1 − s_x²/2, |E_z|² ∝ s²); für
+// die Kreispupille beobachtet 0,166 · NA² bei NA 0,05, 0,1 und 0,2 (Python-Prototyp und Test).
+inline constexpr double kVectorPsfScalarLimit = 0.25;
+// Vektorielle PSF gegen die direkte Quadratur des Richards-Wolf-Integrals (Besselfunktionen,
+// stetige Pupille), absolut in Strehl-Einheiten. Rasterfehler der Treppenpupille (~N^{−4/3},
+// Abschnitt "Auswertung auf dem Raster"); bei NA 0,95 und N = 256 beobachtet 8·10⁻⁵ (Prototyp).
+inline constexpr double kVectorPsfOracle = 5e-4;
+// Halbwertsbreiten und Energieanteile der vektoriellen PSF gegen Quadratur bzw. geschlossene
+// Form der stetigen Pupille, relativ (Abnahmevorgabe 10⁻³; derselbe Rasterfehler).
+inline constexpr double kVectorPsfRelative = 1e-3;
+// Identitäten der vektoriellen PSF (FFT gegen direkte Summe, Parseval, Symmetrien), absolut
+// in Strehl-Einheiten bzw. relativ: nur Rundung der FFT (einige ε·log₂ M²) und der Summen.
+inline constexpr double kVectorPsfIdentity = 1e-12;
+
 // Gebündelter LM (M3-T4), Abnahme 1: Formfaktor der Einzellinse bei minimaler sphärischer
 // Aberration gegen den Planwert 0,74 (Dünnlinsentheorie 2(n² − 1)/(n + 2) = 0,7397). Modellfehler
 // der Dünnlinsentheorie (Mittendicke 6 mm bei f = 100 mm verschiebt das Optimum auf q ≈ 0,72),

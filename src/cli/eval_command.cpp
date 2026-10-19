@@ -1,7 +1,9 @@
 // Unterbefehl `mikroptim eval` (M8-T1): Laden, Batch mit einer Variante, Modus EVAL auf der CPU
 // oder mit --gpu über die TraceEngine, Kennzahlen (eval_statistics), Ausgabe als Text oder JSON,
 // optional OPD-Karte als CSV; mit --psf skalare PSF, MTF und Strehl (M8-T2, psf_cpu bzw.
-// PsfEngine), optional PSF und MTF eines Tupels als CSV. Ausgabeformate: docs/cli.md.
+// PsfEngine), mit --vector die vektorielle PSF nach Richards-Wolf (M8-T5, vector_psf_cpu bzw.
+// VectorPsfEngine), optional PSF, Komponenten und MTF eines Tupels als CSV. Ausgabeformate:
+// docs/cli.md.
 
 #include "cli/eval_command.hpp"
 #include "cli/cli_util.hpp"
@@ -9,12 +11,14 @@
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/eval/eval.hpp"
 #include "mikroptim/eval/psf.hpp"
+#include "mikroptim/eval/vector_psf.hpp"
 #include "mikroptim/version.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/psf.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/cuda/vector_psf.hpp"
 #endif
 
 #include <nlohmann/json.hpp>
@@ -58,6 +62,10 @@ struct EvalArgs {
     int psf_wavelength = 0;
     std::string psf_file; // leer: keine PSF-Datei
     std::string mtf_file; // leer: keine MTF-Datei
+    // Vektorielle PSF (M8-T5)
+    bool vector = false;
+    VectorPsfSettings vector_settings{};
+    std::string component_prefix; // leer: keine Komponentendateien
 };
 
 // Liest "F,L" (Feld und Wellenlänge, ab 0).
@@ -138,6 +146,31 @@ EvalArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--mtf-file") {
             a.mtf_file = std::string(next_value(args, i, arg));
             a.psf = true;
+        } else if (arg == "--vector") {
+            a.vector = true;
+            a.psf = true;
+        } else if (arg == "--polarization") {
+            const std::string_view v = next_value(args, i, arg);
+            try {
+                a.vector_settings.polarization = parse_polarization(v);
+            } catch (const std::invalid_argument&) {
+                throw UsageError(
+                    "--polarization erwartet x, y, circular oder unpolarized, nicht '" +
+                    std::string(v) + "'");
+            }
+            a.vector = true;
+            a.psf = true;
+        } else if (arg == "--defocus") {
+            a.vector_settings.defocus = parse_double(arg, next_value(args, i, arg));
+            if (!std::isfinite(a.vector_settings.defocus)) {
+                throw UsageError("--defocus muss endlich sein");
+            }
+            a.vector = true;
+            a.psf = true;
+        } else if (arg == "--component-files") {
+            a.component_prefix = std::string(next_value(args, i, arg));
+            a.vector = true;
+            a.psf = true;
         } else if (arg == "--map-file") {
             a.map_file = std::string(next_value(args, i, arg));
         } else if (arg == "--remove") {
@@ -199,24 +232,47 @@ struct EvalReport {
     int device = -1;
     std::string device_name;
     // PSF (nur mit --psf): Ergebnisse pro Tupel [f·L + l]; die PSF selbst bleibt nur für das
-    // Tupel der Dateien erhalten (bis M² = 6,7·10⁷ Werte pro Tupel).
+    // Tupel der Dateien erhalten (bis M² = 6,7·10⁷ Werte pro Tupel). Skalar (M8-T2) stehen nur
+    // die Felder von PsfResult, vektoriell (--vector, M8-T5) auch die übrigen.
     bool psf = false;
+    bool vector = false;
     PsfSettings psf_settings{};
+    VectorPsfSettings vector_settings{};
     int psf_fft = 0;
-    std::vector<PsfResult> psfs;
+    std::vector<VectorPsfResult> psfs;
 };
 
-// Rechnet die PSF aller Tupel der Variante 0 nacheinander (CPU oder GPU) und behält die PSF nur
-// für das Tupel (keep_f, keep_l).
+// Rechnet die skalare PSF aller Tupel der Variante 0 nacheinander (CPU oder GPU) und behält die
+// PSF nur für das Tupel (keep_f, keep_l).
 template <class Compute>
 void compute_psfs(EvalReport& r, int keep_f, int keep_l, Compute compute) {
     const std::vector<PsfPupil> pupils = make_psf_pupils(r.batch, r.result, 0, r.psf_settings);
     r.psf_fft = psf_fft_size(r.result.grid.size, r.psf_settings.padding);
     r.psfs.clear();
     for (const PsfPupil& p : pupils) {
-        PsfResult res = compute(p, r.psf_fft);
+        VectorPsfResult res;
+        static_cast<PsfResult&>(res) = compute(p, r.psf_fft);
         if (p.field != keep_f || p.wavelength != keep_l) {
             std::vector<double>().swap(res.psf);
+        }
+        r.psfs.push_back(std::move(res));
+    }
+}
+
+// Dasselbe für die vektorielle PSF (Komponenten ebenfalls nur für das Tupel der Dateien).
+template <class Compute>
+void compute_vector_psfs(EvalReport& r, int keep_f, int keep_l, Compute compute) {
+    const std::vector<VectorPsfPupil> pupils =
+        make_vector_psf_pupils(r.batch, r.result, 0, r.psf_settings);
+    r.psf_fft = psf_fft_size(r.result.grid.size, r.psf_settings.padding);
+    r.psfs.clear();
+    for (const VectorPsfPupil& p : pupils) {
+        VectorPsfResult res = compute(p, r.psf_fft);
+        if (p.pupil.field != keep_f || p.pupil.wavelength != keep_l) {
+            std::vector<double>().swap(res.psf);
+            for (std::vector<double>& c : res.component) {
+                std::vector<double>().swap(c);
+            }
         }
         r.psfs.push_back(std::move(res));
     }
@@ -265,6 +321,19 @@ Json psf_json(const PsfResult& p) {
     return e;
 }
 
+// Zusätzliche Kennzahlen der vektoriellen PSF (M8-T5).
+Json vector_psf_json(const VectorPsfResult& p) {
+    Json e;
+    e["fwhm_mm"] = Json::array({number(p.fwhm_x), number(p.fwhm_y)});
+    e["energy_fraction"] = Json::array(
+        {number(p.energy_fraction[0]), number(p.energy_fraction[1]), number(p.energy_fraction[2])});
+    e["component_peak"] = Json::array(
+        {number(p.component_peak[0]), number(p.component_peak[1]), number(p.component_peak[2])});
+    e["reference_intensity"] = number(p.reference_intensity);
+    e["evanescent_points"] = p.evanescent;
+    return e;
+}
+
 double field_angle_deg(const EvalReport& r, int f) {
     const SystemDescription& sys = r.loaded.system;
     return sys.source.type == SourceType::Collimated
@@ -293,11 +362,16 @@ void write_json(const EvalReport& r, std::ostream& out) {
     j["reference_sphere"] = reference_name(r.result.settings.reference);
     j["exit_pupil_position"] = number(r.result.exit_pupil_position[0]);
     if (r.psf) {
-        j["psf"] = Json{{"fft_size", r.psf_fft},
-                        {"padding", r.psf_settings.padding},
-                        {"numerical_aperture", r.psf_settings.numerical_aperture > 0.0
-                                                   ? Json(r.psf_settings.numerical_aperture)
-                                                   : Json(nullptr)}};
+        j["psf"] =
+            Json{{"fft_size", r.psf_fft},
+                 {"padding", r.psf_settings.padding},
+                 {"numerical_aperture", r.psf_settings.numerical_aperture > 0.0
+                                            ? Json(r.psf_settings.numerical_aperture)
+                                            : Json(nullptr)},
+                 {"model", r.vector ? "vector" : "scalar"},
+                 {"polarization", r.vector ? Json(polarization_name(r.vector_settings.polarization))
+                                           : Json(nullptr)},
+                 {"defocus_mm", r.vector ? number(r.vector_settings.defocus) : Json(nullptr)}};
     } else {
         j["psf"] = nullptr;
     }
@@ -329,7 +403,13 @@ void write_json(const EvalReport& r, std::ostream& out) {
         e["focus_tangential_mm"] = number(t.focus_tangential);
         e["focus_sagittal_mm"] = number(t.focus_sagittal);
         e["astigmatism_mm"] = number(t.astigmatism());
-        e["psf"] = r.psf ? psf_json(r.psfs[index]) : Json(nullptr);
+        if (r.psf) {
+            Json p = psf_json(r.psfs[index]);
+            p["vector"] = r.vector ? vector_psf_json(r.psfs[index]) : Json(nullptr);
+            e["psf"] = std::move(p);
+        } else {
+            e["psf"] = nullptr;
+        }
         ++index;
         tuples.push_back(std::move(e));
     }
@@ -388,6 +468,38 @@ void write_text(const EvalReport& r, std::ostream& out) {
     if (!r.psf) {
         return;
     }
+    if (r.vector) {
+        out << "\n  PSF vektoriell (Richards-Wolf, Polarisation "
+            << polarization_name(r.vector_settings.polarization)
+            << ", Ebene z = " << format_number("%.4e", r.vector_settings.defocus) << " mm; FFT "
+            << r.psf_fft << " x " << r.psf_fft << ", Zero-Padding "
+            << format_number("%.2f", static_cast<double>(r.psf_fft) / r.result.grid.size)
+            << "), NA "
+            << (r.psf_settings.numerical_aperture > 0.0 ? "vorgegeben"
+                                                        : std::string("aus den Feldstrahlen"))
+            << "; Strehl auf die perfekte vektorielle PSF normiert, Halbwertsbreiten durch das "
+               "Maximum, Anteil von |E_z|² an der Energie der Ebene\n";
+        out << "  " << pad_left("Feld", 4) << pad_left("λ [nm]", 9) << pad_left("NA", 9)
+            << pad_left("Strehl", 9) << pad_left("im Bildp.", 11) << pad_left("Maximum", 9)
+            << pad_left("FWHM x [mm]", 13) << pad_left("FWHM y [mm]", 13)
+            << pad_left("Anteil z", 10) << pad_left("max |E_z|²", 12) << pad_left("MTF_s", 8)
+            << pad_left("MTF_t", 8) << '\n';
+        for (const VectorPsfResult& p : r.psfs) {
+            out << "  " << pad_left(std::to_string(p.field), 4)
+                << pad_left(format_number("%.2f", p.wavelength_nm), 9)
+                << pad_left(format_number("%.5f", p.na_y), 9)
+                << pad_left(format_number("%.5f", p.strehl), 9)
+                << pad_left(format_number("%.5f", p.strehl_fft), 11)
+                << pad_left(format_number("%.5f", p.peak), 9)
+                << pad_left(format_number("%.4e", p.fwhm_x), 13)
+                << pad_left(format_number("%.4e", p.fwhm_y), 13)
+                << pad_left(format_number("%.5f", p.energy_fraction[2]), 10)
+                << pad_left(format_number("%.5f", p.component_peak[2]), 12)
+                << pad_left(format_number("%.4f", p.mtf_sagittal_at(0.5)), 8)
+                << pad_left(format_number("%.4f", p.mtf_tangential_at(0.5)), 8) << '\n';
+        }
+        return;
+    }
     out << "\n  PSF skalar (FFT " << r.psf_fft << " x " << r.psf_fft << ", Zero-Padding "
         << format_number("%.2f", static_cast<double>(r.psf_fft) / r.result.grid.size) << "), NA "
         << (r.psf_settings.numerical_aperture > 0.0 ? "vorgegeben"
@@ -428,28 +540,45 @@ std::string csv_number(double v) {
     return buf;
 }
 
+// M×M-Bild (zeilenweise abgelegt, values[j·M + i]) als CSV mit M Zeilen zu je M Werten, erste
+// Zeile = größtes y.
+void write_image_csv(const std::string& file, const char* what, int m,
+                     const std::vector<double>& values) {
+    std::ofstream f = open_output(file, what);
+    const auto mu = static_cast<std::size_t>(m);
+    for (int j = m - 1; j >= 0; --j) {
+        for (int i = 0; i < m; ++i) {
+            if (i > 0) {
+                f << ',';
+            }
+            f << csv_number(values[static_cast<std::size_t>(j) * mu + static_cast<std::size_t>(i)]);
+        }
+        f << '\n';
+    }
+    if (!f) {
+        throw std::runtime_error(std::string(what) + ": Fehler beim Schreiben von " + file);
+    }
+}
+
 // PSF und MTF des gewählten Tupels als CSV: PSF mit M Zeilen zu je M Werten (normiert auf das
-// Maximum der ungestörten PSF), erste Zeile = größtes y; MTF mit Kopfzeile und N + 1 Zeilen.
+// Maximum der ungestörten PSF), erste Zeile = größtes y; MTF mit Kopfzeile und N + 1 Zeilen;
+// vektoriell die Komponenten |E_x|², |E_y|², |E_z|² wie die PSF in PRÄFIX_ex.csv, _ey.csv,
+// _ez.csv.
 void write_psf_files(const EvalReport& r, const EvalArgs& a) {
-    if (a.psf_file.empty() && a.mtf_file.empty()) {
+    if (a.psf_file.empty() && a.mtf_file.empty() && a.component_prefix.empty()) {
         return;
     }
-    const PsfResult& p = r.psfs[static_cast<std::size_t>(a.psf_field) *
-                                    static_cast<std::size_t>(r.result.wavelengths) +
-                                static_cast<std::size_t>(a.psf_wavelength)];
+    const VectorPsfResult& p = r.psfs[static_cast<std::size_t>(a.psf_field) *
+                                          static_cast<std::size_t>(r.result.wavelengths) +
+                                      static_cast<std::size_t>(a.psf_wavelength)];
     if (!a.psf_file.empty()) {
-        std::ofstream f = open_output(a.psf_file, "PSF");
-        for (int j = p.fft_size - 1; j >= 0; --j) {
-            for (int i = 0; i < p.fft_size; ++i) {
-                if (i > 0) {
-                    f << ',';
-                }
-                f << csv_number(p.psf_at(i, j));
-            }
-            f << '\n';
-        }
-        if (!f) {
-            throw std::runtime_error("PSF: Fehler beim Schreiben von " + a.psf_file);
+        write_image_csv(a.psf_file, "PSF", p.fft_size, p.psf);
+    }
+    if (!a.component_prefix.empty() && r.vector) {
+        const char* suffix[3] = {"_ex.csv", "_ey.csv", "_ez.csv"};
+        for (std::size_t c = 0; c < 3; ++c) {
+            write_image_csv(a.component_prefix + suffix[c], "PSF-Komponente", p.fft_size,
+                            p.component[c]);
         }
     }
     if (!a.mtf_file.empty()) {
@@ -510,12 +639,14 @@ void print_eval_usage(std::ostream& out) {
     out << "Aufruf: mikroptim eval <system.json> [--grid N] [--half] [--reference R] [--json]\n"
            "                      [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]]\n"
            "                      [--psf [--padding Q] [--na X] [--psf-tuple F,L]\n"
-           "                       [--psf-file DATEI.csv] [--mtf-file DATEI.csv]]\n"
+           "                       [--psf-file DATEI.csv] [--mtf-file DATEI.csv]\n"
+           "                       [--vector [--polarization P] [--defocus Z]\n"
+           "                        [--component-files PRÄFIX]]]\n"
            "                      [--gpu [--device N]]\n"
            "  Auswertung auf dem dichten kartesischen Pupillenraster (Modus EVAL, FP64):\n"
            "  RMS-OPD, Strehl nach Maréchal, RMS-Spot, Schwerpunkt, Verzeichnung und Brennlinien\n"
-           "  pro Feld und Wellenlänge, mit --psf zusätzlich skalare PSF, MTF und Strehl\n"
-           "  (Beschreibung: docs/cli.md).\n"
+           "  pro Feld und Wellenlänge, mit --psf zusätzlich skalare PSF, MTF und Strehl, mit\n"
+           "  --vector die vektorielle PSF für hohe NA (Beschreibung: docs/cli.md).\n"
            "  --grid N        Raster N x N über die Pupille, 1 bis "
         << kMaxEvalGrid
         << " (Standard 64)\n"
@@ -532,6 +663,11 @@ void print_eval_usage(std::ostream& out) {
            "  --psf-tuple F,L Tupel für --psf-file und --mtf-file (Standard 0,0)\n"
            "  --psf-file D    PSF als CSV nach D (M x M, normiert auf die ungestörte PSF)\n"
            "  --mtf-file D    MTF-Schnitte (sagittal, tangential) als CSV nach D\n"
+           "  --vector        vektorielle PSF nach Richards-Wolf statt der skalaren (setzt --psf)\n"
+           "  --polarization P  Eingangsfeld x (Standard), y, circular oder unpolarized\n"
+           "  --defocus Z     Auswerteebene Z mm hinter der Bildebene (in +z, Standard 0)\n"
+           "  --component-files P  |E_x|², |E_y|², |E_z|² des Tupels als CSV nach P_ex.csv,\n"
+           "                  P_ey.csv, P_ez.csv\n"
            "  --gpu           auf der GPU rechnen (Kernel EVAL) statt auf der CPU\n"
            "  --device N      CUDA-Gerät für --gpu (Standard 0)\n"
            "  --help          diese Hilfe\n"
@@ -556,6 +692,7 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
 #ifdef MIKROPTIM_HAS_CUDA
     std::optional<cuda::TraceEngine> engine;
     std::optional<cuda::PsfEngine> psf_engine;
+    std::optional<cuda::VectorPsfEngine> vector_engine;
     if (a.gpu) {
         const int count = cuda::device_count();
         if (count == 0) {
@@ -565,7 +702,9 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
         }
         try {
             engine.emplace(a.device);
-            if (a.psf) {
+            if (a.psf && a.vector) {
+                vector_engine.emplace(a.device);
+            } else if (a.psf) {
                 psf_engine.emplace(a.device);
             }
         } catch (const std::exception& e) {
@@ -613,9 +752,22 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
                                             ": Feld oder Wellenlänge existiert nicht");
             }
             r.psf = true;
+            r.vector = a.vector;
             r.psf_settings = a.psf_settings;
+            r.vector_settings = a.vector_settings;
+            const auto vector_cpu = [&a](const VectorPsfPupil& p, int m) {
+                return vector_psf_cpu(p, m, a.vector_settings);
+            };
 #ifdef MIKROPTIM_HAS_CUDA
-            if (psf_engine) {
+            if (vector_engine) {
+                compute_vector_psfs(
+                    r, a.psf_field, a.psf_wavelength, [&](const VectorPsfPupil& p, int m) {
+                        return std::move(vector_engine->compute(
+                            std::span<const VectorPsfPupil>(&p, 1), m, a.vector_settings)[0]);
+                    });
+            } else if (a.vector) {
+                compute_vector_psfs(r, a.psf_field, a.psf_wavelength, vector_cpu);
+            } else if (psf_engine) {
                 compute_psfs(r, a.psf_field, a.psf_wavelength, [&](const PsfPupil& p, int m) {
                     return std::move(psf_engine->compute(std::span<const PsfPupil>(&p, 1), m)[0]);
                 });
@@ -624,8 +776,12 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
                              [](const PsfPupil& p, int m) { return psf_cpu(p, m); });
             }
 #else
-            compute_psfs(r, a.psf_field, a.psf_wavelength,
-                         [](const PsfPupil& p, int m) { return psf_cpu(p, m); });
+            if (a.vector) {
+                compute_vector_psfs(r, a.psf_field, a.psf_wavelength, vector_cpu);
+            } else {
+                compute_psfs(r, a.psf_field, a.psf_wavelength,
+                             [](const PsfPupil& p, int m) { return psf_cpu(p, m); });
+            }
 #endif
             for (std::string& w : psf_window_warnings(r)) {
                 err << "mikroptim eval: Warnung: " << w << '\n';

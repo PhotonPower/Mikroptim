@@ -148,6 +148,11 @@ double mtf_at(const std::vector<double>& mtf, double nu) {
 
 } // namespace
 
+bool psf_tilt_fit(const PsfPupil& pupil, double& tilt_x, double& tilt_y) {
+    check_pupil(pupil);
+    return fit_tilt(pupil, tilt_x, tilt_y);
+}
+
 double PsfResult::mtf_sagittal_at(double nu) const {
     return mtf_at(mtf_sagittal, nu);
 }
