@@ -86,11 +86,12 @@ struct LmOptions {
     // Zusatzresiduen (z. B. make_paraxial_residuals), Host-Threads der Zusatzresiduen
     // (extra_threads ≤ 0: nach der Zahl der Varianten, lm_host_threads).
     FdJacobianOptions jacobian{};
-    // Äußeres Strafverfahren der optischen Treiber (optimize_lm_cpu, cuda::optimize_lm_gpu;
+    // Äußeres Strafverfahren der optischen Treiber (optimize_lm_cpu, cuda::optimize_lm_gpu,
+    // cuda::optimize_lm_multi_gpu;
     // weiches Versagen, M4-T2, docs/optimierung.md, Abschnitt 4): Endet ein Lauf mit versagten
     // Strahlen, wird er vom Endpunkt aus mit w_fail · fail_weight_factor neu gestartet, solange
-    // Strahlen versagen und das Gewicht max_fail_weight nicht übersteigt. fail_weight_factor <= 1
-    // oder hartes Versagen: ein Durchgang wie bisher.
+    // Strahlen versagen und das Gewicht max_fail_weight nicht übersteigt. fail_weight_factor <= 1,
+    // w_fail = 0 oder hartes Versagen: ein Durchgang wie bisher.
     double fail_weight_factor = 10.0;
     double max_fail_weight = 1e14;
     LmIterationFn on_iteration; // optional, nach jedem Zyklus pro Lauf in Laufreihenfolge
@@ -207,7 +208,8 @@ private:
 using LmBackendFactory = std::function<std::unique_ptr<LmBackend>(const LmOptions& options,
                                                                   const SystemBatchHost& base)>;
 
-// Gemeinsamer Ablauf der optischen Treiber: levenberg_marquardt mit dem Backend der Fabrik,
+// Gemeinsamer Ablauf der optischen Treiber (CPU, eine GPU, mehrere GPUs): levenberg_marquardt
+// mit dem Backend der Fabrik,
 // danach im weichen Modus das äußere Strafverfahren (LmOptions::fail_weight_factor): Läufe mit
 // versagten Strahlen (außer NumericalError) starten an ihrem Endpunkt mit dem zehnfachen
 // (fail_weight_factor-fachen) w_fail neu, gemeinsam in einem Aufruf. Ergebnis pro Lauf: x,

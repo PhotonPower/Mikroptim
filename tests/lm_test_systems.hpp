@@ -136,12 +136,14 @@ inline bool same_bits(double a, double b) {
     return std::memcmp(&a, &b, sizeof(double)) == 0;
 }
 
-// Ergebnisse zweier Läufe bitgleich (x, F, Verlauf, Zähler, Status).
+// Ergebnisse zweier Läufe bitgleich (x, F, Verlauf, Zähler, Status, Strafverfahren M4-T2).
 inline bool same_run(const LmRunResult& a, const LmRunResult& b) {
     if (a.x.size() != b.x.size() || a.history.size() != b.history.size() || a.status != b.status ||
         a.iterations != b.iterations || a.accepted != b.accepted || a.jacobians != b.jacobians ||
-        a.failed_rays != b.failed_rays || !same_bits(a.merit, b.merit) ||
-        !same_bits(a.damping, b.damping) || !same_bits(a.gradient_norm, b.gradient_norm)) {
+        a.failed_rays != b.failed_rays || a.hard_failed_rays != b.hard_failed_rays ||
+        a.penalty_rounds != b.penalty_rounds || !same_bits(a.fail_weight, b.fail_weight) ||
+        !same_bits(a.merit, b.merit) || !same_bits(a.damping, b.damping) ||
+        !same_bits(a.gradient_norm, b.gradient_norm)) {
         return false;
     }
     for (std::size_t k = 0; k < a.x.size(); ++k) {

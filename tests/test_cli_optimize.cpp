@@ -9,6 +9,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
@@ -137,9 +138,10 @@ FileMerit file_merit(const std::string& file, int rings = 10, int spokes = 8) {
     r.x = set.extract(base, 0);
     std::vector<double> f(1);
     std::vector<std::int64_t> failed(1);
+    std::vector<std::int64_t> hard_failed(1);
     const int run = 0;
     mko::CpuLmBackend backend(set, base, options);
-    backend.merit(std::span<const int>(&run, 1), r.x, f, failed);
+    backend.merit(std::span<const int>(&run, 1), r.x, f, failed, hard_failed);
     r.merit = f[0];
     r.failed = failed[0];
     return r;
@@ -509,6 +511,82 @@ TEST(CliOptimize, TextOutput) {
     EXPECT_NE(q.out.find("- (ohne -o)"), std::string::npos);
 }
 
+// Weiches Strahlversagen (M4-T2): Das Startsystem mit 30 % versagenden Strahlen wird ohne
+// Eingriff versagensfrei; Ergebnis bitgleich zu optimize_lm_cpu (äußeres Strafverfahren mit
+// w_fail ab 1e6, x10 pro Runde); Protokoll mit fortlaufenden Zyklen und hart versagten
+// Strahlen; --hard-failure behält die versagten Strahlen (eine Runde, w_fail null in JSON);
+// --fail-weight setzt das Startgewicht.
+TEST(CliOptimize, SoftFailureStartBecomesFailureFree) {
+    const std::string file = kSystems + "weiches_versagen_start.json";
+    const RunResult r = optimize({file, "--json"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["settings"]["failure"], "soft");
+    EXPECT_EQ(j["settings"]["fail_weight"].get<double>(), mko::kDefaultFailWeight);
+    const json& res = j["result"];
+    EXPECT_EQ(res["start_failed_rays"], 27);
+    EXPECT_EQ(res["start_hard_failed_rays"], 0);
+    EXPECT_EQ(res["failed_rays"], 0);
+    EXPECT_EQ(res["hard_failed_rays"], 0);
+    EXPECT_TRUE(res["converged"].get<bool>()) << res["status"];
+    const int rounds = res["penalty_rounds"].get<int>();
+    EXPECT_GE(rounds, 2);
+    EXPECT_EQ(res["fail_weight"].get<double>(),
+              mko::kDefaultFailWeight * std::pow(10.0, rounds - 1));
+    EXPECT_EQ(j["runs"][0]["penalty_rounds"], rounds);
+    EXPECT_EQ(j["runs"][0]["hard_failed_rays"], 0);
+
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(file));
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    const mko::LmResult lib = mko::optimize_lm_cpu(set, base, set.extract(base, 0), {});
+    const mko::LmRunResult& run = lib.runs[0];
+    EXPECT_EQ(run.penalty_rounds, rounds);
+    EXPECT_EQ(run.iterations, res["iterations"].get<int>());
+    EXPECT_TRUE(same_bits(run.merit, res["merit"].get<double>()));
+    const std::vector<double> x = doubles(j["runs"][0]["x"]);
+    ASSERT_EQ(x.size(), run.x.size());
+    for (std::size_t k = 0; k < x.size(); ++k) {
+        EXPECT_TRUE(same_bits(x[k], run.x[k])) << k;
+    }
+    // Protokoll: Zyklen über die Runden fortlaufend, am Ende ohne versagte Strahlen
+    const json& its = j["iterations"];
+    ASSERT_EQ(its.size(), static_cast<std::size_t>(run.iterations));
+    for (std::size_t k = 0; k < its.size(); ++k) {
+        EXPECT_EQ(its[k]["iteration"], static_cast<int>(k) + 1);
+        EXPECT_LE(its[k]["hard_failed_rays"].get<std::int64_t>(),
+                  its[k]["failed_rays"].get<std::int64_t>());
+    }
+    EXPECT_EQ(its.back()["failed_rays"], 0);
+
+    const RunResult h = optimize({file, "--json", "--quiet", "--hard-failure"});
+    ASSERT_EQ(h.code, mko::cli::kExitOk) << h.err;
+    const json jh = json::parse(h.out);
+    EXPECT_EQ(jh["settings"]["failure"], "hard");
+    EXPECT_TRUE(jh["settings"]["fail_weight"].is_null());
+    EXPECT_EQ(jh["result"]["start_hard_failed_rays"], 27);
+    EXPECT_GT(jh["result"]["hard_failed_rays"].get<std::int64_t>(), 0);
+    EXPECT_EQ(jh["result"]["hard_failed_rays"], jh["result"]["failed_rays"]);
+    EXPECT_EQ(jh["result"]["penalty_rounds"], 1);
+    EXPECT_TRUE(jh["result"]["fail_weight"].is_null());
+
+    const RunResult w = optimize({file, "--json", "--quiet", "--fail-weight", "1e9"});
+    ASSERT_EQ(w.code, mko::cli::kExitOk) << w.err;
+    const json jw = json::parse(w.out);
+    EXPECT_EQ(jw["settings"]["fail_weight"].get<double>(), 1e9);
+    EXPECT_GE(jw["result"]["fail_weight"].get<double>(), 1e9);
+    EXPECT_EQ(jw["result"]["failed_rays"], 0);
+
+    // Text: Kopf und Zusammenfassung nennen Versagensart, Runden und w_fail
+    const RunResult t = optimize({file, "--quiet"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    for (const char* s :
+         {"Strahlversagen", "weich, w_fail ab 1.000e+06", "davon hart vorher/nachher",
+          "Runden des Strafverfahrens", "w_fail am Ende"}) {
+        EXPECT_NE(t.out.find(s), std::string::npos) << s << "\n" << t.out;
+    }
+}
+
 TEST(CliOptimize, Errors) {
     const TempDir dir("errors");
     // keine Variablen
@@ -550,6 +628,10 @@ TEST(CliOptimize, Errors) {
                                                {kBiegung, "--runs", "2", "--seed", "-1"},
                                                {kBiegung, "--rings", "17"},
                                                {kBiegung, "--spokes", "0"},
+                                               {kBiegung, "--fail-weight", "0"},
+                                               {kBiegung, "--fail-weight", "-1"},
+                                               {kBiegung, "--fail-weight", "x"},
+                                               {kBiegung, "--fail-weight", "1e8", "--hard-failure"},
                                                {kBiegung, "--device", "0"}}) {
         r = optimize(args);
         EXPECT_EQ(r.code, mko::cli::kExitUsage) << (args.empty() ? "" : args.back());
@@ -634,6 +716,27 @@ TEST(CliOptimizeGpu, MatchesCpuAndReproducesMerit) {
     const RunResult m2 = optimize(ms);
     ASSERT_EQ(m1.code, mko::cli::kExitOk) << m1.err;
     EXPECT_EQ(m1.out, m2.out);
+}
+
+// Weiches Strahlversagen auf der GPU (M4-T2): versagensfrei wie auf der CPU, Ausgabe
+// deterministisch.
+TEST(CliOptimizeGpu, SoftFailureStartBecomesFailureFree) {
+    if (mko::cuda::device_count() == 0) {
+        GTEST_SKIP() << "kein CUDA-Gerät";
+    }
+    const std::vector<std::string> args{kSystems + "weiches_versagen_start.json", "--gpu", "--json",
+                                        "--quiet"};
+    const RunResult r = optimize(args);
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["result"]["start_failed_rays"], 27);
+    EXPECT_EQ(j["result"]["failed_rays"], 0);
+    EXPECT_EQ(j["result"]["hard_failed_rays"], 0);
+    EXPECT_GE(j["result"]["penalty_rounds"].get<int>(), 2);
+    std::cout << "[          ] GPU: Runden " << j["result"]["penalty_rounds"] << ", w_fail "
+              << j["result"]["fail_weight"] << ", Zyklen " << j["result"]["iterations"]
+              << ", Merit " << j["result"]["merit"] << '\n';
+    EXPECT_EQ(optimize(args).out, r.out);
 }
 
 TEST(CliOptimizeGpu, InvalidDevice) {

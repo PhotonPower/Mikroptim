@@ -731,7 +731,7 @@ LmResult optimize_lm_rounds(const LmBackendFactory& make_backend, const Variable
         r.penalty_rounds = 1;
     }
     if (options.jacobian.quadrature.failure != FailureMode::Soft ||
-        !(options.fail_weight_factor > 1.0)) {
+        !(options.fail_weight_factor > 1.0) || !(weight > 0.0)) {
         return result;
     }
     // Äußeres Strafverfahren: Läufe mit versagten Strahlen mit größerem w_fail neu starten

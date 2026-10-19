@@ -9,6 +9,8 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/levenberg_marquardt.hpp"
+#include "mikroptim/cuda/multi_levenberg_marquardt.hpp"
+#include "mikroptim/cuda/multi_trace_engine.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "residual_test_systems.hpp"
@@ -19,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -290,4 +293,51 @@ TEST(CudaSoftFailure, AcceptanceOptimizationGpu) {
         EXPECT_EQ(single.history, g.history) << i;
         EXPECT_EQ(single.penalty_rounds, g.penalty_rounds) << i;
     }
+}
+
+// Mehrere GPUs (M7-T3) mit dem Strafverfahren: optimize_lm_multi_gpu auf zwei logischen Slots
+// (feste ungleiche Anteile) und mit gemessenen Anteilen auf drei Slots ist pro Lauf bitgleich
+// zu optimize_lm_gpu auf einer Engine, auch über mehrere Runden (w_fail, Runden, hart versagte
+// Strahlen); die Statistik pro Slot summiert alle Runden.
+TEST(CudaSoftFailure, MultiGpuRoundsBitIdenticalToSingleGpu) {
+    MKO_REQUIRE_GPU();
+    const mko::test::FdProblem p =
+        mko::test::make_fd_problem(mko::test::load_residual_system("weiches_versagen_start.json"));
+    const std::vector<double> grid = mko::test::soft_failure_start_grid();
+    std::vector<double> starts; // jeder dritte Startpunkt (36 Läufe)
+    for (std::size_t i = 0; 3 * i + 2 < grid.size(); i += 3) {
+        starts.insert(starts.end(), grid.begin() + static_cast<std::ptrdiff_t>(3 * i),
+                      grid.begin() + static_cast<std::ptrdiff_t>(3 * i + 3));
+    }
+    TraceEngine engine(0);
+    mko::cuda::LmGpuStats single_stats;
+    const mko::LmResult reference =
+        mko::cuda::optimize_lm_gpu(engine, p.set, p.base, starts, {}, &single_stats);
+    int multi_round = 0;
+    for (const mko::LmRunResult& r : reference.runs) {
+        multi_round += r.penalty_rounds > 1 ? 1 : 0;
+    }
+    EXPECT_GT(multi_round, 0); // das Strafverfahren wird wirklich geprüft
+    for (const auto& w : std::vector<std::vector<double>>{{1.0, 3.0}, {}}) {
+        mko::cuda::MultiEngineOptions o;
+        o.devices.assign(w.empty() ? 3 : 2, 0);
+        o.weights = w;
+        mko::cuda::MultiTraceEngine multi(o);
+        std::vector<mko::cuda::LmGpuStats> stats;
+        const mko::LmResult result =
+            mko::cuda::optimize_lm_multi_gpu(multi, p.set, p.base, starts, {}, &stats);
+        ASSERT_EQ(result.runs.size(), reference.runs.size());
+        EXPECT_EQ(result.cycles, reference.cycles);
+        for (std::size_t i = 0; i < reference.runs.size(); ++i) {
+            EXPECT_TRUE(mko::test::same_run(result.runs[i], reference.runs[i])) << "Lauf " << i;
+        }
+        ASSERT_EQ(static_cast<int>(stats.size()), multi.size());
+        std::int64_t merit_points = 0;
+        for (const mko::cuda::LmGpuStats& st : stats) {
+            merit_points += st.merit_points;
+        }
+        EXPECT_EQ(merit_points, single_stats.merit_points);
+    }
+    std::printf("[ Info     ] Mehrere GPUs: %zu Läufe bitgleich, davon %d mit mehreren Runden\n",
+                reference.runs.size(), multi_round);
 }

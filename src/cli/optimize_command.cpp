@@ -3,9 +3,11 @@
 // Iterationsprotokoll und Zusammenfassung als Text oder JSON. Formate: docs/cli.md.
 
 #include "cli/optimize_command.hpp"
+#include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/model/constraints.hpp"
 #include "mikroptim/model/format_error.hpp"
@@ -71,6 +73,10 @@ struct OptimizeArgs {
     double perturbation = kDefaultPerturbation;
     bool have_seed = false;
     std::uint64_t seed = 0;
+    // Strahlversagen (M4-T2): weich mit Strafresiduen (Standard) oder hart wie in M3
+    bool hard_failure = false;
+    bool have_fail_weight = false;
+    double fail_weight = kDefaultFailWeight; // Start-w_fail des Strafverfahrens [Wellen²]
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -135,6 +141,14 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--seed") {
             a.seed = parse_uint64(arg, next_value(args, i, arg));
             a.have_seed = true;
+        } else if (arg == "--fail-weight") {
+            a.fail_weight = parse_double(arg, next_value(args, i, arg));
+            if (!(a.fail_weight > 0.0) || !std::isfinite(a.fail_weight)) {
+                throw UsageError("--fail-weight muss endlich und > 0 sein");
+            }
+            a.have_fail_weight = true;
+        } else if (arg == "--hard-failure") {
+            a.hard_failure = true;
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -152,6 +166,9 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     }
     if ((a.have_perturbation || a.have_seed) && a.runs < 2) {
         throw UsageError("--perturbation und --seed verlangen --runs K mit K >= 2");
+    }
+    if (a.have_fail_weight && a.hard_failure) {
+        throw UsageError("--fail-weight gilt nur für weiches Versagen (nicht mit --hard-failure)");
     }
     return a;
 }
@@ -228,6 +245,7 @@ struct IterationRecord {
     double damping = 0.0;
     double step_norm = 0.0;
     std::int64_t failed_rays = 0;
+    std::int64_t hard_failed_rays = 0; // M4-T2
 };
 
 // Eine paraxiale Nebenbedingung vorher und nachher. `value` ist die Istgröße (Brennweite
@@ -263,7 +281,8 @@ struct OptimizeReport {
     std::vector<double> x0;
     std::vector<double> starts; // Startpunkte aller Läufe hintereinander
     LmResult result;
-    std::int64_t start_failed = 0; // versagte Strahlen bei x₀
+    std::int64_t start_failed = 0;      // versagte Strahlen bei x₀ (weich und hart)
+    std::int64_t start_hard_failed = 0; // davon hart versagt
     int best = 0;
     std::vector<IterationRecord> iterations;
     std::vector<ConstraintReport> constraint_reports;
@@ -326,8 +345,10 @@ std::vector<ConstraintReport> constraint_reports(const ParaxialConstraints& cons
 }
 
 // Bester Lauf: endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen
-// haben r = 0, eine Merit mit mehr versagten Strahlen ist nicht vergleichbar), dann die
-// kleinste Merit, bei Gleichstand der kleinste Index. −1, wenn kein Lauf eine endliche Merit hat.
+// haben r = 0; mit weichem Versagen, M4-T2, enthält die Merit Strafen mit dem w_fail der
+// letzten Runde des Laufs; in beiden Fällen ist eine Merit mit mehr versagten Strahlen nicht
+// vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. −1, wenn kein
+// Lauf eine endliche Merit hat.
 int select_best(const LmResult& result) {
     int best = -1;
     for (std::size_t i = 0; i < result.runs.size(); ++i) {
@@ -384,6 +405,10 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
     }
     kv(out, "Quadratur",
        std::to_string(a.rings) + " Ringe x " + std::to_string(a.spokes) + " Speichen");
+    kv(out, "Strahlversagen",
+       a.hard_failure ? std::string("hart (versagte Strahlen maskiert)")
+                      : "weich, w_fail ab " + sci(a.fail_weight, 3) +
+                            " Wellen² (Strafverfahren x10 bis 1e14)");
     kv(out, "Variablen", std::to_string(r.set.size()));
     kv(out, "Nebenbedingungen (paraxial)", std::to_string(r.constraints.size()));
     if (!sys.ghost_plates.empty()) {
@@ -407,7 +432,7 @@ void write_iteration_header(std::ostream& out, double reference_nm) {
     out << "  " << pad_left("Lauf", 4) << pad_left("Zyklus", 8) << pad_left("Schritt", 12)
         << pad_left("Merit", 17) << pad_left("Testmerit", 17) << pad_left("Gewinn", 11)
         << pad_left("Dämpfung", 11) << pad_left("Schrittnorm", 12) << pad_left("versagt", 8)
-        << "  Status\n";
+        << pad_left("hart", 6) << "  Status\n";
 }
 
 void write_iteration_line(const IterationRecord& r, std::ostream& out) {
@@ -415,7 +440,8 @@ void write_iteration_line(const IterationRecord& r, std::ostream& out) {
         << pad_left(step_name(r), 12) << pad_left(sci(r.merit, 9), 17)
         << pad_left(sci(r.trial_merit, 9), 17) << pad_left(sci(r.gain_ratio, 3), 11)
         << pad_left(sci(r.damping, 3), 11) << pad_left(sci(r.step_norm, 3), 12)
-        << pad_left(std::to_string(r.failed_rays), 8);
+        << pad_left(std::to_string(r.failed_rays), 8)
+        << pad_left(std::to_string(r.hard_failed_rays), 6);
     if (r.status != LmStatus::Running) {
         out << "  " << to_string(r.status);
     }
@@ -441,12 +467,18 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
     kv(out, "Merit nachher/vorher", sci(f0 > 0.0 ? b.merit / f0 : std::nan(""), 6));
     kv(out, "Versagte Strahlen vorher/nachher",
        std::to_string(r.start_failed) + " / " + std::to_string(b.failed_rays));
+    kv(out, "davon hart vorher/nachher",
+       std::to_string(r.start_hard_failed) + " / " + std::to_string(b.hard_failed_rays));
+    if (!a.hard_failure) {
+        kv(out, "Runden des Strafverfahrens", std::to_string(b.penalty_rounds));
+        kv(out, "w_fail am Ende [Wellen²]", sci(b.fail_weight, 3));
+    }
 
     if (a.runs > 1) {
         out << '\n' << "Läufe\n";
         out << "  " << pad_left("Lauf", 4) << "  " << pad_right("Status", 20)
             << pad_left("Zyklen", 7) << pad_left("Merit Start", 17) << pad_left("Merit Ende", 17)
-            << pad_left("versagt", 9) << '\n';
+            << pad_left("versagt", 9) << pad_left("hart", 6) << pad_left("Runden", 8) << '\n';
         for (std::size_t i = 0; i < r.result.runs.size(); ++i) {
             const LmRunResult& run = r.result.runs[i];
             out << "  " << pad_left(std::to_string(i), 4) << "  "
@@ -454,6 +486,8 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
                 << pad_left(std::to_string(run.iterations), 7)
                 << pad_left(sci(run.history.front(), 9), 17) << pad_left(sci(run.merit, 9), 17)
                 << pad_left(std::to_string(run.failed_rays), 9)
+                << pad_left(std::to_string(run.hard_failed_rays), 6)
+                << pad_left(std::to_string(run.penalty_rounds), 8)
                 << (static_cast<int>(i) == r.best ? "  bester" : "") << '\n';
         }
     }
@@ -599,6 +633,8 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
     settings["runs"] = a.runs;
     settings["perturbation"] = a.runs > 1 ? number(a.perturbation) : Json(nullptr);
     settings["seed"] = a.runs > 1 ? Json(a.seed) : Json(nullptr);
+    settings["failure"] = a.hard_failure ? "hard" : "soft";
+    settings["fail_weight"] = a.hard_failure ? Json(nullptr) : number(a.fail_weight);
     j["settings"] = std::move(settings);
 
     Json vars = Json::array();
@@ -655,6 +691,7 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
             e["damping"] = number(it.damping);
             e["step_norm"] = number(it.step_norm);
             e["failed_rays"] = it.failed_rays;
+            e["hard_failed_rays"] = it.hard_failed_rays;
             its.push_back(std::move(e));
         }
         j["iterations"] = std::move(its);
@@ -672,6 +709,9 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         e["start_merit"] = number(run.history.front());
         e["merit"] = number(run.merit);
         e["failed_rays"] = run.failed_rays;
+        e["hard_failed_rays"] = run.hard_failed_rays;
+        e["penalty_rounds"] = run.penalty_rounds;
+        e["fail_weight"] = a.hard_failure ? Json(nullptr) : number(run.fail_weight);
         e["start"] = numbers(std::span<const double>(r.starts).subspan(
             i * static_cast<std::size_t>(r.set.size()), static_cast<std::size_t>(r.set.size())));
         e["x"] = numbers(run.x);
@@ -690,6 +730,10 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
     res["merit"] = number(b.merit);
     res["start_failed_rays"] = r.start_failed;
     res["failed_rays"] = b.failed_rays;
+    res["start_hard_failed_rays"] = r.start_hard_failed;
+    res["hard_failed_rays"] = b.hard_failed_rays;
+    res["penalty_rounds"] = b.penalty_rounds;
+    res["fail_weight"] = a.hard_failure ? Json(nullptr) : number(b.fail_weight);
     res["damping"] = number(b.damping);
     res["gradient_norm"] = number(b.gradient_norm);
     res["model_decrease"] = number(b.model_decrease);
@@ -718,7 +762,7 @@ void print_optimize_usage(std::ostream& out) {
     out << "Aufruf: mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
            "                          [--max-iterations N] [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
-           "                          [--gpu [--device N]]\n"
+           "                          [--fail-weight w | --hard-failure] [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
            "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
            "  L1-Strafe der Geisterkoeffizienten) in Wellen²; mit Geisterplatten folgt ein\n"
@@ -740,6 +784,11 @@ void print_optimize_usage(std::ostream& out) {
         << fixed(kDefaultPerturbation, 2)
         << ")\n"
            "  --seed n           Startwert der Störungen (Standard 0)\n"
+           "  --fail-weight w    Start-Strafgewicht w_fail des weichen Strahlversagens in\n"
+           "                     Wellen², > 0 (Standard "
+        << sci(kDefaultFailWeight, 0)
+        << "; je Runde x10 bis 1e14)\n"
+           "  --hard-failure     hartes Strahlversagen wie in M3 (ohne Strafresiduen)\n"
            "  --gpu              auf der GPU rechnen statt auf der CPU\n"
            "  --device N         CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help             diese Hilfe\n"
@@ -847,6 +896,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         options.max_iterations = a.max_iterations;
         options.jacobian.quadrature.rings = a.rings;
         options.jacobian.quadrature.spokes = a.spokes;
+        options.jacobian.quadrature.failure =
+            a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
+        options.jacobian.quadrature.fail_weight = a.fail_weight;
         // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe
         options.jacobian.extra = concat_extra_residuals(
             {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty)});
@@ -898,6 +950,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             rec.damping = info.damping;
             rec.step_norm = info.step_norm;
             rec.failed_rays = info.failed_rays;
+            rec.hard_failed_rays = info.hard_failed_rays;
             if (stream_text) {
                 write_iteration_line(rec, out);
             } else if (a.json && !a.quiet) {
@@ -919,20 +972,22 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         {
             std::vector<double> f(1, 0.0);
             std::vector<std::int64_t> failed(1, 0);
+            std::vector<std::int64_t> hard_failed(1, 0);
             const int run0 = 0;
 #ifdef MIKROPTIM_HAS_CUDA
             if (engine) {
                 cuda::GpuLmBackend backend(*engine, r.set, base, options);
-                backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed);
+                backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed, hard_failed);
             } else {
                 CpuLmBackend backend(r.set, base, options);
-                backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed);
+                backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed, hard_failed);
             }
 #else
             CpuLmBackend backend(r.set, base, options);
-            backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed);
+            backend.merit(std::span<const int>(&run0, 1), r.x0, f, failed, hard_failed);
 #endif
             r.start_failed = failed[0];
+            r.start_hard_failed = hard_failed[0];
         }
         r.best = select_best(r.result);
         if (r.best < 0) {
@@ -949,10 +1004,15 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         r.constraint_reports = constraint_reports(r.constraints, base, after);
 
         // Diagnose der Geisterplatten am Ergebnis (Merit auf der CPU wie die Wellenfront)
+        // Die Merit enthält beim weichen Versagen dieselben Strafresiduen wie die letzte Runde
+        // des besten Laufs (dessen w_fail), damit F(Ergebnis) der Merit am Ende des Laufs gleicht.
         if (!sys.ghost_plates.empty()) {
-            r.ghost = diagnose_ghost_plates(
-                sys, r.loaded.catalog, after, 0, r.penalty,
-                make_cpu_merit(options.jacobian.quadrature, options.jacobian.extra));
+            ResidualSettings diagnosis = options.jacobian.quadrature;
+            if (!a.hard_failure) {
+                diagnosis.fail_weight = best.fail_weight;
+            }
+            r.ghost = diagnose_ghost_plates(sys, r.loaded.catalog, after, 0, r.penalty,
+                                            make_cpu_merit(diagnosis, options.jacobian.extra));
         }
 
         // Ergebnis als Systembeschreibung (Glaskataloge noch relativ zur Eingabedatei)

@@ -82,14 +82,14 @@ bool same_extrema(const mko::SurfaceExtremaResult& a, const mko::SurfaceExtremaR
         return ::testing::AssertionFailure() << "Modus oder Größen verschieden";
     }
     if (ra.variants != rb.variants || ra.rays_per_variant != rb.rays_per_variant ||
-        ra.stride != rb.stride || !same_bytes(ra.residuals, rb.residuals) ||
-        !same_bytes(ra.opd, rb.opd) || !same_bytes(ra.status, rb.status) ||
-        !same_extrema(ra.extrema, rb.extrema)) {
+        ra.penalty_rows != rb.penalty_rows || ra.stride != rb.stride ||
+        !same_bytes(ra.residuals, rb.residuals) || !same_bytes(ra.opd, rb.opd) ||
+        !same_bytes(ra.status, rb.status) || !same_extrema(ra.extrema, rb.extrema)) {
         return ::testing::AssertionFailure() << "RESIDUALS verschieden";
     }
     if (ma.variants != mb.variants || ma.rays_per_variant != mb.rays_per_variant ||
         !same_bytes(ma.merit, mb.merit) || !same_bytes(ma.failed, mb.failed) ||
-        !same_extrema(ma.extrema, mb.extrema)) {
+        !same_bytes(ma.hard_failed, mb.hard_failed) || !same_extrema(ma.extrema, mb.extrema)) {
         return ::testing::AssertionFailure() << "MERIT verschieden";
     }
     return ::testing::AssertionSuccess();
@@ -116,6 +116,7 @@ std::size_t run_bytes(const BatchTopology& t, int variants, const ResidualLayout
                       TraceMode mode, const TraceSettings& s) {
     OutputRequest r;
     r.rays_per_variant = layout.rays_per_variant();
+    r.penalty_residuals = layout.penalty_rows();
     if (mode == TraceMode::Merit) {
         r.residuals = false;
         r.ray_status = false;
@@ -378,7 +379,8 @@ TEST(MultiTraceEngine, RunOnDeviceKeepsBlocksTogether) {
         multi.run_on_device(batch, s, g, [&](int slot, const DeviceTranche& t) {
             const bool ok = t.residuals != nullptr && t.status != nullptr &&
                             t.rays_per_variant == layout.rays_per_variant() &&
-                            t.stride == layout.rays_per_variant() + 2;
+                            t.penalty_rows == layout.penalty_rows() &&
+                            t.stride == layout.trace_rows() + 2;
             const std::lock_guard<std::mutex> lock(mutex);
             seen.push_back({slot, t.first, t.count, ok});
         });
@@ -711,7 +713,8 @@ TEST(MultiTraceEngine, ResultFingerprint) {
             TraceSettings m;
             m.precision = p;
             const TraceOutput mer = e.run(batch, TraceMode::Merit, m);
-            const std::uint64_t hm = fnv1a(mer.merit.failed, fnv1a(mer.merit.merit));
+            const std::uint64_t hm =
+                fnv1a(mer.merit.hard_failed, fnv1a(mer.merit.failed, fnv1a(mer.merit.merit)));
             std::printf(" %s RESIDUALS %016llx MERIT %016llx", mko::cuda::to_string(p),
                         static_cast<unsigned long long>(h), static_cast<unsigned long long>(hm));
         }

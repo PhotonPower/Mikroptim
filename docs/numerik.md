@@ -502,7 +502,7 @@ Nur in den Optimierungsmodi (`MERIT`, `RESIDUALS`, `ADJOINT`):
 | Geisterplatte: Radikand < 0 | √w_fail · (−Radikand) | mit Radikand := 0 |
 | d_z ≤ 0 (Strahl läuft rückwärts) | hartes Versagen, festes Strafresiduum | Strahl maskiert |
 
-Im Modus `EVAL` ist jedes Versagen hart. Die Statusmaske pro Strahl wird immer mitgeführt.
+Im Modus `EVAL` ist jedes Versagen hart (`eval_ray` ruft `trace_ray` ausdrücklich ohne Akkumulator, `FailureMode::Hard`; ebenso `evaluate_wavefront` und `mikroptim trace`). Die Statusmaske pro Strahl wird immer mitgeführt.
 
 ### Festlegungen der Implementierung (M4-T2)
 
