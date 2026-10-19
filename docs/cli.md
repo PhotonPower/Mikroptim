@@ -788,12 +788,18 @@ Wertet ein System im Modus EVAL aus (M8-T1): dichtes kartesisches N×N-Raster ü
 | `--map F,L` | OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben; verlangt `--map-file` | – |
 | `--map-file D` | Zieldatei der Karte (CSV) | – |
 | `--remove X` | vor der Karte abziehen: `piston`, `tilt` (Kolben und Kippung) oder `defocus` (Kolben, Kippung, Defokus) | `piston` |
-| `--gpu`, `--device N` | auf der GPU rechnen (Kernel EVAL), wie bei `trace` | aus, 0 |
+| `--psf` | skalare PSF, MTF und Strehl über die FFT für alle Tupel (M8-T2) | aus |
+| `--padding Q` | Zero-Padding der FFT: M = kleinste Zweierpotenz ≥ max(2N, Q·N), Q ≥ 2, M ≤ 8192 (setzt `--psf`) | 4 |
+| `--na X` | NA der Pupillenabbildung vorgeben, beide Richtungen (setzt `--psf`; nötig z. B. bei afokalen Systemen) | aus den Feldstrahlen |
+| `--psf-tuple F,L` | Tupel für `--psf-file` und `--mtf-file` (setzt `--psf`) | 0,0 |
+| `--psf-file D` | PSF des Tupels als CSV (setzt `--psf`) | – |
+| `--mtf-file D` | MTF-Schnitte des Tupels als CSV (setzt `--psf`) | – |
+| `--gpu`, `--device N` | auf der GPU rechnen (Kernel EVAL, mit `--psf` auch die FFT über cuFFT), wie bei `trace` | aus, 0 |
 | `--help`, `-h` | Hilfe | – |
 
 Exit-Codes wie `mikroptim trace` (0 Erfolg, 1 Fehler beim Laden, Auswerten oder Schreiben der Karte, 2 ungültige Kommandozeile, 3 GPU-Backend nicht verfügbar).
 
-**Textausgabe:** Kopf (Raster, Lage der Referenzsphäre, Backend), dann pro Feld und Wellenlänge eine Zeile: versagte Strahlen, RMS-OPD und RMS nach Abzug der Kippung in Wellen bei λ_ref, Strehl nach Maréchal exp(−(2π σ/λ)²) mit dem RMS σ bei der Wellenlänge des Tupels (grobe Angabe für kleine Fehler; PSF und Strehl über die FFT folgen in M8-T2), RMS-Spotradius und Schwerpunkt ȳ relativ zum idealen Bildpunkt [mm], Verzeichnung des Hauptstrahls [%], Brennlinien z_t, z_s relativ zur Bildebene [mm]. Beispiel (`mikroptim eval data/systems/einzellinse_bk7.json --grid 128`):
+**Textausgabe:** Kopf (Raster, Lage der Referenzsphäre, Backend), dann pro Feld und Wellenlänge eine Zeile: versagte Strahlen, RMS-OPD und RMS nach Abzug der Kippung in Wellen bei λ_ref, Strehl nach Maréchal exp(−(2π σ/λ)²) mit dem RMS σ bei der Wellenlänge des Tupels (grobe Angabe für kleine Fehler; Strehl über die FFT mit `--psf`, unten), RMS-Spotradius und Schwerpunkt ȳ relativ zum idealen Bildpunkt [mm], Verzeichnung des Hauptstrahls [%], Brennlinien z_t, z_s relativ zur Bildebene [mm]. Beispiel (`mikroptim eval data/systems/einzellinse_bk7.json --grid 128`):
 
 ```
 System: Einzellinse N-BK7
@@ -822,4 +828,28 @@ Die Einzellinse ist bei voller Öffnung (a = 10 mm) weit von der Beugungsgrenze 
 
 **OPD-Karte** (`--map F,L --map-file D`): CSV mit N Zeilen zu je N Werten, OPD in Wellen bei λ_ref nach dem gewählten Abzug, verlustfrei mit 17 Stellen; erste Zeile = größtes y (wie ein Bild der Pupille, x nach rechts), leere Felder außerhalb der Pupille und bei versagten Strahlen; bei `--half` gespiegelt (`eval_opd_map`).
 
-**Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).
+**PSF, MTF, Strehl** (`--psf`, M8-T2; Formeln, Abtastung und Grenzen der skalaren Näherung: [numerik.md, „Beugung: PSF, MTF, Strehl“](numerik.md#beugung-psf-mtf-strehl-m8-t2)): Pro Tupel wird aus der OPD-Karte die Pupillenfunktion gebildet (`make_psf_pupils`, NA aus den Feldstrahlen oder `--na`) und mit `psf_cpu` bzw. mit `--gpu` über `PsfEngine` (cuFFT) gerechnet; die Tupel laufen nacheinander, die PSF selbst bleibt nur für das Tupel von `--psf-tuple` erhalten. Die Textausgabe bekommt eine zweite Tabelle mit NA (tangential), Airy-Radius j₁,₁/(2π)·λ/NA ≈ 0,61 λ/NA [mm], Strehl (nach Abzug der Kippung), Strehl im idealen Bildpunkt (FFT), Maximum der abgetasteten PSF und seiner Lage y [mm] sowie der MTF bei f_c/2 sagittal und tangential. Beispiel (`mikroptim eval data/systems/einzellinse_bk7.json --grid 512 --psf --gpu`, Ausschnitt; RTX 3090, 4 s mit 1,9·10⁶ Strahlen und neun FFT-Paaren 2048 × 2048):
+
+```
+  PSF skalar (FFT 2048 x 2048, Zero-Padding 4.00), NA aus den Feldstrahlen; Strehl auf die ungestörte Pupille normiert, MTF bei f_c/2 mit f_c = 2 NA/λ
+  Feld   λ [nm]       NA   Airy [mm]   Strehl  im Bildp.  Maximum  Max. y [mm]   MTF_s   MTF_t
+     0   486.13  0.10002  2.9639e-03  0.00019    0.00019  0.00025  -1.8226e-03  0.0004  0.0004
+     0   587.56  0.09896  3.6208e-03  0.02189    0.02189  0.02189   0.0000e+00  0.0008  0.0008
+     0   656.27  0.09849  4.0635e-03  0.09198    0.09198  0.09198   0.0000e+00  0.0778  0.0778
+     1   486.13  0.10003  2.9637e-03  0.00018    0.00019  0.00025   7.2898e-03  0.0000  0.0004
+     1   587.56  0.09897  3.6204e-03  0.00611    0.01723  0.01742  -7.4210e-04  0.0005  0.0023
+     1   656.27  0.09850  4.0632e-03  0.02156    0.02884  0.10856   3.3314e-03  0.0774  0.0634
+     2   486.13  0.10005  2.9629e-03  0.00020    0.00015  0.00020   8.5027e-03  0.0003  0.0002
+     2   587.56  0.09899  3.6195e-03  0.00177    0.00964  0.01026  -2.9677e-03  0.0007  0.0011
+     2   656.27  0.09852  4.0621e-03  0.00907    0.01013  0.10820   4.9959e-03  0.0512  0.0207
+```
+
+Bei voller Öffnung (RMS bis 4,9 Wellen) ist die Einzellinse weit von der Beugungsgrenze entfernt; außerhalb der Achse liegt das Maximum dann nicht im Bezugspunkt der Kippung (`Strehl` < `Maximum`), siehe [numerik.md](numerik.md#beugung-psf-mtf-strehl-m8-t2). Mit `--grid 64` warnt das Programm für alle Tupel vor einem zu kleinen Bildfenster (unten).
+
+**Bildfenster.** Die PSF deckt M·Δx = λN/(2 NA) ab (N/2 Airy-Durchmesser, unabhängig von Q); was darüber hinausgeht, faltet die periodische FFT zurück. Reicht der geometrische Spot eines Tupels (Schwerpunkt ± 3 RMS-Radien) über das halbe Fenster hinaus, warnt `mikroptim eval` (stderr und `warnings` in JSON); Abhilfe ist ein größeres Raster `--grid`. Die Einzellinse ist bei voller Öffnung (RMS-Spot bis 0,16 mm) weit davon entfernt, beugungsbegrenzt zu sein, und braucht dafür N ≥ 256.
+
+In JSON steht bei `--psf` oben `psf` (`fft_size`, `padding`, `numerical_aperture` oder `null`) und pro Tupel `psf` mit `na` [NA_x, NA_y], `pixel_mm` [Δx, Δy], `airy_radius_mm`, `strehl`, `strehl_reference_mm` (Bezugspunkt nach Abzug der Kippung), `strehl_origin` (direkt im idealen Bildpunkt), `strehl_fft`, `peak`, `peak_mm`, `energy` (transmittierter Anteil), `cutoff_lpmm` [f_c,x, f_c,y], `mtf_half_cutoff` [sagittal, tangential]; ohne `--psf` sind beide `null`.
+
+**PSF-Datei** (`--psf-file D`): CSV mit M Zeilen zu je M Werten, normiert auf das Maximum der ungestörten PSF (Strehl-Einheiten), 17 Stellen; erste Zeile = größtes y, Spalte i bei x = (i − M/2)·Δx, Zeile von unten j bei y = (j − M/2)·Δy relativ zum idealen Bildpunkt. **MTF-Datei** (`--mtf-file D`): Kopfzeile `k,nu,f_sagittal_lpmm,mtf_sagittal,f_tangential_lpmm,mtf_tangential`, dann N + 1 Zeilen für ν = k/N.
+
+**Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, mit `--psf` Kennzahlen bitgleich zu `psf_cpu`, PSF- und MTF-Datei, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).

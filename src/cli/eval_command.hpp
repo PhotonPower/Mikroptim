@@ -3,8 +3,9 @@
 // Unterbefehl `mikroptim eval` (docs/cli.md, M8-T1): Auswertung eines Systems im Modus EVAL auf
 // dem dichten kartesischen Pupillenraster. Kennzahlen pro Feld und Wellenlänge (RMS-OPD,
 // Strehl nach Maréchal, RMS-Spot, Schwerpunkt, Verzeichnung, Brennlinien) als Text oder als
-// JSON `mikroptim.eval/1`, optional eine OPD-Karte als CSV. Rechnet auf der CPU (eval_cpu) oder
-// mit --gpu über mko::cuda::TraceEngine::evaluate.
+// JSON `mikroptim.eval/1`, optional eine OPD-Karte als CSV; mit --psf skalare PSF, MTF und
+// Strehl (M8-T2), optional PSF und MTF eines Tupels als CSV. Rechnet auf der CPU (eval_cpu,
+// psf_cpu) oder mit --gpu über mko::cuda::TraceEngine::evaluate und mko::cuda::PsfEngine.
 // Interner Header der Bibliothek mikroptim_cli (gelinkt in das Programm und die Tests).
 
 #include "cli/cli_util.hpp"

@@ -1,21 +1,25 @@
 // Unterbefehl `mikroptim eval` (M8-T1): Laden, Batch mit einer Variante, Modus EVAL auf der CPU
 // oder mit --gpu über die TraceEngine, Kennzahlen (eval_statistics), Ausgabe als Text oder JSON,
-// optional OPD-Karte als CSV. Ausgabeformate: docs/cli.md.
+// optional OPD-Karte als CSV; mit --psf skalare PSF, MTF und Strehl (M8-T2, psf_cpu bzw.
+// PsfEngine), optional PSF und MTF eines Tupels als CSV. Ausgabeformate: docs/cli.md.
 
 #include "cli/eval_command.hpp"
 #include "cli/cli_util.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/eval/eval.hpp"
+#include "mikroptim/eval/psf.hpp"
 #include "mikroptim/version.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
 #include "mikroptim/cuda/device_info.hpp"
+#include "mikroptim/cuda/psf.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #endif
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -25,6 +29,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mko::cli {
@@ -46,7 +51,24 @@ struct EvalArgs {
     int map_field = 0;     // Tupel der Karte
     int map_wavelength = 0;
     OpdRemoval removal = OpdRemoval::Piston;
+    // PSF, MTF, Strehl (M8-T2)
+    bool psf = false;
+    PsfSettings psf_settings{};
+    int psf_field = 0; // Tupel der PSF- und MTF-Dateien
+    int psf_wavelength = 0;
+    std::string psf_file; // leer: keine PSF-Datei
+    std::string mtf_file; // leer: keine MTF-Datei
 };
+
+// Liest "F,L" (Feld und Wellenlänge, ab 0).
+void parse_tuple(std::string_view option, std::string_view v, int& field, int& wavelength) {
+    const std::size_t comma = v.find(',');
+    if (comma == std::string_view::npos) {
+        throw UsageError(std::string(option) + " erwartet F,L (Feld und Wellenlänge, ab 0)");
+    }
+    field = parse_int(option, v.substr(0, comma));
+    wavelength = parse_int(option, v.substr(comma + 1));
+}
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
                             std::string_view option) {
@@ -91,14 +113,31 @@ EvalArgs parse_args(std::span<const std::string_view> args) {
                                  std::string(v) + "'");
             }
         } else if (arg == "--map") {
-            const std::string_view v = next_value(args, i, arg);
-            const std::size_t comma = v.find(',');
-            if (comma == std::string_view::npos) {
-                throw UsageError("--map erwartet F,L (Feld und Wellenlänge, ab 0)");
-            }
-            a.map_field = parse_int(arg, v.substr(0, comma));
-            a.map_wavelength = parse_int(arg, v.substr(comma + 1));
+            parse_tuple(arg, next_value(args, i, arg), a.map_field, a.map_wavelength);
             a.have_map = true;
+        } else if (arg == "--psf") {
+            a.psf = true;
+        } else if (arg == "--padding") {
+            a.psf_settings.padding = parse_double(arg, next_value(args, i, arg));
+            if (!(a.psf_settings.padding >= 2.0)) {
+                throw UsageError("--padding muss >= 2 sein");
+            }
+            a.psf = true;
+        } else if (arg == "--na") {
+            a.psf_settings.numerical_aperture = parse_double(arg, next_value(args, i, arg));
+            if (!(a.psf_settings.numerical_aperture > 0.0)) {
+                throw UsageError("--na muss > 0 sein");
+            }
+            a.psf = true;
+        } else if (arg == "--psf-tuple") {
+            parse_tuple(arg, next_value(args, i, arg), a.psf_field, a.psf_wavelength);
+            a.psf = true;
+        } else if (arg == "--psf-file") {
+            a.psf_file = std::string(next_value(args, i, arg));
+            a.psf = true;
+        } else if (arg == "--mtf-file") {
+            a.mtf_file = std::string(next_value(args, i, arg));
+            a.psf = true;
         } else if (arg == "--map-file") {
             a.map_file = std::string(next_value(args, i, arg));
         } else if (arg == "--remove") {
@@ -140,7 +179,7 @@ Json number(double v) {
 }
 
 // Strehl nach Maréchal exp(−(2π σ/λ)²) mit dem RMS σ [mm] bei der Wellenlänge λ [mm] des
-// Tupels (grobe Angabe, gültig für kleine Fehler; PSF und Strehl über FFT folgen in M8-T2).
+// Tupels (grobe Angabe, gültig für kleine Fehler; Strehl über die FFT mit --psf, M8-T2).
 double marechal_strehl(double rms_mm, double lambda_mm) {
     const double phase = 2.0 * std::numbers::pi * rms_mm / lambda_mm;
     return std::exp(-phase * phase);
@@ -159,7 +198,72 @@ struct EvalReport {
     bool gpu = false;
     int device = -1;
     std::string device_name;
+    // PSF (nur mit --psf): Ergebnisse pro Tupel [f·L + l]; die PSF selbst bleibt nur für das
+    // Tupel der Dateien erhalten (bis M² = 6,7·10⁷ Werte pro Tupel).
+    bool psf = false;
+    PsfSettings psf_settings{};
+    int psf_fft = 0;
+    std::vector<PsfResult> psfs;
 };
+
+// Rechnet die PSF aller Tupel der Variante 0 nacheinander (CPU oder GPU) und behält die PSF nur
+// für das Tupel (keep_f, keep_l).
+template <class Compute>
+void compute_psfs(EvalReport& r, int keep_f, int keep_l, Compute compute) {
+    const std::vector<PsfPupil> pupils = make_psf_pupils(r.batch, r.result, 0, r.psf_settings);
+    r.psf_fft = psf_fft_size(r.result.grid.size, r.psf_settings.padding);
+    r.psfs.clear();
+    for (const PsfPupil& p : pupils) {
+        PsfResult res = compute(p, r.psf_fft);
+        if (p.field != keep_f || p.wavelength != keep_l) {
+            std::vector<double>().swap(res.psf);
+        }
+        r.psfs.push_back(std::move(res));
+    }
+}
+
+// Warnungen für Tupel, deren geometrischer Spot (Schwerpunkt ± 3 RMS-Radien) über das halbe
+// Bildfenster M·Δx = λN/(2 NA) hinausreicht: Die periodische FFT faltet die PSF dann zurück
+// (Abhilfe: größeres Raster N).
+std::vector<std::string> psf_window_warnings(const EvalReport& r) {
+    std::vector<std::string> out;
+    for (std::size_t t = 0; t < r.psfs.size() && t < r.stats.size(); ++t) {
+        const PsfResult& p = r.psfs[t];
+        const EvalTupleStats& s = r.stats[t];
+        const double half_x = 0.5 * p.fft_size * p.dx;
+        const double half_y = 0.5 * p.fft_size * p.dy;
+        const double reach_x = std::abs(s.centroid_x) + 3.0 * s.rms_spot;
+        const double reach_y = std::abs(s.centroid_y) + 3.0 * s.rms_spot;
+        if (reach_x > half_x || reach_y > half_y) {
+            out.push_back("PSF Feld " + std::to_string(p.field) + ", Wellenlänge " +
+                          std::to_string(p.wavelength) + ": geometrischer Spot (" +
+                          format_number("%.3e", std::max(reach_x, reach_y)) +
+                          " mm) größer als das halbe Bildfenster (" +
+                          format_number("%.3e", std::min(half_x, half_y)) +
+                          " mm), PSF zurückgefaltet; Raster vergrößern");
+        }
+    }
+    return out;
+}
+
+// Kennzahlen eines Tupels als JSON (Längen in mm, Frequenzen in Linienpaaren/mm).
+Json psf_json(const PsfResult& p) {
+    Json e;
+    e["na"] = Json::array({number(p.na_x), number(p.na_y)});
+    e["pixel_mm"] = Json::array({number(p.dx), number(p.dy)});
+    e["airy_radius_mm"] = number(p.airy_radius);
+    e["strehl"] = number(p.strehl);
+    e["strehl_reference_mm"] = Json::array({number(p.reference_x), number(p.reference_y)});
+    e["strehl_origin"] = number(p.strehl_origin);
+    e["strehl_fft"] = number(p.strehl_fft);
+    e["peak"] = number(p.peak);
+    e["peak_mm"] = Json::array({number(p.peak_x), number(p.peak_y)});
+    e["energy"] = number(p.energy);
+    e["cutoff_lpmm"] = Json::array({number(p.cutoff_x()), number(p.cutoff_y())});
+    e["mtf_half_cutoff"] =
+        Json::array({number(p.mtf_sagittal_at(0.5)), number(p.mtf_tangential_at(0.5))});
+    return e;
+}
 
 double field_angle_deg(const EvalReport& r, int f) {
     const SystemDescription& sys = r.loaded.system;
@@ -188,7 +292,17 @@ void write_json(const EvalReport& r, std::ostream& out) {
     j["grid_points"] = r.result.samples();
     j["reference_sphere"] = reference_name(r.result.settings.reference);
     j["exit_pupil_position"] = number(r.result.exit_pupil_position[0]);
+    if (r.psf) {
+        j["psf"] = Json{{"fft_size", r.psf_fft},
+                        {"padding", r.psf_settings.padding},
+                        {"numerical_aperture", r.psf_settings.numerical_aperture > 0.0
+                                                   ? Json(r.psf_settings.numerical_aperture)
+                                                   : Json(nullptr)}};
+    } else {
+        j["psf"] = nullptr;
+    }
     Json tuples = Json::array();
+    std::size_t index = 0;
     for (const EvalTupleStats& t : r.stats) {
         const double lambda_mm = r.batch.wavelength_nm(t.wavelength) * 1e-6;
         Json e;
@@ -215,6 +329,8 @@ void write_json(const EvalReport& r, std::ostream& out) {
         e["focus_tangential_mm"] = number(t.focus_tangential);
         e["focus_sagittal_mm"] = number(t.focus_sagittal);
         e["astigmatism_mm"] = number(t.astigmatism());
+        e["psf"] = r.psf ? psf_json(r.psfs[index]) : Json(nullptr);
+        ++index;
         tuples.push_back(std::move(e));
     }
     j["tuples"] = std::move(tuples);
@@ -269,6 +385,88 @@ void write_text(const EvalReport& r, std::ostream& out) {
     }
     out << "  Versagte Strahlen: " << r.result.failed_count() << " von " << r.result.status.size()
         << '\n';
+    if (!r.psf) {
+        return;
+    }
+    out << "\n  PSF skalar (FFT " << r.psf_fft << " x " << r.psf_fft << ", Zero-Padding "
+        << format_number("%.2f", static_cast<double>(r.psf_fft) / r.result.grid.size) << "), NA "
+        << (r.psf_settings.numerical_aperture > 0.0 ? "vorgegeben"
+                                                    : std::string("aus den Feldstrahlen"))
+        << "; Strehl auf die ungestörte Pupille normiert, MTF bei f_c/2 mit f_c = 2 NA/λ\n";
+    out << "  " << pad_left("Feld", 4) << pad_left("λ [nm]", 9) << pad_left("NA", 9)
+        << pad_left("Airy [mm]", 12) << pad_left("Strehl", 9) << pad_left("im Bildp.", 11)
+        << pad_left("Maximum", 9) << pad_left("Max. y [mm]", 13) << pad_left("MTF_s", 8)
+        << pad_left("MTF_t", 8) << '\n';
+    for (const PsfResult& p : r.psfs) {
+        out << "  " << pad_left(std::to_string(p.field), 4)
+            << pad_left(format_number("%.2f", p.wavelength_nm), 9)
+            << pad_left(format_number("%.5f", p.na_y), 9)
+            << pad_left(format_number("%.4e", p.airy_radius), 12)
+            << pad_left(format_number("%.5f", p.strehl), 9)
+            << pad_left(format_number("%.5f", p.strehl_fft), 11)
+            << pad_left(format_number("%.5f", p.peak), 9)
+            << pad_left(format_number("%.4e", p.peak_y), 13)
+            << pad_left(format_number("%.4f", p.mtf_sagittal_at(0.5)), 8)
+            << pad_left(format_number("%.4f", p.mtf_tangential_at(0.5)), 8) << '\n';
+    }
+}
+
+std::ofstream open_output(const std::string& file, const char* what) {
+    std::ofstream f(file);
+    if (!f) {
+        throw std::runtime_error(std::string(what) + ": kann " + file + " nicht schreiben");
+    }
+    return f;
+}
+
+std::string csv_number(double v) {
+    if (!std::isfinite(v)) {
+        return {};
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.17g", v);
+    return buf;
+}
+
+// PSF und MTF des gewählten Tupels als CSV: PSF mit M Zeilen zu je M Werten (normiert auf das
+// Maximum der ungestörten PSF), erste Zeile = größtes y; MTF mit Kopfzeile und N + 1 Zeilen.
+void write_psf_files(const EvalReport& r, const EvalArgs& a) {
+    if (a.psf_file.empty() && a.mtf_file.empty()) {
+        return;
+    }
+    const PsfResult& p = r.psfs[static_cast<std::size_t>(a.psf_field) *
+                                    static_cast<std::size_t>(r.result.wavelengths) +
+                                static_cast<std::size_t>(a.psf_wavelength)];
+    if (!a.psf_file.empty()) {
+        std::ofstream f = open_output(a.psf_file, "PSF");
+        for (int j = p.fft_size - 1; j >= 0; --j) {
+            for (int i = 0; i < p.fft_size; ++i) {
+                if (i > 0) {
+                    f << ',';
+                }
+                f << csv_number(p.psf_at(i, j));
+            }
+            f << '\n';
+        }
+        if (!f) {
+            throw std::runtime_error("PSF: Fehler beim Schreiben von " + a.psf_file);
+        }
+    }
+    if (!a.mtf_file.empty()) {
+        std::ofstream f = open_output(a.mtf_file, "MTF");
+        f << "k,nu,f_sagittal_lpmm,mtf_sagittal,f_tangential_lpmm,mtf_tangential\n";
+        const auto n = static_cast<double>(p.grid);
+        for (int k = 0; k <= p.grid; ++k) {
+            const auto ku = static_cast<std::size_t>(k);
+            const double nu = static_cast<double>(k) / n;
+            f << k << ',' << csv_number(nu) << ',' << csv_number(nu * p.cutoff_x()) << ','
+              << csv_number(p.mtf_sagittal[ku]) << ',' << csv_number(nu * p.cutoff_y()) << ','
+              << csv_number(p.mtf_tangential[ku]) << '\n';
+        }
+        if (!f) {
+            throw std::runtime_error("MTF: Fehler beim Schreiben von " + a.mtf_file);
+        }
+    }
 }
 
 // OPD-Karte als CSV: N Zeilen mit N Werten in Wellen bei λ_ref (verlustfrei, 17 Stellen), erste
@@ -311,10 +509,13 @@ void write_map(const EvalReport& r, const EvalArgs& a) {
 void print_eval_usage(std::ostream& out) {
     out << "Aufruf: mikroptim eval <system.json> [--grid N] [--half] [--reference R] [--json]\n"
            "                      [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]]\n"
+           "                      [--psf [--padding Q] [--na X] [--psf-tuple F,L]\n"
+           "                       [--psf-file DATEI.csv] [--mtf-file DATEI.csv]]\n"
            "                      [--gpu [--device N]]\n"
            "  Auswertung auf dem dichten kartesischen Pupillenraster (Modus EVAL, FP64):\n"
            "  RMS-OPD, Strehl nach Maréchal, RMS-Spot, Schwerpunkt, Verzeichnung und Brennlinien\n"
-           "  pro Feld und Wellenlänge (Beschreibung: docs/cli.md).\n"
+           "  pro Feld und Wellenlänge, mit --psf zusätzlich skalare PSF, MTF und Strehl\n"
+           "  (Beschreibung: docs/cli.md).\n"
            "  --grid N        Raster N x N über die Pupille, 1 bis "
         << kMaxEvalGrid
         << " (Standard 64)\n"
@@ -325,6 +526,12 @@ void print_eval_usage(std::ostream& out) {
            "  --map F,L       OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben ...\n"
            "  --map-file D    ... als CSV nach D (Wellen bei der Referenzwellenlänge)\n"
            "  --remove X      vor der Karte abziehen: piston (Standard), tilt, defocus\n"
+           "  --psf           skalare PSF, MTF und Strehl über die FFT (für alle Tupel)\n"
+           "  --padding Q     Zero-Padding der FFT, M = Zweierpotenz >= Q N (Standard 4, >= 2)\n"
+           "  --na X          NA der Pupillenabbildung vorgeben (Standard: aus den Feldstrahlen)\n"
+           "  --psf-tuple F,L Tupel für --psf-file und --mtf-file (Standard 0,0)\n"
+           "  --psf-file D    PSF als CSV nach D (M x M, normiert auf die ungestörte PSF)\n"
+           "  --mtf-file D    MTF-Schnitte (sagittal, tangential) als CSV nach D\n"
            "  --gpu           auf der GPU rechnen (Kernel EVAL) statt auf der CPU\n"
            "  --device N      CUDA-Gerät für --gpu (Standard 0)\n"
            "  --help          diese Hilfe\n"
@@ -348,6 +555,7 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
 
 #ifdef MIKROPTIM_HAS_CUDA
     std::optional<cuda::TraceEngine> engine;
+    std::optional<cuda::PsfEngine> psf_engine;
     if (a.gpu) {
         const int count = cuda::device_count();
         if (count == 0) {
@@ -357,6 +565,9 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
         }
         try {
             engine.emplace(a.device);
+            if (a.psf) {
+                psf_engine.emplace(a.device);
+            }
         } catch (const std::exception& e) {
             err << "mikroptim eval: Fehler: GPU " << a.device << ": " << e.what() << '\n';
             return kExitError;
@@ -393,6 +604,34 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
         r.stats = eval_statistics(r.result, 0);
         if (!a.map_file.empty()) {
             write_map(r, a);
+        }
+        if (a.psf) {
+            if (a.psf_field < 0 || a.psf_field >= r.result.fields || a.psf_wavelength < 0 ||
+                a.psf_wavelength >= r.result.wavelengths) {
+                throw std::invalid_argument("--psf-tuple " + std::to_string(a.psf_field) + "," +
+                                            std::to_string(a.psf_wavelength) +
+                                            ": Feld oder Wellenlänge existiert nicht");
+            }
+            r.psf = true;
+            r.psf_settings = a.psf_settings;
+#ifdef MIKROPTIM_HAS_CUDA
+            if (psf_engine) {
+                compute_psfs(r, a.psf_field, a.psf_wavelength, [&](const PsfPupil& p, int m) {
+                    return std::move(psf_engine->compute(std::span<const PsfPupil>(&p, 1), m)[0]);
+                });
+            } else {
+                compute_psfs(r, a.psf_field, a.psf_wavelength,
+                             [](const PsfPupil& p, int m) { return psf_cpu(p, m); });
+            }
+#else
+            compute_psfs(r, a.psf_field, a.psf_wavelength,
+                         [](const PsfPupil& p, int m) { return psf_cpu(p, m); });
+#endif
+            for (std::string& w : psf_window_warnings(r)) {
+                err << "mikroptim eval: Warnung: " << w << '\n';
+                r.loaded.warnings.push_back(std::move(w));
+            }
+            write_psf_files(r, a);
         }
         if (a.json) {
             write_json(r, out);

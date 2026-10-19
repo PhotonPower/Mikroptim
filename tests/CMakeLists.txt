@@ -36,6 +36,7 @@ add_executable(mikroptim_tests
     test_paraxial_residuals.cpp
     test_petzval_optimization.cpp
     test_prefilter.cpp
+    test_psf.cpp
     test_pupil_quadrature.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
@@ -64,6 +65,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_multi_trace_engine.cpp
         test_cuda_petzval_optimization.cpp
         test_cuda_prefilter.cpp
+        test_cuda_psf.cpp
         test_cuda_quadrature.cpp
         test_cuda_residuals.cpp
         test_cuda_smoke.cpp
@@ -92,6 +94,11 @@ add_test(NAME cli_eval_json
     COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32)
 set_tests_properties(cli_eval_json PROPERTIES
     PASS_REGULAR_EXPRESSION "\"format\": \"mikroptim\\.eval/1\".*\"failed_rays\": 0,[\r\n]+  \"warnings\"")
+# `mikroptim eval --psf` (M8-T2)
+add_test(NAME cli_eval_psf_json
+    COMMAND $<TARGET_FILE:mikroptim> eval ${MKO_EINZELLINSE} --json --grid 32 --psf)
+set_tests_properties(cli_eval_psf_json PROPERTIES
+    PASS_REGULAR_EXPRESSION "\"psf\": {[\r\n]+    \"fft_size\": 128.*\"strehl_fft\": ")
 
 # `mikroptim trace --gpu` (M2-T5). Exit-Code 3 = GPU-Backend nicht verfügbar (kExitNoGpu).
 if(MIKROPTIM_ENABLE_CUDA)

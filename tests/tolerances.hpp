@@ -181,6 +181,40 @@ inline constexpr double kEvalDefocusModel = 1e-2;
 // Winkelunterschied der Nachbarstrahlen (~2δ·NA ≈ 10⁻⁴ … 10⁻³).
 inline constexpr double kEvalFocusGpuCpu = 1e-6;
 
+// PSF (M8-T2): erste Nullstelle der PSF des perfekten Systems gegen 0,61 λ/NA bzw.
+// j₁,₁/(2π) λ/NA, relativ (Abnahmekriterium M8-T2).
+inline constexpr double kPsfFirstZero = 1e-2;
+// PSF: Identitäten der FFT, die nur durch Rundung verletzt werden (Strehl aus der FFT gegen die
+// direkte Summe, Parseval, MTF gegen die gezählte Autokorrelation, Strehl 1 des perfekten
+// Systems). Fehler der FFT ~ ε·log₂(M²) relativ zur Norm, M <= 1024: ≈ 2·10⁻¹⁵.
+inline constexpr double kPsfFftIdentity = 1e-12;
+// PSF: perfekte Pupille auf dem Raster N = 128 gegen [2 J₁(v)/v]² (Werte normiert auf das
+// Maximum) bis zum dritten dunklen Ring. Modellfehler des Rasters (treppenförmiger Rand,
+// Flächenfehler ~N^(−4/3)), kein Maß für die Rechengenauigkeit; beobachtet 7,5·10⁻⁴.
+inline constexpr double kPsfAiry = 2e-3;
+// PSF: MTF der perfekten Pupille auf dem Raster N = 128 gegen (2/π)(acos ν − ν√(1 − ν²)),
+// absolut. Modellfehler des Rasters (gezählte Überlappung zweier Treppenkreise); beobachtet
+// 7,2·10⁻⁴.
+inline constexpr double kPsfMtfGrid = 2e-3;
+// PSF: Strehl gegen die Maréchal-Näherung exp(−(2πσ)²), relativ, für σ <= 0,07 Wellen
+// (Abnahmekriterium M8-T2). Der Fehler der Näherung ist s⁴ (κ/12 − 1/4) + O(s⁶) mit s = 2πσ
+// und der Kurtosis κ der Phase, für Defokus (κ = 1,8) und sphärische Aberration (κ = 2,14)
+// höchstens 0,5 % bei σ = 0,07.
+inline constexpr double kPsfMarechal = 1e-2;
+// PSF: Koeffizient von s⁴ in Strehl − Maréchal gegen die Entwicklung bis s⁶ aus den Momenten
+// der Phase, Schranke kPsfMarechalOrder · s⁴ (Rest O(s⁸)/s⁴); beobachtet höchstens 0,03 · s⁴.
+inline constexpr double kPsfMarechalOrder = 0.1;
+// PSF: Strehl der Pupille auf dem Raster N = 256 gegen die stetige Kreispupille (Defokus,
+// sphärische Aberration, σ <= 0,07 Wellen). Modellfehler des Rasters; beobachtet 5,1·10⁻⁵.
+inline constexpr double kPsfGridStrehl = 2e-4;
+// PSF: NA der Pupillenabbildung aus den Feldstrahlen (Differenzen im Abstand δ = 10⁻³) gegen
+// die exakte NA des aplanatischen Punkts (lineare Abbildung, nur Rundung ~ε/δ).
+inline constexpr double kPsfNaFieldRays = 1e-10;
+// PSF: GPU (cuFFT) gegen CPU (eigene Radix-2-FFT), absolut in Einheiten des Maximums der
+// perfekten PSF bzw. MTF(0) = 1. Andere Zerlegung der FFT und sin/cos der CUDA-Bibliothek
+// (<= 2 ulp); erwartet einige ε·log₂(M²) ≈ 10⁻¹⁵, beobachtet 5,6·10⁻¹⁶ (RTX 3090).
+inline constexpr double kPsfCpuGpu = 1e-13;
+
 // Gebündelter LM (M3-T4), Abnahme 1: Formfaktor der Einzellinse bei minimaler sphärischer
 // Aberration gegen den Planwert 0,74 (Dünnlinsentheorie 2(n² − 1)/(n + 2) = 0,7397). Modellfehler
 // der Dünnlinsentheorie (Mittendicke 6 mm bei f = 100 mm verschiebt das Optimum auf q ≈ 0,72),
