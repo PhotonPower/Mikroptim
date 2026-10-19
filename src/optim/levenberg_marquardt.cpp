@@ -5,6 +5,7 @@
 
 #include "mikroptim/batch/batch_merit.hpp"
 #include "mikroptim/batch/batch_residuals.hpp"
+#include "mikroptim/optim/adjoint_jacobian.hpp"
 #include "mikroptim/optim/normal_equations.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "parallel_variants.hpp"
@@ -235,6 +236,10 @@ void check_options(const LmOptions& o) {
         invalid("Strafverfahren: fail_weight_factor muss eine Zahl sein, max_fail_weight "
                 "endlich und >= 0");
     }
+    if (o.jacobian_method != JacobianMethod::FiniteDifferences &&
+        o.jacobian_method != JacobianMethod::Adjoint) {
+        invalid("unbekanntes Verfahren der Jacobi-Matrix");
+    }
 }
 
 void check_problem(int P, const LmBounds& b, std::span<const double> x0) {
@@ -291,6 +296,26 @@ const char* to_string(LmStatus status) {
         return "numerical_error";
     }
     return "?";
+}
+
+const char* to_string(JacobianMethod method) {
+    switch (method) {
+    case JacobianMethod::FiniteDifferences:
+        return "fd";
+    case JacobianMethod::Adjoint:
+        return "adjoint";
+    }
+    return "?";
+}
+
+std::optional<JacobianMethod> jacobian_method_from_string(std::string_view name) {
+    if (name == "fd") {
+        return JacobianMethod::FiniteDifferences;
+    }
+    if (name == "adjoint") {
+        return JacobianMethod::Adjoint;
+    }
+    return std::nullopt;
 }
 
 bool lm_converged(LmStatus status) {
@@ -646,9 +671,47 @@ CpuLmBackend::CpuLmBackend(const VariableSet& set, const SystemBatchHost& base,
     check_trace_extra_residuals(options.jacobian.trace_extra, "Levenberg-Marquardt");
 }
 
+namespace {
+
+// A_j = JᵀJ und g_j = Jᵀr₀ aller Läufe aus J [runs][P][R] und r₀ [runs][R] (Läufe auf
+// Host-Threads).
+void gram_of_runs(std::span<const double> jacobian, std::span<const double> residuals, int P,
+                  std::int64_t rows, int runs, int threads, std::span<double> a,
+                  std::span<double> g) {
+    const auto p = static_cast<std::size_t>(P);
+    const auto R = static_cast<std::size_t>(rows);
+    const std::int64_t work =
+        static_cast<std::int64_t>(runs) * static_cast<std::int64_t>(p * p) * rows;
+    detail::parallel_for_variants(
+        0, runs, lm_host_threads(threads, work, kLmStepFlopsPerThread), [&](int j) {
+            const auto jj = static_cast<std::size_t>(j);
+            normal_equations_host(jacobian.subspan(jj * p * R, p * R), residuals.subspan(jj * R, R),
+                                  P, a.subspan(jj * p * p, p * p), g.subspan(jj * p, p));
+        });
+}
+
+} // namespace
+
 void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const double> x,
                                     std::span<double> a, std::span<double> g) {
     const SystemBatchHost tmpl = lm_template_batch(base_, runs);
+    const int count = static_cast<int>(runs.size());
+    if (options_.jacobian_method == JacobianMethod::Adjoint) {
+        // Adjungiert (M5-T3): Trace-Zeilen aus dem Rückwärtsdurchlauf, Zusatzzeilen zentrale FD
+        AdjointJacobianOptions ao = adjoint_options_of(options_.jacobian);
+        const std::int64_t ray_work = static_cast<std::int64_t>(count) *
+                                      layout_.rays_per_variant() *
+                                      static_cast<std::int64_t>(tmpl.surfaces());
+        ao.threads = lm_host_threads(options_.threads, ray_work, kLmRaySurfacesPerThread);
+        ao.extra_threads = lm_host_threads(ao.extra_threads,
+                                           static_cast<std::int64_t>(count) *
+                                               fd_variant_count(FdScheme::Central, set_.size()),
+                                           kLmExtraPerThread);
+        const AdjointJacobian jac = adjoint_jacobian_cpu(set_, tmpl, x, ao);
+        gram_of_runs(jac.jacobian, jac.residuals, set_.size(), jac.shape.rows(), count,
+                     options_.threads, a, g);
+        return;
+    }
     const FdJacobianBatch fd = make_fd_jacobian_batch(set_, tmpl, x, options_.jacobian.scheme);
     const int V = fd.batch.variants();
     const std::int64_t rv = layout_.rays_per_variant();
@@ -692,18 +755,8 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
     const std::vector<double> ev = fd_extra_residuals(fo, fd.batch, extrema);
     FdJacobian jac;
     fd_jacobian_from_residuals(fd, rays, ev, fo.extra_count(), jac);
-    const auto P = static_cast<std::size_t>(set_.size());
-    const auto R = static_cast<std::size_t>(jac.shape.rows());
-    const std::int64_t gram_work = static_cast<std::int64_t>(runs.size()) *
-                                   static_cast<std::int64_t>(P * P) * static_cast<std::int64_t>(R);
-    detail::parallel_for_variants(
-        0, static_cast<int>(runs.size()),
-        lm_host_threads(options_.threads, gram_work, kLmStepFlopsPerThread), [&](int j) {
-            const auto jj = static_cast<std::size_t>(j);
-            normal_equations_host(std::span<const double>(jac.jacobian).subspan(jj * P * R, P * R),
-                                  jac.residual(j), set_.size(), a.subspan(jj * P * P, P * P),
-                                  g.subspan(jj * P, P));
-        });
+    gram_of_runs(jac.jacobian, jac.residuals, set_.size(), jac.shape.rows(), count,
+                 options_.threads, a, g);
 }
 
 void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,

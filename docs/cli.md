@@ -482,11 +482,12 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--seed n` | Startwert der Störungen (0 … 2⁶⁴ − 1); nur mit `--runs` ≥ 2 | 0 |
 | `--fail-weight w` | Start-Strafgewicht w_fail des weichen Strahlversagens in Wellen², endlich und > 0 (`ResidualSettings::fail_weight`, siehe [Strahlversagen](#strahlversagen-ab-m4-t2)); nicht mit `--hard-failure` | 10⁶ (`kDefaultFailWeight`) |
 | `--hard-failure` | hartes Strahlversagen wie vor M4-T2: versagte Strahlen maskiert (r = 0), keine Strafresiduen, kein Strafverfahren (`FailureMode::Hard`) | aus (weich) |
+| `--jacobian V` | Verfahren der Jacobi-Matrix (ab M5-T3, `LmOptions::jacobian_method`): `fd` zentrale finite Differenzen, `adjoint` adjungiert (Strahl- und Strafzeilen aus dem Rückwärtsdurchlauf; Zusatzzeilen weiter per zentraler FD), [optimierung.md, „Jacobi-Verfahren im LM“](optimierung.md#jacobi-verfahren-im-lm-ab-m5-t3) | `fd` |
 | `--gpu` | auf der GPU rechnen (`cuda::optimize_lm_gpu`: Jacobi-Matrix und Normalgleichungen auf dem Gerät, Merit im Modus MERIT der TraceEngine) | aus (CPU, `optimize_lm_cpu`) |
 | `--device N` | CUDA-Gerät für `--gpu`; nur zusammen mit `--gpu` | 0 |
 | `--help`, `-h` | Hilfe | – |
 
-Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrale finite Differenzen, Ablehnung neuer hart versagter Strahlen, Faktor 10 und Obergrenze 10¹⁴ des Strafverfahrens) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
+Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrales FD-Schema, Ablehnung neuer hart versagter Strahlen, Faktor 10 und Obergrenze 10¹⁴ des Strafverfahrens) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
 
 **Strahlversagen (ab M4-T2).** <a id="strahlversagen-ab-m4-t2"></a>Standard ist weiches Versagen ([numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen), [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor)): Verfehlte Flächen und Totalreflexion werden fortgesetzt, jeder Strahl trägt ein Strafresiduum p = √(w_fail ŵ_f ŵ_λ W)·π bei, F enthält Σp². Endet ein Lauf mit versagten Strahlen, startet die Bibliothek ihn an seinem Endpunkt mit zehnfachem w_fail neu (äußeres Strafverfahren, `optimize_lm_rounds`), bis kein Strahl mehr versagt oder w_fail 10¹⁴ überschritte; `--max-iterations` gilt pro Runde, Zyklen und Protokoll laufen über die Runden fort. Für Systeme ohne versagte Strahlen sind alle Strafresiduen null und die Ergebnisse bitgleich zu `--hard-failure`. Die Spalte `versagt` zählt weich und hart versagte Strahlen, `hart` nur die hart versagten (Strahl läuft rückwärts, Fläche verfehlt bei D ≥ 0, nicht unterstützt); nur diese lehnt LM an einem Versuchspunkt als neu versagt ab. Die Wellenfronttabelle rechnet immer hart wie `mikroptim trace`.
 
@@ -614,6 +615,7 @@ Optimierung: Einzellinse N-BK7, Biegung
   Backend                                     CPU, FP64
   Quadratur                                   10 Ringe x 8 Speichen
   Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
   Variablen                                   3
   Nebenbedingungen (paraxial)                 1
   Läufe                                       1
@@ -734,7 +736,7 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `backend`, `device`, `precision` | | wie bei `trace` (`precision` immer `"fp64"`) |
 | `merit_unit` | string | Einheit aller Merit-Werte (`merit`, `trial_merit`, `start_merit`): `"waves^2"` (Wellen² bei λ_ref, seit M4-T1) |
 | `quadrature` | object | `{"rings": N, "spokes": M}` |
-| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1), `failure` (`"soft"` oder `"hard"`, ab M4-T2), `fail_weight` (Start-w_fail in Wellen², `null` bei `"hard"`) |
+| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1), `failure` (`"soft"` oder `"hard"`, ab M4-T2), `fail_weight` (Start-w_fail in Wellen², `null` bei `"hard"`), `jacobian` (`"fd"` oder `"adjoint"`, ab M5-T3) |
 | `variables` | object[] | pro Variable k: `name` (`"c[1]"`, `"t[2]"`, `"w"`, `"a[g,k]"`, `"n0[1]"`, `"nu1[1]"`, `"nu2[1]"`), `type`, `surface` (Dateifläche, bei Glas die Fläche vor dem Medium; `null` bei Geisterkoeffizienten), `plate` und `order` (nur Geisterkoeffizienten, sonst `null`; ab M4-T6), `lower`, `upper` (`null` = offen), `typical`, `start` (x₀), `result` (x des besten Laufs) |
 | `constraints` | object[] | pro paraxialer Nebenbedingung: `item` (Eintrag in `constraints.items`), `type`, `mode`, `weight`, `target` (Soll), `value_start`, `value_result` (Ist: Brennweite 1/φ, Arbeitsabstand, Abgleichlänge; bei `paraxial_focus` die Randstrahlhöhe q in der Bildebene), `residual_start`, `residual_result` (r = √w·q̃ wie im Residuenvektor) |
 | `glass_hull` | object \| null | Glas-Hülle (ab M6-T1; `null` ohne Glasvariablen oder ohne Eintrag `glass_hull`): `glasses` (Zahl der Gläser der Hülle), `dimension` (0–3), `vertices` (Namen der Gläser auf den Ecken), `weight`, `margin`, `elements` (pro Glasfläche `surface`, `excess_start`, `excess_result`: max(0, φ) in normierten Koordinaten am Start und am Ergebnis) |
@@ -828,8 +830,9 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
 - `CliOptimize.ConstraintsReportedBeforeAndAfter`: Istwerte und Residuen gegen `compute_paraxial` und die Dicken (`einzellinse_bk7_nebenbedingungen.json`).
 - `CliOptimize.MultistartIsDeterministic`: zwei Aufrufe gleiche Ausgabe, Startpunkte bitgleich zu `perturbed_vector`, bester Lauf nach der Regel oben, Lauf 0 gleich dem Einzellauf.
 - `CliOptimize.SoftFailureStartBecomesFailureFree` (M4-T2): `weiches_versagen_start.json` mit 27 von 90 versagenden Strahlen wird versagensfrei (F 2,160648·10⁶ → 1,878483·10³ Wellen², 146 Zyklen, 4 Runden bis w_fail = 10⁹), x und Merit bitgleich zu `optimize_lm_cpu`, Protokoll mit fortlaufenden Zyklen; `--hard-failure` behält 27 hart versagte Strahlen (eine Runde, `fail_weight: null`), `--fail-weight 1e9` setzt das Startgewicht; Text mit Versagensart, Runden und w_fail.
+- `CliOptimize.AdjointJacobian` (M5-T3): `--jacobian adjoint` bitgleich zu `optimize_lm_cpu` mit `JacobianMethod::Adjoint`, Endmerit relativ ≤ 10⁻⁶ und Formfaktor ≤ 10⁻³ wie mit `fd` (Standard), `settings.jacobian` im JSON, Zeile „Jacobi-Matrix“ im Text.
 - `CliOptimize.WarnsAboutFieldTargetsFromStartFocalLength`, `CliOptimize.TextOutput`, `CliOptimize.Errors` (keine Variablen, fehlende Datei, `-o` gleich der Eingabe, fehlendes Ausgabeverzeichnis, Kommandozeilenfehler), `CliOptimize.GpuUnavailableWithoutCuda` (CPU-Build).
-- Im CUDA-Build `CliOptimizeGpu.MatchesCpuAndReproducesMerit` (übersprungen ohne Gerät): GPU-Optimierung konvergiert mit demselben Formfaktor; Neuladen auf der GPU bitgleich, auf der CPU innerhalb der Schranke oben; Multistart auf der GPU deterministisch. `CliOptimizeGpu.SoftFailureStartBecomesFailureFree` (M4-T2): versagensfrei auf der GPU, Ausgabe deterministisch. `CliOptimizeGpu.InvalidDevice`.
+- Im CUDA-Build `CliOptimizeGpu.MatchesCpuAndReproducesMerit` (übersprungen ohne Gerät): GPU-Optimierung konvergiert mit demselben Formfaktor; Neuladen auf der GPU bitgleich, auf der CPU innerhalb der Schranke oben; Multistart auf der GPU deterministisch. `CliOptimizeGpu.AdjointJacobianMatchesCpu` (M5-T3): `--gpu --jacobian adjoint` am Optimum der CPU, Ausgabe deterministisch. `CliOptimizeGpu.SoftFailureStartBecomesFailureFree` (M4-T2): versagensfrei auf der GPU, Ausgabe deterministisch. `CliOptimizeGpu.InvalidDevice`.
 
 ctest-Kommandos mit dem gebauten Programm: `cli_optimize_text` (schreibt `einzellinse_bk7_biegung_opt.json` ins Build-Verzeichnis), danach `cli_optimize_result_trace` (`mikroptim trace` auf dieser Ergebnisdatei, f′ = 100,0000 mm) und `cli_optimize_no_variables`; im CPU-Build `cli_optimize_gpu_unavailable` (Exit-Code 3), im CUDA-Build `cli_optimize_gpu_json` (übersprungen ohne Gerät) und `cli_optimize_gpu_no_device`.
 
@@ -953,6 +956,7 @@ Eingabe ist typischerweise die Ergebnisdatei von `mikroptim optimize` mit Glasva
 | `--max-iterations N` | Zyklen der Reoptimierung pro Lauf, N ≥ 0 (0 = nur einrasten und auswerten) | 100 |
 | `--rings N`, `--spokes M` | Pupillenquadratur wie bei `trace` | 10, 8 |
 | `--fail-weight w`, `--hard-failure` | Strahlversagen wie bei `optimize` | weich, 10⁶ |
+| `--jacobian V` | Jacobi-Matrix der Reoptimierung wie bei `optimize` (`fd` oder `adjoint`, ab M5-T3) | `fd` |
 | `--gpu`, `--device N` | Reoptimierung auf der GPU (`cuda::optimize_lm_gpu`); Kandidaten und Kombinationen entstehen immer auf dem Host | CPU |
 | `--help`, `-h` | Hilfe | – |
 
@@ -980,6 +984,7 @@ Glas-Einrasten: Achromat mit zwei Glasvariablen
   Backend                                     CPU, FP64
   Quadratur                                   10 Ringe x 8 Speichen
   Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
   Glaselemente                                2
   Glas-Hülle                                  39 Gläser, Dimension 3
   Nachbarn je Element                         3
@@ -1044,7 +1049,7 @@ Zahlen verlustfrei, nicht endliche Werte `null` (wie `mikroptim.optimize/1`).
 | Feld | Inhalt |
 |---|---|
 | `format`, `mikroptim_version`, `system`, `file`, `output`, `backend`, `device`, `precision`, `merit_unit`, `quadrature` | wie bei `optimize` |
-| `settings` | `neighbors`, `max_combinations`, `max_iterations`, `failure` (`"soft"`/`"hard"`), `fail_weight`, `distance_weights` |
+| `settings` | `neighbors`, `max_combinations`, `max_iterations`, `failure` (`"soft"`/`"hard"`), `fail_weight`, `jacobian` (`"fd"`/`"adjoint"`, ab M5-T3), `distance_weights` |
 | `hull` | `glasses` (Zahl der Gläser der Hülle), `dimension` |
 | `elements[]` | pro Glaselement: `surface` (Dateifläche), `coordinates` {`n0`, `nu1`, `nu2`} des kontinuierlichen Ergebnisses, `hull_distance`, `candidates[]` mit `name`, `distance`, `coordinates` (aufsteigend nach Abstand) |
 | `total_combinations`, `truncated` | Größe des kartesischen Produkts, ob begrenzt wurde |
@@ -1056,7 +1061,7 @@ Zahlen verlustfrei, nicht endliche Werte `null` (wie `mikroptim.optimize/1`).
 
 ### Tests
 
-`tests/test_cli_snap.cpp`: `CliSnap.OptimizeThenSnapReproducesMerit` (Achromat über `optimize` kontinuierlich optimiert, dann eingerastet: 9 Läufe, nur Katalog-Gläser und keine Glasvariablen in der Ergebnisdatei, Verschlechterung = Merit − kontinuierlich, bester Lauf mit der kleinsten Merit, Ergebnis bitgleich zu `snap_glasses`, Merit der neu geladenen Datei und RMS von `mikroptim trace` bitgleich; erneutes Einrasten scheitert mit „keine Glasvariablen“), `CliSnap.TextOutputAndLimit` (Abschnitte, „3 von 4 (kleinste Summe d²)“), `CliSnap.Errors`, `CliSnap.GpuUnavailableWithoutCuda` bzw. im CUDA-Build `CliSnapGpu.MatchesCpuSelection` (gleiche Auswahl, Merit relativ ≤ 10⁻⁶). ctest-Kommandos: `cli_snap_optimize` → `cli_snap_text` → `cli_snap_result_trace` (Beispiel oben). Implementierung: `src/cli/snap_command.cpp`; `same_file`, `utf8` und `catalogs_for` teilen sich `optimize` und `snap` in `src/cli/cli_util.hpp`.
+`tests/test_cli_snap.cpp`: `CliSnap.OptimizeThenSnapReproducesMerit` (Achromat über `optimize` kontinuierlich optimiert, dann eingerastet: 9 Läufe, nur Katalog-Gläser und keine Glasvariablen in der Ergebnisdatei, Verschlechterung = Merit − kontinuierlich, bester Lauf mit der kleinsten Merit, Ergebnis bitgleich zu `snap_glasses`, Merit der neu geladenen Datei und RMS von `mikroptim trace` bitgleich; erneutes Einrasten scheitert mit „keine Glasvariablen“), `CliSnap.TextOutputAndLimit` (Abschnitte, „3 von 4 (kleinste Summe d²)“), `CliSnap.AdjointJacobian` (`--jacobian adjoint` bitgleich zu `snap_glasses` mit `JacobianMethod::Adjoint`, M5-T3), `CliSnap.Errors`, `CliSnap.GpuUnavailableWithoutCuda` bzw. im CUDA-Build `CliSnapGpu.MatchesCpuSelection` (gleiche Auswahl, Merit relativ ≤ 10⁻⁶). ctest-Kommandos: `cli_snap_optimize` → `cli_snap_text` → `cli_snap_result_trace` (Beispiel oben). Implementierung: `src/cli/snap_command.cpp`; `same_file`, `utf8` und `catalogs_for` teilen sich `optimize` und `snap` in `src/cli/cli_util.hpp`.
 
 ## `mikroptim insert`
 
@@ -1113,10 +1118,11 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--json` | Ausgabe als JSON statt Text |
 | `--quiet` | Text ohne Schrittprotokoll |
 | `--gpu [--device N]` | LM-Läufe auf einem CUDA-Gerät (`optimize_lm_gpu`); Diagnose und Zielprüfung bleiben auf der CPU |
+| `--jacobian V` | Jacobi-Matrix der LM-Läufe wie bei `optimize`: `fd` (Standard) oder `adjoint` (ab M5-T3, `LmOptions::jacobian_method`) |
 
 Exit-Codes: 0 Lauf beendet (auch wenn das Ziel verfehlt wurde; der Status steht in der Ausgabe), 1 Datei-, Format- oder Rechenfehler, 2 ungültige Kommandozeile (auch: `-o` oder `--log` gleich der Eingabedatei), 3 GPU-Backend nicht verfügbar.
 
-**Textausgabe.** Kopf (System, Start, Ziel, F_max, Backend), danach eine Zeile pro Schritt (`write_homotopy_step_line`): Nummer, Art, Punkt (NA, Feldanteil, Spektrumstufe), Δ, LM-Status und Zyklen, F, F_B, größter RMS mit Geisterplatten [Wellen], Σ|a|, Glaselemente, Entscheidung (`grow`/`keep`/`shrink`/`insert`/`stop` mit dem Δ danach, sonst `ok`) und Bemerkung (Operator, Zweig und Stufe, Gewichtsstufe, Ziel). Am Ende Status, Endpunkt, Elemente, RMS des realen Systems pro Feld und Wellenlänge, Laufzeit.
+**Textausgabe.** Kopf (System, Start, Ziel, F_max, Backend, Jacobi-Matrix), danach eine Zeile pro Schritt (`write_homotopy_step_line`): Nummer, Art, Punkt (NA, Feldanteil, Spektrumstufe), Δ, LM-Status und Zyklen, F, F_B, größter RMS mit Geisterplatten [Wellen], Σ|a|, Glaselemente, Entscheidung (`grow`/`keep`/`shrink`/`insert`/`stop` mit dem Δ danach, sonst `ok`) und Bemerkung (Operator, Zweig und Stufe, Gewichtsstufe, Ziel). Am Ende Status, Endpunkt, Elemente, RMS des realen Systems pro Feld und Wellenlänge, Laufzeit.
 
 **Beispiel** (Abnahme von M6-T3, CPU, Release-Build auf dem Rechner des Maintainers):
 
@@ -1128,6 +1134,7 @@ mikroptim synth 0.1.0: data/systems/einzellinse_homotopie_start.json
   Ziel                                        NA 0.6000, RMS <= 0.07143 Wellen
   Schwelle F_max [Wellen²]                    5.102041e-03
   Backend                                     CPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
 
 Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
       0  penalty          0.3000  1.000   0  -        converged_merit       22  1.096582e-01  1.096552e-01  0.05158   2.274e-03   1  ok: Gewichte der einseitigen Bedingungen ×0.01
@@ -1210,7 +1217,7 @@ Protokoll geschrieben: protokoll.json
 
 Mit `--gpu` (RTX 3090) dieselben Entscheidungen, RMS am Ende 0,01566 Wellen, 35 s. `mikroptim trace ergebnis.json` liefert 0,016320 Wellen (die Ergebnisdatei enthält die Restkoeffizienten der Geisterplatten von ~10⁻⁸ mm, die Zielprüfung setzt sie auf 0).
 
-**JSON** (`--json` bzw. `--log`), Format `mikroptim.synth/1`: `format`, `version`, `input`, `backend` (`gpu`, mit `--gpu` `device` und `device_name`), `options` (Ziel-NA, Startpunkt, Ziel-RMS, Faktor, Elemente, Zyklen, Quadratur, Einstellungen des Operators A), `result` und `output` (Ergebnisdatei oder `null`). `result`: `status` (`goal_reached`, `goal_not_reached`, `step_too_small`, `max_elements`, `max_steps`, `start_rejected`), `message`, `start_point`, `target`, `point` (je `aperture`, `field`, `spectrum`, `ghost_weight`, `ghost_smoothing`, `penalty_scale`), `merit_threshold`, `start_elements`, `elements`, `insertions`, `solves`, `goal` (`reached`, `target_waves`, `max_rms_waves`, `tuples` mit Feld, Wellenlänge, Winkel, λ, `rms_waves`, `failed_rays`), `seconds` und `steps`. Ein Schritt (hier der Aperturschritt 42, der zum Einfügen führte):
+**JSON** (`--json` bzw. `--log`), Format `mikroptim.synth/1`: `format`, `version`, `input`, `backend` (`gpu`, mit `--gpu` `device` und `device_name`), `options` (Ziel-NA, Startpunkt, Ziel-RMS, Faktor, Elemente, Zyklen, Quadratur, `jacobian` (`"fd"`/`"adjoint"`, ab M5-T3), Einstellungen des Operators A), `result` und `output` (Ergebnisdatei oder `null`). `result`: `status` (`goal_reached`, `goal_not_reached`, `step_too_small`, `max_elements`, `max_steps`, `start_rejected`), `message`, `start_point`, `target`, `point` (je `aperture`, `field`, `spectrum`, `ghost_weight`, `ghost_smoothing`, `penalty_scale`), `merit_threshold`, `start_elements`, `elements`, `insertions`, `solves`, `goal` (`reached`, `target_waves`, `max_rms_waves`, `tuples` mit Feld, Wellenlänge, Winkel, λ, `rms_waves`, `failed_rays`), `seconds` und `steps`. Ein Schritt (hier der Aperturschritt 42, der zum Einfügen führte):
 
 ```json
 {
@@ -1366,4 +1373,4 @@ Stammbaum des längeren Laufs NA 0,3 → 0,6 mit `--beam 2 --alternatives 2 --cu
 
 **JSON** (`--json`, `--log`): Format `mikroptim.synth/1`, kompatibel erweitert. `options.beam` (`width`, `seed`, `alternatives`, `perturbed_starts`, `start_perturbation`, `prefilter`, `dedup_tolerance`); `result` wie oben und zusätzlich `beam_search` mit `beam_width`, `seed`, `best` (Kandidat des Ergebnisses), `beam` (Kandidaten am Ende nach Rang), `groups` (LM-Aufrufe) und `candidates` (Stammbaum): pro Kandidat `id`, `parent` (`null` bei der Wurzel), `children`, `operation`, `operator`, `option`, `branch`, `start`, `created` (Punkt), `created_step`, `point`, `merit`, `evaluation` (F_B), `rms_waves`, `failed_rays`, `acceptable`, `elements`, `solves`, `goal`, `status` (`kept`, `finished`, `discarded`, `expanded`), `reason`, `final_step`. Jeder Schritt hat zusätzlich `candidate` und `group` (`null` ohne Optimierung). Ohne die Laufzeiten (`seconds`) ist die Ausgabe zweier Läufe mit gleicher Eingabe und gleichem Startwert bitgleich.
 
-**Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`; Strahlsuche: Optionen nur mit `--beam`, Kurzlauf mit JSON, Stammbaum, Protokoll- und DOT-Datei, Textausgabe mit Baum). Implementierung: `src/cli/synth_command.cpp`.
+**Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, derselbe Kurzlauf mit `--jacobian adjoint` mit gleichem Status, gleichen Einfügungen und gleichem Endpunkt (M5-T3), Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`; Strahlsuche: Optionen nur mit `--beam`, Kurzlauf mit JSON, Stammbaum, Protokoll- und DOT-Datei, Textausgabe mit Baum). Implementierung: `src/cli/synth_command.cpp`.

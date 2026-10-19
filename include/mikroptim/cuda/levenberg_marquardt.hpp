@@ -2,13 +2,15 @@
 
 // Reiner C++-Header (keine CUDA-Typen), nutzbar aus Host-Code ohne nvcc.
 // GPU-Backend des gebündelten Levenberg-Marquardt (M3-T4): Jacobi-Matrizen per
-// DeviceFdJacobian, Normalgleichungen per DeviceNormalEquations (deterministischer Kernel),
+// DeviceFdJacobian oder (LmOptions::jacobian_method = Adjoint, M5-T3) DeviceAdjointJacobian,
+// Normalgleichungen per DeviceNormalEquations (deterministischer Kernel),
 // Merit der Versuchspunkte im Modus MERIT der TraceEngine (Zusatzresiduen als extra_merit).
 // Die Steuerlogik ist dieselbe wie auf der CPU (levenberg_marquardt in
 // mikroptim/optim/levenberg_marquardt.hpp); docs/optimierung.md, Abschnitt 4. Nur in Builds mit
 // MIKROPTIM_ENABLE_CUDA.
 
 #include "mikroptim/batch/system_batch.hpp"
+#include "mikroptim/cuda/adjoint_jacobian.hpp"
 #include "mikroptim/cuda/fd_jacobian.hpp"
 #include "mikroptim/cuda/normal_equations.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
@@ -38,8 +40,11 @@ struct LmGpuStats {
 // (cudaMemGetInfo zuzüglich des schon belegten J-Puffers, höchstens
 // EngineOptions::memory_limit_bytes, abzüglich der Reserve der Engine); die andere Hälfte bleibt
 // für die Engine. Teilstücke bestehen aus ganzen Läufen, die Ergebnisse eines Laufs hängen
-// nicht von der Aufteilung ab. `engine`, `set`, `base` und `options` müssen leben, solange das
-// Backend benutzt wird; nicht gleichzeitig aus mehreren Threads benutzen.
+// nicht von der Aufteilung ab. Pro Teilstück rechnet DeviceFdJacobian (FD-Batch in Tranchen der
+// Engine) bzw. mit JacobianMethod::Adjoint DeviceAdjointJacobian (ein Kernelstart für alle Läufe
+// des Teilstücks; Bedarf pro Lauf J, r₀, Status und der Batch einer Variante) die Jacobi-Matrizen,
+// DeviceNormalEquations daraus A und g. `engine`, `set`, `base` und `options` müssen leben, solange
+// das Backend benutzt wird; nicht gleichzeitig aus mehreren Threads benutzen.
 class GpuLmBackend final : public LmBackend {
 public:
     GpuLmBackend(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
@@ -51,8 +56,9 @@ public:
                std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override;
 
     // Größte Zahl von Läufen, deren Jacobi-Matrizen gemeinsam gerechnet werden (aus dem
-    // Speicher, siehe oben; mindestens 1).
+    // Speicher und dem Verfahren, siehe oben; mindestens 1).
     int max_jacobian_runs() const;
+    JacobianMethod jacobian_method() const { return options_.jacobian_method; }
     const LmGpuStats& stats() const { return stats_; }
 
 private:
@@ -61,16 +67,18 @@ private:
     const SystemBatchHost& base_;
     const LmOptions& options_;
     DeviceFdJacobian jacobian_;
+    DeviceAdjointJacobian adjoint_; // M5-T3
     DeviceNormalEquations normal_;
     TraceOutput output_;
     LmGpuStats stats_{};
 };
 
-// Optimiert runs = x0.size()/P Läufe auf dem Gerät von `engine` (Rechentyp FP64;
+// Optimiert runs = x0.size()/P Läufe auf dem Gerät von `engine` (Rechentyp FP64, Jacobi-Matrix
+// nach options.jacobian_method;
 // optimize_lm_rounds mit GpuLmBackend, also mit dem äußeren Strafverfahren des weichen
 // Versagens). `base` hat eine Variante (für alle Läufe) oder eine pro Lauf; die Zusatzresiduen
 // kommen aus options.jacobian.extra. `stats` summiert alle Runden. Wirft wie
-// levenberg_marquardt, DeviceFdJacobian und TraceEngine.
+// levenberg_marquardt, DeviceFdJacobian bzw. DeviceAdjointJacobian und TraceEngine.
 LmResult optimize_lm_gpu(TraceEngine& engine, const VariableSet& set, const SystemBatchHost& base,
                          std::span<const double> x0, const LmOptions& options = {},
                          LmGpuStats* stats = nullptr);

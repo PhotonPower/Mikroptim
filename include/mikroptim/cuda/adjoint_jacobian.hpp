@@ -34,6 +34,16 @@ inline constexpr int kAdjointJacobianThreads = kAdjointThreads;
 AdjointKernelInfo adjoint_jacobian_kernel_info(int capacity, Precision precision = Precision::Fp64,
                                                int device = -1);
 
+// Zeiten des letzten compute [s] (Host-Uhr, M5-T3; Messung der Anteile im Benchmark
+// jacobian_throughput). Die Abschnitte sind synchron und überlappen nicht.
+struct AdjointJacobianTiming {
+    double prepare_seconds = 0.0; // Host: Batch der Läufe, Spaltenzuordnung, Prüfungen
+    double extra_seconds = 0.0;   // Zusatzzeilen per FD: FD-Batch, bei trace-abhängigen
+                                  // Residuen der MERIT-Lauf mit Extrema, Auswertung auf dem Host
+    double device_seconds = 0.0;  // Upload, Kernel, Synchronisation, Zusatzzeilen nach J
+    double total_seconds = 0.0;   // ganzes compute
+};
+
 // Adjungierte Jacobi-Matrizen mehrerer Läufe im Gerätespeicher (RAII, nur verschiebbar). Ein
 // cudaMalloc für J [runs][P][R], r₀ [runs][R], Status [runs][rays] und die Hilfsdaten
 // (Feldablage, Spaltenzuordnung); wiederverwendet, wenn groß genug. Der Batch der Läufe (eine
@@ -72,7 +82,17 @@ public:
     int device() const { return device_; }
     const JacobianShape& shape() const { return shape_; }
     int capacity() const { return capacity_class_; } // Kapazitätsklasse der Aufzeichnung
+    // Größe des eigenen Puffers [Byte] (ohne den Batch der Läufe).
     std::size_t capacity_bytes() const { return bytes_; }
+    // Gerätespeicher des Batches der Läufe [Byte].
+    std::size_t batch_bytes() const { return batch_.capacity_bytes(); }
+    const AdjointJacobianTiming& timing() const { return timing_; }
+
+    // Gerätespeicher für `shape` mit `rays_per_variant` Strahlen pro Lauf [Byte]: J, r₀, Status
+    // (je auf kBatchAlignment ausgerichtet) und eine Pauschale von 64 KiB für Feldablage und
+    // Spaltenzuordnung, ohne den Batch der Läufe (make_batch_layout) und ohne die Puffer der
+    // Engine. Zur Wahl der Läufe pro Aufruf (GpuLmBackend, M5-T3).
+    static std::size_t buffer_bytes(const JacobianShape& shape, std::int64_t rays_per_variant);
 
     // Gerätezeiger (gültig bis zum nächsten compute oder release; nullptr ohne compute).
     // J_i(r, p) bei (i·P + p)·R + r, r₀_i(r) bei i·R + r, Status bei i·rays + k.
@@ -91,6 +111,7 @@ private:
     std::size_t residual_offset_ = 0; // Byte-Offsets im Puffer
     std::size_t status_offset_ = 0;
     DeviceSystemBatch batch_;
+    AdjointJacobianTiming timing_{};
 };
 
 // Bequemlichkeit: compute mit eigenem Puffer und Download.

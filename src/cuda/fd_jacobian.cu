@@ -202,8 +202,9 @@ void DeviceFdJacobian::release() noexcept {
 
 void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
                                const SystemBatchHost& base, std::span<const double> x0,
-                               const FdJacobianOptions& options) {
+                               const FdJacobianOptions& options, Precision precision) {
     ready_ = false;
+    check_precision(precision);
     // ---- Host: Batch, Ablage, Zusatzresiduen, Schritte ----
     const ResidualLayout layout(base.topology(), options.quadrature);
     FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, options.scheme);
@@ -289,6 +290,7 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
     settings.quadrature = options.quadrature;
     settings.extra_residuals = 0;   // Zusatzresiduen liegen im eigenen Puffer
     settings.extrema = e_trace > 0; // Max-Reduktionen für trace-abhängige Residuen
+    settings.precision = precision;
     const int S = fd.batch.surfaces();
     SurfaceExtremaResult tranche_extrema; // Extrema der aktuellen Tranche (Host)
     std::vector<double> tranche_traced;

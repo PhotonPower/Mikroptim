@@ -17,7 +17,9 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace mko {
@@ -62,6 +64,21 @@ struct LmIterationInfo {
 
 using LmIterationFn = std::function<void(const LmIterationInfo&)>;
 
+// Verfahren der Jacobi-Matrix der optischen Backends (M5-T3, docs/optimierung.md, Abschnitt 4,
+// „Jacobi-Verfahren im LM“). Beide liefern J in derselben Ablage (JacobianShape); die
+// Zusatzzeilen (LmOptions::jacobian.extra, trace_extra) sind in beiden Fällen zentrale finite
+// Differenzen (hybrider Ansatz, M5-T2). Die finiten Differenzen bleiben dauerhaft als Orakel
+// erhalten (ADR-0009).
+enum class JacobianMethod {
+    FiniteDifferences, // FD-Batch mit 2P + 1 (bzw. P + 1) Varianten pro Lauf (M3-T2)
+    Adjoint,           // Rückwärtsdurchlauf pro Strahl (M5-T2); jacobian.scheme gilt hier nicht
+};
+
+// Name für Meldungen und die CLI ("fd", "adjoint").
+const char* to_string(JacobianMethod method);
+// Umkehrung von to_string; leer bei unbekanntem Namen.
+std::optional<JacobianMethod> jacobian_method_from_string(std::string_view name);
+
 // Einstellungen. Die Standardwerte sind die des Plans (docs/optimierung.md, Abschnitt 4).
 struct LmOptions {
     int max_iterations = 100;      // Zyklen pro Lauf (Versuchsschritte inkl. verworfener)
@@ -86,6 +103,10 @@ struct LmOptions {
     // Zusatzresiduen (z. B. make_paraxial_residuals), Host-Threads der Zusatzresiduen
     // (extra_threads ≤ 0: nach der Zahl der Varianten, lm_host_threads).
     FdJacobianOptions jacobian{};
+    // Verfahren der Jacobi-Matrix (M5-T3): finite Differenzen (Standard) oder adjungiert. Mit
+    // Adjoint gelten aus `jacobian` die Quadratur, die Zusatzresiduen und extra_threads; das
+    // Schema (scheme) nur für die FD-Jacobi.
+    JacobianMethod jacobian_method = JacobianMethod::FiniteDifferences;
     // Äußeres Strafverfahren der optischen Treiber (optimize_lm_cpu, cuda::optimize_lm_gpu,
     // cuda::optimize_lm_multi_gpu;
     // weiches Versagen, M4-T2, docs/optimierung.md, Abschnitt 4): Endet ein Lauf mit versagten
@@ -185,9 +206,10 @@ std::vector<double> extra_merit_values(const ExtraResiduals& extra, const System
                                        int threads = 0);
 
 // CPU-Backend (CI ohne GPU und Referenz): J wie fd_jacobian_cpu (Varianten auf
-// options.threads Host-Threads, bitgleich), A und g mit normal_equations_host, F wie merit_cpu
-// plus Σ e² der Zusatzresiduen. `set`, `base` und `options` müssen leben, solange das Backend
-// benutzt wird.
+// options.threads Host-Threads, bitgleich) bzw. mit JacobianMethod::Adjoint wie
+// adjoint_jacobian_cpu (Tupel auf options.threads Host-Threads, bitgleich), A und g mit
+// normal_equations_host, F wie merit_cpu plus Σ e² der Zusatzresiduen. `set`, `base` und `options`
+// müssen leben, solange das Backend benutzt wird.
 class CpuLmBackend final : public LmBackend {
 public:
     CpuLmBackend(const VariableSet& set, const SystemBatchHost& base, const LmOptions& options);

@@ -291,7 +291,7 @@ Dass die L1-Strafe bei monochromatischer Korrektur das Glas mit dem größten n 
 - Marquardt-Skalierung mit diag(JᵀJ), Dämpfungssteuerung nach Nielsen (Gewinnverhältnis).
 - Schranken per Projektion auf den zulässigen Bereich mit aktiver Menge.
 - Abbruch: relative Abnahme von F < 10⁻¹⁰ (vom ungedämpften Modell vorhergesagt) oder Schrittnorm < Toleranz oder Gradient < Toleranz oder Iterationslimit.
-- Version 2 (M5): Jacobi-Zeilen aus dem adjungierten Kernel; die finite-Differenzen-Variante bleibt als Test-Orakel erhalten.
+- Version 2 (M5, seit M5-T3 wählbar über `LmOptions::jacobian_method`): Jacobi-Zeilen aus dem adjungierten Kernel; die finite-Differenzen-Variante bleibt als Test-Orakel erhalten ([Jacobi-Verfahren im LM](#jacobi-verfahren-im-lm-ab-m5-t3)).
 
 ### Verfahren (ab M3-T4)
 
@@ -301,7 +301,7 @@ Host-API `include/mikroptim/optim/levenberg_marquardt.hpp` (`Mikroptim::optim`),
 
 **Zyklus** (alle aktiven Läufe gemeinsam):
 
-1. Für Läufe nach einem angenommenen Schritt (und am Anfang): J und r an x per finiten Differenzen (alle diese Läufe in einem FD-Batch), A = JᵀJ, g = Jᵀr. Danach Skalierung, Gradientenmaß und Modell-Kriterien (unten).
+1. Für Läufe nach einem angenommenen Schritt (und am Anfang): J und r an x per finiten Differenzen (alle diese Läufe in einem FD-Batch) bzw. adjungiert (M5-T3), A = JᵀJ, g = Jᵀr. Danach Skalierung, Gradientenmaß und Modell-Kriterien (unten).
 2. Für jeden aktiven Lauf der Schritt mit aktiver Menge (unten), unabhängig pro Lauf auf Host-Threads.
 3. Alle Versuchspunkte gemeinsam bewerten: Modus MERIT der Engine bzw. `merit_cpu`, Zusatzresiduen als `extra_merit` = Σ e² (aufsteigend), trace-abhängige Zusatzresiduen (M4-T3) als Σ t² aus den Extrema desselben Laufs danach, sodass F genau die Quadratsumme des Residuenvektors ist (bis auf die Summationsreihenfolge).
 4. Gewinnverhältnis ρ = (F − F_neu)/(L(0) − L(Δx)) mit L(0) − L(Δx) = −(2Δxᵀg + ΔxᵀAΔx) für den tatsächlichen (projizierten) Schritt Δx. Angenommen, wenn F_neu endlich ist, F_neu < F, die Vorhersage positiv ist und (Standard `reject_new_failures`) am Versuchspunkt nicht mehr Strahlen **hart** versagen als bei x – hart versagte Strahlen sind maskiert (r = 0) und könnten F sonst senken. Weich versagte Strahlen (M4-T2) zählen nicht: Ihre Wellenfront- und Strafresiduen sind stetig und stehen in F; eine Ablehnung jedes Schritts, der einen Strahl knapp über eine Grenze schiebt, würde den LM an Versagensgrenzen festhalten. Im harten Modus sind beide Zahlen gleich (Verhalten wie M3-T4).
@@ -365,6 +365,7 @@ struct LmOptions { int max_iterations = 100; double ftol = 1e-10, xtol = 1e-10, 
                    double initial_damping = 1e-3, max_damping = 1e16, diag_floor = 1e-12;
                    bool reject_new_failures = true; int threads = 0;   // vergleicht hart versagte
                    FdJacobianOptions jacobian;          // Quadratur, Strahlversagen, Schema, Zusatzresiduen
+                   JacobianMethod jacobian_method;      // FiniteDifferences (Standard) | Adjoint, M5-T3
                    double fail_weight_factor = 10.0, max_fail_weight = 1e14;   // Strafverfahren (M4-T2)
                    LmIterationFn on_iteration; };
 struct LmRunResult { std::vector<double> x; double merit; int64_t failed_rays, hard_failed_rays;
@@ -389,10 +390,12 @@ LmResult cuda::optimize_lm_gpu(TraceEngine&, const VariableSet&, const SystemBat
 // optim/normal_equations.hpp, cuda/normal_equations.hpp
 void normal_equations_host(span<const double> J, span<const double> r, int P, span<double> a, span<double> g);
 class cuda::DeviceNormalEquations { void compute(const DeviceFdJacobian&);
+                                    void compute(const DeviceAdjointJacobian&);  // M5-T3
+                                    void compute(const DeviceJacobianRef&);       // M5-T3
                                     void download(std::vector<double>& a, std::vector<double>& g) const; };
 ```
 
-Rechentyp: FP64 (die Abnahme). df64 für Jacobi und Merit ist nicht angebunden (`FdJacobianOptions` hat keinen Rechentyp).
+Rechentyp: FP64 (die Abnahme). df64 für Jacobi und Merit ist im LM nicht angebunden (`FdJacobianOptions` hat keinen Rechentyp); `DeviceFdJacobian::compute` (seit M5-T3) und `DeviceAdjointJacobian::compute` nehmen einen `Precision`-Parameter (Benchmark `jacobian_throughput`).
 
 ### Variantengenerator (ab M3-T1)
 
@@ -461,7 +464,40 @@ GPU gegen CPU (Test `CudaFdJacobian.MatchesCpu`): Die Formel ist linear in den R
 
 ### Adjungierte Jacobi (ab M5-T2)
 
-Dieselbe Ablage und Form (`JacobianShape`) wie die FD-Jacobi, aber die Zeilen des Traces (Strahl- und Strafresiduen) aus dem Rückwärtsdurchlauf pro Strahl mit dem Kolbenabzug als Projektion: `adjoint_jacobian_cpu` (`include/mikroptim/optim/adjoint_jacobian.hpp`), GPU `cuda::DeviceAdjointJacobian` / `adjoint_jacobian_gpu` (`include/mikroptim/cuda/adjoint_jacobian.hpp`, gleiche Signatur von `compute` wie `DeviceFdJacobian`). Die Zusatzzeilen bleiben zentrale finite Differenzen mit denselben Mustern (hybrider Ansatz, bitgleich zu den Zeilen der FD-Jacobi); trace-abhängige Zusatzresiduen kosten dafür weiter 2P + 1 Traces pro Lauf. Es gibt keine Schrittweite und keine Schablonen an Schranken: Die Ableitung ist an jedem Punkt exakt bis auf Rundung, auch auf einer aktiven Schranke. Formeln und Messungen: [numerik.md, „Rückwärtsdurchlauf (M5-T2)“](numerik.md#rückwärtsdurchlauf-m5-t2); Einbindung in den LM: M5-T3.
+Dieselbe Ablage und Form (`JacobianShape`) wie die FD-Jacobi, aber die Zeilen des Traces (Strahl- und Strafresiduen) aus dem Rückwärtsdurchlauf pro Strahl mit dem Kolbenabzug als Projektion: `adjoint_jacobian_cpu` (`include/mikroptim/optim/adjoint_jacobian.hpp`), GPU `cuda::DeviceAdjointJacobian` / `adjoint_jacobian_gpu` (`include/mikroptim/cuda/adjoint_jacobian.hpp`, gleiche Signatur von `compute` wie `DeviceFdJacobian`). Die Zusatzzeilen bleiben zentrale finite Differenzen mit denselben Mustern (hybrider Ansatz, bitgleich zu den Zeilen der FD-Jacobi); trace-abhängige Zusatzresiduen kosten dafür weiter 2P + 1 Traces pro Lauf. Es gibt keine Schrittweite und keine Schablonen an Schranken: Die Ableitung ist an jedem Punkt exakt bis auf Rundung, auch auf einer aktiven Schranke. Formeln und Messungen: [numerik.md, „Rückwärtsdurchlauf (M5-T2)“](numerik.md#rückwärtsdurchlauf-m5-t2); Einbindung in den LM: [unten](#jacobi-verfahren-im-lm-ab-m5-t3).
+
+### Jacobi-Verfahren im LM (ab M5-T3)
+
+`LmOptions::jacobian_method` wählt die Jacobi-Matrix der optischen Backends: `JacobianMethod::FiniteDifferences` (Standard, `"fd"`) oder `JacobianMethod::Adjoint` (`"adjoint"`); `to_string`, `jacobian_method_from_string`, CLI `--jacobian fd|adjoint` bei `optimize`, `snap` und `synth` ([cli.md](cli.md#mikroptim-optimize)). Die finiten Differenzen bleiben dauerhaft als Orakel (ADR-0009). Mit `Adjoint` gelten aus `LmOptions::jacobian` die Quadratur, das Strahlversagen, die Zusatzresiduen und `extra_threads` (`adjoint_options_of`); `scheme` gilt nur für die FD-Jacobi, die Zusatzzeilen sind immer zentral. Ein unbekannter Wert wirft `std::invalid_argument` („unbekanntes Verfahren der Jacobi-Matrix“); einen stillen Rückfall auf FD gibt es nicht. Konfigurationen, die der adjungierte Pfad nicht rechnen kann (mit Glasvariablen eine Wellenlänge ≤ 146 nm, Geisterdaten über dem Shared Memory), werfen wie der FD-Pfad mit klarer Meldung; alle Variablentypen (Krümmung, Dicke auch im geteilten Spalt, Arbeitsabstand, Geisterkoeffizient, Glas) und alle Flächenzahlen bis `kMaxSurfaces` sind unterstützt.
+
+**Backends.**
+
+- `CpuLmBackend`: `adjoint_jacobian_cpu` für alle Läufe des Aufrufs, Trace-Zeilen auf Host-Threads (Paare aus Lauf und Feld, `AdjointJacobianOptions::threads`, nach `lm_host_threads` mit `kLmRaySurfacesPerThread`), dann `normal_equations_host` pro Lauf.
+- `cuda::GpuLmBackend`: Teilstücke aus ganzen Läufen wie beim FD-Pfad (J höchstens die Hälfte des nutzbaren Speichers); Bedarf pro Lauf `DeviceAdjointJacobian::buffer_bytes` (J, r₀, Status) plus eine Variante des Batches, höchstens `kMaxGridBlocks`/(F·L) Läufe. Pro Teilstück ein Kernelstart (`DeviceAdjointJacobian::compute`, FP64), `DeviceNormalEquations::compute(const DeviceAdjointJacobian&)` (derselbe Gram-Kernel; allgemein über `DeviceJacobianRef`), Download von A und g. `LmGpuStats::jacobian_tranches` zählt einen Kernelstart pro Teilstück. Die Merit der Versuchspunkte ist unverändert (MERIT).
+- `cuda::MultiGpuLmBackend` und `optimize_lm_rounds` (weiches Versagen) übernehmen das Verfahren aus `LmOptions` ohne Änderung.
+
+**Determinismus.** Der adjungierte Kernel rechnet einen Block pro (Lauf, Feld, Wellenlänge) ohne Abhängigkeit von anderen Läufen und ohne Atomics (Kolbenprojektion mit fester Reihenfolge, ein Warp pro Variable), der Gram-Kernel ist eine FMA-Kette pro Element: Ein Lauf ist gemeinsam mit anderen, in Teilstücken von einem Lauf und auf mehreren (logischen) GPUs bitgleich zu seinem Einzellauf (Test `CudaAdjointLm.RunsBitwiseEqualToSingleRunsChunksAndSlots`; CPU `AdjointLm.RunsTogetherBitwiseEqualToSingleRuns`, auch für 1 und 4 Threads).
+
+**Zusatzzeilen (hybrid).** Gewöhnliche Zusatzresiduen (paraxial, L1-Strafe, Glas-Hülle, mechanisch ohne Strahlbezug) rechnet `extra_rows_untraced`: pro Lauf `fd_pattern` und eine Variante als Arbeitsfläche, nacheinander x₀ und die 2P FD-Punkte (`VariableSet::apply` wie `write_fd_variants`), `ExtraResiduals::evaluate`, `fd_derivative` – bitgleich zu den Zeilen der FD-Jacobi, ohne den FD-Batch aufzubauen, Läufe auf `extra_threads` Host-Threads. Trace-abhängige Zusatzresiduen (mechanisch aus Strahlhöhen und Einfallswinkeln) brauchen weiter die Extrema aller 2P + 1 FD-Varianten (ein MERIT-Lauf über den FD-Batch, auf der CPU `surface_extrema_cpu`).
+
+**Abnahme „gleiche Optimierungsergebnisse wie mit finiten Differenzen“** (Endmerit relativ ≤ `kLmReturnRelative` = 10⁻⁶; die Wege dürfen abweichen, weil die adjungierte Jacobi bis auf Rundung exakt und die FD-Jacobi um 10⁻⁸ … 10⁻⁶ ungenau ist):
+
+| Aufgabe | adjungiert gegen FD |
+|---|---|
+| Einzellinse, Biegung (M3-T4, Abnahme 1) | q = 0,720798 (FD 0,720808) auf der CPU, 0,720797 (FD 0,720789) auf der GPU; F relativ 8,4·10⁻¹⁰ bzw. 3,2·10⁻¹⁰; 54 statt 55 bzw. 56 Zyklen |
+| Mehrlinser, 13 Variablen (M3-T4, Abnahme 2) | F_opt relativ 3,3·10⁻¹¹ (CPU) bzw. 9,2·10⁻¹² (GPU), Endpunkte max \|Δx\|/s = 5,9·10⁻⁶ bzw. 2,9·10⁻⁶; Rückkehr aus 1 % Störung −4,2·10⁻¹¹ … −1,1·10⁻¹¹ relativ zu F_opt |
+| Läufe gemeinsam gegen einzeln (M3-T4, Abnahme 3) | bitgleich: 8 Läufe CPU (1 und 4 Threads), 120 Läufe GPU, auch mit 64 KiB Speichergrenze (5.647 Teilstücke zu je einem Lauf) und auf zwei logischen GPUs (Anteile 1 : 3) |
+| Weiches Versagen (M4-T2), 27 von 90 Strahlen versagt | versagensfrei nach 4 Runden wie FD, F relativ 2,6·10⁻¹⁴ (CPU) bzw. 3,2·10⁻¹⁴ (GPU), 144 statt 146 Zyklen |
+| Geisterplatten (M4-T6): Exaktheit, Bedarf | max \|a\| = 2,6·10⁻⁹ < 10⁻⁸, Stationarität 5·10⁻⁷ (CPU) bzw. 3,3·10⁻⁷ (GPU), F relativ 8,7·10⁻¹⁰ bzw. 4,4·10⁻⁹; Bedarf: RMS 0,0875 Wellen wie FD, F relativ 2,4·10⁻¹⁴ |
+| Glas als Variable (M6-T1), Fortsetzung 10² … 10⁸ | alle Stufen konvergiert, Abstand zur Hülle am Ende 2,2·10⁻⁹, F relativ 1,5·10⁻¹⁰ |
+| Mechanische Bedingungen (M4-T3), Fortsetzung 10² … 10⁶ | alle Grenzen eingehalten, Endmerit 18,525512538 wie FD. In einer Vorversion des Kernels (andere Summationsreihenfolge der Projektion) endete die adjungierte Fortsetzung ab w = 10⁵ in einem anderen, tieferen lokalen Minimum (F = 18,23): Die Strafen √w·max(0, g) aus Extrema sind nicht glatt. Geprüft wird deshalb, dass jedes Verfahren am Endpunkt des anderen stehen bleibt (relativ ≤ 10⁻⁶). |
+| CLI `optimize`, `snap`, `synth` mit `--jacobian adjoint` | Ergebnis bitgleich zur Bibliothek mit `JacobianMethod::Adjoint`; `optimize`: F relativ zu `fd` ≤ 10⁻⁶; `synth`-Kurzlauf mit gleichem Status, gleichen Einfügungen und gleichem Endpunkt |
+
+Normalgleichungen adjungiert gegen FD (Fehler der FD-Jacobi, `kAdjointLmNormalEquations` = 10⁻⁶): skaliert 2,7·10⁻¹⁰ (Mehrlinser), 2,6·10⁻⁸ (Einzellinse an Schranken, einseitige Schablonen), 5·10⁻¹² (Zweilinser mit mechanischen Bedingungen); GPU gegen CPU adjungiert ≤ 3,9·10⁻¹¹.
+
+**Abnahme „Jacobi mindestens 10× schneller für P ≥ 60“** ([benchmarks.md](benchmarks.md#adjungierte-jacobi-im-lm-m5-t3), RTX 3090): ohne Zusatzresiduen 20–37-mal ab 100 Läufen pro Aufruf (P = 61 und 81, FP64 und df64), 11–18-mal einschließlich der Normalgleichungen; mit 10 Läufen 4,6–12-mal, mit einem Lauf 1,2–2-mal (Latenz eines Strahls, die GPU ist nicht ausgelastet). Mit paraxialen Zusatzresiduen begrenzen die 2P + 1 Auswertungen pro Lauf auf dem Host (1,0–9,2-mal), mit trace-abhängigen mechanischen Bedingungen ist die adjungierte Jacobi so teuer wie die FD-Jacobi (0,7–1,0-mal). Die Tesla P100 ist hier nicht verfügbar; Befehl in benchmarks.md.
+
+**Standard.** `FiniteDifferences` bleibt vorerst Standard: (1) Die Abnahme auf der P100 steht aus. (2) Mit trace-abhängigen mechanischen Bedingungen und bei einzelnen Läufen bringt die adjungierte Jacobi nichts bzw. wenig; mit wenigen Läufen und mechanischen Bedingungen ist sie bis 30 % langsamer. (3) Ein Wechsel ändert die Iterationsverläufe aller dokumentierten Ergebnisse. Empfehlung: `--jacobian adjoint` für Multistart und Homotopie ohne trace-abhängige Bedingungen; Umstellung des Standards nach der P100-Messung (Frage an den Maintainer).
 
 ## 5. Geisterplatten
 

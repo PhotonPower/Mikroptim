@@ -154,6 +154,18 @@ inline constexpr double kAdjointCpuGpu = 1e-10;
 // df64 hat ca. 48 Bit (u² ≈ 3,6·10⁻¹⁵); die Ableitungen nach dem Kolbenabzug sind Differenzen
 // fast gleicher Gradienten (Verstärkung bis ≈ 10⁵, z. B. Dicken). Beobachtet ≤ 1,6·10⁻¹⁰.
 inline constexpr double kAdjointDf64 = 1e-8;
+// Normalgleichungen des LM mit adjungierter gegen FD-Jacobi (M5-T3): größte Abweichung von A und
+// g in der Skalierung S = diag(max(|x|, x_typ)) relativ zum größten Element. Das ist der Fehler
+// der FD-Jacobi (M5-T2: spaltenskaliert bis 2,7·10⁻⁷, rundungsbegrenzte Spalten bis einige 10⁻⁶).
+// Beobachtet (AdjointLm.CpuNormalEquationsMatchFd, CudaAdjointLm.BackendMatchesFdAndCpu):
+// Mehrlinser 2,7·10⁻¹⁰, Einzellinse an Schranken (einseitige Schablonen) 2,6·10⁻⁸, Zweilinser
+// mit mechanischen Bedingungen 5·10⁻¹².
+inline constexpr double kAdjointLmNormalEquations = 1e-6;
+// Endpunkt des LM mit adjungierter gegen FD-Jacobi (M5-T3), max_k |Δx_k|/max(|x_k|, x_typ,k),
+// Mehrlinser (eindeutiges Optimum, mehrere Variablen auf Schranken). Die Wege unterscheiden sich
+// (andere Rundung der Jacobi-Matrix); beide enden in der Rauschzone der Merit (≈ 1e-9 relativ).
+// Beobachtet 5,9·10⁻⁶ (CPU) bzw. 2,9·10⁻⁶ (GPU).
+inline constexpr double kAdjointLmEndpoint = 1e-4;
 // df64 gegen FP64 (Abnahmekriterium M7-T1) [mm]: OPL, OPD und Residuen pro Strahl, Strahlhöhen
 // der Max-Reduktionen. Ziel aus docs/numerik.md, Abschnitt 12 (df64: typisch 1e-9).
 inline constexpr double kDf64VsFp64 = 1e-9;

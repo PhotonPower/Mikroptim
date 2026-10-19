@@ -23,6 +23,7 @@
 
 #include <cuda_runtime.h>
 
+#include <chrono>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -99,8 +100,6 @@ __global__ void __launch_bounds__(kBlockThreads)
     adjoint_jacobian_kernel(const JacobianKernelArgs a) {
     __shared__ detail::BlockTable<R> sh_table;
     __shared__ PistonWeightShared<R> sh_piston;
-    __shared__ double sh_sum[kBlockWarps];
-    __shared__ double sh_mean;
     extern __shared__ __align__(16) unsigned char sh_dynamic[];
 
     const int S = a.batch.shape.surfaces;
@@ -172,46 +171,40 @@ __global__ void __launch_bounds__(kBlockThreads)
         residuals[k] = static_cast<double>(ray_residual(scale, sample(sh_table.pupil, k), e));
     }
 
-    // ---- Kolbenabzug als Projektion, pro Variable eine Baumreduktion fester Reihenfolge ----
+    // ---- Kolbenabzug als Projektion: ein Warp pro Variable (p = Warp, Warp + 4, …) ----
     // ∂r_k/∂x = s √W_k (∂OPL_k/∂x − Σ_j W_j ∂OPL_j/∂x / W_ok) über die Strahlen im Kolben (FP64)
-    // Gewichte W_k aus der Quadratur des Blocks (für R = double dieselben Zahlen wie auf der CPU)
+    // Gewichte W_k aus der Quadratur des Blocks (für R = double dieselben Zahlen wie auf der CPU).
+    // Feste Reihenfolge: Lane j summiert k = j, j + 32, … aufsteigend, dann Baumreduktion über
+    // die Lanes (warp_sum, Ergebnis in Lane 0, per Shuffle an alle verteilt). Die Spalten der
+    // Warps sind disjunkt, J(k, p) und der Status sind seit block_piston_weight für alle sichtbar;
+    // keine Synchronisation des Blocks pro Variable (M5-T3).
     const auto weight_of = [&](int k) {
         return static_cast<double>(sample(sh_table.pupil, k).weight);
     };
     const double scale_d = residual_scale(a.batch, f, l);
     const double w_ok_d = static_cast<double>(w_ok);
-    for (int p = 0; p < a.variables; ++p) {
+    const int warp = tid / kWarpSize;
+    const int lane = tid % kWarpSize;
+    for (int p = warp; p < a.variables; p += kBlockWarps) {
         double* const col = col0 + static_cast<std::int64_t>(p) * R_rows + first;
         double part = 0.0;
         if (valid) {
-            for (int k = tid; k < n; k += kBlockThreads) {
+            for (int k = lane; k < n; k += kWarpSize) {
                 if (in_piston(static_cast<TraceStatus>(status[k]))) {
                     part += weight_of(k) * col[k];
                 }
             }
         }
         part = detail::warp_sum(part);
-        if (tid % kWarpSize == 0) {
-            sh_sum[tid / kWarpSize] = part;
-        }
-        __syncthreads();
-        if (tid == 0) {
-            double total = 0.0;
-            for (int i = 0; i < kBlockWarps; ++i) {
-                total += sh_sum[i];
-            }
-            sh_mean = valid ? total / w_ok_d : 0.0;
-        }
-        __syncthreads();
-        const double mean = sh_mean;
-        for (int k = tid; k < n; k += kBlockThreads) {
+        part = __shfl_sync(0xffffffffu, part, 0);
+        const double mean = valid ? part / w_ok_d : 0.0;
+        for (int k = lane; k < n; k += kWarpSize) {
             double value = 0.0;
             if (valid && in_piston(static_cast<TraceStatus>(status[k]))) {
                 value = scale_d * msqrt(weight_of(k)) * (col[k] - mean);
             }
             col[k] = value;
         }
-        __syncthreads(); // sh_sum und sh_mean für die nächste Variable frei
     }
 }
 
@@ -271,6 +264,11 @@ JacobianBufferLayout make_buffer_layout(const JacobianShape& shape, std::int64_t
     return l;
 }
 
+double seconds_between(std::chrono::steady_clock::time_point a,
+                       std::chrono::steady_clock::time_point b) {
+    return std::chrono::duration<double>(b - a).count();
+}
+
 void upload_region(void* buffer, const BufferRegion& r, const void* src) {
     if (r.bytes > 0) {
         MKO_CUDA_CHECK(cudaMemcpy(static_cast<char*>(buffer) + r.offset, src, r.bytes,
@@ -291,6 +289,16 @@ AdjointKernelInfo adjoint_jacobian_kernel_info(int capacity, Precision precision
     info.shared_bytes = attr.sharedSizeBytes;
     info.max_threads_per_block = attr.maxThreadsPerBlock;
     return info;
+}
+
+std::size_t DeviceAdjointJacobian::buffer_bytes(const JacobianShape& shape,
+                                                std::int64_t rays_per_variant) {
+    constexpr std::size_t kAuxiliaryBytes = std::size_t{64} << 10;
+    return align_bytes(shape.jacobian_size() * sizeof(double)) +
+           align_bytes(shape.residual_size() * sizeof(double)) +
+           align_bytes(static_cast<std::size_t>(shape.runs) *
+                       static_cast<std::size_t>(rays_per_variant)) +
+           kAuxiliaryBytes;
 }
 
 DeviceAdjointJacobian::~DeviceAdjointJacobian() {
@@ -363,8 +371,10 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
                                     const SystemBatchHost& base, std::span<const double> x0,
                                     const AdjointJacobianOptions& options, Precision precision) {
     ready_ = false;
+    timing_ = AdjointJacobianTiming{};
+    const auto t_start = std::chrono::steady_clock::now();
     check_precision(precision);
-    // ---- Host: Läufe, Spaltenzuordnung, Zusatzzeilen ----
+    // ---- Host: Läufe, Spaltenzuordnung, Prüfungen ----
     const ResidualLayout layout(base.topology(), options.quadrature);
     const SystemBatchHost batch = make_adjoint_batch(set, base, x0);
     batch.validate_values();
@@ -384,30 +394,14 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
         throw std::invalid_argument("DeviceAdjointJacobian: Geisterdaten passen nicht in den "
                                     "Shared Memory");
     }
-    ExtraRowsJacobian extra;
-    if (E > 0) {
-        if (options.extra.count < 0 || (options.extra.count > 0 && !options.extra.evaluate)) {
-            throw std::invalid_argument("DeviceAdjointJacobian: Zusatzresiduen ungültig");
-        }
-        check_trace_extra_residuals(options.trace_extra, "DeviceAdjointJacobian");
-        const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, FdScheme::Central);
-        SurfaceExtremaResult extrema;
-        if (options.trace_extra.count > 0) {
-            // Extrema jeder FD-Variante aus ihrem eigenen Trace (wie DeviceFdJacobian)
-            TraceSettings ts;
-            ts.quadrature = options.quadrature;
-            ts.extrema = true;
-            ts.precision = precision;
-            extrema = engine.run(fd.batch, TraceMode::Merit, ts).merit.extrema;
-        }
-        const std::vector<double> values =
-            fd_extra_residuals(fd_options_of(options), fd.batch, extrema);
-        extra = extra_rows_from_fd(fd, values, E);
-    } else {
-        check_trace_extra_residuals(options.trace_extra, "DeviceAdjointJacobian");
+    if (options.extra.count < 0 || (options.extra.count > 0 && !options.extra.evaluate)) {
+        throw std::invalid_argument("DeviceAdjointJacobian: Zusatzresiduen ungültig");
     }
+    check_trace_extra_residuals(options.trace_extra, "DeviceAdjointJacobian");
+    const auto t_prepared = std::chrono::steady_clock::now();
 
-    // ---- Gerät ----
+    // ---- Gerät: Puffer und Batch vor dem Lauf der Engine anlegen (sie sieht sie als belegt,
+    // wie bei DeviceFdJacobian) ----
     const JacobianBufferLayout bl =
         make_buffer_layout(shape, layout.rays_per_variant(), layout.fields(), params);
     if (device_ != engine.device()) {
@@ -426,6 +420,31 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
         MKO_CUDA_CHECK(cudaMalloc(&buffer_, bl.total));
         bytes_ = bl.total;
     }
+    const auto t_allocated = std::chrono::steady_clock::now();
+
+    // ---- Zusatzzeilen auf dem Host (finite Differenzen, hybrider Ansatz) ----
+    ExtraRowsJacobian extra;
+    if (E > 0 && options.trace_extra.count == 0) {
+        // ohne Trace: FD-Batch pro Lauf auf Host-Threads (M5-T3)
+        extra = extra_rows_untraced(set, base, x0, options);
+    } else if (E > 0) {
+        const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, FdScheme::Central);
+        SurfaceExtremaResult extrema;
+        if (options.trace_extra.count > 0) {
+            // Extrema jeder FD-Variante aus ihrem eigenen Trace (wie DeviceFdJacobian)
+            TraceSettings ts;
+            ts.quadrature = options.quadrature;
+            ts.extrema = true;
+            ts.precision = precision;
+            extrema = engine.run(fd.batch, TraceMode::Merit, ts).merit.extrema;
+        }
+        const std::vector<double> values =
+            fd_extra_residuals(fd_options_of(options), fd.batch, extrema);
+        extra = extra_rows_from_fd(fd, values, E);
+    }
+    const auto t_extra = std::chrono::steady_clock::now();
+
+    // ---- Gerät: Hilfsdaten, Kernel, Zusatzzeilen ----
     char* const base_ptr = static_cast<char*>(buffer_);
     // J und r₀ auf 0: Nicht gemeldete Ableitungen (Strafzeilen ohne Ereignis, Flächen hinter
     // einer hart versagenden) bleiben 0
@@ -477,6 +496,12 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
                                     extra.residuals.data(), width, width,
                                     static_cast<std::size_t>(runs), cudaMemcpyHostToDevice));
     }
+    const auto t_end = std::chrono::steady_clock::now();
+    timing_.prepare_seconds = seconds_between(t_start, t_prepared);
+    timing_.extra_seconds = seconds_between(t_allocated, t_extra);
+    timing_.device_seconds =
+        seconds_between(t_prepared, t_allocated) + seconds_between(t_extra, t_end);
+    timing_.total_seconds = seconds_between(t_start, t_end);
     shape_ = shape;
     rays_ = layout.rays_per_variant();
     capacity_class_ = capacity;

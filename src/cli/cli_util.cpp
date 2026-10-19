@@ -4,6 +4,7 @@
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/model/system.hpp"
+#include "mikroptim/optim/levenberg_marquardt.hpp"
 
 #include <charconv>
 #include <cmath>
@@ -119,6 +120,12 @@ std::string pad_left(std::string_view s, std::size_t width) {
 
 void kv(std::ostream& out, std::string_view key, const std::string& value) {
     out << "  " << pad_right(key, 44) << value << '\n';
+}
+
+std::string jacobian_text(JacobianMethod method) {
+    return method == JacobianMethod::Adjoint
+               ? std::string("adjungiert (Zusatzzeilen per finiter Differenzen)")
+               : std::string("finite Differenzen (zentral)");
 }
 
 std::string join_fixed(const std::vector<double>& values, int decimals) {

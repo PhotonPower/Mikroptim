@@ -223,6 +223,31 @@ TEST(CliSnap, TextOutputAndLimit) {
     }
 }
 
+// Adjungierte Jacobi (M5-T3): --jacobian adjoint wie snap_glasses mit
+// LmOptions::jacobian_method = Adjoint (bitgleich), Verfahren in JSON und Text.
+TEST(CliSnap, AdjointJacobian) {
+    const std::vector<std::string> args{
+        kAchromat, "--max-iterations", "30",      "--neighbors", "2", "--max-combinations",
+        "2",       "--jacobian",       "adjoint", "--json"};
+    const RunResult r = snap(args);
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["settings"]["jacobian"], "adjoint");
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(kAchromat));
+    mko::GlassSnapOptions o = cli_options(loaded.system, 30);
+    o.neighbors = 2;
+    o.max_combinations = 2;
+    o.lm.jacobian_method = mko::JacobianMethod::Adjoint;
+    const mko::GlassSnapResult lib =
+        mko::snap_glasses(loaded, mko::make_glass_hull(loaded.catalog), o);
+    EXPECT_EQ(lib.best, j["best_run"].get<int>());
+    EXPECT_TRUE(same_bits(lib.best_run().run.merit, j["result"]["merit"].get<double>()));
+    const RunResult t = snap(
+        {kAchromat, "--max-iterations", "5", "--max-combinations", "1", "--jacobian", "adjoint"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("adjungiert"), std::string::npos) << t.out;
+}
+
 TEST(CliSnap, Errors) {
     const TempDir dir("errors");
     EXPECT_EQ(snap({}).code, mko::cli::kExitUsage);
@@ -234,6 +259,8 @@ TEST(CliSnap, Errors) {
     EXPECT_EQ(snap({kAchromat, "--hard-failure", "--fail-weight", "10"}).code,
               mko::cli::kExitUsage);
     EXPECT_EQ(snap({kAchromat, "-o", kAchromat}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(snap({kAchromat, "--jacobian", "xyz"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(snap({kAchromat, "--jacobian"}).code, mko::cli::kExitUsage);
     const RunResult help = snap({"--help"});
     EXPECT_EQ(help.code, mko::cli::kExitOk);
     EXPECT_NE(help.out.find("mikroptim snap"), std::string::npos);

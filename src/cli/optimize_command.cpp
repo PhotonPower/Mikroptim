@@ -80,6 +80,8 @@ struct OptimizeArgs {
     bool hard_failure = false;
     bool have_fail_weight = false;
     double fail_weight = kDefaultFailWeight; // Start-w_fail des Strafverfahrens [Wellen²]
+    // Verfahren der Jacobi-Matrix (M5-T3): --jacobian fd|adjoint
+    JacobianMethod jacobian = LmOptions{}.jacobian_method;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -152,6 +154,14 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             a.have_fail_weight = true;
         } else if (arg == "--hard-failure") {
             a.hard_failure = true;
+        } else if (arg == "--jacobian") {
+            const std::string_view v = next_value(args, i, arg);
+            const std::optional<JacobianMethod> m = jacobian_method_from_string(v);
+            if (!m) {
+                throw UsageError("--jacobian erwartet fd oder adjoint, nicht '" + std::string(v) +
+                                 "'");
+            }
+            a.jacobian = *m;
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -433,6 +443,7 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
        a.hard_failure ? std::string("hart (versagte Strahlen maskiert)")
                       : "weich, w_fail ab " + sci(a.fail_weight, 3) +
                             " Wellen² (Strafverfahren x10 bis 1e14)");
+    kv(out, "Jacobi-Matrix", jacobian_text(a.jacobian));
     kv(out, "Variablen", std::to_string(r.set.size()));
     kv(out, "Nebenbedingungen (paraxial)", std::to_string(r.constraints.size()));
     if (!r.mechanical.empty()) {
@@ -710,6 +721,7 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
     settings["seed"] = a.runs > 1 ? Json(a.seed) : Json(nullptr);
     settings["failure"] = a.hard_failure ? "hard" : "soft";
     settings["fail_weight"] = a.hard_failure ? Json(nullptr) : number(a.fail_weight);
+    settings["jacobian"] = to_string(a.jacobian);
     j["settings"] = std::move(settings);
 
     Json vars = Json::array();
@@ -877,7 +889,8 @@ void print_optimize_usage(std::ostream& out) {
     out << "Aufruf: mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
            "                          [--max-iterations N] [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
-           "                          [--fail-weight w | --hard-failure] [--gpu [--device N]]\n"
+           "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
+           "                          [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
            "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
            "  L1-Strafe der Geisterkoeffizienten) in Wellen²; mit Geisterplatten folgt ein\n"
@@ -904,6 +917,8 @@ void print_optimize_usage(std::ostream& out) {
         << sci(kDefaultFailWeight, 0)
         << "; je Runde x10 bis 1e14)\n"
            "  --hard-failure     hartes Strahlversagen wie in M3 (ohne Strafresiduen)\n"
+           "  --jacobian V       Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
+           "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --gpu              auf der GPU rechnen statt auf der CPU\n"
            "  --device N         CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help             diese Hilfe\n"
@@ -1043,6 +1058,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         options.jacobian.quadrature.failure =
             a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
         options.jacobian.quadrature.fail_weight = a.fail_weight;
+        options.jacobian_method = a.jacobian;
         // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe, die Glas-Hülle und
         // die mechanischen Bedingungen ohne Strahlbezug; die trace-abhängigen mechanischen
         // Bedingungen (aus den Extrema) stehen ganz hinten (docs/optimierung.md, Abschnitt 2.1).

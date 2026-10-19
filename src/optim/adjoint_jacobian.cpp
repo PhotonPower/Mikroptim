@@ -6,11 +6,16 @@
 #include "mikroptim/glass/dispersion.hpp"
 #include "mikroptim/merit/ray_residual.hpp"
 #include "mikroptim/optim/fd_formula.hpp"
+#include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/adjoint_record.hpp"
 #include "mikroptim/trace/surface_extrema.hpp"
 
+#include "parallel_variants.hpp"
+
+#include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -167,6 +172,15 @@ SystemBatchHost make_adjoint_batch(const VariableSet& set, const SystemBatchHost
     return out;
 }
 
+AdjointJacobianOptions adjoint_options_of(const FdJacobianOptions& options) {
+    AdjointJacobianOptions ao;
+    ao.quadrature = options.quadrature;
+    ao.extra = options.extra;
+    ao.trace_extra = options.trace_extra;
+    ao.extra_threads = options.extra_threads;
+    return ao;
+}
+
 FdJacobianOptions fd_options_of(const AdjointJacobianOptions& options) {
     FdJacobianOptions fo;
     fo.quadrature = options.quadrature;
@@ -222,6 +236,76 @@ ExtraRowsJacobian extra_rows_from_fd(const FdJacobianBatch& fd, std::span<const 
     return out;
 }
 
+ExtraRowsJacobian extra_rows_untraced(const VariableSet& set, const SystemBatchHost& base,
+                                      std::span<const double> x0,
+                                      const AdjointJacobianOptions& options) {
+    check_extra(options);
+    if (options.trace_extra.count != 0) {
+        invalid("extra_rows_untraced: trace-abhängige Zusatzresiduen brauchen den FD-Batch "
+                "aller Läufe (extra_rows_cpu)");
+    }
+    const int runs = run_count(set, x0);
+    if (base.variants() != 1 && base.variants() != runs) {
+        invalid("die Vorlage hat " + std::to_string(base.variants()) +
+                " Varianten, erwartet 1 oder " + std::to_string(runs) + " (eine pro Lauf)");
+    }
+    const int P = set.size();
+    const int E = options.extra_count();
+    ExtraRowsJacobian out;
+    out.runs = runs;
+    out.variables = P;
+    out.rows = E;
+    if (E == 0) {
+        return out;
+    }
+    const auto e = static_cast<std::size_t>(E);
+    const auto p = static_cast<std::size_t>(P);
+    out.residuals.resize(static_cast<std::size_t>(runs) * e);
+    out.jacobian.resize(static_cast<std::size_t>(runs) * p * e);
+    // Vorlage pro Lauf: bei einer Variante für alle Läufe `base` selbst, sonst eine Kopie mit
+    // einer Variante (gemeinsame Felder einmal kopiert), in die die Variante des Laufs kommt
+    SystemBatchHost proto;
+    if (base.variants() != 1) {
+        proto = base;
+        proto.resize(1);
+    }
+    detail::parallel_for_variants(0, runs, options.extra_threads, [&](int i) {
+        const auto ii = static_cast<std::size_t>(i);
+        const std::span<const double> xi = x0.subspan(ii * p, p);
+        // Eine Variante als Arbeitsfläche: Kopie der Vorlage, dann apply(y) für x₀ und jeden
+        // FD-Punkt wie write_fd_variants (apply schreibt alle von x abhängigen Felder, die
+        // Variante ist also bitgleich zur entsprechenden Variante des FD-Batches)
+        SystemBatchHost one = base.variants() == 1 ? base : proto;
+        if (base.variants() != 1) {
+            one.copy_variant_from(base, i, 0);
+        }
+        const FdPattern pat = fd_pattern(set, xi, FdScheme::Central);
+        std::vector<double> y(xi.begin(), xi.end());
+        std::vector<double> r0(e);
+        std::vector<double> ra(e);
+        std::vector<double> rb(e);
+        set.apply(one, 0, y);
+        options.extra.evaluate(one, 0, r0);
+        std::copy(r0.begin(), r0.end(),
+                  out.residuals.begin() + static_cast<std::ptrdiff_t>(ii * e));
+        for (std::size_t k = 0; k < p; ++k) {
+            y[k] = pat.point_plus[k];
+            set.apply(one, 0, y);
+            options.extra.evaluate(one, 0, ra);
+            y[k] = pat.point_minus[k];
+            set.apply(one, 0, y);
+            options.extra.evaluate(one, 0, rb);
+            y[k] = xi[k];
+            double* col = out.jacobian.data() + (ii * p + k) * e;
+            for (std::size_t j = 0; j < e; ++j) {
+                col[j] = fd_derivative(pat.stencil[k], r0[j], ra[j], rb[j], pat.step_plus[k],
+                                       pat.step_minus[k]);
+            }
+        }
+    });
+    return out;
+}
+
 ExtraRowsJacobian extra_rows_cpu(const VariableSet& set, const SystemBatchHost& base,
                                  std::span<const double> x0,
                                  const AdjointJacobianOptions& options) {
@@ -233,6 +317,9 @@ ExtraRowsJacobian extra_rows_cpu(const VariableSet& set, const SystemBatchHost& 
         out.runs = runs;
         out.variables = set.size();
         return out;
+    }
+    if (options.trace_extra.count == 0) {
+        return extra_rows_untraced(set, base, x0, options);
     }
     const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, FdScheme::Central);
     const ResidualLayout layout(base.topology(), options.quadrature);
@@ -281,7 +368,6 @@ AdjointJacobian adjoint_jacobian_cpu(const VariableSet& set, const SystemBatchHo
     const SystemBatchHost batch = make_adjoint_batch(set, base, x0);
     const AdjointParameters params(set, batch);
     const AdjointParameterMap map = params.view();
-    const ResidualResult res = residuals_cpu(batch, layout); // r₀ der Trace-Zeilen, Status
 
     const int runs = batch.variants();
     const int P = set.size();
@@ -293,88 +379,100 @@ AdjointJacobian adjoint_jacobian_cpu(const VariableSet& set, const SystemBatchHo
     const std::int64_t R = out.shape.rows();
     out.jacobian.assign(out.shape.jacobian_size(), 0.0);
     out.residuals.assign(out.shape.residual_size(), 0.0);
-    out.status = res.status;
-    for (int v = 0; v < runs; ++v) {
-        for (std::int64_t r = 0; r < rv; ++r) {
-            out.residuals[static_cast<std::size_t>(v) * static_cast<std::size_t>(R) +
-                          static_cast<std::size_t>(r)] = res.residual(v, r);
-        }
-    }
+    out.status.assign(static_cast<std::size_t>(runs) * static_cast<std::size_t>(rays), 0);
 
+    // r₀ der Trace-Zeilen und Status pro Variante, danach pro Paar (Variante, Feld) für jede
+    // Wellenlänge Vorwärts- und Rückwärtsdurchlauf und Kolbenprojektion. Jede Einheit schreibt
+    // nur ihre eigenen Zeilen; das Ergebnis hängt nicht von der Zahl der Threads ab.
+    detail::parallel_for_variants(0, runs, options.threads, [&](int v) {
+        const ResidualResult res = residuals_cpu(batch, v, layout);
+        double* const r0 =
+            out.residuals.data() + static_cast<std::size_t>(v) * static_cast<std::size_t>(R);
+        for (std::int64_t r = 0; r < rv; ++r) {
+            r0[r] = res.residual(0, r);
+        }
+        std::copy(res.status.begin(), res.status.end(),
+                  out.status.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(v) *
+                                                                   static_cast<std::size_t>(rays)));
+    });
     const SystemBatchView<double> view = batch.view();
     const bool soft_mode = layout.soft_failure();
     const bool point_source = view.source == SourceKind::Point;
-    const auto rec = std::make_unique<AdjointRecord<double>>();
-    std::vector<double> weight;
-    std::vector<double> root_weight;
-    std::vector<unsigned char> piston;
-    for (int v = 0; v < runs; ++v) {
+    const int F = layout.fields();
+    detail::parallel_for_variants(0, runs * F, options.threads, [&](int pair) {
+        const int v = pair / F;
+        const int f = pair % F;
+        const auto rec = std::make_unique<AdjointRecord<double>>();
+        std::vector<double> weight;
+        std::vector<double> root_weight;
+        std::vector<unsigned char> piston;
         const SurfaceTableView<double> table = view.surface_table(v);
         double* const col0 = out.jacobian.data() + out.column_offset(v, 0);
-        for (int f = 0; f < layout.fields(); ++f) {
-            const PupilQuadrature<double>& q = layout.quadrature(f);
-            const Vec3<double> center = batch_image_point(view, table, v, f);
-            const int n = layout.samples(f);
-            for (int l = 0; l < layout.wavelengths(); ++l) {
-                const std::int64_t offset = layout.offset(f, l);
-                const double scale = residual_scale(view, f, l);
-                const double pscale =
-                    soft_mode ? penalty_scale(view, f, l, layout.settings().fail_weight) : 0.0;
-                weight.assign(static_cast<std::size_t>(n), 0.0);
-                root_weight.assign(static_cast<std::size_t>(n), 0.0);
-                piston.assign(static_cast<std::size_t>(n), 0);
-                for (int k = 0; k < n; ++k) {
-                    const auto kk = static_cast<std::size_t>(k);
-                    const PupilSample<double> s = sample(q, k);
-                    SoftFailure<double> soft{0.0, TraceStatus::Ok};
-                    NoSurfaceObserver* const no_observer = nullptr;
-                    double opl = 0.0;
-                    const TraceStatus st =
-                        batch_ray_opl(view, table, l, v, f, l, s, center, &opl, no_observer,
-                                      soft_mode ? &soft : nullptr, rec.get());
-                    if (st != res.status_at(v, offset + k)) {
-                        throw std::logic_error("Adjungierte Jacobi: Trace mit Aufzeichnung "
-                                               "liefert einen anderen Status");
-                    }
-                    weight[kk] = s.weight;
-                    root_weight[kk] = residual_weight(s);
-                    piston[kk] = in_piston(st) ? 1 : 0;
-                    const JacobianRowWriter<double> opl_row{map, l, col0, R, offset + k, 1.0};
-                    const JacobianRowWriter<double> penalty_row{
-                        map, l, col0, R, rays + offset + k, pscale * root_weight[kk]};
-                    ray_gradient_rows(table, l, *rec, st, soft.first, soft_mode, center,
-                                      point_source, opl_row, penalty_row);
+        const PupilQuadrature<double>& q = layout.quadrature(f);
+        const Vec3<double> center = batch_image_point(view, table, v, f);
+        const int n = layout.samples(f);
+        for (int l = 0; l < layout.wavelengths(); ++l) {
+            const std::int64_t offset = layout.offset(f, l);
+            const double scale = residual_scale(view, f, l);
+            const double pscale =
+                soft_mode ? penalty_scale(view, f, l, layout.settings().fail_weight) : 0.0;
+            weight.assign(static_cast<std::size_t>(n), 0.0);
+            root_weight.assign(static_cast<std::size_t>(n), 0.0);
+            piston.assign(static_cast<std::size_t>(n), 0);
+            for (int k = 0; k < n; ++k) {
+                const auto kk = static_cast<std::size_t>(k);
+                const PupilSample<double> s = sample(q, k);
+                SoftFailure<double> soft{0.0, TraceStatus::Ok};
+                NoSurfaceObserver* const no_observer = nullptr;
+                double opl = 0.0;
+                const TraceStatus st =
+                    batch_ray_opl(view, table, l, v, f, l, s, center, &opl, no_observer,
+                                  soft_mode ? &soft : nullptr, rec.get());
+                const TraceStatus expected = static_cast<TraceStatus>(
+                    out.status[static_cast<std::size_t>(v) * static_cast<std::size_t>(rays) +
+                               static_cast<std::size_t>(offset + k)]);
+                if (st != expected) {
+                    throw std::logic_error("Adjungierte Jacobi: Trace mit Aufzeichnung "
+                                           "liefert einen anderen Status");
                 }
-                // Kolbenabzug als lineare Projektion (Summen aufsteigend in k)
-                double w_ok = 0.0;
+                weight[kk] = s.weight;
+                root_weight[kk] = residual_weight(s);
+                piston[kk] = in_piston(st) ? 1 : 0;
+                const JacobianRowWriter<double> opl_row{map, l, col0, R, offset + k, 1.0};
+                const JacobianRowWriter<double> penalty_row{
+                    map, l, col0, R, rays + offset + k, pscale * root_weight[kk]};
+                ray_gradient_rows(table, l, *rec, st, soft.first, soft_mode, center, point_source,
+                                  opl_row, penalty_row);
+            }
+            // Kolbenabzug als lineare Projektion (Summen aufsteigend in k)
+            double w_ok = 0.0;
+            for (int k = 0; k < n; ++k) {
+                if (piston[static_cast<std::size_t>(k)] != 0) {
+                    w_ok += weight[static_cast<std::size_t>(k)];
+                }
+            }
+            for (int p = 0; p < P; ++p) {
+                double* col = col0 + static_cast<std::int64_t>(p) * R + offset;
+                if (!(w_ok > 0.0)) {
+                    for (int k = 0; k < n; ++k) {
+                        col[k] = 0.0;
+                    }
+                    continue;
+                }
+                double sum = 0.0;
                 for (int k = 0; k < n; ++k) {
                     if (piston[static_cast<std::size_t>(k)] != 0) {
-                        w_ok += weight[static_cast<std::size_t>(k)];
+                        sum += weight[static_cast<std::size_t>(k)] * col[k];
                     }
                 }
-                for (int p = 0; p < P; ++p) {
-                    double* col = col0 + static_cast<std::int64_t>(p) * R + offset;
-                    if (!(w_ok > 0.0)) {
-                        for (int k = 0; k < n; ++k) {
-                            col[k] = 0.0;
-                        }
-                        continue;
-                    }
-                    double sum = 0.0;
-                    for (int k = 0; k < n; ++k) {
-                        if (piston[static_cast<std::size_t>(k)] != 0) {
-                            sum += weight[static_cast<std::size_t>(k)] * col[k];
-                        }
-                    }
-                    const double mean = sum / w_ok;
-                    for (int k = 0; k < n; ++k) {
-                        const auto kk = static_cast<std::size_t>(k);
-                        col[k] = piston[kk] != 0 ? scale * root_weight[kk] * (col[k] - mean) : 0.0;
-                    }
+                const double mean = sum / w_ok;
+                for (int k = 0; k < n; ++k) {
+                    const auto kk = static_cast<std::size_t>(k);
+                    col[k] = piston[kk] != 0 ? scale * root_weight[kk] * (col[k] - mean) : 0.0;
                 }
             }
         }
-    }
+    });
     if (options.extra_count() > 0) {
         insert_extra_rows(extra_rows_cpu(set, base, x0, options), out);
     }

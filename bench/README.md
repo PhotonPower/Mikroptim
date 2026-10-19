@@ -73,3 +73,43 @@ Exit-Codes: 0 Erfolg, 1 Fehler, 2 Aufruffehler, 3 kein CUDA-Gerät (wie `mikropt
 **Zahlentyp (M7-T1).** `--type fp64,df64` misst beide Rechentypen der Kernel (`configure_number_type` setzt `TraceSettings::precision`, die Kernelzeit nutzt dieselbe Einstellung in `ResidualRunOptions`/`MeritRunOptions`); Tabelle, CSV und JSON führen den Typ als Spalte. Ergebnisse: [docs/benchmarks.md, „df64“](../docs/benchmarks.md#df64-m7-t1).
 
 **FP32-Vorfilterung (M7-T2).** `--type fp32prefilter` misst `TraceEngine::prefilter_variants` (Engine: Prüfung, Upload, Kernel, Download der Rohdaten, Entscheidung auf dem Host mit Standardkriterien) und `DevicePrefilter::run` (Kernel) einmal pro S und V; die Modus-Spalte heißt `prefilter`, versagte Strahlen sind sicher und unsicher versagte. Das ist kein Merit-Pfad: Die Vorfilterung liefert nur Schranken für die Auswahl im Multistart. Ergebnisse: [docs/benchmarks.md, „FP32-Vorfilterung“](../docs/benchmarks.md#fp32-vorfilterung-m7-t2).
+
+## jacobian_throughput (M5-T3)
+
+Misst die Jacobi-Matrix des gebündelten LM auf der GPU: finite Differenzen (`mko::cuda::DeviceFdJacobian`, 2P + 1 Varianten pro Lauf über die TraceEngine) gegen adjungiert (`mko::cuda::DeviceAdjointJacobian`, ein Kernelstart mit Vorwärts- und Rückwärtsdurchlauf pro Strahl). Ergebnisse: [docs/benchmarks.md, „Adjungierte Jacobi im LM (M5-T3)“](../docs/benchmarks.md#adjungierte-jacobi-im-lm-m5-t3).
+
+```bash
+cmake --build --preset release-cuda --target jacobian_throughput
+./build/release-cuda/bench/jacobian_throughput              # Linux
+.\build\release-cuda\bench\Release\jacobian_throughput.exe  # Windows
+```
+
+**Systeme** wie `trace_throughput` (frei erfundene Menisken aus Kron und Flint, Brennweite 40 mm, Felder 0 … 3°, Wellenlängen 486 … 656 nm), dazu Variablen: alle Krümmungen, alle Dicken außer der letzten und der Arbeitsabstand ohne Schranken, also **P = 2S − 1** (S = 31: P = 61, S = 41: P = 81). Läufe: Startpunkte mit 1 % Störung (`perturbed_vector`, Lauf 0 ungestört). Zusatzresiduen (`--extra`):
+
+- `none`: nur Strahl- und Strafzeilen (das Maß der Abnahme „Jacobi der Strahlresiduen“);
+- `paraxial`: Brennweite als Gleichung (gewöhnliche Zusatzresiduen ohne Trace; beide Verfahren werten sie per zentraler FD auf dem Host aus);
+- `mechanical`: dazu die trace-abhängigen mechanischen Bedingungen (größte Strahlhöhe aller Flächen, Glasrand bei freier Öffnung, Einfallswinkel); auch der adjungierte Pfad braucht dafür einen MERIT-Lauf mit Extrema über alle 2P + 1 FD-Varianten.
+
+**Messgrößen** pro Fall (Zahlentyp, S, Zusatz, Läufe): Median und Minimum aus `--repeat` Läufen nach `--warmup`, Host-Uhr um synchrone Aufrufe.
+
+- `J`: `compute` der Jacobi-Matrizen aller Läufe (Host-Batch, Upload, Kernel bzw. Engine mit Differenzkernel, Zusatzzeilen); J bleibt auf dem Gerät.
+- `ges.`: J und Normalgleichungen (`DeviceNormalEquations::compute`, Download von A und g) – die Arbeit von `GpuLmBackend::normal_equations` pro Teilstück.
+- adjungiert zusätzlich `Zusatz` (Zusatzzeilen per FD, `AdjointJacobianTiming::extra_seconds`) und `Gerät` (Upload, Kernel, Synchronisation, `device_seconds`).
+- `J x`, `ges. x`: Faktor FD/adjungiert; `|ΔA|`: max |A_ad − A_FD|/max |A_FD| (Kontrolle; Fehler der FD-Jacobi, bei df64 zusätzlich die Rundung von df64).
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `--device N` | CUDA-Gerät | 0 |
+| `--surfaces LISTE` | Flächenzahlen S (4 … 64) | 31,41 |
+| `--runs LISTE` | Läufe pro Aufruf | 1,10,100 |
+| `--type LISTE` | `fp64`, `df64` (Rechentyp beider Verfahren) | beide |
+| `--extra LISTE` | `none`, `paraxial`, `mechanical` | alle |
+| `--fields F`, `--wavelengths L` | Felder, Wellenlängen | 3, 3 |
+| `--rings N`, `--spokes M` | Pupillenquadratur | 10 × 8 |
+| `--hard-failure` | hartes Strahlversagen (ohne Strafzeilen) | weich |
+| `--extra-threads N` | Host-Threads der Zusatzresiduen | wie im LM (`lm_host_threads`) |
+| `--repeat R`, `--warmup W` | gemessene Läufe, Aufwärmläufe | 5, 1 |
+| `--csv DATEI` | Ergebnisse als CSV (`-` = Standardausgabe) | – |
+| `--quiet` | keine Tabelle | – |
+
+Exit-Codes wie `trace_throughput` (0, 1, 2, 3 ohne CUDA-Gerät). CSV-Spalten: `gpu, type, extra, surfaces, variables, runs, rows, extra_rows, fd_j_median_s, fd_j_min_s, fd_total_median_s, fd_total_min_s, adjoint_j_median_s, adjoint_j_min_s, adjoint_total_median_s, adjoint_total_min_s, adjoint_extra_median_s, adjoint_device_median_s, speedup_j, speedup_total, gram_deviation`. Der Smoke-Lauf `bench_jacobian_throughput_smoke` (ctest) prüft nur, dass das Programm läuft.

@@ -6,6 +6,7 @@
 #include "cli/synth_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/synth/beam_search.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
@@ -61,6 +62,8 @@ struct SynthArgs {
     int max_iterations = kDefaultMaxIterations;
     int rings = 10;
     int spokes = 8;
+    // Verfahren der Jacobi-Matrix der LM-Läufe (M5-T3): --jacobian fd|adjoint
+    JacobianMethod jacobian = LmOptions{}.jacobian_method;
     HomotopyStepControl step{};
     OpticalHomotopyOptions optical{};
     // Strahlsuche (M6-T4)
@@ -170,6 +173,14 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.optical.min_air_gap = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--saddle-delta") {
             a.optical.saddle_delta = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--jacobian") {
+            const std::string_view v = next_value(args, i, arg);
+            const std::optional<JacobianMethod> m = jacobian_method_from_string(v);
+            if (!m) {
+                throw UsageError("--jacobian erwartet fd oder adjoint, nicht '" + std::string(v) +
+                                 "'");
+            }
+            a.jacobian = *m;
         } else if (arg == "--curvature-bound") {
             const double c = positive(arg, next_value(args, i, arg));
             a.optical.meniscus.curvature_variables.min = -c;
@@ -262,6 +273,7 @@ void print_synth_usage(std::ostream& out) {
            "  --saddle-delta D          zwei Starts am Sattelpunkt, c0 +- D [1/mm] (0.002;\n"
            "                            0: ein Zweig)\n"
            "  --curvature-bound C       Schranken +-C [1/mm] der neuen Krümmungsvariablen\n"
+           "  --jacobian V              Jacobi-Matrix der LM-Läufe: fd (Standard) oder adjoint\n"
            "  -o, --output <datei>      Ergebnis am Endpunkt als Systemdatei\n"
            "  --log <datei>             Protokoll als JSON (mikroptim.synth/1) in eine Datei\n"
            "  --json                    Ausgabe als JSON statt Text\n"
@@ -333,6 +345,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         o.lm.max_iterations = a.max_iterations;
         o.lm.jacobian.quadrature.rings = a.rings;
         o.lm.jacobian.quadrature.spokes = a.spokes;
+        o.lm.jacobian_method = a.jacobian;
         Json backend{{"gpu", false}};
 #ifdef MIKROPTIM_HAS_CUDA
         if (engine) {
@@ -391,6 +404,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        std::to_string(a.alternatives.value_or(1)) + ", gestörte Starts " +
                        std::to_string(a.starts.value_or(0)) + (a.prefilter ? ", Vorfilter" : ""));
             }
+            kv(out, "Jacobi-Matrix", jacobian_text(a.jacobian));
             out << '\n';
             if (stream) {
                 if (a.beam) {
@@ -455,6 +469,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"max_elements", a.max_elements},
                      {"max_iterations", a.max_iterations},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
+                     {"jacobian", to_string(a.jacobian)},
                      {"element_thickness", o.element_thickness},
                      {"element_max_thickness", o.element_max_thickness},
                      {"saddle_delta", o.saddle_delta}};
