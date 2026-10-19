@@ -1,8 +1,9 @@
 #pragma once
 
 // Paraxiale Nebenbedingungen als Zusatzresiduen (M3-T3): Brennweite, Abgleichlänge,
-// Arbeitsabstand und Bildebene im paraxialen Fokus, mit dem Paraxialtrace aller Varianten
-// eines Batches auf dem Host (parallel). Definitionen: docs/optimierung.md, Abschnitt 2.2;
+// Arbeitsabstand, Bildebene im paraxialen Fokus und Petzvalkrümmung (M4-T4), mit dem
+// Paraxialtrace aller Varianten eines Batches auf dem Host (parallel). Definitionen:
+// docs/optimierung.md, Abschnitte 2.2 und 2.3;
 // Schema der Datei: docs/dateiformat.md, „Nebenbedingungen“.
 
 #include "mikroptim/batch/system_batch.hpp"
@@ -43,12 +44,14 @@ std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int t
 //   WorkingDistance q = t[v][S−1] − w_s
 //   ParfocalLength  q = offset + Σ_{j=reference_surface}^{S−1} t[v][j] − L_s
 //   ParaxialFocus   q = a (A + t[v][S−1] C / n'_L) (Randstrahlhöhe in der Bildebene, Soll 0)
-// Modus Min: q ← min(q, 0) (aktiv nur unterhalb des Solls), Max: q ← max(q, 0).
+//   Petzval         q = |κ_P| − κ_max               (κ_P = −n'_L P mit Geisterplatten, 1/mm)
+// Modus Min: q ← min(q, 0) (aktiv nur unterhalb des Solls), Max: q ← max(q, 0). Petzval ist
+// nur mit Max definiert: r = √w · max(0, |κ_P| − κ_max), w in mm².
 struct ParaxialConstraint {
     ConstraintType type = ConstraintType::FocalLength;
     ConstraintMode mode = ConstraintMode::Equal;
     double weight = kDefaultConstraintWeight; // w >= 0
-    double target = 0.0;                      // Sollwert f_s, L_s bzw. w_s [mm]
+    double target = 0.0;       // Sollwert f_s, L_s bzw. w_s [mm]; bei Petzval κ_max [1/mm]
     int reference_surface = 0; // nur ParfocalLength: Fläche im Batch (Tabellenfläche)
     double offset = 0.0;       // nur ParfocalLength: Anlagefläche vor deren Scheitel [mm]
     int item = -1;             // Eintrag in constraints.items, −1 wenn von Hand gebaut
@@ -58,25 +61,27 @@ struct ParaxialConstraints {
     std::vector<ParaxialConstraint> items;
 
     int size() const { return static_cast<int>(items.size()); }
-    // Braucht eine der Bedingungen den Paraxialtrace (FocalLength, ParaxialFocus)?
+    // Braucht eine der Bedingungen den Paraxialtrace (FocalLength, ParaxialFocus, Petzval)?
     bool needs_trace() const;
 };
 
 // Löst die paraxialen Einträge von system.constraints in Dateireihenfolge auf: Sollwerte aus
-// `target`, Standardwerte fehlender Felder, Referenzfläche der Abgleichlänge von der
-// Dateifläche auf die Tabellenfläche abgebildet (make_surface_map). Ohne Abschnitt leer.
+// `target` bzw. bei Petzval κ_max aus max_curvature (constraint_bound), Standardwerte fehlender
+// Felder (Petzval: Modus Max), Referenzfläche der Abgleichlänge von der Dateifläche auf die
+// Tabellenfläche abgebildet (make_surface_map). Ohne Abschnitt leer.
 // Wirft FormatError wie check_constraints.
 ParaxialConstraints make_paraxial_constraints(const SystemDescription& system);
 
 // Prüft die Bedingungen gegen eine Batch-Topologie: Gewicht endlich und >= 0, Sollwert
-// endlich (bei FocalLength ≠ 0), Modus erlaubt (FocalLength und ParaxialFocus nur Equal),
-// Referenzfläche in [0, S) und keine Geisterplatte, ParaxialFocus nur bei kollimierter Quelle.
+// endlich (bei FocalLength ≠ 0, bei Petzval ≥ 0), Modus erlaubt (FocalLength und ParaxialFocus
+// nur Equal, Petzval nur Max), Referenzfläche in [0, S) und keine Geisterplatte, ParaxialFocus
+// nur bei kollimierter Quelle.
 // Wirft std::invalid_argument mit der Nummer der Bedingung.
 void check_paraxial_constraints(const ParaxialConstraints& constraints,
                                 const BatchTopology& topology);
 
 // Residuum einer Bedingung für Variante v; `p` sind deren Paraxialdaten (batch_paraxial),
-// die nur FocalLength und ParaxialFocus lesen. Prüft nichts außer dem Variantenindex.
+// die nur FocalLength, ParaxialFocus und Petzval lesen. Prüft nichts außer dem Variantenindex.
 double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
                          const ParaxialData& p);
 

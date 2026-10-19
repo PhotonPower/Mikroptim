@@ -513,7 +513,7 @@ private:
         if (!t) {
             fail(type_path, "unbekannter Typ einer Nebenbedingung \"" + type +
                                 "\" (erlaubt: focal_length, parfocal_length, working_distance, "
-                                "paraxial_focus)");
+                                "paraxial_focus, petzval)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -534,10 +534,15 @@ private:
         if (const Json* o = member(j, "offset")) {
             c.offset = as_number(*o, join(path, "offset"));
         }
+        if (const Json* k = member(j, "max_curvature")) {
+            c.max_curvature = as_number(*k, join(path, "max_curvature"));
+        }
         if (const Json* m = member(j, "comment")) {
             c.comment = as_string(*m, join(path, "comment"));
         }
-        warn_unknown(j, path, {"type", "mode", "weight", "reference_surface", "offset", "comment"});
+        warn_unknown(
+            j, path,
+            {"type", "mode", "weight", "reference_surface", "offset", "max_curvature", "comment"});
         return c;
     }
 
@@ -628,6 +633,9 @@ Json constraints_to_json(const Constraints& cons) {
         }
         if (c.offset) {
             j["offset"] = *c.offset;
+        }
+        if (c.max_curvature) {
+            j["max_curvature"] = *c.max_curvature;
         }
         if (c.comment) {
             j["comment"] = *c.comment;

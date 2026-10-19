@@ -137,27 +137,34 @@ Beispiel: [data/systems/einzellinse_bk7_nebenbedingungen.json](../data/systems/e
 }
 ```
 
-`constraints` ist ein Objekt (Platz für spätere Einstellungen) mit der Pflichtliste `items`. Jeder Eintrag ist eine Nebenbedingung, die als Residuum √w · q in den Residuenvektor eingeht (Definitionen von q: [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)):
+Petzval-Bedingung (ab M4-T4, Beispiel [data/systems/zweilinser_petzval.json](../data/systems/zweilinser_petzval.json)):
+
+```json
+{ "type": "petzval", "max_curvature": 0.01, "weight": 1000.0, "comment": "Petzvalradius mindestens 100 mm" }
+```
+
+`constraints` ist ein Objekt (Platz für spätere Einstellungen) mit der Pflichtliste `items`. Jeder Eintrag ist eine Nebenbedingung, die als Residuum √w · q in den Residuenvektor eingeht (Definitionen von q: [optimierung.md, Abschnitte 2.2 und 2.3](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)):
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
-| `type` | string | `"focal_length"` (Brennweite bei λ_ref), `"parfocal_length"` (Abgleichlänge), `"working_distance"` (Arbeitsabstand = Dicke der letzten Fläche), `"paraxial_focus"` (Bildebene im paraxialen Brennpunkt F′ bei λ_ref) |
-| `mode` | string | `"equal"` (Standard): Ist = Soll; `"min"`: Ist ≥ Soll (Soll ist Untergrenze); `"max"`: Ist ≤ Soll (Obergrenze). Einseitig nur bei `parfocal_length` und `working_distance` |
-| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil alle q Längen in mm sind; √w·q ist dann dimensionslos wie die Wellenfrontresiduen (Wellen bei λ_ref), Wahl nach der Faustregel in [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3) |
+| `type` | string | `"focal_length"` (Brennweite bei λ_ref), `"parfocal_length"` (Abgleichlänge), `"working_distance"` (Arbeitsabstand = Dicke der letzten Fläche), `"paraxial_focus"` (Bildebene im paraxialen Brennpunkt F′ bei λ_ref), `"petzval"` (\|κ_P\| ≤ κ_max bei λ_ref, κ_P = −n′_L P einschließlich Geisterplatten; ab M4-T4) |
+| `mode` | string | `"equal"` (Standard): Ist = Soll; `"min"`: Ist ≥ Soll (Soll ist Untergrenze); `"max"`: Ist ≤ Soll (Obergrenze). Einseitig nur bei `parfocal_length` und `working_distance`; `petzval` nur `"max"` (Standard bei `petzval`) |
+| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil die q Längen in mm sind, bei `petzval` mm², weil q eine Krümmung in 1/mm ist; √w·q ist dann dimensionslos wie die Wellenfrontresiduen (Wellen bei λ_ref), Wahl nach der Faustregel in [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3) bzw. 2.3 |
 | `reference_surface` | integer | nur `parfocal_length`: Fläche (Index in `surfaces`), ab deren Scheitel die Abgleichlänge zählt (Standard 0 = Blende) |
 | `offset` | number | nur `parfocal_length`: Abstand [mm] der Anlagefläche vor dem Scheitel der Referenzfläche (in Gegenrichtung von +z; Standard 0) |
+| `max_curvature` | number | nur `petzval`, dort Pflicht: größter zulässiger Betrag κ_max der Petzvalkrümmung [1/mm], endlich und ≥ 0 (0 = ebenes Feld). Ein Mindest-Petzvalradius R_min entspricht κ_max = 1/R_min (z. B. 130 mm → 0,0076923) |
 | `comment` | string | optional |
 
-**Sollwerte stehen nur in `target`** (eine Quelle der Wahrheit): `focal_length` nimmt `target.focal_length` (dieselbe Größe bestimmt die Feldziele h_f = f_soll · tan θ_f), `parfocal_length` nimmt `target.parfocal_length`, `working_distance` nimmt `target.working_distance`; bei `mode` `min`/`max` ist der Sollwert die Grenze (z. B. Mindestarbeitsabstand). `paraxial_focus` hat den festen Sollwert 0 und braucht keinen Eintrag in `target`. Ein `target` ohne Nebenbedingung wird (außer `focal_length` für die Feldziele) nicht ausgewertet.
+**Sollwerte stehen nur in `target`** (eine Quelle der Wahrheit): `focal_length` nimmt `target.focal_length` (dieselbe Größe bestimmt die Feldziele h_f = f_soll · tan θ_f), `parfocal_length` nimmt `target.parfocal_length`, `working_distance` nimmt `target.working_distance`; bei `mode` `min`/`max` ist der Sollwert die Grenze (z. B. Mindestarbeitsabstand). `paraxial_focus` hat den festen Sollwert 0 und braucht keinen Eintrag in `target`. Ausnahme ist die reine Grenze der Petzval-Bedingung: κ_max steht nur im Eintrag (`max_curvature`), weil es dafür keine Zielgröße in `target` gibt. Ein `target` ohne Nebenbedingung wird (außer `focal_length` für die Feldziele) nicht ausgewertet.
 
 **Abgleichlänge.** Die Anlagefläche (Schulter des Objektivs) ist kein Teil des Linsenmodells. Die Abgleichlänge wird daher ab einer konfigurierbaren Referenz gemessen: L = `offset` + Σ der Dicken ab Fläche `reference_surface` bis zur Bildebene (einschließlich Arbeitsabstand; die Bildebene ist die Objektebene des Mikroskops, weil vom Unendlichraum zum Objekt getract wird). Mit den Standardwerten ist das der Abstand Blende – Bildebene. Die Lage der Anlagefläche legt der Maintainer fest (offene Frage im PR zu M3-T3).
 
 Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `constraints.items[1].mode`):
 
-- `type` ist Pflicht; unbekannte Typen werden abgelehnt (nicht ignoriert), damit ein Tippfehler keine Bedingung verschwinden lässt. Mechanische Bedingungen (M4-T3) und die Petzval-Bedingung (M4-T4) kommen als weitere Werte von `type` mit eigenen Grenzwertfeldern hinzu.
-- Der Sollwert des Typs muss in `target` stehen (sonst Fehler unter `constraints.items[i].type`).
-- `focal_length` und `paraxial_focus` nur mit `mode` `equal` (oder ohne `mode`).
-- `weight` endlich und ≥ 0; `offset` endlich.
+- `type` ist Pflicht; unbekannte Typen werden abgelehnt (nicht ignoriert), damit ein Tippfehler keine Bedingung verschwinden lässt. Mechanische Bedingungen (M4-T3) kommen als weitere Werte von `type` mit eigenen Grenzwertfeldern hinzu.
+- Der Sollwert des Typs muss in `target` stehen (sonst Fehler unter `constraints.items[i].type`); `petzval` braucht stattdessen `max_curvature` (sonst Fehler unter `constraints.items[i].max_curvature`).
+- `focal_length` und `paraxial_focus` nur mit `mode` `equal` (oder ohne `mode`), `petzval` nur mit `max` (oder ohne `mode`).
+- `weight` endlich und ≥ 0; `offset` endlich; `max_curvature` endlich und ≥ 0 und nur bei `petzval`.
 - `reference_surface` und `offset` nur bei `parfocal_length`; `reference_surface` ist eine nichtnegative ganze Zahl (`3` und `3.0` erlaubt) und die Fläche muss existieren (auch die letzte: dann L = `offset` + Arbeitsabstand).
 - Jeder Typ höchstens einmal (Fehler beim zweiten Eintrag unter `.type`).
 - `paraxial_focus` nur bei `source.type` `collimated` (bei einer Punktquelle ist der Brennpunkt F′ nicht der Bildpunkt).
@@ -165,7 +172,7 @@ Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `constraints.items[1].mode
 
 **Flächenindizes** (`reference_surface`) beziehen sich auf die Dateiflächen; die Abbildung auf die Tabellenflächen des Batches (Geisterplatten) übernimmt `make_paraxial_constraints` mit der `SurfaceMap`. Ein Luftspalt mit Geisterplatten zählt mit seiner ganzen Dicke.
 
-Modell: `mko::Constraints` mit Einträgen `mko::ConstraintSpec` (`include/mikroptim/model/constraints.hpp`), wie sie in der Datei stehen (fehlende Felder bleiben leer, damit das Schreiben die Form erhält; Standardwerte über `*_or_default()`), `check_constraints(system)` (von `validate_system` aufgerufen), `constraint_target(system, type)`. Die aufgelösten Bedingungen und Residuen liefert `include/mikroptim/optim/paraxial_residuals.hpp` ([optimierung.md](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)).
+Modell: `mko::Constraints` mit Einträgen `mko::ConstraintSpec` (`include/mikroptim/model/constraints.hpp`), wie sie in der Datei stehen (fehlende Felder bleiben leer, damit das Schreiben die Form erhält; Standardwerte über `*_or_default()`), `check_constraints(system)` (von `validate_system` aufgerufen), `constraint_target(system, type)` (Sollwert aus `target`, bei `petzval` leer) und `constraint_bound(system, spec)` (Sollwert bzw. bei `petzval` `max_curvature`). Die aufgelösten Bedingungen und Residuen liefert `include/mikroptim/optim/paraxial_residuals.hpp` ([optimierung.md](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)).
 
 ### Einlesen und Validierung
 
@@ -201,7 +208,7 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 
 Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
 
-Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
+Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
 
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 

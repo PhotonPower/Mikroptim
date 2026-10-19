@@ -151,4 +151,14 @@ inline constexpr double kLmReturnRelative = 1e-6;
 // Lauf irgendwo in der Rauschzone der Merit.
 inline constexpr double kLmShapeAgreement = 1e-3;
 
+// Petzval-Nebenbedingung (M4-T4): Restverletzung (|κ_P| − κ_max)/κ_max nach der
+// Penalty-Fortsetzung. Eine Strafe √w·max(0, g) erreicht die Grenze nur asymptotisch
+// (Überschreitung ∝ 1/w, Lagrange-Multiplikator λ = 2 w g); beim Gewicht der Datei (1.000 mm² ·
+// 1/(F·L·λ_ref²)) beobachtet ~1e-8.
+inline constexpr double kPetzvalPenaltyRelative = 1e-6;
+// Brennweite nach der Optimierung mit Petzval-Bedingung, |f − f_s| in mm: Gleichgewicht der
+// Brennweitenstrafe (Gewicht 0,01/mm² · 1/(F·L·λ_ref²)) gegen Wellenfront und Petzval-Strafe,
+// beobachtet ~5e-7.
+inline constexpr double kPetzvalFocalLength = 1e-5;
+
 } // namespace mko::test

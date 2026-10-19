@@ -1,0 +1,30 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Zweilinser mit Petzval-Bedingung",
+  "description": "Frei erfundenes Testsystem (kein reales Objektiv) für die Petzval-Nebenbedingung (M4-T4): Sammellinse hoher Brechzahl (n = 1,8 konstant), Luftspalt, schwache Zerstreuungslinse aus CaF2. f = 20 mm, NA ca. 0,1, zwei Felder, eine Wellenlänge, Bildebene nahe dem paraxialen Fokus. Start: κ_P = −0,0268/mm (Petzvalradius −37 mm); die Bedingung verlangt |κ_P| ≤ 0,01/mm (Petzvalradius mindestens 100 mm).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [546.07], "weights": [1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0, 2.0], "field_weights": [1.0, 1.0] },
+  "target": { "focal_length": 20.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 2.0, "material": "AIR", "semi_diameter": 2.0 },
+    { "type": "sphere", "curvature": 0.04, "thickness": 3.0, "material": { "model": "constant", "n": 1.8 }, "semi_diameter": 5.0 },
+    { "type": "sphere", "curvature": -0.02806, "thickness": 5.0, "material": "AIR", "semi_diameter": 5.0 },
+    { "type": "sphere", "curvature": -0.005, "thickness": 1.5, "material": "CAF2", "semi_diameter": 5.0 },
+    { "type": "sphere", "curvature": 0.0065, "thickness": 12.5, "material": "AIR", "semi_diameter": 5.0 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -0.12, "max": 0.12 },
+      { "type": "thickness", "surface": 2, "min": 1.0, "max": 12.0, "comment": "Luftspalt" },
+      { "type": "working_distance", "min": 4.0, "max": 40.0 }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 16767.695109367276, "comment": "0,01/mm² für Residuen in mm, umgerechnet mit 1/(F·L·λ_ref²)" },
+      { "type": "petzval", "max_curvature": 0.01, "weight": 1676769510.9367275, "comment": "Petzvalradius mindestens 100 mm; Gewicht in mm² (1.000 mm² für Residuen in mm, umgerechnet mit 1/(F·L·λ_ref²))" }
+    ]
+  }
+}

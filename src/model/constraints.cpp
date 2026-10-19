@@ -40,6 +40,7 @@ std::string_view target_field(ConstraintType type) {
     case ConstraintType::WorkingDistance:
         return "working_distance";
     case ConstraintType::ParaxialFocus:
+    case ConstraintType::Petzval:
         return {};
     }
     return {};
@@ -63,6 +64,8 @@ std::string_view to_string(ConstraintType type) {
         return "working_distance";
     case ConstraintType::ParaxialFocus:
         return "paraxial_focus";
+    case ConstraintType::Petzval:
+        return "petzval";
     }
     return "?";
 }
@@ -80,9 +83,9 @@ std::string_view to_string(ConstraintMode mode) {
 }
 
 std::optional<ConstraintType> constraint_type_from_string(std::string_view name) {
-    for (const ConstraintType t :
-         {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
-          ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus}) {
+    for (const ConstraintType t : {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
+                                   ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus,
+                                   ConstraintType::Petzval}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -106,6 +109,7 @@ bool is_paraxial(ConstraintType type) {
     case ConstraintType::ParfocalLength:
     case ConstraintType::WorkingDistance:
     case ConstraintType::ParaxialFocus:
+    case ConstraintType::Petzval:
         return true;
     }
     return false;
@@ -114,6 +118,9 @@ bool is_paraxial(ConstraintType type) {
 std::optional<double> constraint_target(const SystemDescription& system, ConstraintType type) {
     if (type == ConstraintType::ParaxialFocus) {
         return 0.0;
+    }
+    if (type == ConstraintType::Petzval) {
+        return std::nullopt; // Grenze im Eintrag (max_curvature)
     }
     if (!system.target) {
         return std::nullopt;
@@ -126,9 +133,18 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     case ConstraintType::WorkingDistance:
         return system.target->working_distance;
     case ConstraintType::ParaxialFocus:
+    case ConstraintType::Petzval:
         break;
     }
     return std::nullopt;
+}
+
+std::optional<double> constraint_bound(const SystemDescription& system,
+                                       const ConstraintSpec& spec) {
+    if (spec.type == ConstraintType::Petzval) {
+        return spec.max_curvature;
+    }
+    return constraint_target(system, spec.type);
 }
 
 void check_constraints(const SystemDescription& system) {
@@ -153,6 +169,10 @@ void check_constraints(const SystemDescription& system) {
                 fail(path + ".mode", name + " ist nur als Gleichung definiert (\"mode\": "
                                             "\"equal\" oder Feld weglassen)");
             }
+            if (c.type == ConstraintType::Petzval && *c.mode != ConstraintMode::Max) {
+                fail(path + ".mode", "petzval ist nur als Obergrenze |κ_P| ≤ max_curvature "
+                                     "definiert (\"mode\": \"max\" oder Feld weglassen)");
+            }
         }
         if (c.weight && !(std::isfinite(*c.weight) && *c.weight >= 0.0)) {
             fail(path + ".weight",
@@ -174,9 +194,22 @@ void check_constraints(const SystemDescription& system) {
         if (c.offset && !std::isfinite(*c.offset)) {
             fail(path + ".offset", "Zahl muss endlich sein");
         }
+        if (c.type == ConstraintType::Petzval) {
+            // Grenze im Eintrag (kein Gegenstück in `target`)
+            if (!c.max_curvature) {
+                fail(path + ".max_curvature",
+                     "Pflichtfeld bei petzval fehlt (größte zulässige |κ_P| in 1/mm)");
+            }
+            if (!(std::isfinite(*c.max_curvature) && *c.max_curvature >= 0.0)) {
+                fail(path + ".max_curvature",
+                     "muss endlich und mindestens 0 sein, ist " + num(*c.max_curvature));
+            }
+        } else if (c.max_curvature) {
+            fail(path + ".max_curvature", "nur bei petzval erlaubt");
+        }
 
-        // Sollwert: eine Quelle der Wahrheit in `target`
-        if (!constraint_target(system, c.type)) {
+        // Sollwert: eine Quelle der Wahrheit in `target` (Petzval: Grenze im Eintrag)
+        if (!constraint_bound(system, c)) {
             fail(path + ".type", "Sollwert target." + std::string(target_field(c.type)) +
                                      " fehlt (Sollwerte stehen in \"target\")");
         }

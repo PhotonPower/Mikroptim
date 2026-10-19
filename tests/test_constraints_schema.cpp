@@ -1,5 +1,5 @@
-// Abschnitt `constraints` der Systemdatei (M3-T3): Lesen, Schreiben, Roundtrip, Negativtests
-// mit JSON-Pfad.
+// Abschnitt `constraints` der Systemdatei (M3-T3, Petzval M4-T4): Lesen, Schreiben, Roundtrip,
+// Negativtests mit JSON-Pfad.
 
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/model/constraints.hpp"
@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -107,9 +108,9 @@ TEST(ConstraintsSchema, RoundtripAllFields) {
     const auto& items = a.constraints->items;
     ASSERT_EQ(items.size(), 4u);
     EXPECT_EQ(items[0], (ConstraintSpec{ConstraintType::FocalLength, std::nullopt, 2.5,
-                                        std::nullopt, std::nullopt, "Brennweite"}));
+                                        std::nullopt, std::nullopt, "Brennweite", std::nullopt}));
     EXPECT_EQ(items[1], (ConstraintSpec{ConstraintType::ParfocalLength, ConstraintMode::Max,
-                                        std::nullopt, 1, -1.5, std::nullopt}));
+                                        std::nullopt, 1, -1.5, std::nullopt, std::nullopt}));
     EXPECT_EQ(items[2].weight, 0.0);
     EXPECT_EQ(items[3].mode, ConstraintMode::Equal);
     EXPECT_FALSE(items[0].reference_surface.has_value());
@@ -148,9 +149,9 @@ TEST(ConstraintsSchema, UnknownFieldsWarn) {
 }
 
 TEST(ConstraintsSchema, NamesRoundtrip) {
-    for (const ConstraintType t :
-         {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
-          ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus}) {
+    for (const ConstraintType t : {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
+                                   ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus,
+                                   ConstraintType::Petzval}) {
         EXPECT_EQ(mko::constraint_type_from_string(mko::to_string(t)), t);
         EXPECT_TRUE(mko::is_paraxial(t));
     }
@@ -158,7 +159,8 @@ TEST(ConstraintsSchema, NamesRoundtrip) {
          {ConstraintMode::Equal, ConstraintMode::Min, ConstraintMode::Max}) {
         EXPECT_EQ(mko::constraint_mode_from_string(mko::to_string(m)), m);
     }
-    EXPECT_FALSE(mko::constraint_type_from_string("petzval").has_value());
+    EXPECT_EQ(mko::to_string(ConstraintType::Petzval), "petzval");
+    EXPECT_FALSE(mko::constraint_type_from_string("petzval_radius").has_value());
     EXPECT_FALSE(mko::constraint_mode_from_string("MIN").has_value());
 }
 
@@ -170,7 +172,9 @@ TEST(ConstraintsSchema, StructureErrors) {
     expect_error(with_items("1"), "constraints.items[0]");
     expect_error(with_items("{}"), "constraints.items[0].type");
     expect_error(with_items(R"({ "type": 3 })"), "constraints.items[0].type");
-    expect_error(with_items(R"({ "type": "petzval" })"), "constraints.items[0].type");
+    expect_error(with_items(R"({ "type": "Petzval" })"), "constraints.items[0].type");
+    expect_error(with_items(R"({ "type": "petzval", "max_curvature": "0.01" })"),
+                 "constraints.items[0].max_curvature");
     expect_error(with_items(R"({ "type": "Focal_Length" })"), "constraints.items[0].type");
     expect_error(with_items(R"({ "type": "working_distance", "mode": "above" })"),
                  "constraints.items[0].mode");
@@ -238,5 +242,94 @@ TEST(ConstraintsSchema, RuleErrors) {
         ADD_FAILURE() << "keine Ausnahme";
     } catch (const FormatError& e) {
         EXPECT_EQ(e.json_path(), "constraints.items[0].type");
+    }
+}
+
+// ---- Petzval (M4-T4) -------------------------------------------------------------------------
+
+// Grenze κ_max im Eintrag (max_curvature, einzige Quelle), Modus Max als Standard, kein Sollwert
+// in target nötig; Roundtrip mit fester Feldreihenfolge.
+TEST(ConstraintsSchema, PetzvalRoundtrip) {
+    const std::string text = with_items(R"(
+    { "comment": "R ≥ 130 mm", "max_curvature": 0.0076923, "type": "petzval", "weight": 1e3 })",
+                                        "");
+    std::vector<std::string> warnings;
+    const SystemDescription a = mko::read_system_json(text, &warnings);
+    EXPECT_TRUE(warnings.empty());
+    ASSERT_TRUE(a.constraints.has_value());
+    const ConstraintSpec& c = a.constraints->items.at(0);
+    EXPECT_EQ(c.type, ConstraintType::Petzval);
+    EXPECT_FALSE(c.mode.has_value());
+    EXPECT_EQ(c.mode_or_default(), ConstraintMode::Max);
+    EXPECT_EQ(c.max_curvature, 0.0076923);
+    EXPECT_EQ(c.weight, 1000.0);
+    EXPECT_FALSE(mko::constraint_target(a, ConstraintType::Petzval).has_value());
+    EXPECT_EQ(mko::constraint_bound(a, c), 0.0076923);
+    EXPECT_TRUE(mko::is_paraxial(ConstraintType::Petzval));
+
+    const std::string text1 = mko::write_system_json(a);
+    const SystemDescription b = mko::read_system_json(text1);
+    EXPECT_TRUE(a == b);
+    EXPECT_EQ(text1, mko::write_system_json(b));
+    const char* expected =
+        R"({ "type": "petzval", "weight": 1000.0, "max_curvature": 0.0076923, "comment": "R ≥ 130 mm" })";
+    EXPECT_NE(text1.find(expected), std::string::npos) << text1;
+
+    // Modus "max" ausdrücklich, κ_max = 0 (ebenes Feld) erlaubt
+    const SystemDescription m = mko::read_system_json(
+        with_items(R"({ "type": "petzval", "mode": "max", "max_curvature": 0 })"));
+    EXPECT_EQ(m.constraints->items[0].mode, ConstraintMode::Max);
+    EXPECT_EQ(m.constraints->items[0].max_curvature, 0.0);
+    EXPECT_TRUE(mko::read_system_json(mko::write_system_json(m)) == m);
+
+    // Beispieldatei der Abnahme
+    const SystemDescription z =
+        mko::read_system_file(kSourceDir / "data" / "systems" / "zweilinser_petzval.json");
+    ASSERT_TRUE(z.constraints.has_value());
+    ASSERT_EQ(z.constraints->items.size(), 2u);
+    EXPECT_EQ(z.constraints->items[1].type, ConstraintType::Petzval);
+    EXPECT_EQ(z.constraints->items[1].max_curvature, 0.01);
+    EXPECT_EQ(z.constraints->items[1].weight, 1676769510.9367275);
+}
+
+TEST(ConstraintsSchema, PetzvalRuleErrors) {
+    // Grenze ist Pflicht, endlich (JSON kennt kein inf) und >= 0
+    expect_error(with_items(R"({ "type": "petzval" })"), "constraints.items[0].max_curvature");
+    expect_error(with_items(R"({ "type": "petzval", "max_curvature": -0.01 })"),
+                 "constraints.items[0].max_curvature");
+    // nur Obergrenze
+    expect_error(with_items(R"({ "type": "petzval", "mode": "equal", "max_curvature": 0.01 })"),
+                 "constraints.items[0].mode");
+    expect_error(with_items(R"({ "type": "petzval", "mode": "min", "max_curvature": 0.01 })"),
+                 "constraints.items[0].mode");
+    // max_curvature nur bei petzval, Felder der Abgleichlänge nicht bei petzval
+    expect_error(with_items(R"({ "type": "focal_length", "max_curvature": 0.01 })"),
+                 "constraints.items[0].max_curvature");
+    expect_error(with_items(R"({ "type": "petzval", "max_curvature": 0.01, "offset": 1 })"),
+                 "constraints.items[0].offset");
+    // höchstens einmal
+    expect_error(with_items(R"({ "type": "petzval", "max_curvature": 0.01 },
+                               { "type": "petzval", "max_curvature": 0.02 })"),
+                 "constraints.items[1].type");
+    // Gewicht wie überall
+    expect_error(with_items(R"({ "type": "petzval", "max_curvature": 0.01, "weight": -1 })"),
+                 "constraints.items[0].weight");
+
+    // Schreiben prüft dieselben Regeln am Modell (auch nicht endliche Werte)
+    SystemDescription s =
+        mko::read_system_json(with_items(R"({ "type": "petzval", "max_curvature": 0.01 })"));
+    s.constraints->items[0].max_curvature = std::numeric_limits<double>::infinity();
+    try {
+        (void)mko::write_system_json(s);
+        ADD_FAILURE() << "keine Ausnahme";
+    } catch (const FormatError& e) {
+        EXPECT_EQ(e.json_path(), "constraints.items[0].max_curvature");
+    }
+    s.constraints->items[0].max_curvature.reset();
+    try {
+        (void)mko::write_system_json(s);
+        ADD_FAILURE() << "keine Ausnahme";
+    } catch (const FormatError& e) {
+        EXPECT_EQ(e.json_path(), "constraints.items[0].max_curvature");
     }
 }
