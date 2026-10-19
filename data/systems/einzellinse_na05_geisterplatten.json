@@ -1,0 +1,40 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Einzellinse N-BK7 NA 0,5 mit Geisterplatten, Bedarf",
+  "description": "Testsystem (frei erfunden) für die Abnahme Bedarf der L1-Strafe (M4-T6): Einzellinse N-BK7, f = 2 mm, Blendenradius 1 mm (paraxial NA = a/f = 0,5), Achse, eine Wellenlänge. Die Linse allein bleibt weit über der Beugungsgrenze (sphärische Aberration). Wörterbuch aus drei Lagen mit je drei Gläsern (CaF2, N-BK7, Flint frei erfunden als Buchdahl-Modell n_d = 1,753, ν_d = 26,9): nahe der Blende, vor der Linse und hinter der Linse vor einer Hilfsebene. Strafgewicht μ aus dem Beugungsziel RMS λ/14 (docs/optimierung.md, Abschnitt 3).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [587.56], "weights": [1.0], "reference_nm": 587.56 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "target": { "focal_length": 2.0 },
+  "surfaces": [
+    { "type": "stop", "thickness": 0.5, "material": "AIR", "semi_diameter": 1.0 },
+    { "type": "sphere", "curvature": 0.82, "thickness": 0.6, "material": "N-BK7", "semi_diameter": 1.3 },
+    { "type": "sphere", "curvature": -0.145, "thickness": 0.4, "material": "AIR", "semi_diameter": 1.3 },
+    { "type": "plane", "thickness": 1.3, "material": "AIR", "semi_diameter": 1.3, "comment": "Hilfsebene, damit eine Geisterplatte hinter der Linse liegen kann" }
+  ],
+  "ghost_plates": [
+    { "after_surface": 0, "distance": 0.05, "glass": "CAF2", "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 0.05, "glass": "N-BK7", "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 0.05, "glass": { "model": "buchdahl", "n0": 1.76, "nu": [-0.18, 0.112] }, "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 0.4, "glass": "CAF2", "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 0.4, "glass": "N-BK7", "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 0, "distance": 0.4, "glass": { "model": "buchdahl", "n0": 1.76, "nu": [-0.18, 0.112] }, "norm_radius": 1.0, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 2, "distance": 0.2, "glass": "CAF2", "norm_radius": 0.85, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 2, "distance": 0.2, "glass": "N-BK7", "norm_radius": 0.85, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] },
+    { "after_surface": 2, "distance": 0.2, "glass": { "model": "buchdahl", "n0": 1.76, "nu": [-0.18, 0.112] }, "norm_radius": 0.85, "order": 6, "coefficients": [0, 0, 0, 0, 0, 0] }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": "all", "min": -2.0, "max": 2.0 },
+      { "type": "working_distance", "min": 0.2, "max": 3.0, "typical": 0.1 },
+      { "type": "ghost_coefficient", "plates": "all" }
+    ]
+  },
+  "constraints": {
+    "items": [
+      { "type": "focal_length", "weight": 100.0, "comment": "Faustregel: 1e-3 mm Abweichung kostet so viel wie 0,01 Wellen RMS" },
+      { "type": "ghost_penalty", "weight": 13.6, "order_weight": 1.0, "order_factor": 2.0, "smoothing": 1e-06, "comment": "μ·w_2 = 2σ·Δn/(λ_ref·√5) mit σ = 1/14 Welle und Δn = 0,5 (μ = 54,37/4): Ordnung 2 wird aktiv, sobald ihr Restfehler λ/14 übersteigt" }
+    ]
+  }
+}

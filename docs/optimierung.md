@@ -14,7 +14,7 @@ Typische Größenordnung beim Zielsystem: P ≈ 60–100 Variablen.
 
 ### Variablenabbildung (ab M3-T1)
 
-Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](dateiformat.md#variablen-ab-m3-t1)). Implementiert sind Krümmung, Dicke und Arbeitsabstand; Glas (M6-T1) und Geisterkoeffizienten (M4-T6) kommen als weitere `VariableType` hinzu.
+Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](dateiformat.md#variablen-ab-m3-t1)). Implementiert sind Krümmung, Dicke, Arbeitsabstand und (ab M4-T6) Geisterkoeffizienten; Glas (M6-T1) kommt als weiterer `VariableType` hinzu.
 
 `mko::VariableSet` (`include/mikroptim/optim/variable_set.hpp`, Bibliothek `Mikroptim::optim`) wird aus Systembeschreibung und Batch-Topologie gebaut und legt die Komponenten des Variablenvektors x ∈ ℝ^P fest (Reihenfolge von `resolve_variables`):
 
@@ -23,6 +23,9 @@ Die Variablen stehen im Abschnitt `variables` der Systemdatei ([dateiformat.md](
 | Krümmung c der Dateifläche i | `surfaces[i].curvature` | `curvature[v][m(i)]` |
 | Dicke t der Dateifläche i (i < S_Datei − 1) | `surfaces[i].thickness` | `thickness[v][m(i+1) − 1]`, bei Geisterplatten im Spalt x − d_last (siehe unten) |
 | Arbeitsabstand w | `surfaces[S_Datei − 1].thickness` | `thickness[v][S − 1]` (einzige Quelle, `image_distance`) |
+| Geisterkoeffizient a_k der Platte g (ab M4-T6) | `ghost_plates[g].coefficients[k − 1]` | `ghost_coeff[v][g][k − 1]` |
+
+Geisterkoeffizienten heißen in Berichten `a[g,k]`; `Variable::ghost_plate`/`ghost_order` nennen Platte und Ordnung, `batch_surface` ist die Tabellenfläche der Platte. Standard x_typ = 10⁻⁴ mm (`kDefaultTypicalGhostCoefficient`): Die FD-Schrittweite bei a = 0 ist dann h = 6·10⁻¹⁰ mm, klein gegen die Glättung ε der L1-Strafe (Abschnitt 3), sodass die zentrale Differenz den glatten Bereich der Strafe auflöst ((h/ε)² ≈ 4·10⁻⁷ bei ε = 10⁻⁶ mm); die Wellenfrontspalten bleiben dabei auf etwa 10⁻⁴ relativ genau (OPD-Änderung (n_G − 1)·h gegen die Rundung ε_m·L der optischen Länge). Schranken sind optional (frei). Störung im Variantengenerator relativ wie bei den übrigen Typen (`PerturbationOptions::ghost_coefficient`, Standard 1 %); a = 0 bleibt ungestört.
 
 m = `table_of_file` der `SurfaceMap` (`make_surface_map`, geprüft gegen die Topologie mit `checked_surface_map`: Flächenzahl, Zahl der Geisterplatten, Typ jeder Tabellenfläche); ohne Geisterplatten die Identität. Das ist die einzige Stelle, an der `VariableSet` den Indexversatz durch Geisterplatten berücksichtigt.
 
@@ -48,14 +51,14 @@ Die Merit ist F = ‖r‖². Der Residuenvektor einer Variante besteht aus:
 3. **Petzval:** √w · max(0, |κ_P| − κ_max), inklusive Beiträgen der Geisterplatten; Definition und Gewichtswahl in Abschnitt 2.3.
 4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°).
 5. **Weiches Versagen:** siehe numerik.md, Abschnitt 11.
-6. **Geisterplatten (L1, geglättet):** √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist.
+6. **Geisterplatten (L1, geglättet):** im Plan √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist. Implementiert (ab M4-T6) ist die gleichwertige Form √(μ·w_k) · a/√(ε + √(a² + ε²)) mit dem Quadrat μ·w_k·(√(a² + ε²) − ε): gleicher Gradient, also gleiches Minimum, aber r(0) = 0 und eine Gauß-Newton-Krümmung, die bei a = 0 exakt stimmt (Begründung in Abschnitt 3).
 7. **Glas-Hülle:** √w · Abstand außerhalb der Hülle.
 
 Gewichte w_f, w_λ stammen aus der Systemdatei (`source.field_weights`, `spectrum.weights`); Gewicht 0 schaltet ein Feld bzw. eine Wellenlänge in der Merit ab (Residuen exakt 0, verfolgt wird es weiter). **Einheit der Merit:** Wellen² bei λ_ref. Alle Zusatzresiduen (Punkte 2–7) sind √w · (Größe in ihrer eigenen Einheit) und gehen mit ihrem Quadrat direkt in dieselbe Summe ein; ihre Gewichte haben daher die Einheit 1/(Einheit der Größe)² und sind relativ zu „ein Residuum von 1 entspricht einer Welle RMS“ zu wählen (Faustregel in Abschnitt 2.2). Geisterplatten-Gewichte steigen mit der Ordnung: w_k = w₀ · κ^k (κ ≈ 2).
 
 ### 2.1 Zusatzresiduen (Schnittstelle, ab M3-T3)
 
-Residuen, die nicht pro Strahl im Kernel entstehen (Punkte 2–4, 6, 7), liefert der Host pro Variante über `mko::ExtraResiduals` (`include/mikroptim/optim/extra_residuals.hpp`): `count` Werte pro Variante, `evaluate(batch, v, out)` schreibt sie nach `out` (Länge `count`). Im Residuenvektor einer Variante stehen sie hinter den Strahlresiduen (Platz `OutputRequest::extra_residuals`; die Ablage im Jacobi-Aufbau legen M3-T2/M3-T4 fest). `evaluate_extra_residuals(extra, batch, out, first, count, threads)` (`include/mikroptim/optim/paraxial_residuals.hpp`) wertet die Varianten [first, first + count) auf Host-Threads aus, `out[(v − first)·extra.count + i]`; `evaluate` muss dafür threadsicher sein.
+Residuen, die nicht pro Strahl im Kernel entstehen (Punkte 2–4, 6, 7), liefert der Host pro Variante über `mko::ExtraResiduals` (`include/mikroptim/optim/extra_residuals.hpp`): `count` Werte pro Variante, `evaluate(batch, v, out)` schreibt sie nach `out` (Länge `count`). Im Residuenvektor einer Variante stehen sie hinter den Strahlresiduen (Platz `OutputRequest::extra_residuals`; die Ablage im Jacobi-Aufbau legen M3-T2/M3-T4 fest). `evaluate_extra_residuals(extra, batch, out, first, count, threads)` (`include/mikroptim/optim/paraxial_residuals.hpp`) wertet die Varianten [first, first + count) auf Host-Threads aus, `out[(v − first)·extra.count + i]`; `evaluate` muss dafür threadsicher sein. Mehrere Quellen verkettet `concat_extra_residuals({…})` (ab M4-T6, `extra_residuals.hpp`): count = Σ count_i, die Teile in der angegebenen Reihenfolge, Teile mit count = 0 entfallen. `mikroptim optimize` verwendet paraxiale Nebenbedingungen, dahinter die L1-Strafe der Geisterkoeffizienten. Strafblöcke im Kernel (weiches Versagen, M4-T2) gehören zu den Strahlresiduen und sind davon unabhängig.
 
 **Parallelisierung auf dem Host.** Feste, zusammenhängende Aufteilung der Varianten auf T Threads (`std::thread`; `std::execution::par` bräuchte unter GCC TBB, also eine neue Abhängigkeit): Thread c bearbeitet [first + ⌊count·c/T⌋, first + ⌊count·(c+1)/T⌋). Jede Variante wird unabhängig und von genau einem Thread gerechnet, die Ergebnisse sind daher für jede Threadzahl bitgleich (keine Reduktion über Varianten). T ≤ 0 heißt `hardware_concurrency`. Wirft eine Variante, wird nach dem Join die Ausnahme der kleinsten werfenden Variante weitergegeben (unabhängig von T).
 
@@ -149,6 +152,45 @@ Direkt mit großem Gewicht zu beginnen, ist ungünstig: Liegt die Überschreitun
 ## 3. Warum L1 für Geisterplatten
 
 Mit einer quadratischen Strafe wäre der Grenznutzen bei a = 0 null; der Optimierer würde immer ein wenig Geisterkorrektur verwenden. Mit L1 gilt die Theorie der exakten Penalty: Ist μ größer als der zugehörige Lagrange-Multiplikator, bleiben die Koeffizienten exakt null, solange das reale System das Ziel alleine erreicht. Zusätzlich entsteht Sparsity: wenige, gezielte Koeffizienten statt vieler kleiner. Die Glättung mit ε (Startwert 10⁻⁶ in Einheiten des Dickenprofils) hält LM differenzierbar.
+
+### Festlegungen der Implementierung (M4-T6)
+
+API: `include/mikroptim/optim/ghost_penalty.hpp` (`Mikroptim::optim`), Einstellungen in der Systemdatei als Nebenbedingung `ghost_penalty` ([dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3)).
+
+**Residuum.** Pro Koeffizient a = a_{g,k} jeder bestraften Platte ein Zusatzresiduum
+
+$$r = \sqrt{\mu w_k}\;\frac{a}{\sqrt{\varepsilon + \sqrt{a^2+\varepsilon^2}}},\qquad r^2 = \mu w_k\Bigl(\sqrt{a^2+\varepsilon^2}-\varepsilon\Bigr) = \mu w_k\,\frac{a^2}{\varepsilon+\sqrt{a^2+\varepsilon^2}},\qquad w_k = w_0\,\kappa^k,$$
+
+μ = `weight`, w₀ = `order_weight` (Standard 1), κ = `order_factor` (Standard 2), ε = `smoothing` (Standard 10⁻⁶ mm). Die Einheit von μ w_k ist Wellen²/mm (Merit pro mm Profil); r ist wie alle Residuen dimensionslos. w_k wird als Produkt w₀·κ·κ·… gebildet (plattformunabhängig), r² ohne Auslöschung als μ w_k a²/(ε + s) mit s = hypot(a, ε).
+
+**Warum diese Form statt √(μ w_k)(a² + ε²)^{1/4}.** Beide Quadrate unterscheiden sich nur um die Konstante μ w_k ε, die Gradienten sind gleich (μ w_k a/√(a² + ε²)), also auch die Minima. Für LM zählt aber das Residuum selbst, weil das Gauß-Newton-Modell die Krümmung von F = Σ r² durch 2 JᵀJ ersetzt:
+
+- Plan-Form: r(0) = √(μ w_k ε) ≠ 0 und dr/da(0) = 0. Das Modell sieht bei a = 0 keine Krümmung der Strafe (wahr ist μ w_k/ε), der Gauß-Newton-Schritt in a schießt um den Faktor μ w_k/(2 ε H) über das Minimum hinaus (H = Krümmung der Wellenfront in a, im Abnahmesystem ≈ 10⁶ Wellen²/mm²; Faktor ≈ 10²). LM müsste die Dämpfung für alle Variablen hochsetzen. Außerdem trägt jeder Koeffizient die Konstante μ w_k ε zu F bei.
+- Implementierte Form: r ist analytisch und ungerade, r(0) = 0, dr/da(0) = √(μ w_k/(2ε)); 2 (dr/da)² = μ w_k/ε ist bei a = 0 genau die Krümmung von r². Die Strafe ist in a nahezu diagonal und sehr steif; die Normalgleichungen bleiben gut konditioniert (Diagonaldominanz der skalierten Matrix). Für |a| ≫ ε ist r ≈ √(μ w_k |a|) sign a, das Modell überschätzt dort die Krümmung (μ w_k/(4|a|) statt ≈ 0), die Schritte werden nur kürzer.
+
+**Abschätzung der Restkoeffizienten („exakt 0“ mit Glättung).** Am Minimum von F_rest(x, a) + Σ μ w_k(√(a² + ε²) − ε) gilt für jeden Koeffizienten g_k + μ w_k a_k/√(a_k² + ε²) = 0 mit dem Gradienten g_k = ∂F_rest/∂a_k der übrigen Merit (Wellenfront, Nebenbedingungen) am Endpunkt. Mit s_k = g_k/(μ w_k):
+
+$$a_k = -\,\varepsilon\,\frac{s_k}{\sqrt{1-s_k^2}} \;\approx\; -\,\frac{\varepsilon\,g_k}{\mu\,w_k}\quad (|s_k| \ll 1).$$
+
+- **Schwelle:** |s_k| < 1, also μ w_k > |g_k|, heißt „μ oberhalb der Schwelle“; dann bleibt |a_k| im Bereich ε |s_k|, sonst wird der Koeffizient aktiv (|a| ≫ ε, dort gilt die Stationarität mit dem L1-Subgradienten). Exakt 0 erreicht die geglättete Strafe nie, aber |a_k| ≈ ε|g_k|/(μ w_k) ist beliebig klein: Für |a| < 10⁻⁸ mm genügt ε = 10⁻⁷ mm bei μ wenig über der Schwelle oder ε = 10⁻⁶ mm bei μ ≥ 100-fach über der Schwelle. Eine Fortsetzung in ε (ε am Ende verkleinern) leistet dasselbe; sie gehört zum Homotopie-Controller (M6-T3). Kleinere ε als etwa 10 h (h = FD-Schrittweite bei a = 0, Abschnitt 1) sollte man nicht wählen, sonst überspannt die zentrale Differenz den glatten Bereich.
+- **Merit:** Gegenüber dem realen System allein senken die Restkoeffizienten F um Σ_k μ w_k ε (1 − √(1 − s_k²)) ≈ Σ_k ε g_k²/(2 μ w_k) (Minimum von g a + μ w(√(a² + ε²) − ε) über a); bei exakter L1-Strafe wäre dieser Gewinn 0.
+- **Kopplung:** g_k ist der Gradient am Endpunkt, nicht bei a = 0 mit festem x: Alle Ordnungen tragen zu t₂ und damit zur Brechkraft der Platte bei (Abschnitt 6 von numerik.md); im Abnahmesystem korrigieren Restkoeffizienten von ~10⁻⁹ mm zusätzlich die Brennweite (Residuum bei a = 0: 2·10⁻⁵), und g_k der Ordnungen 1, 3, 4 sinkt dadurch um bis zu zwei Größenordnungen.
+
+**Beugungsziel als Gewicht.** Ein Restfehler mit RMS σ (Wellen bei λ_ref), dessen Pupillenverlauf genau dem Modus P_k(2u − 1) entspricht (Bündel füllt r_g, gleichmäßig gewichtete Pupille, Merit-Gewichte auf Summe 1), erzeugt bei a = 0 den Gradienten
+
+$$g_k = \frac{2\,\sigma\,(n_G - n_m)}{\lambda_{\mathrm{ref}}\,\sqrt{2k+1}}$$
+
+(`ghost_activation_gradient`; aus g_k = 2 Σ r_i ∂r_i/∂a_k mit ∂OPD/∂a_k = (n_G − n_m) P_k und dem Mittel 1/(2k + 1) von P_k² über ξ ∈ [−1, 1]). Wählt man μ w_k = g_k(σ_Ziel), wird Ordnung k genau dann aktiv, wenn der Restfehler des realen Systems in diesem Modus σ_Ziel übersteigt; an einem aktiven Koeffizienten bleibt im Optimum ein Modusrest der Größe σ_Ziel (0,5/(n_G − 1)) übrig (Stationarität mit |g_k| = μ w_k). Die Testsysteme verwenden σ_Ziel = λ/14 (Maréchal), Δn = 0,5 und k = 2 (sphärische Aberration nach Fokussierung ∝ P_2): μ w_2 = 54,37 Wellen²/mm, μ = 13,6. Der Gesamtfehler nach der Optimierung liegt etwas darüber, weil auch höhere, nicht aktivierte Ordnungen Rest tragen (Einzellinse NA 0,5: 0,0875 Wellen RMS gegen λ/14 = 0,0714).
+
+**Abnahme** (`tests/test_ghost_optimization.cpp`, GPU `tests/test_cuda_ghost_optimization.cpp`, LM mit FD-Jacobi, Quadratur 10 Ringe):
+
+| Kriterium | System | Ergebnis |
+|---|---|---|
+| Exaktheit: alle \|a\| < 10⁻⁸ mm | `einzellinse_geisterplatten_exakt.json`: Einzellinse f = 100 mm, NA 0,025, Biegung und Arbeitsabstand frei, Brennweite 0,029/mm²; vier Platten (CaF₂ und Flint bei 1 mm, N-BK7 bei 4 mm hinter der Blende, N-BK7 hinter der Linse), K = 4, Start a ≠ 0 (bis 2·10⁻⁵ mm); μ = 13,6, ε = 10⁻⁷ mm | max \|a\| = 2,63·10⁻⁹ mm, 83 Zyklen (converged_step); max \|g_k\|/(μ w_k) = 0,026 (μ etwa 38-fach über der Schwelle); a_k gegen −ε s/√(1 − s²) auf 4,8·10⁻⁷ ε; F_allein − F = 4,034·10⁻⁹ gegen vorhergesagt 4,024·10⁻⁹ Wellen² (F = 1,553·10⁻⁶) |
+| Skalierung mit ε und μ | dasselbe mit ε = 10⁻⁶ mm (μ = 13,6) bzw. μ = 100 (ε = 10⁻⁶ mm) | max \|a\| = 2,57·10⁻⁸ bzw. 3,57·10⁻⁹ mm, wie ε/μ vorhersagt |
+| Bedarf: Koeffizienten werden aktiv, Bericht nennt Lage, Ordnung, Glas | `einzellinse_na05_geisterplatten.json`: Einzellinse N-BK7 f = 2 mm, NA 0,5 (paraxial a/f), Achse, eine Wellenlänge; neun Platten (CaF₂, N-BK7, Flint an drei Lagen: 0,05 und 0,4 mm hinter der Blende, 0,2 mm hinter der Linse), K = 6; μ aus dem Beugungsziel | RMS allein 2,553 Wellen, mit Geisterplatten 0,0875 Wellen (73 Zyklen); aktiv nur Platte 8 (Flint, nach Fläche 2 bei 0,2 mm), dominante Ordnung 2 (a_2 = 7,77·10⁻³ mm), Merit-Gewinn 24,0 gegen Strafe 0,42 Wellen²; Empfehlung Operator A |
+
+Dass die L1-Strafe bei monochromatischer Korrektur das Glas mit dem größten n − 1 wählt, folgt aus Φ = (n_G − 1) t: Dieselbe Phase kostet mit dem Flint (n − 1 = 0,753) das kleinste Σ|a|. Welche Lage gewinnt, ist bei einem einzigen Achsfeld nahezu entartet (alle Lagen sehen dasselbe Modusprofil); die Tests prüfen deshalb nur, dass der Bericht die Lage der aktiven Platte nennt.
 
 ## 4. Gebündelter Levenberg-Marquardt
 
@@ -337,6 +379,23 @@ Nach jeder Konvergenz wird pro Geisterplatte berichtet: Summe |a_k|, dominante O
 | hauptsächlich monochromatische Korrektur (gleiches Muster über alle Wellenlängen) | sphärische Aberration höherer Ordnung, Aplanasie, Petzval | A: Meniskus ohne Brechkraft |
 | Korrektur über Gläser mit unterschiedlicher Dispersion | Farbfehler 1. Ordnung | B: Aufspalten in Kittglied (normale Gläser) |
 | Bedarf an anomaler Teildispersion (Fluorit-Platte aktiv) | sekundäres Spektrum | B mit Fluorit- oder FK51-artigem Glas |
+
+### Diagnosebericht (ab M4-T6)
+
+API `include/mikroptim/optim/ghost_diagnosis.hpp`: `diagnose_ghost_plates(system, catalog, batch, v, penalty, merit, options)` liefert `GhostDiagnosis` (Struktur), `write_ghost_diagnosis_text` den Textbericht und `ghost_diagnosis_json` ein JSON-Objekt (nicht endliche Zahlen als null). `merit` ist eine Funktion, die F für alle Varianten eines Batches liefert (`make_cpu_merit(quadratur, zusatzresiduen)`: wie `CpuLmBackend::merit`); leer heißt ohne Merit-Werte. `mikroptim optimize` gibt den Bericht als Abschnitt der Zusammenfassung aus, wenn das System Geisterplatten hat ([cli.md](cli.md#mikroptim-optimize)).
+
+**Pro Platte** (`GhostPlateReport`): Lage (`after_surface`, `distance`, Tabellenfläche), r_g, K, Koeffizienten, Σ|a_k|, max |a_k|, Aktivität (max |a_k| > Schwelle, Standard 10 ε der Strafe der Platte; inaktive Koeffizienten liegen bei |a| ≲ ε, Abschnitt 3), dominante Ordnungen (aktive Ordnungen mit |a_k| ≥ 0,1 · max |a|, absteigend), Glas (Name, n_G bei λ_ref, n_G(λ_kurz) − n_G(λ_lang) der Merit-Wellenlängen, n_d, ν_d = (n_d − 1)/(n_F − n_C), P_g,F = (n_g − n_F)/(n_F − n_C) und ΔP_g,F = P_g,F − (0,6438 − 0,001682 ν_d) gegen die Normalgerade, aus `material_index` bei g, F, d, C; NaN, wenn nicht auswertbar), φ_G und φ_G/(n_m n_G) bei λ_ref (numerik.md §6), paraxiale Randstrahlhöhe (volle Pupille) und Hauptstrahlhöhe für 1 rad Feldwinkel an der Platte (Blendennähe: Hauptstrahlhöhe klein gegen Randstrahlhöhe; im kollimierten Strahl vor der ersten Linse ist sie gleich dem Abstand von der Blende), Strafbeitrag Σ r² der Platte, F mit a = 0 für diese Platte (ein zusätzlicher Trace pro Platte, alle in einem Batch mit G + 1 Varianten) und der Merit-Gewinn F(a_g = 0) − F (> 0: die Platte senkt die Merit netto, Strafe eingerechnet).
+
+**Pro Lage** (`GhostPositionReport`, Platten mit gleichem `after_surface` und `distance`, also ein Glas-Wörterbuch): aktive Platten, Klassifikation und Begründung nach der Tabelle oben mit folgender Heuristik:
+
+1. Keine aktive Platte: keine Empfehlung.
+2. Nur eine Merit-Wellenlänge (Gewicht > 0): **A** – die Platten korrigieren das Muster dieser Wellenlänge (monochromatisch).
+3. Sonst wird die gemeinsame Korrektur der aktiven Platten in einen monochromatischen und einen Farbanteil zerlegt: T_k = Σ_g (n_g,ref − n_m) a_{g,k} (Phase bei λ_ref) und ΔT_k = Σ_g Δn_g a_{g,k} mit Δn_g = n_g(λ_kurz) − n_g(λ_lang) (Unterschied der Phase zwischen den äußeren Merit-Wellenlängen), beide in der Norm Σ_k x_k²/(2k + 1) (RMS des Profils, Orthogonalität der P_k). Der Farbanteil χ = ‖ΔT‖/‖T‖ einer einzelnen Platte ist |Δn_g|/(n_g,ref − n_m), also höchstens das größte χ_g der aktiven Gläser („gleiches Muster über alle Wellenlängen“ bis auf die Dispersion eines Glases). Ist χ > 2 · max χ_g, unterscheiden sich die Muster der Wellenlängen stärker, als es eine einzelne Platte könnte – das geht nur durch Kombination von Gläsern verschiedener Dispersion (etwa Kron positiv, Flint negativ bei kompensierter Brechkraft): **B**. Sonst **A**.
+4. **B mit anomaler Teildispersion**, wenn bei B mindestens drei Merit-Wellenlängen vorliegen und eine aktive Platte mit ΔP_g,F ≥ 0,02 (CaF₂: +0,055, FK51-artig ≈ +0,03; normale Gläser |ΔP| < 0,01) mindestens 25 % von Σ|a| der Lage trägt. Bei zwei Wellenlängen genügt ein großer Abbe-Unterschied für die Farbkorrektur; eine aktive Fluorit-Platte ist dort kein Nachweis eines sekundären Spektrums (Hinweis in der Begründung, Klassifikation B).
+
+Alle Schwellen stehen in `GhostDiagnosisOptions`. **Empfehlung** des Berichts: die Lage mit dem größten Merit-Gewinn ihrer aktiven Platten (ohne Merit: größte Σ|a|), mit Operator, Glas der aktivsten Platte und dominanter Ordnung; Initialisierung des Operators daraus ist M6-T2.
+
+Tests: `tests/test_ghost_diagnosis.cpp` (Felder gegen unabhängige Rechnungen: t₂ und φ_G, Rand- und Hauptstrahlhöhe im kollimierten Strahl, Merit mit Orakel 1 + Σ a², Abbezahlen und ΔP_g,F von CaF₂, N-BK7 und dem Flint; Klassifikation A/B/B anomal an vorgegebenen Koeffizienten; Text und JSON), Bedarf-Abnahme in Abschnitt 3.
 
 ## 6. Einfüge-Operatoren
 

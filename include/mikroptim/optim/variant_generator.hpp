@@ -44,6 +44,7 @@ struct PerturbationOptions {
     PerturbationScale curvature{0.01, 0.0};
     PerturbationScale thickness{0.01, 0.0};
     PerturbationScale working_distance{0.01, 0.0};
+    PerturbationScale ghost_coefficient{0.01, 0.0}; // relativ: a = 0 bleibt ungestört
     Distribution distribution = Distribution::Uniform;
     std::uint64_t seed = 0;
     bool first_is_base = false; // Variante 0 ist x₀ selbst (ungestört)

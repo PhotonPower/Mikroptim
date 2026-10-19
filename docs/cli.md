@@ -454,15 +454,15 @@ Implementierung: `src/cli/trace_command.cpp` (Bibliothek `mikroptim_cli`, intern
 
 ## `mikroptim optimize`
 
-Optimiert die Variablen einer Systemdatei (Abschnitt `variables`, [dateiformat.md](dateiformat.md)) mit dem gebündelten Levenberg-Marquardt ([optimierung.md, Abschnitt 4](optimierung.md#4-gebündelter-levenberg-marquardt)) und schreibt das Ergebnis als neue Systemdatei. Ausgegeben werden ein Iterationsprotokoll und eine Zusammenfassung: Status, Zyklen, Merit vorher/nachher, Variablen vorher/nachher mit Schranken, Nebenbedingungen Ist/Soll und RMS-Wellenfront pro Feld und Wellenlänge vorher/nachher.
+Optimiert die Variablen einer Systemdatei (Abschnitt `variables`, [dateiformat.md](dateiformat.md)) mit dem gebündelten Levenberg-Marquardt ([optimierung.md, Abschnitt 4](optimierung.md#4-gebündelter-levenberg-marquardt)) und schreibt das Ergebnis als neue Systemdatei. Ausgegeben werden ein Iterationsprotokoll und eine Zusammenfassung: Status, Zyklen, Merit vorher/nachher, Variablen vorher/nachher mit Schranken, Nebenbedingungen Ist/Soll, bei Systemen mit Geisterplatten der Diagnosebericht (ab M4-T6, siehe [Geisterplatten](#geisterplatten-diagnosebericht-ab-m4-t6)) und RMS-Wellenfront pro Feld und Wellenlänge vorher/nachher.
 
-Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu`): F = ‖r‖² aus den Strahlresiduen der Wellenfront (Pupillenquadratur `--rings` × `--spokes`) und den paraxialen Zusatzresiduen der Nebenbedingungen (Abschnitt `constraints`, `make_paraxial_residuals(make_paraxial_constraints(system))`, [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor)). Die Einheit ist die der Bibliothek: seit M4-T1 **Wellen² bei λ_ref** (Strahlresiduen √(ŵ_f ŵ_λ W_i V_j)·OPD/λ_ref, paraxiale Zusatzresiduen √w·q mit w in 1/mm²; Wahl der Gewichte: [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)). Text und JSON nennen sie (`[Wellen²]`, `merit_unit`). Gerechnet wird in FP64.
+Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu`): F = ‖r‖² aus den Strahlresiduen der Wellenfront (Pupillenquadratur `--rings` × `--spokes`) und den Zusatzresiduen: paraxiale Nebenbedingungen (Abschnitt `constraints`, `make_paraxial_residuals(make_paraxial_constraints(system))`), dahinter die L1-Strafe der Geisterkoeffizienten (Einträge `ghost_penalty`, `make_ghost_penalty_residuals(make_ghost_penalty(system))`, ab M4-T6), verkettet mit `concat_extra_residuals` ([optimierung.md, Abschnitte 2 und 3](optimierung.md#2-residuenvektor)). Die Einheit ist die der Bibliothek: seit M4-T1 **Wellen² bei λ_ref** (Strahlresiduen √(ŵ_f ŵ_λ W_i V_j)·OPD/λ_ref, paraxiale Zusatzresiduen √w·q mit w in 1/mm²; Wahl der Gewichte: [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)). Text und JSON nennen sie (`[Wellen²]`, `merit_unit`). Gerechnet wird in FP64.
 
 ### Optionen
 
 | Option | Bedeutung | Standard |
 |---|---|---|
-| `<system.json>` | Systemdatei mit Abschnitt `variables` (optional `constraints`) | – |
+| `<system.json>` | Systemdatei mit Abschnitt `variables` (optional `constraints`, Geisterkoeffizienten als Variablen `ghost_coefficient`) | – |
 | `-o DATEI`, `--output DATEI` | Ergebnis als neue Systemdatei schreiben (siehe [Ergebnisdatei](#ergebnisdatei)); ohne `-o` nur Protokoll | keine Datei |
 | `--json` | maschinenlesbare Ausgabe `mikroptim.optimize/1` statt Text | aus |
 | `--quiet`, `-q` | ohne Iterationsprotokoll (Text: nur Kopf und Zusammenfassung, JSON: `"iterations": null`) | aus |
@@ -477,7 +477,7 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 
 Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrale finite Differenzen, Ablehnung neuer versagter Strahlen) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
 
-**Multistart.** Mit `--runs K` laufen K Läufe gemeinsam: Lauf 0 startet im Punkt x₀ der Datei, Lauf j ≥ 1 im gestörten Punkt `perturbed_vector(set, x₀, options, j)` mit `relative = s` für alle Variablentypen, `seed = n` und `first_is_base` (gleichverteilt, plattformunabhängig, auf die Schranken projiziert; [optimierung.md, Variantengenerator](optimierung.md#variantengenerator-ab-m3-t1)). Lauf 0 ist bitgleich zum Aufruf ohne `--runs` (die Läufe sind voneinander unabhängig), der Multistart ist also nie schlechter. **Bester Lauf:** endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen haben r = 0, eine Merit mit mehr versagten Strahlen ist nicht vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. Die Auswahl ist deterministisch; zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe.
+**Multistart.** Mit `--runs K` laufen K Läufe gemeinsam: Lauf 0 startet im Punkt x₀ der Datei, Lauf j ≥ 1 im gestörten Punkt `perturbed_vector(set, x₀, options, j)` mit `relative = s` für alle Variablentypen (Geisterkoeffizienten a = 0 bleiben ungestört), `seed = n` und `first_is_base` (gleichverteilt, plattformunabhängig, auf die Schranken projiziert; [optimierung.md, Variantengenerator](optimierung.md#variantengenerator-ab-m3-t1)). Lauf 0 ist bitgleich zum Aufruf ohne `--runs` (die Läufe sind voneinander unabhängig), der Multistart ist also nie schlechter. **Bester Lauf:** endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen haben r = 0, eine Merit mit mehr versagten Strahlen ist nicht vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. Die Auswahl ist deterministisch; zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe.
 
 ### Ergebnisdatei
 
@@ -508,7 +508,7 @@ Bei Exit-Code 1 bleibt die Standardausgabe leer, außer wenn der Fehler erst nac
 
 ### Textausgabe
 
-Zahlenformat wie bei `trace` (C-Locale, plattformunabhängig; Linux/GCC und Windows/MSVC liefern dieselbe Ausgabe): Merit mit 9 Stellen in Exponentialschreibweise, Krümmungen in 1/mm ebenso, Längen in mm mit 6 Nachkommastellen, nicht endliche Werte als `unendlich`/`-unendlich` bzw. `-`. Das Protokoll wird während der Rechnung geschrieben, eine Zeile pro Zyklus und Lauf (in Laufreihenfolge, `LmOptions::on_iteration`):
+Zahlenformat wie bei `trace` (C-Locale, plattformunabhängig; Linux/GCC und Windows/MSVC liefern dieselbe Ausgabe): Merit mit 9 Stellen in Exponentialschreibweise, Krümmungen in 1/mm und Geisterkoeffizienten in mm ebenso, Längen in mm mit 6 Nachkommastellen, nicht endliche Werte als `unendlich`/`-unendlich` bzw. `-`. Das Protokoll wird während der Rechnung geschrieben, eine Zeile pro Zyklus und Lauf (in Laufreihenfolge, `LmOptions::on_iteration`):
 
 | Spalte | Inhalt (`LmIterationInfo`) |
 |---|---|
@@ -522,7 +522,33 @@ Zahlenformat wie bei `trace` (C-Locale, plattformunabhängig; Linux/GCC und Wind
 | `versagt` | versagte Strahlen am Versuchspunkt |
 | `Status` | Endstatus, wenn der Lauf in diesem Zyklus endet; das meldet die Bibliothek nur für `damping_limit` und `converged_merit` bei F = 0. Die übrigen Endzustände (`converged_*`, `max_iterations`) stellt sie erst vor dem nächsten Zyklus fest, ohne Rückruf; sie stehen in der Zusammenfassung |
 
+Im Kopf steht bei Systemen mit Geisterplatten zusätzlich die Zeile `Geisterplatten  G (L1-Strafe: n Koeffizienten)`.
+
 Die Wellenfronttabelle der Zusammenfassung rechnet immer die CPU (`evaluate_wavefront` mit den idealen Bildpunkten, wie `mikroptim trace` ohne `--gpu`) für das Start- und das Ergebnissystem; „nachher“ ist also genau das, was `mikroptim trace <ergebnis.json>` ausgibt.
+
+### Geisterplatten: Diagnosebericht (ab M4-T6)
+
+Hat das System Geisterplatten, folgt nach den Nebenbedingungen der Bericht von `diagnose_ghost_plates` am Ergebnis des besten Laufs ([optimierung.md, Abschnitt 5](optimierung.md#diagnosebericht-ab-m4-t6)), Text aus `write_ghost_diagnosis_text`. Die Merit-Werte (F, F mit a = 0 je Platte) rechnet immer die CPU mit derselben Quadratur und denselben Zusatzresiduen wie die Optimierung (`make_cpu_merit`), auch mit `--gpu`. Inhalt: Merit und Merit-Wellenlängen, eine Zeile pro Platte (Platte, Dateifläche `after_surface`, Abstand, K, Σ|a| [mm], dominante Ordnungen, φ_G [1/mm], paraxiale Randstrahlhöhe y_R [mm], Hauptstrahlhöhe y_H für 1 rad, Strafe Σ r², Gewinn F(a = 0 für diese Platte) − F in Wellen², aktiv, n_ref, ν_d, ΔP_g,F, Glas), die Koeffizienten der aktiven Platten, pro Lage (gleiches `after_surface` und `distance`) Platten, aktive Platten, Operator (`none`, `A`, `B`, `B_anomalous`), Befund und Begründung, zuletzt die Empfehlung. Beispiel (`mikroptim optimize data/systems/einzellinse_na05_geisterplatten.json --quiet`, gekürzt):
+
+```
+Geisterplatten (Diagnose, docs/optimierung.md Abschnitt 5)
+  Merit F [Wellen²]: 4.321694751e-01, Merit-Wellenlängen: 1
+   Pl Fläche  Abstand  K  Summe|a| [mm]  dominant  phi_G [1/mm]  y_R [mm]   y_H/rad     Strafe     Gewinn  aktiv   n_ref   nu_d   dP_gF  Glas
+    0      0    0.050  6      1.267e-06         -     1.067e-05     1.000     0.050   2.02e-05   1.91e-05   nein  1.4338   95.0  0.0546  CAF2
+…
+    8      2    0.200  6      7.770e-03         2     9.728e-02     0.772     0.976   4.23e-01   2.40e+01     ja  1.7534   26.9  0.0001  buchdahl(n0=1.76, nu=-0.18/0.112)
+  (Strafe = Σ r² der Platte, Gewinn = F(a = 0 für diese Platte) − F in Wellen²; y_R Randstrahl-, y_H Hauptstrahlhöhe paraxial)
+  Platte 8 a_k [mm]: -3.0601e-07 7.7691e-03 -2.0891e-07 2.2752e-07 -4.1881e-07 2.3464e-07
+  Lagen:
+    nach Fläche 0 im Abstand 0.05 mm: Platten 0, 1, 2, aktiv - -> none
+      Befund: keine aktive Geisterplatte
+      Begründung: alle |a_k| unter der Aktivitätsschwelle
+…
+    nach Fläche 2 im Abstand 0.2 mm: Platten 6, 7, 8, aktiv 8 -> A
+      Befund: monochromatische Korrektur (sphärische Aberration höherer Ordnung, Aplanasie, Petzval)
+      Begründung: nur eine Merit-Wellenlänge: die Platten korrigieren das Muster dieser Wellenlänge
+  Empfehlung: Operator A (Meniskus ohne Brechkraft) nach Fläche 2 im Abstand 0.2 mm, Glas wie Platte 8 (buchdahl(n0=1.76, nu=-0.18/0.112)), dominante Ordnung 2; Biegung aus dem Vorzeichen der Korrektur
+```
 
 ### Beispiel
 
@@ -658,8 +684,9 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `merit_unit` | string | Einheit aller Merit-Werte (`merit`, `trial_merit`, `start_merit`): `"waves^2"` (Wellen² bei λ_ref, seit M4-T1) |
 | `quadrature` | object | `{"rings": N, "spokes": M}` |
 | `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1) |
-| `variables` | object[] | pro Variable k: `name` (`"c[1]"`, `"t[2]"`, `"w"`), `type`, `surface` (Dateifläche), `lower`, `upper` (`null` = offen), `typical`, `start` (x₀), `result` (x des besten Laufs) |
+| `variables` | object[] | pro Variable k: `name` (`"c[1]"`, `"t[2]"`, `"w"`, `"a[g,k]"`), `type`, `surface` (Dateifläche; `null` bei Geisterkoeffizienten), `plate` und `order` (nur Geisterkoeffizienten, sonst `null`; ab M4-T6), `lower`, `upper` (`null` = offen), `typical`, `start` (x₀), `result` (x des besten Laufs) |
 | `constraints` | object[] | pro paraxialer Nebenbedingung: `item` (Eintrag in `constraints.items`), `type`, `mode`, `weight`, `target` (Soll), `value_start`, `value_result` (Ist: Brennweite 1/φ, Arbeitsabstand, Abgleichlänge; bei `paraxial_focus` die Randstrahlhöhe q in der Bildebene), `residual_start`, `residual_result` (r = √w·q̃ wie im Residuenvektor) |
+| `ghost_diagnosis` | object \| null | Diagnosebericht der Geisterplatten (ab M4-T6; `null` ohne Geisterplatten), Objekt aus `ghost_diagnosis_json`: `merit`, `reference_nm`, `merit_wavelengths`, `short_nm`, `long_nm`; `plates` (pro Platte `plate`, `after_surface`, `distance`, `table_surface`, `norm_radius`, `order`, `glass` {`name`, `n_ref`, `dispersion`, `n_d`, `abbe`, `partial_gf`, `delta_partial_gf`}, `coefficients`, `sum_abs`, `max_abs`, `activity_threshold`, `active`, `dominant_orders`, `power`, `petzval`, `marginal_height`, `chief_height_per_rad`, `penalized`, `penalty`, `merit_without`, `merit_gain`); `positions` (pro Lage `after_surface`, `distance`, `plates`, `active_plates`, `chromatic_ratio`, `single_glass_ratio`, `merit_gain`, `sum_abs`, `recommendation`, `finding`, `reason`); `recommended_position` (Index in `positions` oder `null`), `recommendation` (`"none"`, `"A"`, `"B"`, `"B_anomalous"`), `recommendation_text` |
 | `iterations` | object[] \| null | Protokoll in der Reihenfolge der Rückrufe: `run`, `iteration`, `status`, `evaluated`, `accepted`, `merit`, `trial_merit`, `gain_ratio`, `damping`, `step_norm`, `failed_rays` (wie `LmIterationInfo`); `null` mit `--quiet` |
 | `runs` | object[] | pro Lauf: `run`, `status`, `iterations`, `accepted`, `jacobians`, `start_merit` (F am Startpunkt), `merit`, `failed_rays`, `start` (Startpunkt), `x` (Endpunkt) |
 | `best_run` | integer | Index des besten Laufs |
@@ -687,8 +714,9 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
   "quadrature": { "rings": 10, "spokes": 8 },
   "settings": { "max_iterations": 100, "runs": 1, "perturbation": null, "seed": null },
   "variables": [
-    { "name": "c[1]", "type": "curvature", "surface": 1, "lower": -0.05, "upper": 0.05,
-      "typical": 0.01, "start": 0.00967, "result": 0.01672853972858829 },
+    { "name": "c[1]", "type": "curvature", "surface": 1, "plate": null, "order": null,
+      "lower": -0.05, "upper": 0.05, "typical": 0.01, "start": 0.00967,
+      "result": 0.01672853972858829 },
     …
   ],
   "constraints": [
@@ -696,6 +724,7 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
       "value_start": 101.04968094724019, "value_result": 100.00000160346728,
       "residual_start": 0.17689736616623206, "residual_result": 2.730606328905618e-07 }
   ],
+  "ghost_diagnosis": null,
   "iterations": [
     { "run": 0, "iteration": 1, "status": "running", "evaluated": true, "accepted": true,
       "merit": 6.7474029362767126e-06, "trial_merit": 6.7474029362767126e-06,
@@ -734,6 +763,7 @@ Beispiel (Auszug aus `mikroptim optimize data/systems/einzellinse_bk7_biegung.js
 
 - `CliOptimize.MeritDecreasesAndResultReproducesMerit`: Biegung der Einzellinse, Merit 3,13·10⁻² → 1,56·10⁻⁶ Wellen², x und Merit bitgleich zu `optimize_lm_cpu`, q = 0,7208; die Ergebnisdatei liefert beim Neuladen denselben Variablenvektor und **bitgleich dieselbe Merit** (über `CpuLmBackend` und über `optimize --max-iterations 0`); `mikroptim trace` lädt sie (Glaskatalog relativ zum neuen Verzeichnis) und gibt dieselbe Wellenfront aus wie „nachher“.
 - `CliOptimize.GhostPlateResultReproducesMerit`: Einzellinse mit Geisterplatten, Dicke des geteilten Spalts als Variable, bitgleiche Merit nach dem Neuladen; absoluter Glaskatalog bleibt unverändert.
+- `CliOptimize.GhostPenaltyAndDiagnosis` (M4-T6): `einzellinse_geisterplatten_exakt.json` mit Geisterkoeffizienten und L1-Strafe: alle \|a\| < 10⁻⁸ mm, `plate`/`order` im JSON, `ghost_diagnosis` ohne aktive Platte (Empfehlung `none`), Ergebnisdatei reproduziert die Merit einschließlich Strafe bitgleich; Text bei `einzellinse_na05_geisterplatten.json` mit Diagnoseabschnitt und Empfehlung Operator A; ohne Geisterplatten `ghost_diagnosis: null` und kein Abschnitt.
 - `CliOptimize.JsonIterationsMatchLibraryHistory`: ein Protokolleintrag pro Zyklus, Merit bitgleich zu `LmRunResult::history`; `--quiet` ohne Protokoll.
 - `CliOptimize.ConstraintsReportedBeforeAndAfter`: Istwerte und Residuen gegen `compute_paraxial` und die Dicken (`einzellinse_bk7_nebenbedingungen.json`).
 - `CliOptimize.MultistartIsDeterministic`: zwei Aufrufe gleiche Ausgabe, Startpunkte bitgleich zu `perturbed_vector`, bester Lauf nach der Regel oben, Lauf 0 gleich dem Einzellauf.

@@ -41,9 +41,64 @@ std::string_view target_field(ConstraintType type) {
         return "working_distance";
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
+    case ConstraintType::GhostPenalty:
         return {};
     }
     return {};
+}
+
+// Prüft eine Zahl > 0 und endlich (Felder der Geisterplatten-Strafe).
+void check_positive(const std::optional<double>& v, const std::string& path) {
+    if (v && !(std::isfinite(*v) && *v > 0.0)) {
+        fail(path, "muss endlich und größer als 0 sein, ist " + num(*v));
+    }
+}
+
+// Geisterplatten eines ghost_penalty-Eintrags mit dem JSON-Pfad für Fehler; fehlt die Auswahl,
+// gilt der Eintrag für alle Platten.
+struct PlateRef {
+    int plate;
+    std::string path;
+};
+
+std::vector<PlateRef> penalty_plates(const ConstraintSpec& c, const std::string& path,
+                                     int ghost_count) {
+    std::vector<PlateRef> out;
+    switch (c.plate_selection) {
+    case SurfaceSelection::None:
+    case SurfaceSelection::All:
+        if (!c.plates.empty()) {
+            fail(path + ".plates", "bei \"all\" keine einzelnen Geisterplatten");
+        }
+        for (int g = 0; g < ghost_count; ++g) {
+            out.push_back(
+                {g, path + (c.plate_selection == SurfaceSelection::All ? ".plates" : ".type")});
+        }
+        break;
+    case SurfaceSelection::One:
+        if (c.plates.size() != 1) {
+            fail(path + ".plate", "genau eine Geisterplatte erwartet");
+        }
+        out.push_back({c.plates[0], path + ".plate"});
+        break;
+    case SurfaceSelection::List:
+        if (c.plates.empty()) {
+            fail(path + ".plates", "mindestens eine Geisterplatte nötig");
+        }
+        for (std::size_t j = 0; j < c.plates.size(); ++j) {
+            out.push_back({c.plates[j], at(path + ".plates", j)});
+        }
+        break;
+    }
+    for (const PlateRef& p : out) {
+        if (p.plate < 0 || p.plate >= ghost_count) {
+            fail(p.path, "Geisterplatte " + std::to_string(p.plate) + " existiert nicht" +
+                             (ghost_count == 0 ? std::string(" (keine Geisterplatten)")
+                                               : " (Geisterplatten 0 bis " +
+                                                     std::to_string(ghost_count - 1) + ")"));
+        }
+    }
+    return out;
 }
 
 // Typen, die nur als Gleichung definiert sind (einseitig ohne sinnvolle Bedeutung bzw. ohne
@@ -66,6 +121,8 @@ std::string_view to_string(ConstraintType type) {
         return "paraxial_focus";
     case ConstraintType::Petzval:
         return "petzval";
+    case ConstraintType::GhostPenalty:
+        return "ghost_penalty";
     }
     return "?";
 }
@@ -85,7 +142,7 @@ std::string_view to_string(ConstraintMode mode) {
 std::optional<ConstraintType> constraint_type_from_string(std::string_view name) {
     for (const ConstraintType t : {ConstraintType::FocalLength, ConstraintType::ParfocalLength,
                                    ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus,
-                                   ConstraintType::Petzval}) {
+                                   ConstraintType::Petzval, ConstraintType::GhostPenalty}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -111,6 +168,8 @@ bool is_paraxial(ConstraintType type) {
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
         return true;
+    case ConstraintType::GhostPenalty:
+        return false;
     }
     return false;
 }
@@ -119,8 +178,8 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     if (type == ConstraintType::ParaxialFocus) {
         return 0.0;
     }
-    if (type == ConstraintType::Petzval) {
-        return std::nullopt; // Grenze im Eintrag (max_curvature)
+    if (type == ConstraintType::Petzval || type == ConstraintType::GhostPenalty) {
+        return std::nullopt; // Grenze im Eintrag (max_curvature) bzw. keine Sollgröße
     }
     if (!system.target) {
         return std::nullopt;
@@ -134,6 +193,7 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
         return system.target->working_distance;
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
+    case ConstraintType::GhostPenalty:
         break;
     }
     return std::nullopt;
@@ -153,6 +213,8 @@ void check_constraints(const SystemDescription& system) {
     }
     const std::vector<ConstraintSpec>& items = system.constraints->items;
     const int surfaces = static_cast<int>(system.surfaces.size());
+    const int ghost_count = static_cast<int>(system.ghost_plates.size());
+    std::vector<int> penalty_item(static_cast<std::size_t>(ghost_count), -1); // Eintrag je Platte
     for (std::size_t i = 0; i < items.size(); ++i) {
         const ConstraintSpec& c = items[i];
         const std::string path = at("constraints.items", i);
@@ -206,6 +268,38 @@ void check_constraints(const SystemDescription& system) {
             }
         } else if (c.max_curvature) {
             fail(path + ".max_curvature", "nur bei petzval erlaubt");
+        }
+
+        if (c.type == ConstraintType::GhostPenalty) {
+            // Keine Sollgröße, kein Modus; jede Geisterplatte in höchstens einem Eintrag.
+            if (c.mode) {
+                fail(path + ".mode", "ghost_penalty hat keinen Modus (Feld weglassen)");
+            }
+            check_positive(c.order_weight, path + ".order_weight");
+            check_positive(c.order_factor, path + ".order_factor");
+            check_positive(c.smoothing, path + ".smoothing");
+            for (const PlateRef& p : penalty_plates(c, path, ghost_count)) {
+                int& owner = penalty_item[static_cast<std::size_t>(p.plate)];
+                if (owner >= 0) {
+                    fail(p.path, "Geisterplatte " + std::to_string(p.plate) + " steht schon in " +
+                                     at("constraints.items", static_cast<std::size_t>(owner)));
+                }
+                owner = static_cast<int>(i);
+            }
+            continue;
+        }
+        if (c.plate_selection != SurfaceSelection::None) {
+            fail(path + (c.plate_selection == SurfaceSelection::One ? ".plate" : ".plates"),
+                 "nur bei ghost_penalty erlaubt");
+        }
+        if (c.order_weight) {
+            fail(path + ".order_weight", "nur bei ghost_penalty erlaubt");
+        }
+        if (c.order_factor) {
+            fail(path + ".order_factor", "nur bei ghost_penalty erlaubt");
+        }
+        if (c.smoothing) {
+            fail(path + ".smoothing", "nur bei ghost_penalty erlaubt");
         }
 
         // Sollwert: eine Quelle der Wahrheit in `target` (Petzval: Grenze im Eintrag)

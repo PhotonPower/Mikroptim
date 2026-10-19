@@ -443,7 +443,8 @@ private:
         const std::optional<VariableType> t = variable_type_from_string(type);
         if (!t) {
             fail(type_path, "unbekannter Variablentyp \"" + type +
-                                "\" (erlaubt: curvature, thickness, working_distance)");
+                                "\" (erlaubt: curvature, thickness, working_distance, "
+                                "ghost_coefficient)");
         }
         v.type = *t;
 
@@ -453,23 +454,10 @@ private:
             fail(join(path, "surfaces"), "nur eines der Felder \"surface\" und \"surfaces\" "
                                          "angeben");
         }
-        v.selection = SurfaceSelection::None;
-        if (one != nullptr) {
-            v.selection = SurfaceSelection::One;
-            v.surfaces.push_back(as_count(*one, join(path, "surface")));
-        } else if (many != nullptr) {
-            const std::string many_path = join(path, "surfaces");
-            if (many->is_string() && many->get<std::string>() == "all") {
-                v.selection = SurfaceSelection::All;
-            } else if (many->is_array()) {
-                v.selection = SurfaceSelection::List;
-                for (std::size_t k = 0; k < many->size(); ++k) {
-                    v.surfaces.push_back(as_count((*many)[k], at(many_path, k)));
-                }
-            } else {
-                fail_type(many_path, "Liste von Flächenindizes oder \"all\"", *many);
-            }
-        }
+        v.selection = read_selection(j, path, "surface", "surfaces", "Flächenindizes", v.surfaces);
+        v.plate_selection =
+            read_selection(j, path, "plate", "plates", "Geisterplatten-Indizes", v.plates);
+        v.order_selection = read_selection(j, path, "order", "orders", "Ordnungen", v.orders);
         if (const Json* m = member(j, "min")) {
             v.min = as_number(*m, join(path, "min"));
         }
@@ -482,8 +470,41 @@ private:
         if (const Json* c = member(j, "comment")) {
             v.comment = as_string(*c, join(path, "comment"));
         }
-        warn_unknown(j, path, {"type", "surface", "surfaces", "min", "max", "typical", "comment"});
+        warn_unknown(j, path,
+                     {"type", "surface", "surfaces", "plate", "plates", "order", "orders", "min",
+                      "max", "typical", "comment"});
         return v;
+    }
+
+    // Auswahl über ein Einzelfeld (`one`, nichtnegative ganze Zahl) oder ein Listenfeld (`many`:
+    // Liste nichtnegativer ganzer Zahlen oder "all"); beide zugleich sind ein Fehler.
+    SurfaceSelection read_selection(const Json& j, const std::string& path, std::string_view one,
+                                    std::string_view many, const char* what,
+                                    std::vector<int>& out) {
+        const Json* o = member(j, one);
+        const Json* m = member(j, many);
+        if (o != nullptr && m != nullptr) {
+            fail(join(path, many), "nur eines der Felder \"" + std::string(one) + "\" und \"" +
+                                       std::string(many) + "\" angeben");
+        }
+        if (o != nullptr) {
+            out.push_back(as_count(*o, join(path, one)));
+            return SurfaceSelection::One;
+        }
+        if (m != nullptr) {
+            const std::string many_path = join(path, many);
+            if (m->is_string() && m->get<std::string>() == "all") {
+                return SurfaceSelection::All;
+            }
+            if (m->is_array()) {
+                for (std::size_t k = 0; k < m->size(); ++k) {
+                    out.push_back(as_count((*m)[k], at(many_path, k)));
+                }
+                return SurfaceSelection::List;
+            }
+            fail_type(many_path, (std::string("Liste von ") + what + " oder \"all\"").c_str(), *m);
+        }
+        return SurfaceSelection::None;
     }
 
     // ---- Abschnitt `constraints` (M3-T3) -----------------------------------------------
@@ -513,7 +534,7 @@ private:
         if (!t) {
             fail(type_path, "unbekannter Typ einer Nebenbedingung \"" + type +
                                 "\" (erlaubt: focal_length, parfocal_length, working_distance, "
-                                "paraxial_focus, petzval)");
+                                "paraxial_focus, petzval, ghost_penalty)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -537,12 +558,23 @@ private:
         if (const Json* k = member(j, "max_curvature")) {
             c.max_curvature = as_number(*k, join(path, "max_curvature"));
         }
+        c.plate_selection =
+            read_selection(j, path, "plate", "plates", "Geisterplatten-Indizes", c.plates);
+        if (const Json* w = member(j, "order_weight")) {
+            c.order_weight = as_number(*w, join(path, "order_weight"));
+        }
+        if (const Json* f = member(j, "order_factor")) {
+            c.order_factor = as_number(*f, join(path, "order_factor"));
+        }
+        if (const Json* e = member(j, "smoothing")) {
+            c.smoothing = as_number(*e, join(path, "smoothing"));
+        }
         if (const Json* m = member(j, "comment")) {
             c.comment = as_string(*m, join(path, "comment"));
         }
-        warn_unknown(
-            j, path,
-            {"type", "mode", "weight", "reference_surface", "offset", "max_curvature", "comment"});
+        warn_unknown(j, path,
+                     {"type", "mode", "weight", "reference_surface", "offset", "max_curvature",
+                      "plate", "plates", "order_weight", "order_factor", "smoothing", "comment"});
         return c;
     }
 
@@ -580,24 +612,32 @@ Json material_to_json(const MaterialSpec& m) {
     return "AIR";
 }
 
+// Schreibt eine Auswahl (Einzelfeld `one`, Liste oder "all" in `many`); None schreibt nichts.
+void selection_to_json(Json& j, SurfaceSelection selection, const std::vector<int>& values,
+                       const char* one, const char* many) {
+    switch (selection) {
+    case SurfaceSelection::None:
+        break;
+    case SurfaceSelection::One:
+        j[one] = values.at(0);
+        break;
+    case SurfaceSelection::List:
+        j[many] = values;
+        break;
+    case SurfaceSelection::All:
+        j[many] = "all";
+        break;
+    }
+}
+
 Json variables_to_json(const Variables& vars) {
     Json items = Json::array();
     for (const VariableSpec& v : vars.items) {
         Json j;
         j["type"] = std::string(to_string(v.type));
-        switch (v.selection) {
-        case SurfaceSelection::None:
-            break;
-        case SurfaceSelection::One:
-            j["surface"] = v.surfaces.at(0);
-            break;
-        case SurfaceSelection::List:
-            j["surfaces"] = v.surfaces;
-            break;
-        case SurfaceSelection::All:
-            j["surfaces"] = "all";
-            break;
-        }
+        selection_to_json(j, v.selection, v.surfaces, "surface", "surfaces");
+        selection_to_json(j, v.plate_selection, v.plates, "plate", "plates");
+        selection_to_json(j, v.order_selection, v.orders, "order", "orders");
         if (v.min) {
             j["min"] = *v.min;
         }
@@ -636,6 +676,16 @@ Json constraints_to_json(const Constraints& cons) {
         }
         if (c.max_curvature) {
             j["max_curvature"] = *c.max_curvature;
+        }
+        selection_to_json(j, c.plate_selection, c.plates, "plate", "plates");
+        if (c.order_weight) {
+            j["order_weight"] = *c.order_weight;
+        }
+        if (c.order_factor) {
+            j["order_factor"] = *c.order_factor;
+        }
+        if (c.smoothing) {
+            j["smoothing"] = *c.smoothing;
         }
         if (c.comment) {
             j["comment"] = *c.comment;

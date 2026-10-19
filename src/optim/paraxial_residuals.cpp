@@ -183,6 +183,8 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
                 fail_constraint(i, c, "Grenze κ_max muss mindestens 0 sein");
             }
             break;
+        case ConstraintType::GhostPenalty:
+            break; // oben abgelehnt (kein paraxialer Typ, mikroptim/optim/ghost_penalty.hpp)
         }
     }
 }
@@ -223,6 +225,9 @@ double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& bat
         // Modus Max: aktiv nur oberhalb der Grenze.
         q = std::abs(p.petzval_curvature) - c.target;
         break;
+    case ConstraintType::GhostPenalty:
+        throw std::invalid_argument("Paraxial-Nebenbedingungen: ghost_penalty ist kein "
+                                    "paraxialer Typ");
     }
     return std::sqrt(c.weight) * apply_mode(c.mode, q);
 }

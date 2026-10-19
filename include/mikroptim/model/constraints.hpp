@@ -6,7 +6,10 @@
 // nicht hier, sondern in `target` (eine Quelle der Wahrheit); nur reine Grenzwerte ohne
 // Gegenstück in `target` (κ_max der Petzval-Bedingung) stehen im Eintrag. Residuen der paraxialen
 // Bedingungen: mikroptim/optim/paraxial_residuals.hpp, Definitionen in docs/optimierung.md,
-// Abschnitte 2.2 und 2.3.
+// Abschnitte 2.2 und 2.3. Die L1-Strafe der Geisterkoeffizienten (ghost_penalty, M4-T6) steht
+// als weiterer Eintrag hier; ihre Residuen: mikroptim/optim/ghost_penalty.hpp.
+
+#include "mikroptim/model/variables.hpp"
 
 #include <optional>
 #include <string>
@@ -27,6 +30,8 @@ enum class ConstraintType {
     ParaxialFocus,   // Bildebene im paraxialen Brennpunkt bei λ_ref, Soll 0 (nur Gleichung)
     Petzval,         // |κ_P| ≤ κ_max bei λ_ref (M4-T4), Grenze im Eintrag: max_curvature (nur
                      // Obergrenze)
+    GhostPenalty,    // geglättete L1-Strafe der Geisterkoeffizienten (M4-T6): Gewicht μ,
+                     // Ordnungsgewichte w_k = w₀ κ^k, Glättung ε; keine Sollgröße, kein Modus
 };
 
 // Art der Bedingung: Gleichung Ist = Soll oder einseitig Ist ≥ Soll (Untergrenze) bzw.
@@ -41,6 +46,10 @@ enum class ConstraintMode {
 inline constexpr double kDefaultConstraintWeight = 1.0;
 inline constexpr int kDefaultParfocalReferenceSurface = 0; // Blende
 inline constexpr double kDefaultParfocalOffset = 0.0;      // mm
+// L1-Strafe der Geisterkoeffizienten (docs/optimierung.md, Abschnitte 2 und 3)
+inline constexpr double kDefaultGhostOrderWeight = 1.0; // w₀
+inline constexpr double kDefaultGhostOrderFactor = 2.0; // κ
+inline constexpr double kDefaultGhostSmoothing = 1e-6;  // ε [mm]
 
 // Ein Eintrag von `constraints.items`, wie er in der Datei steht.
 struct ConstraintSpec {
@@ -56,6 +65,15 @@ struct ConstraintSpec {
     // Einzige Quelle der Grenze (nicht in `target`); ein Mindest-Petzvalradius R_min entspricht
     // κ_max = 1/R_min.
     std::optional<double> max_curvature;
+    // Nur GhostPenalty: Geisterplatten, für die der Eintrag gilt ("plate"/"plates", Index in
+    // ghost_plates; fehlt = alle), Ordnungsgewichte w_k = order_weight · order_factor^k (w₀,
+    // κ, beide > 0) und Glättung ε > 0 [mm, Einheit des Dickenprofils]. Das Strafgewicht μ ist
+    // `weight`.
+    SurfaceSelection plate_selection = SurfaceSelection::None;
+    std::vector<int> plates{};
+    std::optional<double> order_weight{};
+    std::optional<double> order_factor{};
+    std::optional<double> smoothing{};
 
     friend bool operator==(const ConstraintSpec&, const ConstraintSpec&) = default;
 
@@ -69,6 +87,13 @@ struct ConstraintSpec {
         return reference_surface.value_or(kDefaultParfocalReferenceSurface);
     }
     double offset_or_default() const { return offset.value_or(kDefaultParfocalOffset); }
+    double order_weight_or_default() const {
+        return order_weight.value_or(kDefaultGhostOrderWeight);
+    }
+    double order_factor_or_default() const {
+        return order_factor.value_or(kDefaultGhostOrderFactor);
+    }
+    double smoothing_or_default() const { return smoothing.value_or(kDefaultGhostSmoothing); }
 };
 
 // Abschnitt `constraints` der Systemdatei.
@@ -80,25 +105,26 @@ struct Constraints {
 
 // Prüft `system.constraints` nach den Regeln aus docs/dateiformat.md (Sollwert in `target`
 // vorhanden, Modus und Felder zum Typ passend, Gewicht endlich und >= 0, Referenzfläche
-// existiert, max_curvature bei petzval vorhanden, endlich und >= 0, jeder Typ höchstens einmal,
-// paraxial_focus nur bei kollimierter Quelle). Wirft
+// existiert, max_curvature bei petzval vorhanden, endlich und >= 0, jeder Typ höchstens einmal
+// außer ghost_penalty (dort jede Geisterplatte höchstens einmal), paraxial_focus nur bei
+// kollimierter Quelle). Wirft
 // FormatError mit JSON-Pfad, z. B. `constraints.items[1].mode`. Wird von validate_system
 // aufgerufen; ohne Abschnitt `constraints` passiert nichts.
 void check_constraints(const SystemDescription& system);
 
 // Sollwert eines Typs aus `system.target` (Soll 0 bei ParaxialFocus); leer, wenn er fehlt, und
-// immer leer bei Petzval (die Grenze steht im Eintrag, siehe constraint_bound).
+// immer leer bei Petzval (die Grenze steht im Eintrag, siehe constraint_bound) und GhostPenalty.
 std::optional<double> constraint_target(const SystemDescription& system, ConstraintType type);
 
 // Soll- bzw. Grenzwert eines Eintrags: max_curvature bei Petzval, sonst
-// constraint_target(system, spec.type); leer, wenn er fehlt.
+// constraint_target(system, spec.type); leer, wenn er fehlt (immer bei GhostPenalty).
 std::optional<double> constraint_bound(const SystemDescription& system, const ConstraintSpec& spec);
 
-// Wahr für die paraxialen Typen (alle bisher definierten, auch Petzval; M4-T3 kommt hinzu).
+// Wahr für die paraxialen Typen (auch Petzval), falsch für GhostPenalty.
 bool is_paraxial(ConstraintType type);
 
 // Namen für Meldungen und Dateiformat: "focal_length", "parfocal_length", "working_distance",
-// "paraxial_focus", "petzval" bzw. "equal", "min", "max".
+// "paraxial_focus", "petzval", "ghost_penalty" bzw. "equal", "min", "max".
 std::string_view to_string(ConstraintType type);
 std::string_view to_string(ConstraintMode mode);
 // Umkehrungen von to_string; leer bei unbekanntem Namen.

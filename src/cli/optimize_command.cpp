@@ -9,6 +9,8 @@
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/model/constraints.hpp"
 #include "mikroptim/model/format_error.hpp"
+#include "mikroptim/optim/ghost_diagnosis.hpp"
+#include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
@@ -257,6 +259,7 @@ struct OptimizeReport {
     BackendInfo backend;
     VariableSet set;
     ParaxialConstraints constraints;
+    GhostPenalty penalty; // L1-Strafe der Geisterkoeffizienten (ghost_penalty)
     std::vector<double> x0;
     std::vector<double> starts; // Startpunkte aller Läufe hintereinander
     LmResult result;
@@ -265,8 +268,9 @@ struct OptimizeReport {
     std::vector<IterationRecord> iterations;
     std::vector<ConstraintReport> constraint_reports;
     WavefrontReport wavefront;
-    std::vector<std::string> warnings; // Lader und Befehl
-    bool focal_from_start = false;     // Feldziele aus der paraxialen Brennweite des Starts
+    std::optional<GhostDiagnosis> ghost; // nur mit Geisterplatten
+    std::vector<std::string> warnings;   // Lader und Befehl
+    bool focal_from_start = false;       // Feldziele aus der paraxialen Brennweite des Starts
 
     const LmRunResult& best_run() const { return result.runs[static_cast<std::size_t>(best)]; }
     // F am Startpunkt der Datei (Lauf 0 startet immer dort).
@@ -355,10 +359,11 @@ const char* unit_of(VariableType type) {
     return type == VariableType::Curvature ? "1/mm" : "mm";
 }
 
-// Variablenwert für die Textausgabe: Krümmungen mit 9 Stellen in Exponentialschreibweise,
-// Längen mit 6 Nachkommastellen.
+// Variablenwert für die Textausgabe: Krümmungen und Geisterkoeffizienten mit 9 Stellen in
+// Exponentialschreibweise, Längen mit 6 Nachkommastellen.
 std::string variable_text(VariableType type, double v) {
-    return type == VariableType::Curvature ? sci(v, 9) : fixed(v, 6);
+    return type == VariableType::Curvature || type == VariableType::GhostCoefficient ? sci(v, 9)
+                                                                                     : fixed(v, 6);
 }
 
 // ------------------------------------------------------------------------------------------
@@ -381,6 +386,11 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
        std::to_string(a.rings) + " Ringe x " + std::to_string(a.spokes) + " Speichen");
     kv(out, "Variablen", std::to_string(r.set.size()));
     kv(out, "Nebenbedingungen (paraxial)", std::to_string(r.constraints.size()));
+    if (!sys.ghost_plates.empty()) {
+        kv(out, "Geisterplatten",
+           std::to_string(sys.ghost_plates.size()) +
+               " (L1-Strafe: " + std::to_string(r.penalty.size()) + " Koeffizienten)");
+    }
     std::string runs = std::to_string(a.runs);
     if (a.runs > 1) {
         runs += " (Lauf 0 ungestört, Störung " + fixed(a.perturbation, 6) + " relativ, Startwert " +
@@ -489,6 +499,11 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
         }
     }
 
+    if (r.ghost) {
+        out << '\n';
+        write_ghost_diagnosis_text(*r.ghost, out);
+    }
+
     out << '\n';
     if (!r.wavefront.before || !r.wavefront.after) {
         out << "Wellenfront nicht auswertbar\n  " << r.wavefront.error << '\n';
@@ -593,7 +608,10 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         Json e;
         e["name"] = v.name;
         e["type"] = std::string(to_string(v.type));
-        e["surface"] = v.file_surface;
+        const bool ghost = v.type == VariableType::GhostCoefficient;
+        e["surface"] = ghost ? Json(nullptr) : Json(v.file_surface);
+        e["plate"] = ghost ? Json(v.ghost_plate) : Json(nullptr);
+        e["order"] = ghost ? Json(v.ghost_order) : Json(nullptr);
         e["lower"] = number(v.lower);
         e["upper"] = number(v.upper);
         e["typical"] = number(v.typical);
@@ -618,6 +636,7 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         cons.push_back(std::move(e));
     }
     j["constraints"] = std::move(cons);
+    j["ghost_diagnosis"] = r.ghost ? Json::parse(ghost_diagnosis_json(*r.ghost)) : Json(nullptr);
 
     if (a.quiet) {
         j["iterations"] = nullptr;
@@ -701,8 +720,9 @@ void print_optimize_usage(std::ostream& out) {
            "                          [--runs K [--perturbation s] [--seed n]]\n"
            "                          [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
-           "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints)\n"
-           "  in Wellen²; Beschreibung: docs/cli.md.\n"
+           "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
+           "  L1-Strafe der Geisterkoeffizienten) in Wellen²; mit Geisterplatten folgt ein\n"
+           "  Diagnosebericht. Beschreibung: docs/cli.md.\n"
            "  -o DATEI           Ergebnis als neue Systemdatei (nie die Eingabedatei)\n"
            "  --json             maschinenlesbare Ausgabe (Format mikroptim.optimize/1)\n"
            "  --quiet, -q        ohne Iterationsprotokoll\n"
@@ -800,6 +820,8 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         }
         r.constraints = make_paraxial_constraints(sys);
         check_paraxial_constraints(r.constraints, base.topology());
+        r.penalty = make_ghost_penalty(sys);
+        check_ghost_penalty(r.penalty, base.topology());
         r.x0 = r.set.extract(base, 0);
 
         // Feldziele h_f = f_soll · tan θ_f bleiben während der Optimierung fest. Ohne
@@ -825,9 +847,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         options.max_iterations = a.max_iterations;
         options.jacobian.quadrature.rings = a.rings;
         options.jacobian.quadrature.spokes = a.spokes;
-        if (r.constraints.size() > 0) {
-            options.jacobian.extra = make_paraxial_residuals(r.constraints);
-        }
+        // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe
+        options.jacobian.extra = concat_extra_residuals(
+            {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty)});
 
         // Startpunkte: Lauf 0 ist x₀, Lauf j ≥ 1 gestört (perturbed_vector mit first_is_base).
         std::vector<double>& starts = r.starts;
@@ -838,6 +860,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             p.curvature = {a.perturbation, 0.0};
             p.thickness = {a.perturbation, 0.0};
             p.working_distance = {a.perturbation, 0.0};
+            p.ghost_coefficient = {a.perturbation, 0.0};
             p.seed = a.seed;
             p.first_is_base = true;
             for (int j = 0; j < a.runs; ++j) {
@@ -924,6 +947,13 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         const SystemBatchHost after =
             lm_point_batch(r.set, base, std::span<const int>(&run0, 1), best.x);
         r.constraint_reports = constraint_reports(r.constraints, base, after);
+
+        // Diagnose der Geisterplatten am Ergebnis (Merit auf der CPU wie die Wellenfront)
+        if (!sys.ghost_plates.empty()) {
+            r.ghost = diagnose_ghost_plates(
+                sys, r.loaded.catalog, after, 0, r.penalty,
+                make_cpu_merit(options.jacobian.quadrature, options.jacobian.extra));
+        }
 
         // Ergebnis als Systembeschreibung (Glaskataloge noch relativ zur Eingabedatei)
         SystemDescription result_system = sys;
