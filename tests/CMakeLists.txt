@@ -18,6 +18,7 @@ add_executable(mikroptim_tests
     test_cli_optimize.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
+    test_convex_hull.cpp
     test_df64.cpp
     test_dispersion.cpp
     test_eval.cpp
@@ -28,6 +29,9 @@ add_executable(mikroptim_tests
     test_ghost_penalty.cpp
     test_ghost_schema.cpp
     test_glass_catalog.cpp
+    test_glass_hull.cpp
+    test_glass_optimization.cpp
+    test_glass_variables.cpp
     test_index_table.cpp
     test_levenberg_marquardt.cpp
     test_load_system.cpp
@@ -61,6 +65,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_eval.cpp
         test_cuda_fd_jacobian.cpp
         test_cuda_ghost_optimization.cpp
+        test_cuda_glass_optimization.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_merit.cpp
         test_cuda_multi_trace_engine.cpp

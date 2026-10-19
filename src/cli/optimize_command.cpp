@@ -13,6 +13,7 @@
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/optim/ghost_diagnosis.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
+#include "mikroptim/optim/glass_variables.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
@@ -278,6 +279,10 @@ struct OptimizeReport {
     VariableSet set;
     ParaxialConstraints constraints;
     GhostPenalty penalty; // L1-Strafe der Geisterkoeffizienten (ghost_penalty)
+    std::vector<GlassConversion> glass_conversions; // Glasvariablen: Startgläser → Buchdahl
+    GlassHullPenalty glass_penalty;                 // Strafe außerhalb der Glas-Hülle
+    std::vector<double> glass_excess_before;        // max(0, φ) je Element, Start und Ergebnis
+    std::vector<double> glass_excess_after;
     std::vector<double> x0;
     std::vector<double> starts; // Startpunkte aller Läufe hintereinander
     LmResult result;
@@ -377,14 +382,19 @@ const char* step_name(const IterationRecord& r) {
 }
 
 const char* unit_of(VariableType type) {
+    if (type == VariableType::Glass) {
+        return "1";
+    }
     return type == VariableType::Curvature ? "1/mm" : "mm";
 }
 
 // Variablenwert für die Textausgabe: Krümmungen und Geisterkoeffizienten mit 9 Stellen in
 // Exponentialschreibweise, Längen mit 6 Nachkommastellen.
 std::string variable_text(VariableType type, double v) {
-    return type == VariableType::Curvature || type == VariableType::GhostCoefficient ? sci(v, 9)
-                                                                                     : fixed(v, 6);
+    return type == VariableType::Curvature || type == VariableType::GhostCoefficient ||
+                   type == VariableType::Glass
+               ? sci(v, 9)
+               : fixed(v, 6);
 }
 
 // ------------------------------------------------------------------------------------------
@@ -533,6 +543,35 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
         }
     }
 
+    if (!r.glass_conversions.empty()) {
+        out << '\n'
+            << "Glasvariablen (Startglas als Buchdahl-Material, n0 und nu1, nu2 variabel)\n";
+        for (const GlassConversion& c : r.glass_conversions) {
+            out << "  Fläche " << c.surface << ": ";
+            if (c.from == MaterialKind::Catalog) {
+                out << c.name << " (Fit, max. Fehler " << sci(c.max_fit_error, 2) << ")";
+            } else if (c.from == MaterialKind::Constant) {
+                out << "konstant";
+            } else {
+                out << "Buchdahl";
+            }
+            out << ", nu3 = " << sci(c.nu[2], 6) << " fest\n";
+        }
+    }
+    if (!r.glass_penalty.empty()) {
+        const GlassHullPenalty& g = r.glass_penalty;
+        out << '\n'
+            << "Glas-Hülle (" << g.hull.points().size() << " Gläser, Dimension "
+            << g.hull.dimension() << ", " << g.hull.hull().vertices.size()
+            << " Ecken; Abstand normiert, Gewicht " << sci(g.weight, 3) << ", Sicherheitsabstand "
+            << sci(g.margin, 3) << ")\n";
+        for (std::size_t i = 0; i < g.elements.size(); ++i) {
+            out << "  Fläche " << g.elements[i].file_surface << ": Überschreitung vorher "
+                << sci(r.glass_excess_before[i], 3) << ", nachher "
+                << sci(r.glass_excess_after[i], 3) << '\n';
+        }
+    }
+
     if (r.ghost) {
         out << '\n';
         write_ghost_diagnosis_text(*r.ghost, out);
@@ -672,6 +711,21 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         cons.push_back(std::move(e));
     }
     j["constraints"] = std::move(cons);
+    if (r.glass_penalty.empty()) {
+        j["glass_hull"] = nullptr;
+    } else {
+        const GlassHullPenalty& g = r.glass_penalty;
+        Json elements = Json::array();
+        for (std::size_t i = 0; i < g.elements.size(); ++i) {
+            elements.push_back(Json{{"surface", g.elements[i].file_surface},
+                                    {"excess_start", number(r.glass_excess_before[i])},
+                                    {"excess_result", number(r.glass_excess_after[i])}});
+        }
+        j["glass_hull"] =
+            Json{{"glasses", g.hull.points().size()}, {"dimension", g.hull.dimension()},
+                 {"vertices", g.hull.vertex_names()}, {"weight", number(g.weight)},
+                 {"margin", number(g.margin)},        {"elements", std::move(elements)}};
+    }
     j["ghost_diagnosis"] = r.ghost ? Json::parse(ghost_diagnosis_json(*r.ghost)) : Json(nullptr);
 
     if (a.quiet) {
@@ -855,6 +909,22 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             err << "mikroptim optimize: Warnung: " << w << '\n';
             r.warnings.push_back(w);
         }
+        std::error_code ec;
+        fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();
+        if (ec) {
+            input_dir = fs::path(a.file).parent_path();
+        }
+        // Glasvariablen: Startgläser in Buchdahl-Materialien umwandeln (n₀, ν₁, ν₂ variabel,
+        // ν₃ fest), danach Brechzahltabelle neu (docs/optimierung.md, Abschnitt 1)
+        {
+            SystemDescription converted = r.loaded.system;
+            r.glass_conversions = convert_glass_variables(converted, r.loaded.catalog);
+            if (!r.glass_conversions.empty()) {
+                std::vector<std::string> warnings = std::move(r.loaded.warnings);
+                r.loaded = prepare_system(std::move(converted), input_dir);
+                r.loaded.warnings = std::move(warnings);
+            }
+        }
         const SystemDescription& sys = r.loaded.system;
         if (!sys.variables || sys.variables->items.empty()) {
             err << "mikroptim optimize: Fehler: " << a.file
@@ -871,6 +941,17 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         check_paraxial_constraints(r.constraints, base.topology());
         r.penalty = make_ghost_penalty(sys);
         check_ghost_penalty(r.penalty, base.topology());
+        // Glas-Hülle aus allen Gläsern der Kataloge, nur mit Eintrag glass_hull und Glasvariablen
+        if (!r.glass_conversions.empty() && sys.constraints) {
+            for (const ConstraintSpec& c : sys.constraints->items) {
+                if (c.type == ConstraintType::GlassHull) {
+                    r.glass_penalty =
+                        make_glass_hull_penalty(sys, r.set, make_glass_hull(r.loaded.catalog));
+                    check_glass_hull_penalty(r.glass_penalty, base.topology());
+                    break;
+                }
+            }
+        }
         r.x0 = r.set.extract(base, 0);
 
         // Feldziele h_f = f_soll · tan θ_f bleiben während der Optimierung fest. Ohne
@@ -899,9 +980,10 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         options.jacobian.quadrature.failure =
             a.hard_failure ? FailureMode::Hard : FailureMode::Soft;
         options.jacobian.quadrature.fail_weight = a.fail_weight;
-        // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe
+        // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe und die Glas-Hülle
         options.jacobian.extra = concat_extra_residuals(
-            {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty)});
+            {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty),
+             make_glass_hull_residuals(r.glass_penalty)});
 
         // Startpunkte: Lauf 0 ist x₀, Lauf j ≥ 1 gestört (perturbed_vector mit first_is_base).
         std::vector<double>& starts = r.starts;
@@ -913,6 +995,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             p.thickness = {a.perturbation, 0.0};
             p.working_distance = {a.perturbation, 0.0};
             p.ghost_coefficient = {a.perturbation, 0.0};
+            p.glass = {a.perturbation, 0.0};
             p.seed = a.seed;
             p.first_is_base = true;
             for (int j = 0; j < a.runs; ++j) {
@@ -1002,6 +1085,12 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         const SystemBatchHost after =
             lm_point_batch(r.set, base, std::span<const int>(&run0, 1), best.x);
         r.constraint_reports = constraint_reports(r.constraints, base, after);
+        for (const GlassHullElement& e : r.glass_penalty.elements) {
+            r.glass_excess_before.push_back(glass_hull_excess(
+                r.glass_penalty, batch_glass_coordinates(base, 0, e.batch_surface)));
+            r.glass_excess_after.push_back(glass_hull_excess(
+                r.glass_penalty, batch_glass_coordinates(after, 0, e.batch_surface)));
+        }
 
         // Diagnose der Geisterplatten am Ergebnis (Merit auf der CPU wie die Wellenfront)
         // Die Merit enthält beim weichen Versagen dieselben Strafresiduen wie die letzte Runde
@@ -1018,11 +1107,6 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         // Ergebnis als Systembeschreibung (Glaskataloge noch relativ zur Eingabedatei)
         SystemDescription result_system = sys;
         r.set.apply_to_description(result_system, best.x);
-        std::error_code ec;
-        fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();
-        if (ec) {
-            input_dir = fs::path(a.file).parent_path();
-        }
         const LoadedSystem result_loaded = prepare_system(result_system, input_dir);
 
         // Wellenfront vorher und nachher (CPU, ideale Bildpunkte wie mikroptim trace)

@@ -196,10 +196,12 @@ TEST(VariablesSchema, UnknownFieldsProduceWarnings) {
 
 TEST(VariablesSchema, TypeNames) {
     for (const VariableType t :
-         {VariableType::Curvature, VariableType::Thickness, VariableType::WorkingDistance}) {
+         {VariableType::Curvature, VariableType::Thickness, VariableType::WorkingDistance,
+          VariableType::GhostCoefficient, VariableType::Glass}) {
         EXPECT_EQ(mko::variable_type_from_string(mko::to_string(t)), t);
     }
-    EXPECT_FALSE(mko::variable_type_from_string("glass").has_value());
+    EXPECT_EQ(mko::to_string(VariableType::Glass), "glass");
+    EXPECT_FALSE(mko::variable_type_from_string("glas").has_value());
     EXPECT_EQ(mko::default_typical(VariableType::Thickness), mko::kDefaultTypicalThickness);
 }
 
@@ -264,8 +266,8 @@ std::vector<VariablesCase> variables_cases() {
          "falscher Typ"},
         {"EintragKeinObjekt", v("1"), "variables.items[0]", "falscher Typ"},
         {"TypFehlt", v(R"({ "surface": 1 })"), "variables.items[0].type", "Pflichtfeld fehlt"},
-        {"UnbekannterTyp", v(R"({ "type": "glass", "surface": 1 })"), "variables.items[0].type",
-         "unbekannter Variablentyp \"glass\""},
+        {"UnbekannterTyp", v(R"({ "type": "glas", "surface": 1 })"), "variables.items[0].type",
+         "unbekannter Variablentyp \"glas\""},
         {"SurfaceUndSurfaces", v(R"({ "type": "curvature", "surface": 1, "surfaces": [2] })"),
          "variables.items[0].surfaces", "nur eines der Felder"},
         {"FlaecheFehlt", v(R"({ "type": "thickness", "min": 1 })"), "variables.items[0].surface",

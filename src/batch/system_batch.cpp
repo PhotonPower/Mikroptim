@@ -49,6 +49,15 @@ void copy_slice(const std::vector<double>& src, int from, std::vector<double>& d
               dst.begin() + static_cast<std::ptrdiff_t>(to_size(to) * stride));
 }
 
+// Ablage der Buchdahl-Koeffizienten [V][S][4] (nur Host).
+std::size_t buchdahl_stride(const BatchShape& sh) {
+    return to_size(sh.surfaces) * to_size(SystemBatchHost::kBuchdahlCoefficients);
+}
+std::size_t buchdahl_at(const BatchShape& sh, int v, int s, int j) {
+    return to_size(v) * buchdahl_stride(sh) +
+           to_size(s) * to_size(SystemBatchHost::kBuchdahlCoefficients) + to_size(j);
+}
+
 } // namespace
 
 // ---- Topologie ---------------------------------------------------------------------------
@@ -154,6 +163,7 @@ void SystemBatchHost::resize(int variants) {
     ghost_index_.resize(v * sh.ghost_index_stride(), 0.0);
     paraxial_index_.resize(v * sh.surface_stride(), 0.0);
     paraxial_ghost_index_.resize(v * sh.ghost_stride(), 0.0);
+    buchdahl_coeff_.resize(v * buchdahl_stride(sh), 0.0);
 }
 
 int SystemBatchHost::add_variant_copy(int from) {
@@ -185,6 +195,7 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.ghost_index_, from, ghost_index_, to, sh.ghost_index_stride());
     copy_slice(other.paraxial_index_, from, paraxial_index_, to, sh.surface_stride());
     copy_slice(other.paraxial_ghost_index_, from, paraxial_ghost_index_, to, sh.ghost_stride());
+    copy_slice(other.buchdahl_coeff_, from, buchdahl_coeff_, to, buchdahl_stride(sh));
 }
 
 void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, int count) {
@@ -224,6 +235,7 @@ void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, i
     range(other.ghost_index_, ghost_index_, sh.ghost_index_stride());
     range(other.paraxial_index_, paraxial_index_, sh.surface_stride());
     range(other.paraxial_ghost_index_, paraxial_ghost_index_, sh.ghost_stride());
+    range(other.buchdahl_coeff_, buchdahl_coeff_, buchdahl_stride(sh));
 }
 
 void SystemBatchHost::check(int i, int count, const char* what) {
@@ -382,6 +394,19 @@ double SystemBatchHost::paraxial_ghost_index(int v, int g) const {
     return paraxial_ghost_index_[shape().ghost_at(v, g)];
 }
 
+double& SystemBatchHost::buchdahl_coeff(int v, int s, int j) {
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    check(j, kBuchdahlCoefficients, "Buchdahl-Koeffizient");
+    return buchdahl_coeff_[buchdahl_at(shape(), v, s, j)];
+}
+double SystemBatchHost::buchdahl_coeff(int v, int s, int j) const {
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    check(j, kBuchdahlCoefficients, "Buchdahl-Koeffizient");
+    return buchdahl_coeff_[buchdahl_at(shape(), v, s, j)];
+}
+
 SystemBatchView<double> SystemBatchHost::view() const {
     SystemBatchView<double> b{};
     b.shape = shape();
@@ -440,6 +465,7 @@ void SystemBatchHost::validate_values() const {
     finite(ghost_index_, "ghost_index");
     finite(paraxial_index_, "paraxial_index");
     finite(paraxial_ghost_index_, "paraxial_ghost_index");
+    finite(buchdahl_coeff_, "buchdahl_coeff");
     if (!(reference_wavelength_nm > 0.0) || !std::isfinite(reference_wavelength_nm)) {
         fail("reference_wavelength_nm muss endlich und > 0 sein");
     }
@@ -551,7 +577,8 @@ bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
            same_bits(a.field_target_, b.field_target_) &&
            same_bits(a.ghost_coeff_, b.ghost_coeff_) && same_bits(a.ghost_index_, b.ghost_index_) &&
            same_bits(a.paraxial_index_, b.paraxial_index_) &&
-           same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_);
+           same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_) &&
+           same_bits(a.buchdahl_coeff_, b.buchdahl_coeff_);
 }
 
 // ---- Aufbau aus einem System -------------------------------------------------------------
@@ -716,6 +743,21 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
     }
     for (int g = 0; g < G; ++g) {
         b.paraxial_ghost_index(0, g) = ref.ghost_n[to_size(g)];
+    }
+    // Buchdahl-Koeffizienten der Medien (Glasvariablen, M6-T1); Geisterplatten liegen im
+    // Luftspalt, ihre Tabellenflächen bleiben 0.
+    for (int s = 0; s < S; ++s) {
+        const int file = map.file_of_table[to_size(s)];
+        if (file < 0) {
+            continue;
+        }
+        const MaterialSpec& m = system.surfaces[to_size(file)].material;
+        if (m.kind == MaterialKind::Buchdahl) {
+            b.buchdahl_coeff(0, s, 0) = m.n0;
+            for (int j = 1; j < SystemBatchHost::kBuchdahlCoefficients; ++j) {
+                b.buchdahl_coeff(0, s, j) = m.nu[to_size(j - 1)];
+            }
+        }
     }
     for (int f = 0; f < F; ++f) {
         if (!collimated) {

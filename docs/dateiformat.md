@@ -99,18 +99,26 @@ Beispiel: [data/systems/einzellinse_bk7_variablen.json](../data/systems/einzelli
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
-| `type` | string | `"curvature"` (Krümmung c [1/mm]), `"thickness"` (Dicke bzw. Luftabstand t [mm]), `"working_distance"` (Arbeitsabstand w [mm]), `"ghost_coefficient"` (Koeffizient a_k einer Geisterplatte [mm], ab M4-T6) |
+| `type` | string | `"curvature"` (Krümmung c [1/mm]), `"thickness"` (Dicke bzw. Luftabstand t [mm]), `"working_distance"` (Arbeitsabstand w [mm]), `"ghost_coefficient"` (Koeffizient a_k einer Geisterplatte [mm], ab M4-T6), `"glass"` (Glas des Mediums nach der Fläche: Buchdahl-Koordinaten n₀, ν₁, ν₂, ab M6-T1) |
 | `surface` | integer | eine Fläche (Index in `surfaces`, ab 0) |
-| `surfaces` | integer[] oder `"all"` | mehrere Flächen in dieser Reihenfolge; `"all"`: bei `curvature` alle Flächen vom Typ `sphere`, bei `thickness` alle Flächen außer der letzten |
+| `surfaces` | integer[] oder `"all"` | mehrere Flächen in dieser Reihenfolge; `"all"`: bei `curvature` alle Flächen vom Typ `sphere`, bei `thickness` alle Flächen außer der letzten, bei `glass` alle Flächen, deren Material nicht `"AIR"` ist |
 | `plate` | integer | nur `ghost_coefficient`: eine Geisterplatte (Index in `ghost_plates`, ab 0) |
 | `plates` | integer[] oder `"all"` | nur `ghost_coefficient`: mehrere Geisterplatten in dieser Reihenfolge bzw. alle |
 | `order` | integer | nur `ghost_coefficient`: eine Ordnung k (1 … K der Platte, wie a_k) |
 | `orders` | integer[] oder `"all"` | nur `ghost_coefficient`: mehrere Ordnungen bzw. alle; fehlen `order` und `orders`, gelten alle Ordnungen jeder gewählten Platte |
-| `min`, `max` | number | Schranken (docs/optimierung.md, Abschnitt 1: \|c\| ≤ c_max als `min` = −c_max, `max` = c_max; t_min ≤ t ≤ t_max; w ≥ w_min; Geisterkoeffizienten frei, Schranken optional); fehlt ein Feld, ist die Schranke offen |
-| `typical` | number | typische Größe x_typ > 0 für die Schrittweite der finiten Differenzen h = ε^{1/3}·max(\|x\|, x_typ); Standard: 0,01 1/mm (Krümmung), 1 mm (Dicke, Arbeitsabstand), 10⁻⁴ mm (Geisterkoeffizient, klein gegen die Glättung der L1-Strafe, docs/optimierung.md Abschnitt 1) |
+| `min`, `max` | number | Schranken (docs/optimierung.md, Abschnitt 1: \|c\| ≤ c_max als `min` = −c_max, `max` = c_max; t_min ≤ t ≤ t_max; w ≥ w_min; Geisterkoeffizienten frei, Schranken optional; bei `glass` verboten); fehlt ein Feld, ist die Schranke offen |
+| `typical` | number | typische Größe x_typ > 0 für die Schrittweite der finiten Differenzen h = ε^{1/3}·max(\|x\|, x_typ); Standard: 0,01 1/mm (Krümmung), 1 mm (Dicke, Arbeitsabstand), 10⁻⁴ mm (Geisterkoeffizient, klein gegen die Glättung der L1-Strafe, docs/optimierung.md Abschnitt 1); bei `glass` verboten (fest 1, 0,01, 0,001 für n₀, ν₁, ν₂) |
 | `comment` | string | optional |
 
-Der Startwert jeder Variable ist der Wert in `surfaces` (`curvature` bzw. `thickness`) bzw. in `ghost_plates[g].coefficients[k − 1]`; Variablen werden nicht doppelt gespeichert. Die Schranken gelten für alle Flächen bzw. Koeffizienten eines Eintrags. Glas folgt in M6-T1 als weiterer Wert von `type`.
+Der Startwert jeder Variable ist der Wert in `surfaces` (`curvature` bzw. `thickness`) bzw. in `ghost_plates[g].coefficients[k − 1]`; Variablen werden nicht doppelt gespeichert. Die Schranken gelten für alle Flächen bzw. Koeffizienten eines Eintrags.
+
+Glas (ab M6-T1, Beispiel [data/systems/einzellinse_glasvariable.json](../data/systems/einzellinse_glasvariable.json)):
+
+```json
+{ "type": "glass", "surface": 1 }
+```
+
+Jede gewählte Fläche ergibt drei Variablen n₀, ν₁, ν₂ (in dieser Reihenfolge; im Modell `ResolvedVariable::component` 0, 1, 2) der Buchdahl-Koordinaten des Mediums danach (docs/numerik.md, Abschnitt 10). Das Material darf in der Datei ein Katalogglas, ein konstantes Material oder ein Buchdahl-Material sein: Vor der Optimierung wird es in ein Buchdahl-Material umgewandelt (Katalogglas: 3-Term-Fit über 400–700 nm; konstant: n₀ = n, ν = 0); ν₃ bleibt dabei fest. Der Startwert ist der des umgewandelten Materials, das optimierte Glas steht in der Ergebnisdatei als `{"model": "buchdahl", "n0": …, "nu": [ν₁, ν₂, ν₃]}` (docs/optimierung.md, Abschnitt 1). Schranken und `typical` sind nicht erlaubt; die Hülle der Katalog-Gläser wirkt als Strafterm (Nebenbedingung `glass_hull`).
 
 Geisterkoeffizienten (ab M4-T6, Beispiel [data/systems/einzellinse_geisterplatten_exakt.json](../data/systems/einzellinse_geisterplatten_exakt.json)):
 
@@ -126,6 +134,7 @@ Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `variables.items[2].surfac
 - `type` ist Pflicht; unbekannte Typen werden abgelehnt (nicht ignoriert), damit ein Tippfehler keine Variable verschwinden lässt.
 - `curvature` und `thickness` verlangen genau eines der Felder `surface` und `surfaces`; Indizes sind nichtnegative ganze Zahlen (`3` und `3.0` sind erlaubt, wie bei `ghost_plates`), die Fläche muss existieren, eine Liste darf nicht leer sein.
 - `ghost_coefficient` verlangt genau eines der Felder `plate` und `plates` (keine Flächen); die Platte muss existieren, `"all"` mindestens eine Platte finden; `order`/`orders` höchstens eines, jede Ordnung in 1 … K der jeweiligen Platte, eine Liste nicht leer. `plate`, `plates`, `order`, `orders` sind bei den anderen Typen verboten. Kein Koeffizient doppelt (auch nicht über `"all"`).
+- `glass` verlangt genau eines der Felder `surface` und `surfaces`; das Material nach der Fläche ist nicht `"AIR"`; `min`, `max`, `typical` sind verboten (Fehler unter dem jeweiligen Feld). Keine Glasfläche doppelt.
 - `curvature` nur bei Flächen vom Typ `sphere`. Die Blende ist eben und nie variabel. Eine Planfläche, die gekrümmt werden darf, steht als `"type": "sphere", "curvature": 0` in der Datei: Ein Wechsel plane → sphere würde den Flächentyp und damit die Topologie des Batches ändern (ADR-0004).
 - `thickness` nicht für die letzte Fläche: Deren Dicke ist der Arbeitsabstand, dafür gibt es genau den Typ `working_distance` (eine Quelle der Wahrheit, wie `thickness[v][S−1]` im Batch). `working_distance` hat kein `surface`/`surfaces`.
 - Keine Variable doppelt, auch nicht über Kurzformen (`"all"` und ein Einzeleintrag derselben Fläche), `working_distance` höchstens einmal.
@@ -164,13 +173,19 @@ L1-Strafe der Geisterkoeffizienten (ab M4-T6, Beispiele [data/systems/einzellins
 { "type": "ghost_penalty", "plates": [4, 5], "weight": 100.0 }
 ```
 
-`constraints` ist ein Objekt (Platz für spätere Einstellungen) mit der Pflichtliste `items`. Jeder Eintrag ist eine Nebenbedingung, die als Residuum √w · q in den Residuenvektor eingeht (Definitionen von q: [optimierung.md, Abschnitte 2.2 und 2.3](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)); `ghost_penalty` liefert ein Residuum pro Geisterkoeffizient ([optimierung.md, Abschnitt 3](optimierung.md#3-warum-l1-für-geisterplatten)):
+Strafe außerhalb der Glas-Hülle (ab M6-T1, Beispiel [data/systems/einzellinse_glasvariable.json](../data/systems/einzellinse_glasvariable.json)):
+
+```json
+{ "type": "glass_hull", "weight": 10000.0, "margin": 0.0 }
+```
+
+`constraints` ist ein Objekt (Platz für spätere Einstellungen) mit der Pflichtliste `items`. Jeder Eintrag ist eine Nebenbedingung, die als Residuum √w · q in den Residuenvektor eingeht (Definitionen von q: [optimierung.md, Abschnitte 2.2 und 2.3](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)); `ghost_penalty` liefert ein Residuum pro Geisterkoeffizient ([optimierung.md, Abschnitt 3](optimierung.md#3-warum-l1-für-geisterplatten)), `glass_hull` drei pro Glasvariable ([optimierung.md, Abschnitt 2.4](optimierung.md#24-glas-hülle-ab-m6-t1)):
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
-| `type` | string | `"focal_length"` (Brennweite bei λ_ref), `"parfocal_length"` (Abgleichlänge), `"working_distance"` (Arbeitsabstand = Dicke der letzten Fläche), `"paraxial_focus"` (Bildebene im paraxialen Brennpunkt F′ bei λ_ref), `"petzval"` (\|κ_P\| ≤ κ_max bei λ_ref, κ_P = −n′_L P einschließlich Geisterplatten; ab M4-T4), `"ghost_penalty"` (geglättete L1-Strafe der Geisterkoeffizienten, ab M4-T6) |
-| `mode` | string | `"equal"` (Standard): Ist = Soll; `"min"`: Ist ≥ Soll (Soll ist Untergrenze); `"max"`: Ist ≤ Soll (Obergrenze). Einseitig nur bei `parfocal_length` und `working_distance`; `petzval` nur `"max"` (Standard bei `petzval`); bei `ghost_penalty` verboten |
-| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil die q Längen in mm sind, bei `petzval` mm², weil q eine Krümmung in 1/mm ist; √w·q ist dann dimensionslos wie die Wellenfrontresiduen (Wellen bei λ_ref), Wahl nach der Faustregel in [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3) bzw. 2.3. Bei `ghost_penalty` das Strafgewicht μ [Wellen²/mm] (Wahl aus einem Beugungsziel: optimierung.md, Abschnitt 3) |
+| `type` | string | `"focal_length"` (Brennweite bei λ_ref), `"parfocal_length"` (Abgleichlänge), `"working_distance"` (Arbeitsabstand = Dicke der letzten Fläche), `"paraxial_focus"` (Bildebene im paraxialen Brennpunkt F′ bei λ_ref), `"petzval"` (\|κ_P\| ≤ κ_max bei λ_ref, κ_P = −n′_L P einschließlich Geisterplatten; ab M4-T4), `"ghost_penalty"` (geglättete L1-Strafe der Geisterkoeffizienten, ab M4-T6), `"glass_hull"` (Strafe außerhalb der konvexen Hülle der Katalog-Gläser für alle Glasvariablen, ab M6-T1) |
+| `mode` | string | `"equal"` (Standard): Ist = Soll; `"min"`: Ist ≥ Soll (Soll ist Untergrenze); `"max"`: Ist ≤ Soll (Obergrenze). Einseitig nur bei `parfocal_length` und `working_distance`; `petzval` nur `"max"` (Standard bei `petzval`); bei `ghost_penalty` und `glass_hull` verboten |
+| `weight` | number | Gewicht w ≥ 0 (Standard 1; 0 schaltet die Bedingung ab). Einheit 1/mm², weil die q Längen in mm sind, bei `petzval` mm², weil q eine Krümmung in 1/mm ist; √w·q ist dann dimensionslos wie die Wellenfrontresiduen (Wellen bei λ_ref), Wahl nach der Faustregel in [optimierung.md, Abschnitt 2.2](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3) bzw. 2.3. Bei `ghost_penalty` das Strafgewicht μ [Wellen²/mm] (Wahl aus einem Beugungsziel: optimierung.md, Abschnitt 3). Bei `glass_hull` das Gewicht des Abstands in normierten Glaskoordinaten [Wellen²] (Standard 10⁴: 1 % der Katalogspanne kostet eine Welle²; optimierung.md, Abschnitt 2.4) |
 | `reference_surface` | integer | nur `parfocal_length`: Fläche (Index in `surfaces`), ab deren Scheitel die Abgleichlänge zählt (Standard 0 = Blende) |
 | `offset` | number | nur `parfocal_length`: Abstand [mm] der Anlagefläche vor dem Scheitel der Referenzfläche (in Gegenrichtung von +z; Standard 0) |
 | `max_curvature` | number | nur `petzval`, dort Pflicht: größter zulässiger Betrag κ_max der Petzvalkrümmung [1/mm], endlich und ≥ 0 (0 = ebenes Feld). Ein Mindest-Petzvalradius R_min entspricht κ_max = 1/R_min (z. B. 130 mm → 0,0076923) |
@@ -178,9 +193,10 @@ L1-Strafe der Geisterkoeffizienten (ab M4-T6, Beispiele [data/systems/einzellins
 | `order_weight` | number | nur `ghost_penalty`: w₀ > 0 der Ordnungsgewichte w_k = w₀ κ^k (Standard 1) |
 | `order_factor` | number | nur `ghost_penalty`: κ > 0 (Standard 2) |
 | `smoothing` | number | nur `ghost_penalty`: Glättung ε > 0 [mm, Einheit des Dickenprofils] (Standard 10⁻⁶); die Restkoeffizienten nicht benötigter Platten liegen bei ε\|g_k\|/(μ w_k) (optimierung.md, Abschnitt 3) |
+| `margin` | number | nur `glass_hull`: Sicherheitsabstand δ ≥ 0 nach innen in normierten Glaskoordinaten (Standard 0); die Strafe beginnt δ vor dem Rand. δ > 0 verlangt eine dreidimensionale Hülle (mindestens vier nicht koplanare Gläser) |
 | `comment` | string | optional |
 
-**Sollwerte stehen nur in `target`** (eine Quelle der Wahrheit): `focal_length` nimmt `target.focal_length` (dieselbe Größe bestimmt die Feldziele h_f = f_soll · tan θ_f), `parfocal_length` nimmt `target.parfocal_length`, `working_distance` nimmt `target.working_distance`; bei `mode` `min`/`max` ist der Sollwert die Grenze (z. B. Mindestarbeitsabstand). `paraxial_focus` hat den festen Sollwert 0 und braucht keinen Eintrag in `target`. Ausnahme ist die reine Grenze der Petzval-Bedingung: κ_max steht nur im Eintrag (`max_curvature`), weil es dafür keine Zielgröße in `target` gibt; `ghost_penalty` hat keine Sollgröße. Ein `target` ohne Nebenbedingung wird (außer `focal_length` für die Feldziele) nicht ausgewertet.
+**Sollwerte stehen nur in `target`** (eine Quelle der Wahrheit): `focal_length` nimmt `target.focal_length` (dieselbe Größe bestimmt die Feldziele h_f = f_soll · tan θ_f), `parfocal_length` nimmt `target.parfocal_length`, `working_distance` nimmt `target.working_distance`; bei `mode` `min`/`max` ist der Sollwert die Grenze (z. B. Mindestarbeitsabstand). `paraxial_focus` hat den festen Sollwert 0 und braucht keinen Eintrag in `target`. Ausnahme ist die reine Grenze der Petzval-Bedingung: κ_max steht nur im Eintrag (`max_curvature`), weil es dafür keine Zielgröße in `target` gibt; `ghost_penalty` und `glass_hull` haben keine Sollgröße. Ein `target` ohne Nebenbedingung wird (außer `focal_length` für die Feldziele) nicht ausgewertet.
 
 **Abgleichlänge.** Die Anlagefläche (Schulter des Objektivs) ist kein Teil des Linsenmodells. Die Abgleichlänge wird daher ab einer konfigurierbaren Referenz gemessen: L = `offset` + Σ der Dicken ab Fläche `reference_surface` bis zur Bildebene (einschließlich Arbeitsabstand; die Bildebene ist die Objektebene des Mikroskops, weil vom Unendlichraum zum Objekt getract wird). Mit den Standardwerten ist das der Abstand Blende – Bildebene. Die Lage der Anlagefläche legt der Maintainer fest (offene Frage im PR zu M3-T3).
 
@@ -191,6 +207,7 @@ Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `constraints.items[1].mode
 - `focal_length` und `paraxial_focus` nur mit `mode` `equal` (oder ohne `mode`), `petzval` nur mit `max` (oder ohne `mode`).
 - `weight` endlich und ≥ 0; `offset` endlich; `max_curvature` endlich und ≥ 0 und nur bei `petzval`.
 - `ghost_penalty`: kein `mode`; `order_weight`, `order_factor`, `smoothing` endlich und > 0; `plate`/`plates` höchstens eines, Platten existieren, eine Liste ist nicht leer. Diese Felder sind bei den anderen Typen verboten.
+- `glass_hull`: kein `mode`, höchstens ein Eintrag (er gilt für alle Glasvariablen); `margin` endlich und ≥ 0, bei anderen Typen verboten. Die Hülle entsteht aus allen Gläsern der `glass_catalogs`, deren `range_nm` 400–700 nm abdeckt ([data/glass/README.md](../data/glass/README.md): eigene Kataloge unter `data/glass/private/`). Ohne Glasvariablen hat der Eintrag keine Wirkung.
 - `reference_surface` und `offset` nur bei `parfocal_length`; `reference_surface` ist eine nichtnegative ganze Zahl (`3` und `3.0` erlaubt) und die Fläche muss existieren (auch die letzte: dann L = `offset` + Arbeitsabstand).
 - Jeder Typ höchstens einmal (Fehler beim zweiten Eintrag unter `.type`); `ghost_penalty` darf mehrfach stehen, jede Geisterplatte aber nur in einem Eintrag (Fehler unter dem Pfad der Platte bzw. `.type`, wenn der Eintrag alle Platten meint).
 - `paraxial_focus` nur bei `source.type` `collimated` (bei einer Punktquelle ist der Brennpunkt F′ nicht der Bildpunkt).
@@ -198,7 +215,7 @@ Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `constraints.items[1].mode
 
 **Flächenindizes** (`reference_surface`) beziehen sich auf die Dateiflächen; die Abbildung auf die Tabellenflächen des Batches (Geisterplatten) übernimmt `make_paraxial_constraints` mit der `SurfaceMap`. Ein Luftspalt mit Geisterplatten zählt mit seiner ganzen Dicke.
 
-Modell: `mko::Constraints` mit Einträgen `mko::ConstraintSpec` (`include/mikroptim/model/constraints.hpp`), wie sie in der Datei stehen (fehlende Felder bleiben leer, damit das Schreiben die Form erhält; Standardwerte über `*_or_default()`), `check_constraints(system)` (von `validate_system` aufgerufen), `constraint_target(system, type)` (Sollwert aus `target`, bei `petzval` leer) und `constraint_bound(system, spec)` (Sollwert bzw. bei `petzval` `max_curvature`). Die aufgelösten Bedingungen und Residuen liefert `include/mikroptim/optim/paraxial_residuals.hpp` ([optimierung.md](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)); die paraxialen Typen kennzeichnet `is_paraxial` (falsch für `ghost_penalty`). `ghost_penalty`: Felder `plate_selection`/`plates`, `order_weight`, `order_factor`, `smoothing` (Standardwerte `kDefaultGhostOrderWeight` = 1, `kDefaultGhostOrderFactor` = 2, `kDefaultGhostSmoothing` = 10⁻⁶ mm), aufgelöst in Strafterme pro Koeffizient von `make_ghost_penalty` (`include/mikroptim/optim/ghost_penalty.hpp`).
+Modell: `mko::Constraints` mit Einträgen `mko::ConstraintSpec` (`include/mikroptim/model/constraints.hpp`), wie sie in der Datei stehen (fehlende Felder bleiben leer, damit das Schreiben die Form erhält; Standardwerte über `*_or_default()`), `check_constraints(system)` (von `validate_system` aufgerufen), `constraint_target(system, type)` (Sollwert aus `target`, bei `petzval` leer) und `constraint_bound(system, spec)` (Sollwert bzw. bei `petzval` `max_curvature`). Die aufgelösten Bedingungen und Residuen liefert `include/mikroptim/optim/paraxial_residuals.hpp` ([optimierung.md](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)); die paraxialen Typen kennzeichnet `is_paraxial` (falsch für `ghost_penalty`). `ghost_penalty`: Felder `plate_selection`/`plates`, `order_weight`, `order_factor`, `smoothing` (Standardwerte `kDefaultGhostOrderWeight` = 1, `kDefaultGhostOrderFactor` = 2, `kDefaultGhostSmoothing` = 10⁻⁶ mm), aufgelöst in Strafterme pro Koeffizient von `make_ghost_penalty` (`include/mikroptim/optim/ghost_penalty.hpp`). `glass_hull`: Feld `margin` (`margin_or_default()`, Standard `kDefaultGlassHullMargin` = 0), `weight_or_default()` liefert bei diesem Typ `kDefaultGlassHullWeight` = 10⁴; Strafe aus `make_glass_hull_penalty` (`include/mikroptim/optim/glass_variables.hpp`).
 
 ### Einlesen und Validierung
 
@@ -234,7 +251,7 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 
 Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
 
-Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `plate`/`plates`, `order`/`orders`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `plate`/`plates`, `order_weight`, `order_factor`, `smoothing`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
+Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `plate`/`plates`, `order`/`orders`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `plate`/`plates`, `order_weight`, `order_factor`, `smoothing`, `margin`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
 
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 

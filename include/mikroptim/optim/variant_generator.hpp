@@ -45,6 +45,7 @@ struct PerturbationOptions {
     PerturbationScale thickness{0.01, 0.0};
     PerturbationScale working_distance{0.01, 0.0};
     PerturbationScale ghost_coefficient{0.01, 0.0}; // relativ: a = 0 bleibt ungestört
+    PerturbationScale glass{0.01, 0.0};             // n₀, ν₁, ν₂ je relativ (M6-T1)
     Distribution distribution = Distribution::Uniform;
     std::uint64_t seed = 0;
     bool first_is_base = false; // Variante 0 ist x₀ selbst (ungestört)

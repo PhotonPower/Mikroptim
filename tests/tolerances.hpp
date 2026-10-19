@@ -278,5 +278,28 @@ inline constexpr double kContinuityNeighborRatio = 10.0;
 // Dasselbe: Sprung am Übergang nach Verfeinerung des Intervalls um 10⁴ relativ zum Sprung davor.
 // Stetig mindestens wie √Δt (Faktor 1e-2), beobachtet ≤ 3e-3; ein Sprung bleibt (Faktor ≈ 1).
 inline constexpr double kContinuityShrink = 0.05;
+// Konvexe Hülle (M6-T1): Geometrie der Facetten (Normalen, Abstände der Ecken zur Ebene,
+// Volumen) bei Koordinaten der Größe 1; Rundung weniger Operationen (~10 ε).
+inline constexpr double kHullGeometry = 1e-12;
+// Abstand zur Hülle gegen den analytischen Würfelabstand bzw. die unabhängige Projektion auf alle
+// Facetten, Kanten und Ecken, Koordinaten bis ~5: Rundung der Projektion (~10 ε · 5).
+inline constexpr double kHullDistance = 1e-12;
+// Gradient des Abstands gegen die zentrale Differenz mit h = 1e-6 bei Abstand ≥ 0,05:
+// Abbruchfehler h²/(6 d²) ≈ 7e-11, Rundung ε d/h ≈ 1e-9.
+inline constexpr double kHullGradientFd = 1e-7;
+// Gradient des Strafbeitrags w max(0, φ)² nach den Rohkoordinaten gegen die zentrale Differenz
+// (Schritt 1e-6 der Skala, Abstand ≥ 0,05 bzw. im Band des Sicherheitsabstands), relativ zu
+// |Ableitung| + 1/s: Der Strafbeitrag ist stückweise quadratisch, die Differenz bis auf Rundung
+// (ε·w φ²/h ≈ 1e-10) exakt, außer wenn das Muster die Grenze zweier Stücke überspannt.
+inline constexpr double kGlassPenaltyGradientFd = 1e-7;
+// Glas-Hülle der Testgläser gegen die unabhängige Python-Referenz (numpy-Fit, scipy/Qhull):
+// Volumen und Oberfläche relativ. Die Fits beider Seiten stimmen auf ~1e-13 überein; Volumen und
+// Fläche aus ~30 Dreiecken.
+inline constexpr double kGlassHullReference = 1e-9;
+// Glas-Hülle (M6-T1), Abnahme Optimierung: Abstand des Glases zur Hülle nach der
+// Penalty-Fortsetzung (normierte Koordinaten, eine Einheit = Spannweite des Katalogs). Die Strafe
+// erreicht den Rand nur asymptotisch (Überschreitung ∝ 1/w, w·d ≈ 0,1 … 0,3); beim Gewicht der
+// Datei (10⁸) beobachtet ~2e-9. 1e-6 normiert entspricht ~4e-7 in n₀ und ~2e-7 in ν₁.
+inline constexpr double kGlassHullPenaltyDistance = 1e-6;
 
 } // namespace mko::test

@@ -184,7 +184,8 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
             }
             break;
         case ConstraintType::GhostPenalty:
-            break; // oben abgelehnt (kein paraxialer Typ, mikroptim/optim/ghost_penalty.hpp)
+        case ConstraintType::GlassHull:
+            break; // oben abgelehnt (kein paraxialer Typ, ghost_penalty.hpp, glass_variables.hpp)
         }
     }
 }
@@ -226,8 +227,9 @@ double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& bat
         q = std::abs(p.petzval_curvature) - c.target;
         break;
     case ConstraintType::GhostPenalty:
-        throw std::invalid_argument("Paraxial-Nebenbedingungen: ghost_penalty ist kein "
-                                    "paraxialer Typ");
+    case ConstraintType::GlassHull:
+        throw std::invalid_argument("Paraxial-Nebenbedingungen: " + std::string(to_string(c.type)) +
+                                    " ist kein paraxialer Typ");
     }
     return std::sqrt(c.weight) * apply_mode(c.mode, q);
 }
