@@ -23,7 +23,7 @@ jobs:
       - name: Konfigurieren
         run: cmake --preset release-cpu -DMIKROPTIM_WARNINGS_AS_ERRORS=ON
       - name: Bauen
-        run: cmake --build --preset release-cpu --parallel
+        run: cmake --build --preset release-cpu --parallel 4
       - name: Testen
         run: ctest --preset release-cpu
 
@@ -40,4 +40,4 @@ jobs:
       - name: Konfigurieren
         run: cmake --preset release-cuda -DMIKROPTIM_WARNINGS_AS_ERRORS=ON
       - name: Bauen
-        run: cmake --build --preset release-cuda --parallel
+        run: cmake --build --preset release-cuda --parallel 2
