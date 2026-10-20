@@ -7,7 +7,7 @@
 Hochleistungs-Raytracing mit CUDA, Nutzung unter Linux und Windows, Implementierung durch Programmieragenten.
 
 ## Entscheidung
-C++20 für Host und Device, CMake ≥ 3.25 mit Presets, GoogleTest für Tests. Unterstützte Compiler: GCC ≥ 11, Clang ≥ 14, MSVC 2022. Abhängigkeiten werden per FetchContent mit fester Version eingebunden. Erlaubte externe Bibliotheken: GoogleTest, nlohmann/json, nanobind, CUDA-Bibliotheken (cuBLAS, cuSOLVER, cuFFT).
+C++20 für Host und Device, CMake ≥ 3.25 mit Presets, GoogleTest für Tests. Unterstützte Compiler: GCC ≥ 11, Clang ≥ 14, MSVC 2022. Abhängigkeiten werden per FetchContent mit fester Version eingebunden. Erlaubte externe Bibliotheken: GoogleTest, nlohmann/json, nanobind, CUDA-Bibliotheken (cuBLAS, cuSOLVER, cuFFT). Zum Bauen der Python-Wheels zusätzlich das Build-Backend scikit-build-core (vom Maintainer am 2026-10-20 zugelassen, M9-T1; zur Laufzeit nicht nötig).
 
 ## Konsequenzen
 Keine C++23-Features (z. B. `std::expected`). CI baut auf Linux und Windows.
