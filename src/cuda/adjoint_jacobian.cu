@@ -95,7 +95,7 @@ __device__ inline void block_piston_weight(PistonWeightShared<R>& sh, R weight_o
 }
 
 // Block b = (v · F + f) · L + l.
-template <class R, int kCapacity>
+template <class R, int kCapacity, bool kTransforms>
 __global__ void __launch_bounds__(kBlockThreads)
     adjoint_jacobian_kernel(const JacobianKernelArgs a) {
     __shared__ detail::BlockTable<R> sh_table;
@@ -114,9 +114,13 @@ __global__ void __launch_bounds__(kBlockThreads)
     detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
     const detail::BlockGhosts<R> ghosts =
         detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
+    // Dezentrierung und Verkippung hinter den Geisterdaten (nur Instanz kTransforms, M8-T3)
+    const detail::KernelTable<R, kTransforms> table = detail::block_kernel_table<R, kTransforms>(
+        sh_table, S, ghosts,
+        reinterpret_cast<R*>(sh_dynamic + detail::ghost_shared_bytes(a.batch.shape)), a.batch, v,
+        tid);
     __syncthreads();
 
-    const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const bool point_source = a.batch.source == SourceKind::Point;
     const int n = plan.samples;
@@ -210,15 +214,15 @@ __global__ void __launch_bounds__(kBlockThreads)
 
 using KernelFn = void (*)(JacobianKernelArgs);
 
-template <class R>
+template <class R, bool kTransforms>
 KernelFn select_kernel(int capacity) {
     if (capacity == kRecordCapacitySmall) {
-        return adjoint_jacobian_kernel<R, kRecordCapacitySmall>;
+        return adjoint_jacobian_kernel<R, kRecordCapacitySmall, kTransforms>;
     }
     if (capacity == kRecordCapacityMedium) {
-        return adjoint_jacobian_kernel<R, kRecordCapacityMedium>;
+        return adjoint_jacobian_kernel<R, kRecordCapacityMedium, kTransforms>;
     }
-    return adjoint_jacobian_kernel<R, kRecordCapacityLarge>;
+    return adjoint_jacobian_kernel<R, kRecordCapacityLarge, kTransforms>;
 }
 
 void check_capacity(int capacity) {
@@ -229,11 +233,16 @@ void check_capacity(int capacity) {
     }
 }
 
-KernelFn select_kernel(Precision precision, int capacity) {
+// transforms: Instanz für nicht koaxiale Batches (M8-T3).
+KernelFn select_kernel(Precision precision, int capacity, bool transforms = false) {
     check_precision(precision);
     check_capacity(capacity);
-    return precision == Precision::Df64 ? select_kernel<df64>(capacity)
-                                        : select_kernel<double>(capacity);
+    if (transforms) {
+        return precision == Precision::Df64 ? select_kernel<df64, true>(capacity)
+                                            : select_kernel<double, true>(capacity);
+    }
+    return precision == Precision::Df64 ? select_kernel<df64, false>(capacity)
+                                        : select_kernel<double, false>(capacity);
 }
 
 // Regionen des Puffers.
@@ -479,8 +488,9 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
         args.jacobian = detail::region_ptr<double>(buffer_, bl.jacobian);
         args.residuals = detail::region_ptr<double>(buffer_, bl.residuals);
         args.status = detail::region_ptr<std::uint8_t>(buffer_, bl.status);
-        const KernelFn fn = select_kernel(precision, capacity);
-        fn<<<static_cast<unsigned>(blocks), kBlockThreads, ghost_bytes>>>(args);
+        const KernelFn fn = select_kernel(precision, capacity, args.batch.decenter_tilt != nullptr);
+        fn<<<static_cast<unsigned>(blocks), kBlockThreads,
+             ghost_bytes + detail::transform_shared_bytes(args.batch)>>>(args);
         MKO_CUDA_CHECK(cudaGetLastError());
         MKO_CUDA_CHECK(cudaDeviceSynchronize());
     }

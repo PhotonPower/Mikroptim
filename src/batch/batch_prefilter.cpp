@@ -76,7 +76,8 @@ bool too_many_failed(std::int64_t failed, std::int64_t rays, double fraction) {
 
 // Flächentabelle einer Variante in float (wie die Kopie im Shared Memory des Kernels).
 struct FloatTable {
-    std::vector<float> curvature, thickness, index, ghost_coeff, ghost_index, ghost_radius;
+    std::vector<float> curvature, thickness, index, ghost_coeff, ghost_index, ghost_radius,
+        decenter_tilt, tilt_trig;
     SurfaceTableView<float> view{};
 
     explicit FloatTable(const SurfaceTableView<double>& t) {
@@ -109,6 +110,21 @@ struct FloatTable {
                                        G > 0 ? ghost_coeff.data() : nullptr,
                                        G > 0 ? ghost_index.data() : nullptr,
                                        G > 0 ? ghost_radius.data() : nullptr};
+        // Dezentrierung und Verkippung (M8-T3): Werte und ihre Sinus und Kosinus in FP64
+        // berechnet und nach float gewandelt, wie load_block_transforms im Kernel
+        if (t.decenter_tilt != nullptr) {
+            const std::size_t n = S * static_cast<std::size_t>(kSurfaceTransformValues);
+            conv(t.decenter_tilt, n, decenter_tilt);
+            tilt_trig.resize(n);
+            for (std::size_t i = 0; i < n; i += 4) {
+                tilt_trig[i] = static_cast<float>(std::cos(t.decenter_tilt[i + 2]));
+                tilt_trig[i + 1] = static_cast<float>(std::sin(t.decenter_tilt[i + 2]));
+                tilt_trig[i + 2] = static_cast<float>(std::cos(t.decenter_tilt[i + 3]));
+                tilt_trig[i + 3] = static_cast<float>(std::sin(t.decenter_tilt[i + 3]));
+            }
+            view.decenter_tilt = decenter_tilt.data();
+            view.tilt_trig = tilt_trig.data();
+        }
     }
 };
 

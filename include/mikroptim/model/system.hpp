@@ -57,6 +57,11 @@ struct Surface {
     double thickness = 0.0; // Abstand zum nächsten Scheitel bzw. zur Bildebene
     MaterialSpec material;  // Medium nach der Fläche
     double semi_diameter = 0.0;
+    // Dezentrierung (Δx, Δy) [mm] und Verkippung (α, β) [Grad] um die lokale x- bzw. y-Achse,
+    // Drehpunkt ist der Scheitel (M8-T3, ADR-0011; docs/numerik.md, Abschnitt 2). Standard 0
+    // (koaxial); in der Datei optional `decenter` und `tilt_deg`.
+    std::array<double, 2> decenter{0.0, 0.0};
+    std::array<double, 2> tilt_deg{0.0, 0.0};
     std::optional<std::string> comment;
 
     // Vergleicht alle Felder, auch die des Materials (MaterialSpec selbst hat kein operator==).
@@ -65,9 +70,12 @@ struct Surface {
                a.material.kind == b.material.kind && a.material.name == b.material.name &&
                a.material.n == b.material.n && a.material.n0 == b.material.n0 &&
                a.material.nu == b.material.nu && a.semi_diameter == b.semi_diameter &&
-               a.comment == b.comment;
+               a.decenter == b.decenter && a.tilt_deg == b.tilt_deg && a.comment == b.comment;
     }
 };
+
+// Fläche dezentriert oder verkippt (ein Wert von decenter, tilt_deg ≠ 0).
+bool is_transformed(const Surface& surface);
 
 // Geisterplatte (docs/dateiformat.md, „Geisterplatten“; Physik: docs/numerik.md, Abschnitt 6):
 // virtuelle dünne Glasplatte im Luftspalt nach Fläche `after_surface`, im Abstand `distance`
@@ -110,6 +118,10 @@ struct SystemDescription {
 
     friend bool operator==(const SystemDescription&, const SystemDescription&) = default;
 };
+
+// Koaxial: keine Fläche dezentriert oder verkippt (M8-T3). Nicht koaxiale Systeme werden mit
+// voller Pupille für alle Felder ausgewertet (ADR-0011).
+bool is_coaxial(const SystemDescription& system);
 
 // Prüft die inhaltlichen Regeln (docs/dateiformat.md, „Einlesen und Validierung“) und wirft
 // FormatError mit dem JSON-Pfad der ersten verletzten Regel. Glasnamen werden nicht geprüft.

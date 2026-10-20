@@ -48,6 +48,7 @@ struct SystemBatchLayout {
     BufferRegion ghost_index;          // V · G · L · 8
     BufferRegion paraxial_index;       // V · S · 8 (Brechzahlen bei λ_ref, M3-T3)
     BufferRegion paraxial_ghost_index; // V · G · 8
+    BufferRegion decenter_tilt;        // V · S · 4 · 8, nur nicht koaxial (M8-T3), sonst leer
     std::size_t total_bytes = 0;
 };
 

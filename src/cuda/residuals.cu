@@ -54,7 +54,7 @@ struct ResidualKernelArgs {
 // und jedes __syncthreads (versagte Strahlen und Threads ohne Strahl sind nur maskiert).
 // R: Rechentyp (double oder df64). kExtrema: zusätzlich Max-Reduktionen pro Fläche (ohne
 // kExtrema entfällt jeder Aufwand).
-template <class R, bool kExtrema>
+template <class R, bool kExtrema, bool kTransforms>
 __global__ void MKO_TRACE_LAUNCH_BOUNDS residuals_kernel(const ResidualKernelArgs a) {
     // Shared Memory: statisch Flächentabelle, Quadratur, Angaben pro Tupel, Kolben und
     // Teilsummen (PackShared, für R = double ca. 3,6 KB; mit kExtrema zusätzlich 4 KB);
@@ -69,8 +69,8 @@ __global__ void MKO_TRACE_LAUNCH_BOUNDS residuals_kernel(const ResidualKernelArg
     const TuplePack pack = a.packs[block % a.packs_per_variant];
     const int tid = static_cast<int>(threadIdx.x);
 
-    const SurfaceTableView<R> table = detail::load_pack(sh, sh_dynamic, a.batch, a.pupil, a.plan,
-                                                        pack, v, a.soft != 0, a.fail_weight, tid);
+    const detail::KernelTable<R, kTransforms> table = detail::load_pack<R, kTransforms>(
+        sh, sh_dynamic, a.batch, a.pupil, a.plan, pack, v, a.soft != 0, a.fail_weight, tid);
     __syncthreads();
 
     // Strahlen des Pakets liegen ab Zeile first_row hintereinander (Strahl r im Paket).
@@ -151,14 +151,22 @@ __global__ void MKO_TRACE_LAUNCH_BOUNDS residuals_kernel(const ResidualKernelArg
     }
 }
 
-// Startet den Kernel mit Rechentyp R (Gerät ist gesetzt) und prüft den Start.
+// Startet den Kernel mit Rechentyp R (Gerät ist gesetzt) und prüft den Start; die Instanz mit
+// Transformationen nur für nicht koaxiale Batches (M8-T3).
 template <class R>
 void launch_residuals(const ResidualKernelArgs& args, bool extrema, unsigned grid,
                       std::size_t dynamic) {
+    const bool transforms = args.batch.decenter_tilt != nullptr;
     if (extrema) {
-        residuals_kernel<R, true><<<grid, kBlockThreads, dynamic>>>(args);
+        if (transforms) {
+            residuals_kernel<R, true, true><<<grid, kBlockThreads, dynamic>>>(args);
+        } else {
+            residuals_kernel<R, true, false><<<grid, kBlockThreads, dynamic>>>(args);
+        }
+    } else if (transforms) {
+        residuals_kernel<R, false, true><<<grid, kBlockThreads, dynamic>>>(args);
     } else {
-        residuals_kernel<R, false><<<grid, kBlockThreads, dynamic>>>(args);
+        residuals_kernel<R, false, false><<<grid, kBlockThreads, dynamic>>>(args);
     }
     MKO_CUDA_CHECK(cudaGetLastError());
 }
@@ -168,11 +176,11 @@ template <class R>
 std::size_t residuals_static_shared(bool extrema) {
     cudaFuncAttributes attr{};
     if (extrema) {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, true>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, true, false>));
     } else {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, false>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, residuals_kernel<R, false, false>));
     }
-    return attr.sharedSizeBytes;
+    return attr.sharedSizeBytes; // gleich für beide Instanzen (kTransforms nur dynamisch)
 }
 
 using detail::region_ptr;
@@ -280,10 +288,12 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     const bool df = options.precision == Precision::Df64;
     const std::size_t static_bytes = df ? residuals_static_shared<df64>(options.extrema)
                                         : residuals_static_shared<double>(options.extrema);
+    const bool transforms = view.decenter_tilt != nullptr; // nicht koaxial (M8-T3)
     const std::vector<TuplePack> packs = make_tuple_packs(
         layout, view.shape, options.pack_rays, 0,
-        detail::kBlockMaxSharedBytes - std::min(static_bytes, detail::kBlockMaxSharedBytes));
-    const std::size_t dynamic = pack_dynamic_bytes(packs, view.shape, 0);
+        detail::kBlockMaxSharedBytes - std::min(static_bytes, detail::kBlockMaxSharedBytes),
+        transforms);
+    const std::size_t dynamic = pack_dynamic_bytes(packs, view.shape, 0, transforms);
     const auto P = static_cast<int>(packs.size());
     // Platz für F · L Pakete (höchstens so viele), damit der Puffer zur Abschätzung der
     // TraceEngine passt (fixed_run_bytes) und über Läufe wiederverwendet wird.

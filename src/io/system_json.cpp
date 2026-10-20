@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -324,12 +325,29 @@ private:
         s.material = read_material(required(j, path, "material"), join(path, "material"));
         s.semi_diameter =
             as_number(required(j, path, "semi_diameter"), join(path, "semi_diameter"));
+        // Dezentrierung und Verkippung (M8-T3, ADR-0011), optional
+        if (const Json* d = member(j, "decenter")) {
+            s.decenter = read_pair(*d, join(path, "decenter"));
+        }
+        if (const Json* t = member(j, "tilt_deg")) {
+            s.tilt_deg = read_pair(*t, join(path, "tilt_deg"));
+        }
         if (const Json* c = member(j, "comment")) {
             s.comment = as_string(*c, join(path, "comment"));
         }
         warn_unknown(j, path,
-                     {"type", "curvature", "thickness", "material", "semi_diameter", "comment"});
+                     {"type", "curvature", "thickness", "material", "semi_diameter", "decenter",
+                      "tilt_deg", "comment"});
         return s;
+    }
+
+    // Zahlenpaar [a, b].
+    static std::array<double, 2> read_pair(const Json& j, const std::string& path) {
+        const std::vector<double> v = as_number_list(j, path);
+        if (v.size() != 2) {
+            fail(path, "erwartet genau 2 Zahlen, gefunden " + std::to_string(v.size()));
+        }
+        return {v[0], v[1]};
     }
 
     // Nichtnegative ganze Zahl (als JSON-Zahl; 7 und 7.0 sind erlaubt).
@@ -813,6 +831,12 @@ Json to_json(const SystemDescription& sys) {
         js["thickness"] = s.thickness;
         js["material"] = material_to_json(s.material);
         js["semi_diameter"] = s.semi_diameter;
+        if (s.decenter[0] != 0.0 || s.decenter[1] != 0.0) {
+            js["decenter"] = Json::array({s.decenter[0], s.decenter[1]});
+        }
+        if (s.tilt_deg[0] != 0.0 || s.tilt_deg[1] != 0.0) {
+            js["tilt_deg"] = Json::array({s.tilt_deg[0], s.tilt_deg[1]});
+        }
         if (s.comment) {
             js["comment"] = *s.comment;
         }

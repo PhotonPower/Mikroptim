@@ -13,10 +13,57 @@ Dieses Dokument ist verbindlich für alle Implementierungen im Mathe-Kern, im CP
 ## 2. Koordinaten und Vorzeichen
 
 - Rechtshändiges System, z ist die optische Achse **in Tracerichtung**.
-- Jede Fläche hat lokale Koordinaten mit Scheitel im Ursprung. Das System ist koaxial (keine Dezentrierung bis M8).
+- Jede Fläche hat lokale Koordinaten mit Scheitel im Ursprung. Die nominellen Scheitel liegen auf der gemeinsamen Achse; einzelne Flächen dürfen dezentriert und verkippt sein (ADR-0011, Unterabschnitt „Dezentrierung und Verkippung“ unten).
 - Krümmung c = 1/R ist **positiv**, wenn der Krümmungsmittelpunkt auf der +z-Seite des Scheitels liegt. Planfläche: c = 0.
 - Fläche i hat die Dicke t_i = Abstand ihres Scheitels zum Scheitel von Fläche i+1 (entlang +z) und das Medium m_i **nach** der Fläche. Das Medium vor Fläche 0 ist Luft.
 - Brechzahlen aus Katalogen sind relativ zu Luft; Luft hat im Programm n = 1.
+
+### Dezentrierung und Verkippung (M8-T3, ADR-0011)
+
+Implementiert in `include/mikroptim/trace/surface_transform.hpp` (`SurfaceTransform`, `make_surface_transform`, `rotate_to_surface`/`rotate_from_surface`, `point_to_surface`/`point_from_surface`, `ray_to_surface`/`ray_from_surface`, `surface_transform_of`; header-only, `MKO_HD`, über R templatisiert) und im Parameter `transform` von `propagate_surface` (`include/mikroptim/trace/trace.hpp`). Daten in Tabelle, Batch und Kernel: [architektur.md](architektur.md#dezentrierung-und-verkippung-m8-t3), Dateiformat: [dateiformat.md](dateiformat.md#flächen).
+
+**Parameter.** Jede Fläche s ≥ 1 darf relativ zur nominellen Lage ihres Scheitels um (Δx, Δy) [mm] verschoben und um ihre lokale x- und y-Achse um (α, β) gekippt sein (Datei in Grad, intern im Bogenmaß). Drehpunkt ist der Scheitel. Die Drehung ist aktiv und rechtshändig (positiver Winkel gegen den Uhrzeigersinn mit Blick entgegen der Drehachse):
+
+$$R = R_y(\beta)\,R_x(\alpha) = \begin{pmatrix} \cos\beta & \sin\beta\sin\alpha & \sin\beta\cos\alpha \\ 0 & \cos\alpha & -\sin\alpha \\ -\sin\beta & \cos\beta\sin\alpha & \cos\beta\cos\alpha \end{pmatrix},\qquad \boldsymbol\Delta = (\Delta x,\ \Delta y,\ 0)$$
+
+Ein Punkt **q** im gekippten System der Fläche liegt im nominellen System bei R**q** + **Δ**; die Flächennormale im Scheitel ist R e_z = (sin β cos α, −sin α, cos β cos α), α > 0 dreht also +y nach +z, β > 0 dreht +z nach +x. Eine Drehung um z ist bei sphärischen Flächen wirkungslos und entfällt. Die Blende (Fläche 0) legt Bezugssystem und Pupille fest und bleibt unbewegt (Validierung); Geisterplatten haben in der Datei keine Transformation.
+
+**Schritt an einer transformierten Fläche** („dezentrieren und zurück“, kein Koordinatenbruch): Der Strahl steht wie bisher im nominellen System der vorigen Fläche.
+
+1. Prüfung d_z > 0 (nominell, wie ohne Transformation), dann z ← z − t: nominelles System der Fläche s (Scheitel im Ursprung).
+2. Ins gekippte System: **p** ← Rᵀ(**p** − **Δ**), **d** ← Rᵀ**d**, gerechnet als Rᵀ = R_x(−α)·R_y(−β) mit zwei ebenen Drehungen (je vier Produkte).
+3. Dort der Schritt wie in Abschnitt 5 bzw. 6 mit dem Transfer um 0: Prüfung d_z > 0 im gekippten System (sonst `Backward`), Transfer in die Tangentialebene, Schnitt, OPL += n_vor (s₀ + s), Brechung (bzw. Geisterplatte).
+4. Bei Erfolg zurück: **p** ← R**p** + **Δ**, **d** ← R**d**. Der Strahl steht danach im nominellen System der Fläche s; der Transfer zur nächsten Fläche beginnt dort mit der nominellen Dicke t_s (Abstand der nominellen Scheitel entlang +z).
+
+Die Abbildung ist eine Bewegung, Weglängen bleiben erhalten: Die OPL wächst nur um die geometrischen Wege (n_vor (s₀ + s), Φ), die Transformation selbst trägt nichts bei. Bei Versagen bleibt der Strahl im gekippten System (wie ohne Transformation „teilweise fortgeschrieben“); die Grenzabstände der FP32-Vorfilterung rechnen dort mit denselben Formeln.
+
+**Transformation 0 und Kosten.** `surface_transform_of` liefert nur dann eine Transformation, wenn die Tabelle Transformationsdaten hat (`decenter_tilt` ≠ nullptr) und einer der vier Werte der Fläche ≠ 0 ist. Sonst ruft `trace_segment` `propagate_surface` ohne Transformation auf, also genau den Code von vorher: Koaxiale Systeme und Flächen mit Transformation 0 sind bitgleich zu main (Abnahme unten, alle Kernel-Modi). Für die Tabellensicht `CoaxialTableView` (die Kernel verwenden sie für koaxiale Batches) ist die Antwort schon zur Übersetzungszeit `false`; der Tracer enthält dann keinen Code für Transformationen. Sinus und Kosinus der Winkel liegen in Host-Tabellen und im Shared Memory der Kernel vorab berechnet vor (`tilt_trig`); ohne sie (z. B. `SystemBatchView::surface_table`) rechnet der Tracer sie pro Fläche mit `msin`/`mcos` aus den Winkeln, mit denselben Funktionen wie bei der Vorabberechnung auf dem Host (bitgleich).
+
+**Beobachter und Aufzeichnung.** Die Max-Reduktionen (Strahlhöhe, Einfallswinkel, M2-T3) sehen an einer transformierten Fläche Zustand und Richtung im gekippten System (Höhe relativ zur Flächenachse, cos I mit der Normalen der Fläche; Rücktransformation der Ausgabe, auf Rundung genau). Die Aufzeichnung des adjungierten Modus (M5-T1) speichert wie der Trace die Zustände im nominellen System.
+
+**Rückwärtsdurchlauf (M5-T2).** `backward_ray` rechnet den Schritt im gekippten System mit dem Eingang Rᵀ(**p** − t e_z − **Δ**), Rᵀ**d** und dem Transfer um 0 neu, dreht die Adjungierten des Ausgangs mit Rᵀ hinein (**q** = R**q**_lok + **Δ** ⇒ **q̄**_lok = Rᵀ**q̄**) und die des Eingangs mit R zurück; die Dicke geht nur über z − t ein, also t̄ = −p̄_z. Ableitungen nach Krümmung, Dicken, Brechzahlen, Glas- und Geisterkoeffizienten bleiben damit für dezentrierte Systeme korrekt (Abnahme unten). Ableitungen nach (Δx, Δy, α, β) selbst gibt es nicht (keine Variablen; ADR-0011).
+
+**Pupille, Referenzsphäre, Paraxialoptik.** Sobald eine Fläche transformiert ist (`is_coaxial`, `BatchTopology::non_coaxial`), entfällt die Symmetrie x → −x: Alle Felder, auch die Achse, verwenden `PupilMode::Full` (Quadratur, Residuenlayout, `evaluate_wavefront`, CLI `trace`); EVAL lehnt die halbe Pupille ab. Referenzsphäre und Bildpunkt **M**_f bleiben im nominellen System der letzten Fläche (Abschnitt 7): Bildversatz und Kippung durch Toleranzen erscheinen als Kippung in der OPD und als Verzeichnung, sie werden nicht wegdefiniert. Die Paraxialoptik (Abschnitt 9, Brennweite, Feldziele, Austrittspupille in EVAL, paraxiale Nebenbedingungen) bleibt koaxial und ignoriert die Transformationen: Toleranzen werden real getract. Ebenso rechnen die geometrischen mechanischen Nebenbedingungen (Randdicken, Luftabstände) mit den nominellen Flächen.
+
+**Elementbewegungen** (Tolerierung, M8-T4) entstehen aus den Einzelflächen: Eine Drehung R eines Elements um den Punkt P bewegt den Scheitel V jeder seiner Flächen nach P + R(V − P); Dezentrierung ist der Lateralanteil von P + R(V − P) − V, die Verkippung ist R, der Axialanteil δz ändert die Dicke vor der Fläche um +δz und die danach um −δz.
+
+**Ergebnisse der Abnahme** (CPU: Tests `SurfaceTransform.*`, `Decenter*.*` in `tests/test_decenter.cpp`; GPU: `CudaDecenter.*` in `tests/test_cuda_decenter.cpp`, RTX 3090; Fingerabdrücke `CoaxialFingerprint.*`, `CudaCoaxialFingerprint.*`):
+
+| Kriterium | Orakel | Ergebnis |
+|---|---|---|
+| (1) Koaxiale Systeme bitgleich zu main: FNV-Prüfsummen aller Ausgaben für die 16 koaxialen Testsysteme (gestörte Varianten mit versagten Strahlen) in allen CPU-Referenzen (Wellenfront, Trace, RESIDUALS weich/hart, MERIT mit Extrema, Vorfilterung, EVAL volle/halbe Pupille und beide Referenzsphären, adjungierte Jacobi) und Kernel-Modi (RESIDUALS, MERIT in FP64 und df64, Vorfilterung, ADJOINT-Vorwärts mit vollständiger Aufzeichnung und Checkpoints, EVAL, adjungierte Jacobi FP64/df64) | dieselbe Testdatei auf main und auf dem Zweig (Release, MSVC, RTX 3090) | 568 von 568 Prüfsummen gleich |
+| (1) Transformation 0 (`make_non_coaxial`) gegen koaxialen Batch mit voller Pupille | bitgleich | CPU: alle Referenzen bitgleich; GPU: 61 Vergleiche aller Modi bitgleich |
+| (2) Verkippte Planplatte (T = 3 mm, n = 1,5, α = 0,5° … 40°, um x und y; Elementdrehung um den ersten Scheitel und beide Flächen um ihren Scheitel mit Abstand T/cos α) | Versatz T sin(α − α′)/cos α′, OPL-Zuwachs T (n cos α′ − cos α) | Versatz 8,3·10⁻¹⁶ mm, OPL 3,6·10⁻¹⁵ mm, Richtung 4,5·10⁻¹⁶ |
+| (3) Dezentrierte und verkippte Kugel (400 Zufallsfälle) | Schnitt mit der verschobenen Kugel (eigene quadratische Gleichung), Snellius mit N = −c(**p** − **C**) | Schnittpunkt 1,1·10⁻¹⁴ mm, OPL 1,4·10⁻¹⁴ mm, Snellius 4,4·10⁻¹⁶ |
+| (4) Dezentrierte Einzellinse (beide Flächen um Δ) | Translation: koaxiale Linse mit um −Δ verschobener Pupille | Ort 1,3·10⁻¹⁵ mm, OPL 1,4·10⁻¹⁴ mm |
+| (4) Bildversatz Δ(1 − m), kollimiert (m = 0) und endliche Konjugation (m = −0,4907), Δ = 0,2 / 0,1 / 0,05 mm | relativer Rest ∝ Δ² | kollimiert 6,2·10⁻⁶ / 1,5·10⁻⁶ / 3,8·10⁻⁷, endlich −3,6·10⁻⁷ / −9,0·10⁻⁸ / −2,3·10⁻⁸ (Verhältnis 4,0) |
+| (4) Koma linear in Δ (EVAL, Achsfeld, N = 64, Δ = 0,4 / 0,2 / 0,1 mm) | Koeffizient von y·ρ² = −4 c₂ Δ/a (Pupille um −Δ/a verschoben, c₂ der koaxialen Linse) | Verhältnis 1,000128 / 1,000100 / 1,000093 |
+| (5) Kippung um den Scheitel (beide Flächen der Einzellinse, fünf (α, β) bis 3°) gegen Verschiebung des Krümmungsmittelpunkts (lateral R (sin β cos α, −sin α), axial R (cos α cos β − 1)) | gleiche Kugel, 2.880 Strahlen | Ort 1,5·10⁻¹⁴ mm, Richtung 1,0·10⁻¹⁵, OPL 9,9·10⁻¹⁴ mm |
+| (6) Elementverkippung um P (drei Fälle bis 2°, P auf und neben der Achse) nach ADR-0011 | direkte Drehung der Strahlen um P | Ort 8,0·10⁻¹⁵ mm, Richtung 6,7·10⁻¹⁶, OPL 8,5·10⁻¹⁴ mm |
+| (7) GPU gegen CPU, zufällig dezentrierte und verkippte Varianten (Mehrlinser, Geisterplatten, weiches Versagen, Datei; bis 307.200 Strahlen pro Fall) | `kCpuGpuFp64`, `kCpuGpuFp64Relative`, `kCpuGpuSoftTuple` pro Strahl | Status gleich, keine Verletzung; OPD hart ≤ 2,7·10⁻¹² mm (relative Schranke), in Tupeln mit weichem Versagen ≤ 1,5·10⁻¹⁰ mm; Extrema ≤ 1,9·10⁻¹³; EVAL Verhältnis zur Toleranz ≤ 0,67; adjungierte Jacobi ≤ 1,5·10⁻¹¹ relativ pro Spalte, df64 ≤ 2,9·10⁻¹⁰ |
+| (7) Determinismus | bitgleich | wiederholte Läufe, Paketgrößen 1 … 4096 und Tranchen bitgleich |
+| (8) Spiegelung Δx → −Δx, β → −β (EVAL, N = 33) | gespiegelte OPD-Karte | CPU 1,7·10⁻¹⁸ mm, GPU 4,3·10⁻¹⁹ mm (Asymmetrie der Karte selbst 9,3·10⁻³ mm) |
+| Adjungierte Jacobi-Matrix dezentrierter Varianten der sieben Testfälle aus M5-T2 | Richardson (adaptiv) | größte Spalte 7,0·10⁻⁸ (Glas, ν₂; rundungsbegrenzt wie in M5-T2), spaltenskaliert ≤ 6,6·10⁻¹⁰ |
 
 ## 3. Systemaufbau und Tracerichtung
 
@@ -75,7 +122,7 @@ k < 0 bedeutet Totalreflexion.
 Implementiert in `include/mikroptim/trace/trace.hpp` (`trace_ray`, `propagate_surface`, `transfer_to_image_plane`).
 
 - **Start:** Der Strahl steht in lokalen Koordinaten von Fläche 0, im Medium **nach** Fläche 0 (Brechzahl index[0][l]). An Fläche 0 wird nicht gebrochen; bei Systemen aus Dateien ist sie die Blende in Luft, und die kollimierte Quelle startet in ihrer Ebene.
-- **Schritt** für s = 1 … S−1: Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l]. Bei einer Geisterplatte (Typ GhostPlate, g-te ihrer Art in Tracerichtung) statt Schnitt und Brechung der Schritt aus Abschnitt 6 mit den Daten der Geisterplatte g.
+- **Schritt** für s = 1 … S−1 (an dezentrierten oder verkippten Flächen im gekippten System, Abschnitt 2): Prüfung d_z > 0, Transfer um thickness[s−1] in die Tangentialebene von Fläche s, Schnitt (Stop und Plane mit c = 0, Sphere mit c = curvature[s]), OPL += n_vor · (s₀ + s), Brechung mit μ = n_vor / n_nach, n_vor = index[s−1][l], n_nach = index[s][l]. Bei einer Geisterplatte (Typ GhostPlate, g-te ihrer Art in Tracerichtung) statt Schnitt und Brechung der Schritt aus Abschnitt 6 mit den Daten der Geisterplatte g.
 - **Ende:** im Schnittpunkt mit der letzten Fläche S−1, in deren lokalen Koordinaten, Richtung nach der Brechung, OPL bis zu diesem Punkt. Hier setzt die Referenzsphäre an (Abschnitt 7, Mittelpunkt **M**_f in denselben Koordinaten).
 - **Bildebene:** `transfer_to_image_plane` transportiert um thickness[S−1] im Medium index[S−1][l] in die Ebene z = 0 der Bildebene (OPL += n_B · s₀).
 - **Versagen:** Der Trace kehrt bei der ersten versagenden Fläche mit deren Status und Nummer zurück (hartes Versagen, kein Werfen). Der Strahlzustand ist dann teilweise fortgeschrieben und wird nicht weiter verwendet. Im weichen Modus (M4-T2, Abschnitt 11) werden verfehlte Flächen, Totalreflexion und negative Radikanden an Geisterplatten fortgesetzt und bestraft; hart bleiben d_z ≤ 0, nicht unterstützte Flächen und NaN.
@@ -297,7 +344,7 @@ $$s_{\mathrm{ref}} = \frac{g}{\,b + \sigma\sqrt{b^2 - g}\,},\qquad \sigma = \beg
 
 **Idealer Bildpunkt und f_soll.** w = thickness[S−1] (Arbeitsabstand; negativ bei einem virtuellen Bildpunkt), h_f = f_soll · tan θ_f mit dem Feldwinkel θ_f der kollimierten Quelle. f_soll ist `target.focal_length`, falls gesetzt, sonst die paraxiale Brennweite 1/φ (Abschnitt 9) bei `spectrum.reference_nm`. Ist sie nicht endlich (afokales System), meldet der Host einen Fehler. Bei der Punktquelle (Tests) ist **M** = (0, 0, w); für Quellen außerhalb der Achse gibt der Aufrufer die Bildpunkte explizit vor.
 
-**Quadratur pro Feld.** Standard N = 10, M = 8 (Abschnitt 8), konfigurierbar. Kollimiert: θ_f = 0 → `PupilMode::Axis` (N Stützstellen), sonst `Half` (N·M). Punktquelle: auf der Achse `Axis`, mit x = 0 `Half`, sonst `Full`. Ein vorgegebener Modus gilt für alle Felder.
+**Quadratur pro Feld.** Standard N = 10, M = 8 (Abschnitt 8), konfigurierbar. Kollimiert: θ_f = 0 → `PupilMode::Axis` (N Stützstellen), sonst `Half` (N·M). Punktquelle: auf der Achse `Axis`, mit x = 0 `Half`, sonst `Full`. Nicht koaxiale Systeme (M8-T3, Abschnitt 2): `Full` für alle Felder. Ein vorgegebener Modus gilt für alle Felder.
 
 **Kolbenabzug und RMS** pro Tupel (Feld f, Wellenlänge l) über die Stützstellen k mit den Gewichten W_k = W_i V_j der Quadratur (Summe 1). Versagte Strahlen sind in M1 **hart** ausgeschlossen, die Gewichte der übrigen werden renormiert:
 

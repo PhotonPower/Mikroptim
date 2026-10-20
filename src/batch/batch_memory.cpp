@@ -75,6 +75,10 @@ SystemBatchLayout make_batch_layout(const BatchTopology& t, int variants) {
     b.ghost_index = place(end, mul_sat(V, G * L * d));
     b.paraxial_index = place(end, mul_sat(V, S * d));
     b.paraxial_ghost_index = place(end, mul_sat(V, G * d));
+    // Zuletzt, damit koaxiale Batches dieselbe Ablage wie vor M8-T3 haben.
+    b.decenter_tilt = place(
+        end,
+        t.non_coaxial ? mul_sat(V, S * static_cast<std::size_t>(kSurfaceTransformValues) * d) : 0);
     b.total_bytes = end;
     return b;
 }

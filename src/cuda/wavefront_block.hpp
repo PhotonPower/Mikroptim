@@ -145,7 +145,7 @@ static_assert(kMaxGhostSharedBytes + 8192 <= 48 * 1024, "Shared Memory pro Block
 
 // Bytes der Geisterdaten im dynamischen Shared Memory (R = double oder df64, beide 8 Byte;
 // Vielfaches von 8).
-inline std::size_t ghost_shared_bytes(const BatchShape& shape) {
+__host__ __device__ inline std::size_t ghost_shared_bytes(const BatchShape& shape) {
     const auto G = static_cast<std::size_t>(shape.ghost_plates);
     const auto K = static_cast<std::size_t>(shape.ghost_terms);
     return (G * K + 2 * G) * sizeof(double);
@@ -186,13 +186,74 @@ __device__ inline BlockGhosts<R> load_block_ghosts(unsigned char* dynamic,
     return g;
 }
 
+// Dezentrierung und Verkippung der Variante (M8-T3, ADR-0011) im dynamischen Shared Memory,
+// nur bei nicht koaxialem Batch (b.decenter_tilt != nullptr; sonst 0 Byte und keine
+// Ladebefehle): decenter_tilt [S · 4] und tilt_trig [S · 4] (cos α, sin α, cos β, sin β, in FP64
+// berechnet und in den Rechentyp R gewandelt), höchstens 8 Byte pro Wert.
+__host__ __device__ inline std::size_t transform_shared_bytes(const SystemBatchView<double>& b) {
+    return b.decenter_tilt == nullptr
+               ? 0
+               : 2 * static_cast<std::size_t>(b.shape.surfaces) *
+                     static_cast<std::size_t>(kSurfaceTransformValues) * sizeof(double);
+}
+
+// Lädt die Transformationsdaten der Variante v nach `dst` (2 · S · 4 Werte vom Typ R) und
+// trägt sie in die Sicht `t` ein; ohne Transformationsdaten im Batch ohne Wirkung. Der
+// Aufrufer synchronisiert danach.
+template <class R>
+__device__ inline void load_block_transforms(R* dst, const SystemBatchView<double>& b, int v,
+                                             int tid, SurfaceTableView<R>& t) {
+    if (b.decenter_tilt == nullptr) {
+        return;
+    }
+    const int S = b.shape.surfaces;
+    const double* const src = b.decenter_tilt + b.shape.transform_at(v, 0, 0);
+    R* const trig = dst + S * kSurfaceTransformValues;
+    for (int s = tid; s < S; s += kBlockThreads) {
+        const double* const x = src + s * kSurfaceTransformValues;
+        R* const o = dst + s * kSurfaceTransformValues;
+        R* const c = trig + s * kSurfaceTransformValues;
+        o[0] = R(x[0]);
+        o[1] = R(x[1]);
+        o[2] = R(x[2]);
+        o[3] = R(x[3]);
+        c[0] = R(cos(x[2]));
+        c[1] = R(sin(x[2]));
+        c[2] = R(cos(x[3]));
+        c[3] = R(sin(x[3]));
+    }
+    t.decenter_tilt = dst;
+    t.tilt_trig = trig;
+}
+
+// Tabellentyp der Kernel (M8-T3): Jeder Trace-Kernel ist für koaxiale Batches
+// (kTransforms = false, CoaxialTableView: der Tracer übersetzt ohne Transformationen, genau der
+// Code von vor M8-T3) und für nicht koaxiale (SurfaceTableView mit Transformationsdaten im
+// Shared Memory) instanziiert; der Host wählt nach batch.decenter_tilt.
+template <class R, bool kTransforms>
+using KernelTable = std::conditional_t<kTransforms, SurfaceTableView<R>, CoaxialTableView<R>>;
+
 // Sicht mit nur einer Wellenlänge (table_l = 0); dieselben Zahlen wie surface_table(v),
-// einschließlich der Geisterplatten.
+// einschließlich der Geisterplatten (Transformationsdaten: load_block_transforms).
 template <class R>
 __device__ inline SurfaceTableView<R> block_table_view(const BlockTable<R>& t, int surfaces,
                                                        const BlockGhosts<R>& g) {
     return SurfaceTableView<R>{surfaces, 1,       t.type,  t.curvature, t.thickness, t.index,
                                g.plates, g.terms, g.coeff, g.index,     g.radius};
+}
+
+// block_table_view im Tabellentyp der Kernel-Instanz (KernelTable); mit kTransforms lädt sie
+// zusätzlich die Transformationsdaten der Variante v nach `transform_dst` (M8-T3). Der Aufrufer
+// synchronisiert danach.
+template <class R, bool kTransforms>
+__device__ inline KernelTable<R, kTransforms>
+block_kernel_table(const BlockTable<R>& t, int surfaces, const BlockGhosts<R>& g, R* transform_dst,
+                   const SystemBatchView<double>& b, int v, int tid) {
+    SurfaceTableView<R> view = block_table_view(t, surfaces, g);
+    if constexpr (kTransforms) {
+        load_block_transforms(transform_dst, b, v, tid, view);
+    }
+    return KernelTable<R, kTransforms>{view};
 }
 
 // Shared Memory des Kolbens.
@@ -464,10 +525,12 @@ struct PackShared {
 // Lädt Flächentabelle (Brechzahlen des Wellenlängenfensters), Geisterdaten, Quadratur und die
 // Angaben pro Tupel des Pakets in den Shared Memory (Tabellen an den Anfang von `dynamic`,
 // pack_table_bytes) und liefert die Sicht darauf (wavelengths = Fensterbreite, Index
-// l − first_wavelength). Dieselben Zahlen wie surface_table(v) auf der CPU. Der Aufrufer
+// l − first_wavelength). Dieselben Zahlen wie surface_table(v) auf der CPU. Mit kTransforms
+// (Kernel-Instanz für nicht koaxiale Batches, M8-T3) zusätzlich die Transformationsdaten hinter
+// den Brechzahlen, sonst die zur Übersetzungszeit koaxiale Sicht (KernelTable). Der Aufrufer
 // synchronisiert danach.
-template <class R>
-__device__ inline SurfaceTableView<R>
+template <class R, bool kTransforms>
+__device__ inline KernelTable<R, kTransforms>
 load_pack(PackShared<R>& sh, unsigned char* dynamic, const SystemBatchView<double>& b,
           const PupilQuadrature<double>& pupil, const ResidualFieldPlan* plan,
           const TuplePack& pack, int v, bool soft, double fail_weight, int tid) {
@@ -530,17 +593,22 @@ load_pack(PackShared<R>& sh, unsigned char* dynamic, const SystemBatchView<doubl
         }
         sh.start[pack.tuples] = start;
     }
-    return SurfaceTableView<R>{S,
-                               W,
-                               sh.type,
-                               sh.curvature,
-                               sh.thickness,
-                               index,
-                               G,
-                               K,
-                               G > 0 ? coeff : nullptr,
-                               G > 0 ? ghost_index : nullptr,
-                               G > 0 ? radius : nullptr};
+    SurfaceTableView<R> view{S,
+                             W,
+                             sh.type,
+                             sh.curvature,
+                             sh.thickness,
+                             index,
+                             G,
+                             K,
+                             G > 0 ? coeff : nullptr,
+                             G > 0 ? ghost_index : nullptr,
+                             G > 0 ? radius : nullptr};
+    if constexpr (kTransforms) {
+        // Transformationsdaten hinter den Brechzahlen (pack_table_bytes mit transforms)
+        load_block_transforms(index + S * W, b, v, tid, view);
+    }
+    return KernelTable<R, kTransforms>{view};
 }
 
 // Tupel j des Strahls r im Paket (lineare Suche über start, höchstens kMaxPackTuples).

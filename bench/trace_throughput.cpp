@@ -43,8 +43,10 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <random>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -120,6 +122,28 @@ std::string mode_name(const ModeSpec& m) {
     return name;
 }
 
+// Geometrie der Batches (M8-T3): koaxial (Standard), koaxial mit voller Pupille für alle Felder
+// (Vergleich ohne Transformationen) oder nicht koaxial mit zufälligen Dezentrierungen
+// (|Δ| <= 0,01 mm) und Verkippungen (|α|, |β| <= 0,05°) aller Flächen außer der Blende in allen
+// Varianten (volle Pupille, Transformationsdaten in den Kerneln).
+enum class Geometry {
+    Coaxial,
+    FullPupil,
+    Decentered,
+};
+
+const char* to_string(Geometry g) {
+    switch (g) {
+    case Geometry::Coaxial:
+        return "coaxial";
+    case Geometry::FullPupil:
+        return "full-pupil";
+    case Geometry::Decentered:
+        return "decentered";
+    }
+    return "?";
+}
+
 class UsageError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -138,6 +162,7 @@ struct Options {
     int rings = 10;
     int spokes = 8;
     int pack_rays = mko::cuda::kDefaultPackRays;
+    Geometry geometry = Geometry::Coaxial;
     int repeat = 10;
     int warmup = 2;
     bool kernel = true;
@@ -169,6 +194,8 @@ void print_usage() {
         "  --wavelengths L     Wellenlängen 486,13 ... 656,27 nm (Standard 3)\n"
         "  --rings N           Ringe der Pupillenquadratur (Standard 10)\n"
         "  --spokes M          Speichen der Pupillenquadratur (Standard 8)\n"
+        "  --geometry G        coaxial (Standard), full-pupil (koaxial, volle Pupille) oder\n"
+        "                      decentered (Dezentrierung und Verkippung aller Flächen, M8-T3)\n"
         "  --repeat R          gemessene Läufe pro Fall, Median und Minimum (Standard 10)\n"
         "  --warmup W          Aufwärmläufe pro Fall (Standard 2)\n"
         "  --no-kernel         nur über die Engine messen (ohne Kernelzeit)\n"
@@ -316,6 +343,17 @@ Options parse_args(int argc, char** argv) {
             o.warmup = parse_number<int>(arg, value());
         } else if (arg == "--no-kernel") {
             o.kernel = false;
+        } else if (arg == "--geometry") {
+            const std::string_view g = value();
+            if (g == "coaxial") {
+                o.geometry = Geometry::Coaxial;
+            } else if (g == "full-pupil") {
+                o.geometry = Geometry::FullPupil;
+            } else if (g == "decentered") {
+                o.geometry = Geometry::Decentered;
+            } else {
+                throw UsageError("--geometry: unbekannte Geometrie \"" + std::string(g) + "\"");
+            }
         } else if (arg == "--seed") {
             o.seed = parse_number<std::uint64_t>(arg, value());
         } else if (arg == "--csv") {
@@ -466,6 +504,48 @@ mko::SystemBatchHost make_bench_batch(const mko::LoadedSystem& system, int varia
             }
         }
         b.pupil_radius(v) *= 1.0 + 0.05 * u(rng);
+    }
+    return b;
+}
+
+// Batch in der gewählten Geometrie (--geometry, M8-T3). Die Störungen der Varianten bleiben
+// dieselben; nur die Pupillenart (volle Pupille) und die Transformationen kommen hinzu.
+mko::SystemBatchHost apply_geometry(const mko::SystemBatchHost& batch, Geometry geometry,
+                                    std::uint64_t seed) {
+    if (geometry == Geometry::Coaxial) {
+        return batch;
+    }
+    if (geometry == Geometry::FullPupil) {
+        // Koaxiale Topologie mit voller Pupille für alle Felder (Vergleich ohne Transformationen)
+        mko::BatchTopology t = batch.topology();
+        t.pupil_mode.assign(static_cast<std::size_t>(t.fields), mko::PupilMode::Full);
+        mko::SystemBatchHost out(t, batch.variants());
+        out.reference_wavelength_nm = batch.reference_wavelength_nm;
+        const auto copy = [](std::span<const double> from, std::span<double> to) {
+            std::copy(from.begin(), from.end(), to.begin());
+        };
+        copy(batch.wavelength_nm_data(), out.wavelength_nm_data());
+        copy(batch.wavelength_weight_data(), out.wavelength_weight_data());
+        copy(batch.field_weight_data(), out.field_weight_data());
+        copy(batch.curvature_data(), out.curvature_data());
+        copy(batch.thickness_data(), out.thickness_data());
+        copy(batch.index_data(), out.index_data());
+        copy(batch.pupil_radius_data(), out.pupil_radius_data());
+        copy(batch.field_angle_data(), out.field_angle_data());
+        copy(batch.field_target_data(), out.field_target_data());
+        copy(batch.paraxial_index_data(), out.paraxial_index_data());
+        copy(batch.buchdahl_coeff_data(), out.buchdahl_coeff_data());
+        return out;
+    }
+    mko::SystemBatchHost b = mko::make_non_coaxial(batch);
+    std::mt19937_64 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    constexpr double kDeg = std::numbers::pi / 180.0;
+    for (int v = 0; v < b.variants(); ++v) {
+        for (int s = 1; s < b.surfaces(); ++s) {
+            b.set_surface_transform(v, s, 0.01 * u(rng), 0.01 * u(rng), 0.05 * kDeg * u(rng),
+                                    0.05 * kDeg * u(rng));
+        }
     }
     return b;
 }
@@ -786,11 +866,11 @@ nlohmann::json to_json(const Options& o, const DeviceReport& d,
                    {"memory_gib", d.memory_gib},
                    {"driver_cuda_version", d.driver},
                    {"runtime_cuda_version", d.runtime}};
-    j["settings"] = {{"fields", o.fields},      {"wavelengths", o.wavelengths},
-                     {"rings", o.rings},        {"spokes", o.spokes},
-                     {"repeat", o.repeat},      {"warmup", o.warmup},
-                     {"seed", o.seed},          {"block_threads", mko::cuda::kResidualThreads},
-                     {"pack_rays", o.pack_rays}};
+    j["settings"] = {{"fields", o.fields},       {"wavelengths", o.wavelengths},
+                     {"rings", o.rings},         {"spokes", o.spokes},
+                     {"repeat", o.repeat},       {"warmup", o.warmup},
+                     {"seed", o.seed},           {"block_threads", mko::cuda::kResidualThreads},
+                     {"pack_rays", o.pack_rays}, {"geometry", to_string(o.geometry)}};
     nlohmann::json list = nlohmann::json::array();
     for (const Result& r : results) {
         const double er = rays_per_s(r, r.engine.median_s);
@@ -856,9 +936,9 @@ int run(const Options& o) {
                     d.index, d.name.c_str(), d.major, d.minor, d.sms, d.memory_gib,
                     d.fp32_fp64_ratio, d.driver.c_str(), d.runtime.c_str(), kBuildType);
         std::printf("Quadratur %d x %d, %d Felder, %d Wellenlängen, %d Aufwärmläufe, Median aus %d "
-                    "Läufen, %d Threads pro Block\n",
+                    "Läufen, %d Threads pro Block, Geometrie %s\n",
                     o.rings, o.spokes, o.fields, o.wavelengths, o.warmup, o.repeat,
-                    mko::cuda::kResidualThreads);
+                    mko::cuda::kResidualThreads, to_string(o.geometry));
         std::printf("Engine = TraceEngine::run inkl. Prüfung, Upload und Download; Kernel = "
                     "synchroner Kernellauf ohne Upload/Download (Host-Uhr)\n\n");
         print_table_header();
@@ -873,7 +953,8 @@ int run(const Options& o) {
         const mko::LoadedSystem system = make_bench_system(S, o.fields, o.wavelengths);
         for (const int V : o.variants) {
             const mko::SystemBatchHost batch =
-                make_bench_batch(system, V, o.seed + static_cast<std::uint64_t>(S));
+                apply_geometry(make_bench_batch(system, V, o.seed + static_cast<std::uint64_t>(S)),
+                               o.geometry, o.seed + 1 + static_cast<std::uint64_t>(S));
             for (const NumberType type : o.types) {
                 if (type == NumberType::Fp32Prefilter) {
                     results.push_back(run_prefilter_case(engine, o, batch));

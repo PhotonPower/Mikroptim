@@ -87,7 +87,8 @@ std::vector<Vec3<double>> ideal_image_points(const SystemDescription& system,
                                              const HostSurfaceTable& table, double focal_length);
 
 // Pupillenmodus für ein Feld: kollimiert θ_f = 0 → Axis, sonst Half; Punktquelle auf der
-// Achse (x = y = 0) → Axis, mit x = 0 → Half, sonst Full. options.pupil_mode überschreibt.
+// Achse (x = y = 0) → Axis, mit x = 0 → Half, sonst Full; nicht koaxiale Systeme (M8-T3,
+// is_coaxial) immer Full. options.pupil_mode überschreibt.
 PupilMode wavefront_pupil_mode(const SystemDescription& system, int field,
                                const WavefrontOptions& options = {});
 

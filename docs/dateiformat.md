@@ -36,9 +36,18 @@ Beispiel: [data/systems/einzellinse_bk7.json](../data/systems/einzellinse_bk7.js
 | `thickness` | number | Abstand zum nächsten Scheitel; bei der letzten Fläche Abstand zur Bildebene |
 | `material` | string oder object | Medium **nach** der Fläche: `"AIR"`, Glasname aus einem Katalog, `{"model": "constant", "n": 1.5}` oder `{"model": "buchdahl", "n0": …, "nu": [ν₁, ν₂, ν₃]}` |
 | `semi_diameter` | number | Halbdurchmesser (mechanisch); bei `stop` der Pupillenradius |
+| `decenter` | number[2] | optional (ab M8-T3): Dezentrierung [Δx, Δy] in mm relativ zur nominellen Lage des Scheitels, Standard [0, 0] |
+| `tilt_deg` | number[2] | optional (ab M8-T3): Verkippung [α, β] in Grad um die lokale x- bzw. y-Achse, Drehpunkt ist der Scheitel, R = R_y(β)·R_x(α) (aktiv, rechtshändig), Standard [0, 0] |
 | `comment` | string | optional |
 
 Krümmungen statt Radien, damit Planflächen ohne Sonderwert `inf` auskommen.
+
+**Dezentrierung und Verkippung** (M8-T3, ADR-0011; Konventionen und Rechnung: [numerik.md, Abschnitt 2](numerik.md#dezentrierung-und-verkippung-m8-t3-adr-0011)): Die Transformation betrifft nur die Fläche selbst („dezentrieren und zurück“); `thickness` bleibt der Abstand der nominellen Scheitel entlang +z, Folgeflächen sind nicht betroffen. Elementbewegungen (eine Linse als Ganzes um einen Punkt P) werden aus Verkippung und Dezentrierung der Einzelflächen zusammengesetzt; der Axialanteil geht in die Dicken. Sobald eine Fläche transformiert ist, rechnen Wellenfront, Optimierung und EVAL mit der vollen Pupille für alle Felder; Paraxialdaten bleiben koaxial. Die Felder sind eine kompatible Erweiterung von `mikroptim.system/1`: ältere Dateien bleiben gültig, koaxiale Flächen schreiben die Felder nicht. Beispiel: [data/systems/testsystem_mehrlinser_dezentriert.json](../data/systems/testsystem_mehrlinser_dezentriert.json):
+
+```json
+{ "type": "sphere", "curvature": 0.05, "thickness": 4.0, "material": { "model": "constant", "n": 1.72 },
+  "semi_diameter": 5.5, "decenter": [-0.015, 0.01], "tilt_deg": [0.0, 0.08] }
+```
 
 ### Geisterplatten
 
@@ -259,7 +268,7 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 - `spectrum`: mindestens eine Wellenlänge, alle > 0; `weights` gleich lang, jedes ≥ 0, Summe > 0; `reference_nm` > 0.
 - `source`: bei `collimated` mindestens ein Feldwinkel mit |θ| < 90°, `field_weights` gleich lang (Regeln wie bei Gewichten); bei `point` genau drei Koordinaten und `numerical_aperture` > 0. Felder des jeweils anderen Typs werden mit Warnung ignoriert.
 - `target` (optional): `focal_length` ≠ 0, `parfocal_length` und `working_distance` > 0.
-- `surfaces`: mindestens zwei Flächen; `stop` genau an Position 0 und nur dort; die Blende liegt in Luft (Material `"AIR"`, ADR-0006); `curvature` bei `sphere` Pflicht, bei anderen Typen verboten; `thickness`, `material`, `semi_diameter` Pflicht, `semi_diameter` > 0. Dicken dürfen negativ sein (keine Plausibilitätsprüfung).
+- `surfaces`: mindestens zwei Flächen; `stop` genau an Position 0 und nur dort; die Blende liegt in Luft (Material `"AIR"`, ADR-0006); `curvature` bei `sphere` Pflicht, bei anderen Typen verboten; `thickness`, `material`, `semi_diameter` Pflicht, `semi_diameter` > 0. Dicken dürfen negativ sein (keine Plausibilitätsprüfung). `decenter` und `tilt_deg` (optional) sind Listen aus genau zwei endlichen Zahlen (Fehler unter `surfaces[i].decenter` bzw. `surfaces[i].tilt_deg`), Kippwinkel betragsmäßig < 90° (Fehler unter `surfaces[i].tilt_deg[k]`); die Blende (Fläche 0) ist das Bezugssystem und darf nicht transformiert sein (Fehler unter `surfaces[0]`).
 - `material`: `"AIR"`, sonst Glasname (nicht leer); Objekte mit `model` `constant` (`n` > 0) oder `buchdahl` (`n0` > 0, `nu` mit 2 oder 3 Koeffizienten, fehlende = 0).
 - `ghost_plates` (Liste von Objekten, Pfade `ghost_plates[g].<feld>`): Pflichtfelder laut Tabelle; `after_surface` und `order` nichtnegative ganze Zahlen (`7` und `7.0` sind erlaubt); `order` gleich der Länge von `coefficients`, 1 ≤ `order` ≤ 32, Koeffizienten endlich; `after_surface` ≤ S − 2 (nach der letzten Fläche liegt der Arbeitsabstand) und das Medium nach `after_surface` ist `"AIR"` (Luftspalt); 0 ≤ `distance` ≤ Dicke des Spalts; `norm_radius` > 0; `glass` wie `material`, aber nicht `"AIR"`; die Liste ist nach (`after_surface`, `distance`) aufsteigend sortiert (Fehler unter `ghost_plates[g]`). Eine leere Liste wird nicht geschrieben.
 - Ob Glasnamen in den Katalogen existieren, prüft `validate_materials` mit einer vom Aufrufer gelieferten Abfrage (Fehler unter `surfaces[i].material` bzw. `ghost_plates[g].glass`), weil der Leser den Glaskatalog nicht kennt.
@@ -269,7 +278,7 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 
 Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
 
-Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten. Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `plate`/`plates`, `order`/`orders`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `plate`/`plates`, `order_weight`, `order_factor`, `smoothing`, `margin`, `surface`/`surfaces`, `medium`, `semi_diameter`, `thickness`, `angle`, `clearance`, `height`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
+Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten, `decenter` und `tilt_deg` nur, wenn einer ihrer Werte ≠ 0 ist (nach `semi_diameter`). Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `plate`/`plates`, `order`/`orders`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `plate`/`plates`, `order_weight`, `order_factor`, `smoothing`, `margin`, `surface`/`surfaces`, `medium`, `semi_diameter`, `thickness`, `angle`, `clearance`, `height`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
 
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 

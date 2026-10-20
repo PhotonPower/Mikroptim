@@ -68,6 +68,12 @@ struct BatchShape {
                static_cast<std::size_t>(l);
     }
 
+    // decenter_tilt[v][s][k] (nur nicht koaxiale Batches, M8-T3): (v·S + s)·4 + k
+    MKO_HD std::size_t transform_at(int v, int s, int k) const {
+        return surface_at(v, s) * static_cast<std::size_t>(kSurfaceTransformValues) +
+               static_cast<std::size_t>(k);
+    }
+
     // Elementzahlen pro Variante
     MKO_HD std::size_t surface_stride() const { return static_cast<std::size_t>(surfaces); }
     MKO_HD std::size_t index_stride() const {
@@ -81,6 +87,10 @@ struct BatchShape {
         return static_cast<std::size_t>(ghost_plates) * static_cast<std::size_t>(wavelengths);
     }
     MKO_HD std::size_t ghost_stride() const { return static_cast<std::size_t>(ghost_plates); }
+    MKO_HD std::size_t transform_stride() const {
+        return static_cast<std::size_t>(surfaces) *
+               static_cast<std::size_t>(kSurfaceTransformValues);
+    }
 };
 
 static_assert(std::is_trivially_copyable_v<BatchShape>);
@@ -124,9 +134,13 @@ struct SystemBatchView {
     // Wellenlängen ist; von den Trace-Kerneln nicht verwendet.
     const R* paraxial_index;       // [V][S], Medium nach Fläche s bei λ_ref
     const R* paraxial_ghost_index; // [V][G], virtuelles Glas der Geisterplatte g bei λ_ref
+    // Dezentrierung und Verkippung (M8-T3): [V][S][4] = Δx, Δy, α, β; nullptr bei koaxialer
+    // Topologie (dann lesen die Kernel nichts davon).
+    const R* decenter_tilt;
 
-    // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K bzw. v·G·L
-    // versetzt; type und ghost_norm_radius sind für alle Varianten dieselben.
+    // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K, v·G·L bzw.
+    // v·S·4 versetzt; type und ghost_norm_radius sind für alle Varianten dieselben. Ohne
+    // tilt_trig: Der Tracer rechnet Sinus und Kosinus der Kippwinkel aus decenter_tilt.
     MKO_HD SurfaceTableView<R> surface_table(int v) const {
         return SurfaceTableView<R>{
             shape.surfaces,
@@ -139,7 +153,9 @@ struct SystemBatchView {
             shape.ghost_terms,
             shape.ghost_plates > 0 ? ghost_coeff + shape.ghost_coeff_at(v, 0, 0) : nullptr,
             shape.ghost_plates > 0 ? ghost_index + shape.ghost_index_at(v, 0, 0) : nullptr,
-            ghost_norm_radius};
+            ghost_norm_radius,
+            decenter_tilt != nullptr ? decenter_tilt + shape.transform_at(v, 0, 0) : nullptr,
+            nullptr};
     }
 
     // Arbeitsabstand (Abstand letzte Fläche – Bildebene) der Variante v. Einzige Quelle ist

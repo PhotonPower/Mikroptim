@@ -36,14 +36,18 @@ struct TuplePack {
 
 // Bytes der Tabellen eines Pakets im dynamischen Shared Memory (Rechentyp double oder df64,
 // 8 Byte): Geisterkoeffizienten [G · K], Brechzahlen der Geistergläser [G][W], Normierungsradien
-// [G], Brechzahlen der Flächen [S][W] für ein Fenster von W Wellenlängen.
+// [G], Brechzahlen der Flächen [S][W] für ein Fenster von W Wellenlängen und, nur bei nicht
+// koaxialem Batch (transforms, M8-T3), die Transformationsdaten [S][4] mit ihren Sinus und
+// Kosinus [S][4].
 MKO_HD inline std::size_t pack_table_bytes(int surfaces, int ghost_plates, int ghost_terms,
-                                           int wavelengths) {
+                                           int wavelengths, bool transforms = false) {
     const auto S = static_cast<std::size_t>(surfaces);
     const auto G = static_cast<std::size_t>(ghost_plates);
     const auto K = static_cast<std::size_t>(ghost_terms);
     const auto W = static_cast<std::size_t>(wavelengths);
-    return (G * K + G * W + G + S * W) * sizeof(double);
+    const std::size_t X =
+        transforms ? 2 * S * static_cast<std::size_t>(kSurfaceTransformValues) : 0;
+    return (G * K + G * W + G + S * W + X) * sizeof(double);
 }
 
 // Pakete eines Laufs: Tupel in der Reihenfolge t = f · L + l, gierig zusammengefasst, solange
@@ -52,19 +56,18 @@ MKO_HD inline std::size_t pack_table_bytes(int surfaces, int ghost_plates, int g
 // innerhalb eines Feldes lädt nur die Brechzahlen seiner Wellenlängen, ein Paket über eine
 // Feldgrenze alle L. Jedes Paket hat mindestens ein Tupel, auch wenn dieses mehr als max_rays
 // Strahlen hat. Wirft std::invalid_argument bei max_rays < 1 oder wenn schon ein einzelnes Tupel
-// nicht in dynamic_budget passt.
-inline std::vector<TuplePack> make_tuple_packs(const ResidualLayout& layout,
-                                               const BatchShape& shape, int max_rays,
-                                               std::size_t bytes_per_ray,
-                                               std::size_t dynamic_budget) {
+// nicht in dynamic_budget passt. transforms: nicht koaxialer Batch (pack_table_bytes).
+inline std::vector<TuplePack>
+make_tuple_packs(const ResidualLayout& layout, const BatchShape& shape, int max_rays,
+                 std::size_t bytes_per_ray, std::size_t dynamic_budget, bool transforms = false) {
     if (max_rays < 1) {
         throw std::invalid_argument("make_tuple_packs: max_rays muss >= 1 sein");
     }
     const int F = layout.fields();
     const int L = layout.wavelengths();
     const auto need = [&](int wavelengths, int rays) {
-        return pack_table_bytes(shape.surfaces, shape.ghost_plates, shape.ghost_terms,
-                                wavelengths) +
+        return pack_table_bytes(shape.surfaces, shape.ghost_plates, shape.ghost_terms, wavelengths,
+                                transforms) +
                static_cast<std::size_t>(rays) * bytes_per_ray;
     };
     std::vector<TuplePack> packs;
@@ -104,11 +107,11 @@ inline std::vector<TuplePack> make_tuple_packs(const ResidualLayout& layout,
 // Größter Bedarf an dynamischem Shared Memory über die Pakete: Tabellen plus bytes_per_ray pro
 // Strahl.
 inline std::size_t pack_dynamic_bytes(const std::vector<TuplePack>& packs, const BatchShape& shape,
-                                      std::size_t bytes_per_ray) {
+                                      std::size_t bytes_per_ray, bool transforms = false) {
     std::size_t bytes = 0;
     for (const TuplePack& p : packs) {
         bytes = std::max(bytes, pack_table_bytes(shape.surfaces, shape.ghost_plates,
-                                                 shape.ghost_terms, p.wavelengths) +
+                                                 shape.ghost_terms, p.wavelengths, transforms) +
                                     static_cast<std::size_t>(p.rays) * bytes_per_ray);
     }
     return bytes;

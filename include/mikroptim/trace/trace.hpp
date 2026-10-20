@@ -13,6 +13,7 @@
 #include "mikroptim/trace/surface_extrema.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/surface_table.hpp"
+#include "mikroptim/trace/surface_transform.hpp"
 
 namespace mko {
 
@@ -151,12 +152,30 @@ MKO_HD inline Ray<R> point_source_ray(Vec3<R> q, R sin_max, R rho, R phi) {
 //
 // `branch` (optional, M5-T1): erhält bei Rückgabe Ok die genommene Fortsetzung als Bitmaske
 // (kBranchRegular, kBranchSoftMissed, kBranchSoftTIR; surface_ops.hpp).
+//
+// `transform` (optional, M8-T3, ADR-0011): Dezentrierung und Verkippung der neuen Fläche. Dann
+// wird der Strahl nach der Prüfung d_z > 0 um t in das nominelle System der Fläche verschoben
+// (z −= t), ins gekippte System gebracht (ray_to_surface), dort wie oben mit t = 0 geschnitten
+// und gebrochen (auch die Prüfung d_z > 0 im gekippten System) und bei Rückgabe Ok zurück ins
+// nominelle System (ray_from_surface). Bei Versagen steht er im gekippten System. Ohne
+// Transformation (nullptr) läuft genau der Code von vorher (bitgleich).
 template <class R>
-MKO_HD inline TraceStatus
-propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after,
-                  const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost = nullptr,
-                  typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
-                  unsigned char* branch = nullptr) {
+MKO_HD inline TraceStatus propagate_surface(
+    Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after,
+    const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost = nullptr,
+    typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
+    unsigned char* branch = nullptr,
+    const typename detail::NonDeduced<SurfaceTransform<R>>::type* transform = nullptr);
+
+namespace detail {
+
+// Schritt an der Fläche in deren eigenem (lokalem) System: propagate_surface ohne
+// Transformation.
+template <class R>
+MKO_HD inline TraceStatus propagate_surface_local(Ray<R>& ray, R t, SurfaceKind kind, R c,
+                                                  R n_before, R n_after,
+                                                  const GhostPlateParams<R>* ghost,
+                                                  SoftFailure<R>* soft, unsigned char* branch) {
     R curv;
     switch (kind) {
     case SurfaceKind::Stop:
@@ -209,6 +228,31 @@ propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after
     return refr == TraceStatus::SoftTIR ? TraceStatus::Ok : refr;
 }
 
+} // namespace detail
+
+template <class R>
+MKO_HD inline TraceStatus
+propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after,
+                  const typename detail::NonDeduced<GhostPlateParams<R>>::type* ghost,
+                  typename detail::NonDeduced<SoftFailure<R>>::type* soft, unsigned char* branch,
+                  const typename detail::NonDeduced<SurfaceTransform<R>>::type* transform) {
+    if (transform == nullptr) {
+        return detail::propagate_surface_local(ray, t, kind, c, n_before, n_after, ghost, soft,
+                                               branch);
+    }
+    if (!(ray.d.z > R(0))) {
+        return TraceStatus::Backward;
+    }
+    ray.p.z -= t;
+    ray_to_surface(ray, *transform);
+    const TraceStatus st =
+        detail::propagate_surface_local(ray, R(0), kind, c, n_before, n_after, ghost, soft, branch);
+    if (st == TraceStatus::Ok) {
+        ray_from_surface(ray, *transform);
+    }
+    return st;
+}
+
 // Abschnitt des sequenziellen Trace (M5-T1): setzt den Trace vom Zustand nach Fläche
 // at.surface (Strahl `ray` in deren lokalen Koordinaten, Fortschritt `at`, Akkumulator `soft`)
 // über die Flächen at.surface + 1 … end − 1 fort. Einzige Implementierung der Schleife über die
@@ -217,8 +261,11 @@ propagate_surface(Ray<R>& ray, R t, SurfaceKind kind, R c, R n_before, R n_after
 // dem gespeicherten Zustand und deshalb bitgleich zum ursprünglichen Durchlauf.
 //
 // Pro Fläche s: n_vor = index[(s − 1)·L + l], n_nach = index[s·L + l], Geisterdaten der
-// Geisterplatte at.ghost, propagate_surface. Nach Erfolg at.surface = s (at.ghost und
-// at.soft_surface fortgeschrieben), dann Beobachter (wie trace_ray) und Aufzeichnung
+// Geisterplatte at.ghost, Transformation der Fläche (surface_transform_of, M8-T3),
+// propagate_surface. Der Beobachter sieht bei einer transformierten Fläche Richtung und
+// Zustand im gekippten System der Fläche (Höhe und Einfallswinkel relativ zur Fläche), die
+// Aufzeichnung wie der Trace den Zustand im nominellen System. Nach Erfolg at.surface = s (at.ghost
+// und at.soft_surface fortgeschrieben), dann Beobachter (wie trace_ray) und Aufzeichnung
 // (recorder->surface, mit dem Zweig der Fläche).
 // Rückgabe Ok, wenn alle Flächen bis end − 1 passiert sind (auch mit weichen Ereignissen, deren
 // Status in soft->first steht); sonst der Status der versagenden Fläche s, *failed_surface = s,
@@ -246,11 +293,13 @@ trace_segment(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray, TraceP
             plate.n_glass = R(sys.ghost_index[g * L + wavelength_index]);
             plate_ptr = &plate;
         }
+        SurfaceTransform<R> xf{};
+        const bool moved = surface_transform_of(sys, s, xf);
         const Vec3<R> d_before = ray.d;
         unsigned char branch = kBranchRegular;
         const TraceStatus st =
             propagate_surface(ray, R(sys.thickness[s - 1]), kind, R(sys.curvature[s]), n_before,
-                              n_after, plate_ptr, soft, &branch);
+                              n_after, plate_ptr, soft, &branch, moved ? &xf : nullptr);
         if (st != TraceStatus::Ok) {
             if (failed_surface != nullptr) {
                 *failed_surface = s;
@@ -265,7 +314,15 @@ trace_segment(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray, TraceP
             at.soft_surface = s;
         }
         if (observer != nullptr) {
-            observer->surface(s, surface_curvature(kind, R(sys.curvature[s])), d_before, ray);
+            if (moved) {
+                // Höhe und Einfallswinkel im System der gekippten Fläche
+                Ray<R> local = ray;
+                ray_to_surface(local, xf);
+                observer->surface(s, surface_curvature(kind, R(sys.curvature[s])),
+                                  rotate_to_surface(xf, d_before), local);
+            } else {
+                observer->surface(s, surface_curvature(kind, R(sys.curvature[s])), d_before, ray);
+            }
         }
         if (recorder != nullptr) {
             recorder->surface(ray, at, branch, soft);

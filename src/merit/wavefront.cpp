@@ -77,6 +77,9 @@ PupilMode wavefront_pupil_mode(const SystemDescription& system, int field,
     if (options.pupil_mode) {
         return *options.pupil_mode;
     }
+    if (!is_coaxial(system)) {
+        return PupilMode::Full; // keine Spiegelsymmetrie (M8-T3, ADR-0011)
+    }
     if (system.source.type == SourceType::Collimated) {
         return system.source.field_angles_deg[static_cast<std::size_t>(field)] == 0.0
                    ? PupilMode::Axis

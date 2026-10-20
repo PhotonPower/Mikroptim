@@ -57,6 +57,7 @@ __device__ inline double quiet_nan() {
 // Strahlen; 3. Kolben (block_piston, feste Reihenfolge); 4. Durchlauf 2: OPD = (OPL − Bezug)
 // − Kolben (NaN bei Versagen oder ohne gültigen Strahl); 5. Threads 0 … 3 die Feldstrahlen.
 // Versagte Strahlen laufen maskiert weiter; alle Threads erreichen jedes __syncthreads.
+template <bool kTransforms>
 __global__ void __launch_bounds__(kBlockThreads) eval_kernel(const EvalKernelArgs a) {
     using R = double;
     __shared__ detail::BlockTable<R> sh_table;
@@ -76,9 +77,13 @@ __global__ void __launch_bounds__(kBlockThreads) eval_kernel(const EvalKernelArg
     detail::load_block_table(sh_table, a.batch, a.no_pupil, no_plan, tu, tid);
     const detail::BlockGhosts<R> ghosts =
         detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
+    // Dezentrierung und Verkippung hinter den Geisterdaten (nur Instanz kTransforms, M8-T3)
+    const detail::KernelTable<R, kTransforms> table = detail::block_kernel_table<R, kTransforms>(
+        sh_table, S, ghosts,
+        reinterpret_cast<R*>(sh_dynamic + detail::ghost_shared_bytes(a.batch.shape)), a.batch, v,
+        tid);
     __syncthreads();
 
-    const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const R kappa = a.reference_curvature[a.batch.shape.field_at(v, f)];
     const std::int64_t n = a.samples;
@@ -283,8 +288,13 @@ void DeviceEval::run(const DeviceSystemBatch& batch, const EvalGrid& grid,
         args.status = region_ptr<std::uint8_t>(buffer_, out.status);
         args.field_rays = region_ptr<double>(buffer_, out.field_rays);
         args.field_status = region_ptr<std::uint8_t>(buffer_, out.field_status);
-        const std::size_t dynamic = detail::ghost_shared_bytes(view.shape);
-        eval_kernel<<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        const std::size_t dynamic =
+            detail::ghost_shared_bytes(view.shape) + detail::transform_shared_bytes(view);
+        if (view.decenter_tilt != nullptr) { // nicht koaxial (M8-T3)
+            eval_kernel<true><<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        } else {
+            eval_kernel<false><<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        }
         MKO_CUDA_CHECK(cudaGetLastError());
         MKO_CUDA_CHECK(cudaDeviceSynchronize());
     }

@@ -936,6 +936,39 @@ In JSON steht pro Tupel `psf.vector` mit `fwhm_mm` [x, y], `energy_fraction` [x,
 
 **Tests:** `tests/test_cli_eval.cpp` (JSON bitgleich zu `eval_cpu`/`eval_statistics`, Karte gegen `eval_opd_map`, mit `--psf` Kennzahlen bitgleich zu `psf_cpu`, PSF- und MTF-Datei, mit `--vector` Kennzahlen bitgleich zu `vector_psf_cpu` und Komponentendateien, Text, Fehlerfälle; `CliEvalGpu.MatchesCpu`, `CliEvalGpu.PsfMatchesCpu`, `CliEvalGpu.VectorPsfMatchesCpu` im CUDA-Build, sonst `CliEval.GpuUnavailableWithoutCuda`), ctest `cli_eval_json`, `cli_eval_psf_json`, `cli_eval_vector_json` und `cli_eval_gpu_json` (Exit-Code 3 ohne Gerät = übersprungen). Implementierung: `src/cli/eval_command.cpp` (Bibliothek `mikroptim_cli`, gemeinsame Bausteine aus `src/cli/cli_util.hpp`).
 
+### Dezentrierte und verkippte Systeme (ab M8-T3)
+
+`mikroptim trace` (CPU und `--gpu`) und `mikroptim eval` rechnen Systeme mit `decenter`/`tilt_deg` an Flächen ([dateiformat.md](dateiformat.md#flächen), ADR-0011) ohne weitere Optionen. Unterschiede zu koaxialen Systemen:
+
+- **Volle Pupille für alle Felder**, auch auf der Achse (`trace`: Spalte „Strahlen“ N·M statt N, in JSON `pupil_mode` = `"full"`); `eval --half` wird mit Exit-Code 1 abgelehnt („halbe Pupille nur bei Symmetrie x → −x (System nicht koaxial, ADR-0011)“).
+- **Referenzsphäre und ideale Bildpunkte** bleiben nominell (Paraxialdaten koaxial, numerik.md, Abschnitt 2): Der Bildversatz durch die Toleranzen erscheint in `trace` als Kippung im RMS, in `eval` im Schwerpunkt und in der Verzeichnung; „RMS-OPD ohne Kipp.“ zeigt die Bildfehler ohne den Versatz.
+- Die **sagittale Brennlinie** z_s in `eval` nimmt die Spiegelsymmetrie an x = 0 an und ist bei Dezentrierung in x ohne Bedeutung.
+
+Beispiel ([data/systems/testsystem_mehrlinser_dezentriert.json](../data/systems/testsystem_mehrlinser_dezentriert.json), frei erfunden: das Testsystem Mehrlinser mit Dezentrierungen bis 0,03 mm und Verkippungen bis 0,1° an fünf Flächen; ohne sie RMS 0,60 / 0,84 / 1,26 Wellen bei 546 nm):
+
+```text
+$ mikroptim trace data/systems/testsystem_mehrlinser_dezentriert.json
+…
+Wellenfront (Quadratur 10 Ringe x 8 Speichen, RMS in Wellen bei 546.070 nm)
+  Backend                                     CPU, FP64
+  Sollbrennweite für die Bildpunkte           20.551558 mm
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen  versagt  RMS [Wellen]       RMS [mm]
+     0         0.000           486.130        80        0      6.402784   3.496368e-03
+     0         0.000           546.070        80        0      6.360018   3.473015e-03
+…
+     2         3.000           656.270        80        0      6.887277   3.760935e-03
+  Versagte Strahlen: 0 von 960
+
+$ mikroptim eval data/systems/testsystem_mehrlinser_dezentriert.json --grid 64
+…
+  Feld  Winkel   λ [nm] versagt    RMS-OPD ohne Kipp.  Strehl    RMS-Spot   Schwerp. y  Verz. [%]         z_t         z_s
+     0   0.000   486.13       0    6.43425    0.61374  0.0000   1.142e-02   2.6517e-02          - -5.7333e-03 -2.2526e+01
+…
+     2   3.000   656.27       0    6.94890    1.12497  0.0000   1.941e-02   3.2872e-02    2.26816 -6.5355e-02 -2.2550e+01
+```
+
+Der Bildpunkt auf der Achse liegt um 0,026 mm (Schwerpunkt y) neben dem nominellen; ohne die Kippung bleiben 0,61 Wellen (koaxial 0,60). Tests: `DecenterCli.TraceAndEvalWorkWithDecenteredSystem` (JSON gegen `evaluate_wavefront`, volle Pupille, Ablehnung von `--half`).
+
 ## `mikroptim snap`
 
 Glas-Einrasten (M6-T5, [optimierung.md, Abschnitt 9](optimierung.md#9-glas-einrasten)): Ersetzt die Glasvariablen (Typ `glass`, kontinuierliche Buchdahl-Koordinaten n₀, ν₁, ν₂) einer Systemdatei durch Katalog-Gläser. Für jedes Glaselement werden die k nächsten Gläser im normierten (n₀, ν₁, ν₂)-Raum der Glas-Hülle gesucht, jede Kombination (kartesisches Produkt, höchstens N mit der kleinsten Summe der quadrierten Abstände) wird ein Lauf des gebündelten Levenberg-Marquardt: Glas fest auf das Katalogglas (Brechzahlen aus der Sellmeier-Formel des Katalogs), übrige Variablen ab den Werten der Datei reoptimiert. Die beste Kombination (Regel des Multistarts von `optimize`) wird das Ergebnis; die Ergebnisdatei nennt Katalognamen und hat keine Glasvariablen mehr.

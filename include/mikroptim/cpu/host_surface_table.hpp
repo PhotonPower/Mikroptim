@@ -33,6 +33,13 @@ struct HostSurfaceTable {
     std::vector<double> ghost_coeff;       // [g * K + k − 1] = a_k [mm]
     std::vector<double> ghost_index;       // [g * L + l] = n_G des virtuellen Glases
     std::vector<double> ghost_norm_radius; // [g] = r_g [mm]
+    // Dezentrierung und Verkippung (M8-T3, ADR-0011): leer = koaxial, sonst S · 4 Einträge
+    // [s * 4 + k] = Δx, Δy [mm], α, β [rad] und dazu tilt_trig = cos α, sin α, cos β, sin β
+    // (set_surface_transform hält beide zusammen).
+    std::vector<double> decenter_tilt;
+    std::vector<double> tilt_trig;
+
+    bool coaxial() const { return decenter_tilt.empty(); }
 
     // Sicht auf die Vektoren; gültig, solange die Tabelle lebt und nicht verändert wird.
     SurfaceTableView<double> view() const {
@@ -46,9 +53,17 @@ struct HostSurfaceTable {
                                         ghost_terms,
                                         ghost_coeff.data(),
                                         ghost_index.data(),
-                                        ghost_norm_radius.data()};
+                                        ghost_norm_radius.data(),
+                                        coaxial() ? nullptr : decenter_tilt.data(),
+                                        coaxial() ? nullptr : tilt_trig.data()};
     }
 };
+
+// Setzt Dezentrierung (dx, dy) [mm] und Verkippung (alpha, beta) [rad] der Tabellenfläche s
+// (M8-T3) und berechnet tilt_trig dazu; legt die Transformationsdaten beim ersten Aufruf an
+// (alle übrigen Flächen 0). Wirft std::out_of_range für s außerhalb von [0, surfaces).
+void set_surface_transform(HostSurfaceTable& table, int s, double dx, double dy, double alpha,
+                           double beta);
 
 // Brechzahltabelle eines Systems: Zeilen der Dateiflächen (make_index_table mit den Medien der
 // Flächen und den Wellenlängen von system.spectrum), die Brechzahlen der Gläser aller
@@ -66,6 +81,9 @@ IndexTable make_system_index_table(const SystemDescription& system, const GlassC
 // Spalts. Wirft std::invalid_argument, wenn die Flächenzahlen nicht übereinstimmen, die Zahl der
 // Tabellenflächen außerhalb von [2, kMaxSurfaces] liegt, die Tabelle keine Wellenlängen hat
 // oder die Brechzahlen der Geisterplatten fehlen.
+// Dezentrierung und Verkippung (M8-T3): Ist das System nicht koaxial (is_coaxial), erhalten die
+// Dateiflächen ihre Werte (decenter, tilt_deg · π/180), Geisterplatten 0; sonst bleibt die
+// Tabelle koaxial (decenter_tilt leer).
 HostSurfaceTable make_surface_table(const SystemDescription& system, const IndexTable& index);
 
 } // namespace mko

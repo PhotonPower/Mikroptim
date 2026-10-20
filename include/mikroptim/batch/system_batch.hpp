@@ -37,6 +37,11 @@ struct BatchTopology {
     // wavefront_pupil_mode). Varianten dürfen ein Achsfeld nicht verlassen
     // (check_pupil_modes). Der Residuen-Kernel verlangt die Festlegung.
     std::vector<PupilMode> pupil_mode;
+    // Nicht koaxial (M8-T3, ADR-0011): Der Batch trägt pro Variante und Fläche Dezentrierung
+    // und Verkippung (decenter_tilt, 4 Werte), und alle Felder verwenden die volle Pupille
+    // (pupil_mode leer oder überall Full; validate_topology). Koaxiale Batches (Standard) haben
+    // keine Transformationsdaten, und die Kernel lesen keine (keine Kosten).
+    bool non_coaxial = false;
 
     friend bool operator==(const BatchTopology&, const BatchTopology&) = default;
 };
@@ -131,6 +136,17 @@ public:
     static constexpr int kBuchdahlCoefficients = 4;
     double& buchdahl_coeff(int v, int s, int j);
     double buchdahl_coeff(int v, int s, int j) const;
+    // Dezentrierung und Verkippung der Fläche s (M8-T3, ADR-0011): k = 0, 1 → Δx, Δy [mm],
+    // k = 2, 3 → α, β [rad] (Drehung um die lokale x- bzw. y-Achse, Drehpunkt Scheitel;
+    // docs/numerik.md, Abschnitt 2). Ablage [V][S][4]. Nur in nicht koaxialen Batches
+    // (topology().non_coaxial): Der schreibende Zugriff wirft sonst std::invalid_argument, der
+    // lesende liefert 0.
+    static constexpr int kTransformValues = kSurfaceTransformValues;
+    bool coaxial() const { return !topology_.non_coaxial; }
+    double& decenter_tilt(int v, int s, int k);
+    double decenter_tilt(int v, int s, int k) const;
+    // Setzt alle vier Werte der Fläche s in Variante v.
+    void set_surface_transform(int v, int s, double dx, double dy, double alpha, double beta);
     // Arbeitsabstand = thickness(v, S−1) (einzige Quelle, kein eigenes Feld).
     double& image_distance(int v) { return thickness(v, surfaces() - 1); }
     double image_distance(int v) const { return thickness(v, surfaces() - 1); }
@@ -166,6 +182,8 @@ public:
     std::span<const double> paraxial_index_data() const { return paraxial_index_; }
     std::span<double> paraxial_ghost_index_data() { return paraxial_ghost_index_; }
     std::span<const double> paraxial_ghost_index_data() const { return paraxial_ghost_index_; }
+    std::span<double> decenter_tilt_data() { return decenter_tilt_; }
+    std::span<const double> decenter_tilt_data() const { return decenter_tilt_; }
     std::span<double> buchdahl_coeff_data() { return buchdahl_coeff_; }
     std::span<const double> buchdahl_coeff_data() const { return buchdahl_coeff_; }
 
@@ -176,11 +194,11 @@ public:
     // Flächentabelle der Variante v für trace_ray (wirft std::out_of_range bei ungültigem v).
     SurfaceTableView<double> surface_table(int v) const;
 
-    // Prüft die Werte: alle endlich, Pupillenradius > 0, Brechzahlen > 0, Gewichte >= 0,
-    // Normierungsradien > 0, λ_ref > 0, bei der Punktquelle 0 < NA < index[v][0][l], und die
-    // Pupillenarten (check_pupil_modes). Die Brechzahlen bei λ_ref (paraxial_index,
-    // paraxial_ghost_index) müssen nur endlich sein: Der Trace braucht sie nicht, von Hand
-    // gebaute Batches dürfen sie auf 0 lassen; die Paraxialrechnung prüft n > 0 selbst.
+    // Prüft die Werte: alle endlich, Kippwinkel |α|, |β| < π/2, Pupillenradius > 0, Brechzahlen >
+    // 0, Gewichte >= 0, Normierungsradien > 0, λ_ref > 0, bei der Punktquelle 0 < NA <
+    // index[v][0][l], und die Pupillenarten (check_pupil_modes). Die Brechzahlen bei λ_ref
+    // (paraxial_index, paraxial_ghost_index) müssen nur endlich sein: Der Trace braucht sie nicht,
+    // von Hand gebaute Batches dürfen sie auf 0 lassen; die Paraxialrechnung prüft n > 0 selbst.
     // Wirft std::invalid_argument mit Variante und Feld der ersten Verletzung.
     void validate_values() const;
 
@@ -209,7 +227,14 @@ private:
     std::vector<double> paraxial_index_;
     std::vector<double> paraxial_ghost_index_;
     std::vector<double> buchdahl_coeff_; // nur Host, [V][S][4]
+    std::vector<double> decenter_tilt_;  // [V][S][4], leer bei koaxialer Topologie
 };
+
+// Kopie von `batch` mit nicht koaxialer Topologie (non_coaxial = true, volle Pupille für alle
+// Felder) und Transformationen 0 (M8-T3): Ausgangspunkt für Toleranzen. Die Ergebnisse sind
+// bitgleich zu `batch` mit voller Pupille. Ein schon nicht koaxialer Batch wird unverändert
+// kopiert.
+SystemBatchHost make_non_coaxial(const SystemBatchHost& batch);
 
 // Prüft, ob die Varianten [first, first + count) (count < 0: bis zum Ende) zu den
 // Pupillenarten der Topologie passen: kollimiert verlangt Axis den Feldwinkel θ_f = 0 (±0) in
@@ -221,7 +246,8 @@ void check_pupil_modes(const SystemBatchHost& batch, int first = 0, int count = 
 
 // Topologie eines Systems aus der Datei (Flächen der Flächentabelle mit eingefügten
 // Geisterplatten, G und K aus make_surface_table) mit den Pupillenarten pro Feld (siehe
-// BatchTopology::pupil_mode).
+// BatchTopology::pupil_mode). Nicht koaxiale Systeme (is_coaxial, M8-T3): non_coaxial und
+// volle Pupille für alle Felder.
 BatchTopology topology_of(const SystemDescription& system, const IndexTable& index);
 
 // Baut einen Batch mit `variants` gleichen Varianten aus Systembeschreibung und Brechzahltabelle
@@ -235,6 +261,7 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
 // spectrum.reference_nm sein), sonst aus der Spalte von λ_ref, wenn λ_ref unter den
 // Wellenlängen des Spektrums ist; Geisterplatten im Luftspalt erhalten das Medium des Spalts.
 // Buchdahl-Koeffizienten (buchdahl_coeff) aus den Materialien vom Typ Buchdahl, sonst 0.
+// Dezentrierung und Verkippung (nur nicht koaxiale Systeme) aus der Flächentabelle.
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
 // `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (mit den
 // Brechzahlen bei λ_ref wie paraxial_index). Ist keine Brennweite bestimmbar (afokales System)
