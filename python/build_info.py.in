@@ -1,0 +1,9 @@
+# Erzeugt von python/CMakeLists.txt (configure_file) - nicht von Hand ändern.
+"""Angaben zum Build des Erweiterungsmoduls mikroptim._mikroptim."""
+
+# Mit CUDA gebaut (MIKROPTIM_ENABLE_CUDA=ON)
+HAS_CUDA = @MKO_PY_HAS_CUDA@
+
+# Verzeichnis der CUDA-Laufzeitbibliotheken beim Bauen (unter Windows cudart64_12.dll und
+# cufft64_11.dll); leer ohne CUDA
+CUDA_BIN_DIR = r"@MKO_PY_CUDA_BIN_DIR@"

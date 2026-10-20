@@ -1,0 +1,47 @@
+# Python-Paket mikroptim (M9-T1): Wheel mit dem Erweiterungsmodul aus python/ (nanobind),
+# gebaut über CMake mit scikit-build-core. Anleitung: python/README.md.
+
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mikroptim"
+dynamic = ["version"]
+description = "GPU-Raytracing und Systemsynthese für Mikroskopobjektive (Python-Bindings)"
+readme = "python/README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.22"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.25"
+cmake.build-type = "Release"
+build-dir = "build/wheel/{wheel_tag}"
+# Nur das Modul bauen (keine Tests, kein Programm, keine Benchmarks)
+build.targets = ["_mikroptim"]
+wheel.packages = ["python/mikroptim"]
+sdist.exclude = ["build/", ".github/", ".claude/"]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "include/mikroptim/version.hpp"
+regex = 'kVersion = "(?P<value>[^"]+)"'
+
+[tool.scikit-build.cmake.define]
+MIKROPTIM_BUILD_PYTHON = "ON"
+MIKROPTIM_BUILD_TESTS = "OFF"
+MIKROPTIM_BUILD_BENCH = "OFF"
+# CUDA im Wheel optional (Standard: nur CPU); mit CUDA z. B.
+#   MIKROPTIM_ENABLE_CUDA=ON pip wheel . -w dist
+MIKROPTIM_ENABLE_CUDA = { env = "MIKROPTIM_ENABLE_CUDA", default = "OFF" }
