@@ -414,6 +414,51 @@ jacobian_throughput --runs 1,10,100,1000 --repeat 5
 
 Gemessen und behalten: Projektion des Kolbenabzugs mit einem Warp pro Variable statt einer Blockreduktion pro Variable (keine `__syncthreads` pro Variable), 5–15 % schneller. Nicht weiter verfolgt (Latenz statt Durchsatz begrenzt den Fall weniger Läufe): Registergrenze, kleinere Kapazitätsklassen, Checkpoints (in df64 laut M5-T1 langsamer).
 
+## Dezentrierung und Verkippung (M8-T3)
+
+**Ergebnis in Kürze.** Koaxiale Batches laufen so schnell wie vor M8-T3: Kernelzeit Zweig/main im geometrischen Mittel 0,997 über 60 Fälle (Einzelfälle 0,92 … 1,08, dieselbe Streuung wie zwischen zwei Läufen von main), die Ergebnisse sind bitgleich (Fingerabdrücke, [numerik.md](numerik.md#dezentrierung-und-verkippung-m8-t3-adr-0011)). Nicht koaxiale Batches kosten die volle Pupille für alle Felder (Standardreihe 720 statt 510 Strahlen pro Variante, Zeit wächst entsprechend) und pro transformierter Fläche zwei Drehungen und eine Verschiebung des Strahls: Mit **allen** Flächen dezentriert und verkippt ist der Kernel bei gleicher Strahlzahl (V = 10.000) in FP64 1,2–1,7-mal, in df64 1,3–2,4-mal (meist ≈ 1,8) und in der FP32-Vorfilterung 1,7–2,1-mal so langsam wie der koaxiale Kernel mit voller Pupille.
+
+**Messung.** RTX 3090 (Treiber-CUDA 13.3, CUDA 12.9, Release), main 00f1bd0 gegen den Zweig `m8/t3-dezentrierung` (vor dem Rebase auf main 7f4926b; die Trace-Kernel sind dort unverändert), 2026-10-20. `trace_throughput --surfaces 10,30 --variants 1000,10000 --mode all,adjoint --type fp64,df64,fp32prefilter --repeat 20 --warmup 3`, main und Zweig abwechselnd je zweimal, danach der Zweig mit `--geometry full-pupil` (koaxial, volle Pupille) und `--geometry decentered` (alle Flächen außer der Blende in allen Varianten zufällig um bis 0,01 mm dezentriert und um bis 0,05° verkippt). Angegeben ist die kleinste Kernelzeit (Minimum über die Läufe; bei main und Zweig über beide Durchgänge), weil auf dem Rechner zeitweise Tests anderer Arbeitsbäume liefen (Medianwerte der Engine schwanken dadurch stark).
+
+**Erster Ansatz verworfen.** Mit einem Laufzeitzweig im gemeinsamen Kernel (Transformation nur bei `decenter_tilt != nullptr`) waren die Ergebnisse bitgleich und FP64 unverändert, aber df64 mit Max-Reduktionen und die FP32-Vorfilterung um ca. 20 % langsamer (mehr Register und Stack: `cuobjdump --dump-resource-usage`, z. B. Vorfilterung 72 → 80 Register, Stack 32 → 152 Byte). Seitdem ist jeder Trace-Kernel zweimal instanziiert (`kTransforms`); die koaxiale Instanz rechnet mit `CoaxialTableView`, ohne Code für Transformationen (Vorfilterung wieder 72 Register / 32 Byte, df64-Kernel unverändert; einige FP64-Kernel ±4 … 14 Register durch die größere Tabellensicht, ohne messbare Wirkung, FP64 ist auf der RTX 3090 durch die FP64-Einheiten begrenzt).
+
+V = 10.000, 3 Felder × 3 Wellenlängen, Quadratur 10 × 8 (Kernel, Minimum [ms]):
+
+| Typ | Modus | S | main | Zweig koaxial | Zweig/main | volle Pupille | dezentriert | dezentriert/volle Pupille |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| df64 | ADJOINT checkpoint | 10 | 16,704 | 15,466 | 0,926 | 18,434 | 36,934 | 2,004 |
+| df64 | ADJOINT checkpoint | 30 | 37,230 | 40,285 | 1,082 | 49,915 | 94,506 | 1,893 |
+| df64 | ADJOINT full | 10 | 12,771 | 12,162 | 0,952 | 15,300 | 21,469 | 1,403 |
+| df64 | ADJOINT full | 30 | 27,513 | 29,302 | 1,065 | 37,169 | 48,751 | 1,312 |
+| df64 | ADJOINT none | 10 | 7,488 | 7,252 | 0,969 | 7,641 | 12,746 | 1,668 |
+| df64 | ADJOINT none | 30 | 15,620 | 15,691 | 1,004 | 19,155 | 31,692 | 1,655 |
+| df64 | MERIT | 10 | 4,334 | 4,199 | 0,969 | 6,122 | 10,840 | 1,771 |
+| df64 | MERIT | 30 | 10,329 | 10,838 | 1,049 | 15,286 | 27,868 | 1,823 |
+| df64 | MERIT + Extrema | 10 | 5,456 | 5,280 | 0,968 | 7,898 | 14,570 | 1,845 |
+| df64 | MERIT + Extrema | 30 | 15,078 | 15,023 | 0,996 | 22,182 | 42,395 | 1,911 |
+| df64 | RESIDUALS | 10 | 4,107 | 4,049 | 0,986 | 5,915 | 10,438 | 1,765 |
+| df64 | RESIDUALS | 30 | 10,503 | 10,340 | 0,984 | 15,018 | 27,617 | 1,839 |
+| df64 | RESIDUALS + Extrema | 10 | 5,549 | 5,412 | 0,975 | 8,122 | 15,232 | 1,875 |
+| df64 | RESIDUALS + Extrema | 30 | 14,530 | 14,586 | 1,004 | 23,139 | 55,355 | 2,392 |
+| FP32-Vorfilter | – | 10 | 2,416 | 2,412 | 0,998 | 2,427 | 4,180 | 1,722 |
+| FP32-Vorfilter | – | 30 | 3,436 | 3,466 | 1,009 | 3,785 | 7,816 | 2,065 |
+| FP64 | ADJOINT checkpoint | 10 | 49,644 | 50,190 | 1,011 | 63,286 | 95,271 | 1,505 |
+| FP64 | ADJOINT checkpoint | 30 | 142,627 | 143,506 | 1,006 | 184,440 | 284,701 | 1,544 |
+| FP64 | ADJOINT full | 10 | 30,268 | 30,564 | 1,010 | 38,092 | 54,987 | 1,444 |
+| FP64 | ADJOINT full | 30 | 79,201 | 79,751 | 1,007 | 101,157 | 155,122 | 1,533 |
+| FP64 | ADJOINT none | 10 | 30,321 | 30,460 | 1,005 | 46,185 | 54,835 | 1,187 |
+| FP64 | ADJOINT none | 30 | 78,896 | 79,394 | 1,006 | 100,876 | 154,847 | 1,535 |
+| FP64 | MERIT | 10 | 17,803 | 17,972 | 1,010 | 25,524 | 41,242 | 1,616 |
+| FP64 | MERIT | 30 | 47,703 | 48,188 | 1,010 | 68,949 | 98,895 | 1,434 |
+| FP64 | MERIT + Extrema | 10 | 20,247 | 20,415 | 1,008 | 29,245 | 43,383 | 1,483 |
+| FP64 | MERIT + Extrema | 30 | 54,903 | 55,098 | 1,004 | 79,894 | 123,637 | 1,548 |
+| FP64 | RESIDUALS | 10 | 17,591 | 17,433 | 0,991 | 25,154 | 34,288 | 1,363 |
+| FP64 | RESIDUALS | 30 | 47,243 | 47,743 | 1,011 | 68,581 | 98,003 | 1,429 |
+| FP64 | RESIDUALS + Extrema | 10 | 19,877 | 19,917 | 1,002 | 28,823 | 47,858 | 1,660 |
+| FP64 | RESIDUALS + Extrema | 30 | 54,166 | 54,639 | 1,009 | 79,709 | 123,233 | 1,546 |
+
+V = 1.000 verhält sich gleich (Zweig/main 0,92 … 1,02). Die Tabellen aller Fälle erzeugt das Programm mit `--csv`; die Einzelwerte liegen im PR.
+
 ## P100-Messung nachholen
 
 Auf dem P100-Rechner (Linux, CUDA 12.x):

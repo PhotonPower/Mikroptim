@@ -32,6 +32,7 @@
 #include "mikroptim/trace/surface_extrema.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/surface_table.hpp"
+#include "mikroptim/trace/surface_transform.hpp"
 #include "mikroptim/trace/trace.hpp"
 
 namespace mko {
@@ -274,6 +275,13 @@ struct SurfaceStepState {
     R c;                  // wirksame Krümmung (surface_curvature)
     R n_before, n_after, mu;
     Vec3<R> p_in, d_in;
+    // Dezentrierung und Verkippung der Fläche (M8-T3): Ist `transformed` gesetzt, gelten alle
+    // folgenden Zwischengrößen im gekippten System der Fläche, mit dem Eingang
+    // p_local = Rᵀ (p_in − t e_z − Δ), d_local = Rᵀ d_in und dem Transfer um 0; der Ausgang
+    // (p_out, d_out) steht wie im Trace im nominellen System.
+    bool transformed;
+    SurfaceTransform<R> transform;
+    Vec3<R> p_local, d_local;
     // Transfer in die Tangentialebene
     R s0;
     Vec3<R> p_plane;
@@ -323,24 +331,36 @@ recompute_surface_step(const SurfaceTable& sys, int wavelength_index, int s, int
         plate.n_glass = R(sys.ghost_index[ghost * L + wavelength_index]);
         plate_ptr = &plate;
     }
+    st.transformed = surface_transform_of(sys, s, st.transform);
     SoftFailure<R> scratch{R(0), TraceStatus::Ok};
     Ray<R> ray{p_in, d_in, R(0)};
     unsigned char branch = kBranchRegular;
     st.status = propagate_surface(ray, st.t, st.kind, R(sys.curvature[s]), st.n_before, st.n_after,
-                                  plate_ptr, soft_mode ? &scratch : nullptr, &branch);
+                                  plate_ptr, soft_mode ? &scratch : nullptr, &branch,
+                                  st.transformed ? &st.transform : nullptr);
     st.branch = branch;
     st.p_out = ray.p;
     st.d_out = ray.d;
 
+    // Eingang im System der Fläche (wie propagate_surface)
     Ray<R> plane{p_in, d_in, R(0)};
-    st.s0 = transfer_to_tangent_plane(plane, st.t);
+    R t_local = st.t;
+    if (st.transformed) {
+        plane.p.z -= st.t;
+        ray_to_surface(plane, st.transform);
+        t_local = R(0);
+    }
+    st.p_local = plane.p;
+    st.d_local = plane.d;
+    const Vec3<R> d_loc = plane.d;
+    st.s0 = transfer_to_tangent_plane(plane, t_local);
     st.p_plane = plane.p;
     const R x = plane.p.x;
     const R y = plane.p.y;
     if (st.kind == SurfaceKind::GhostPlate) {
         st.normal = Vec3<R>{R(0), R(0), R(1)};
         st.normal_scale = R(1);
-        st.cos_i = d_in.z;
+        st.cos_i = d_loc.z;
         if (plate_ptr != nullptr) {
             st.inv_r2 = R(1) / (plate.norm_radius * plate.norm_radius);
             st.u = (x * x + y * y) * st.inv_r2;
@@ -352,8 +372,8 @@ recompute_surface_step(const SurfaceTable& sys, int wavelength_index, int s, int
             st.phase = st.dn * prof.t;
             st.grad_x = st.radial * x;
             st.grad_y = st.radial * y;
-            st.dx = (st.n_before * d_in.x + st.grad_x) / st.n_after;
-            st.dy = (st.n_before * d_in.y + st.grad_y) / st.n_after;
+            st.dx = (st.n_before * d_loc.x + st.grad_x) / st.n_after;
+            st.dy = (st.n_before * d_loc.y + st.grad_y) / st.n_after;
             st.radicand = R(1) - st.dx * st.dx - st.dy * st.dy;
             st.root_radicand = (branch & kBranchSoftTIR) != 0 ? R(0) : msqrt(st.radicand);
         }
@@ -361,7 +381,7 @@ recompute_surface_step(const SurfaceTable& sys, int wavelength_index, int s, int
     }
     const R c = st.c;
     st.H = c * (x * x + y * y);
-    st.B = d_in.z - c * (x * d_in.x + y * d_in.y);
+    st.B = d_loc.z - c * (x * d_loc.x + y * d_loc.y);
     st.D = st.B * st.B - c * st.H;
     const bool missed = (branch & kBranchSoftMissed) != 0;
     if (missed) {
@@ -371,7 +391,8 @@ recompute_surface_step(const SurfaceTable& sys, int wavelength_index, int s, int
         st.root_d = msqrt(st.D);
         st.s = st.H / (st.B + st.root_d);
     }
-    const Vec3<R>& q = st.p_out; // Schnittpunkt (die Brechung bewegt ihn nicht)
+    // Schnittpunkt (die Brechung bewegt ihn nicht), im System der Fläche
+    const Vec3<R> q = st.transformed ? st.p_plane + st.s * d_loc : st.p_out;
     Vec3<R> N{-c * q.x, -c * q.y, R(1) - c * q.z};
     st.normal_scale = R(1);
     if (missed) {
@@ -379,7 +400,7 @@ recompute_surface_step(const SurfaceTable& sys, int wavelength_index, int s, int
         N = st.normal_scale * N;
     }
     st.normal = N;
-    st.cos_i = dot(d_in, N);
+    st.cos_i = dot(d_loc, N);
     st.k = R(1) - st.mu * st.mu * (R(1) - st.cos_i * st.cos_i);
     st.root_k = (branch & kBranchSoftTIR) != 0 ? R(0) : msqrt(st.k);
     return st;

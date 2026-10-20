@@ -294,9 +294,9 @@ void TraceEngine::run(const SystemBatchHost& batch, TraceMode mode, const TraceS
             samples = std::max(samples, p.samples);
         }
         const detail::DeviceGuard guard(device_);
-        const int limit =
-            merit_max_samples(settings.extrema, topology.ghost_plates, topology.ghost_terms,
-                              settings.precision, settings.quadrature.failure);
+        const int limit = merit_max_samples(settings.extrema, topology.ghost_plates,
+                                            topology.ghost_terms, settings.precision,
+                                            settings.quadrature.failure, topology.non_coaxial);
         if (samples > limit) {
             throw std::invalid_argument("TraceEngine: Modus MERIT erlaubt höchstens " +
                                         std::to_string(limit) + " Stützstellen pro Feld (" +

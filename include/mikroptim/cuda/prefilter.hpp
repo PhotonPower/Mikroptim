@@ -93,8 +93,9 @@ private:
 };
 
 // Größte Stützstellenzahl n_f eines Feldes, deren OPL (float) und Klasse (1 Byte) der Kernel im
-// Shared Memory ablegen kann, mit G Geisterplatten der Ordnung K (Kernelattribute des aktuellen
-// Geräts; CudaError). std::invalid_argument bei negativen Zahlen.
-int prefilter_max_samples(int ghost_plates = 0, int ghost_terms = 0);
+// Shared Memory ablegen kann, mit G Geisterplatten der Ordnung K und bei nicht koaxialem Batch
+// den Transformationsdaten (M8-T3; Kernelattribute des aktuellen Geräts; CudaError).
+// std::invalid_argument bei negativen Zahlen.
+int prefilter_max_samples(int ghost_plates = 0, int ghost_terms = 0, bool non_coaxial = false);
 
 } // namespace mko::cuda

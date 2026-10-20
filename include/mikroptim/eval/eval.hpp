@@ -43,7 +43,8 @@ struct EvalSettings {
 void check_eval_settings(const EvalSettings& settings);
 
 // Prüft die Einstellungen gegen einen Batch: check_eval_settings, Halbpupille nur bei
-// Symmetrie x → −x (Punktquelle mit source_point[0] = 0). Wirft std::invalid_argument.
+// Symmetrie x → −x (Punktquelle mit source_point[0] = 0, koaxialer Batch; M8-T3). Wirft
+// std::invalid_argument.
 void check_eval_settings(const EvalSettings& settings, const SystemBatchHost& batch);
 
 // Rasterpunkt in normierten Pupillenkoordinaten mit Gewicht (Summe über das Raster 1).

@@ -118,7 +118,7 @@ __device__ inline void consume_record(const Table& table, const Record& rec,
 
 // Block b = (v · F + f) · L + l; Ablauf wie residuals_kernel (gleiche Bausteine, gleiche
 // Reihenfolge), pro Strahl zusätzlich Aufzeichnung und deren Verbrauch.
-template <class R, int kStorage, int kCapacity>
+template <class R, int kStorage, int kCapacity, bool kTransforms>
 __global__ void __launch_bounds__(kBlockThreads) adjoint_forward_kernel(const AdjointKernelArgs a) {
     __shared__ detail::BlockTable<R> sh_table;
     __shared__ detail::PistonShared<R> sh_piston;
@@ -136,9 +136,13 @@ __global__ void __launch_bounds__(kBlockThreads) adjoint_forward_kernel(const Ad
     detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
     const detail::BlockGhosts<R> ghosts =
         detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
+    // Dezentrierung und Verkippung hinter den Geisterdaten (nur Instanz kTransforms, M8-T3)
+    const detail::KernelTable<R, kTransforms> table = detail::block_kernel_table<R, kTransforms>(
+        sh_table, S, ghosts,
+        reinterpret_cast<R*>(sh_dynamic + detail::ghost_shared_bytes(a.batch.shape)), a.batch, v,
+        tid);
     __syncthreads();
 
-    const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const int n = plan.samples;
     const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n;
@@ -201,35 +205,42 @@ __global__ void __launch_bounds__(kBlockThreads) adjoint_forward_kernel(const Ad
 using KernelFn = void (*)(AdjointKernelArgs);
 
 // Kernel-Variante zu Rechentyp, Speicherform und Kapazität.
-template <class R>
+template <class R, bool kTransforms>
 KernelFn select_kernel(RecordStorage storage, int capacity) {
     switch (storage) {
     case RecordStorage::None:
-        return adjoint_forward_kernel<R, kStorageNone, kRecordCapacitySmall>;
+        return adjoint_forward_kernel<R, kStorageNone, kRecordCapacitySmall, kTransforms>;
     case RecordStorage::Full:
         if (capacity == kRecordCapacitySmall) {
-            return adjoint_forward_kernel<R, kStorageFull, kRecordCapacitySmall>;
+            return adjoint_forward_kernel<R, kStorageFull, kRecordCapacitySmall, kTransforms>;
         }
         if (capacity == kRecordCapacityMedium) {
-            return adjoint_forward_kernel<R, kStorageFull, kRecordCapacityMedium>;
+            return adjoint_forward_kernel<R, kStorageFull, kRecordCapacityMedium, kTransforms>;
         }
-        return adjoint_forward_kernel<R, kStorageFull, kRecordCapacityLarge>;
+        return adjoint_forward_kernel<R, kStorageFull, kRecordCapacityLarge, kTransforms>;
     case RecordStorage::Checkpoint:
         if (capacity == kRecordCapacitySmall) {
-            return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacitySmall>;
+            return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacitySmall, kTransforms>;
         }
         if (capacity == kRecordCapacityMedium) {
-            return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacityMedium>;
+            return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacityMedium,
+                                          kTransforms>;
         }
-        return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacityLarge>;
+        return adjoint_forward_kernel<R, kStorageCheckpoint, kRecordCapacityLarge, kTransforms>;
     }
     throw std::invalid_argument("ADJOINT: unbekannte Speicherform (RecordStorage)");
 }
 
-KernelFn select_kernel(Precision precision, RecordStorage storage, int capacity) {
+// transforms: Instanz für nicht koaxiale Batches (M8-T3, Transformationsdaten im Shared Memory).
+KernelFn select_kernel(Precision precision, RecordStorage storage, int capacity,
+                       bool transforms = false) {
     check_precision(precision);
-    return precision == Precision::Df64 ? select_kernel<df64>(storage, capacity)
-                                        : select_kernel<double>(storage, capacity);
+    if (transforms) {
+        return precision == Precision::Df64 ? select_kernel<df64, true>(storage, capacity)
+                                            : select_kernel<double, true>(storage, capacity);
+    }
+    return precision == Precision::Df64 ? select_kernel<df64, false>(storage, capacity)
+                                        : select_kernel<double, false>(storage, capacity);
 }
 
 void check_storage(RecordStorage storage) {
@@ -449,8 +460,10 @@ void DeviceAdjointForward::run(const DeviceSystemBatch& batch, const ResidualLay
                                         std::to_string(ghost_bytes) +
                                         " Byte) passen nicht in den Shared Memory");
         }
-        const KernelFn fn = select_kernel(options.precision, options.storage, capacity);
-        fn<<<static_cast<unsigned>(blocks), kBlockThreads, ghost_bytes>>>(args);
+        const KernelFn fn = select_kernel(options.precision, options.storage, capacity,
+                                          view.decenter_tilt != nullptr);
+        fn<<<static_cast<unsigned>(blocks), kBlockThreads,
+             ghost_bytes + detail::transform_shared_bytes(view)>>>(args);
         MKO_CUDA_CHECK(cudaGetLastError());
         MKO_CUDA_CHECK(cudaDeviceSynchronize());
     }

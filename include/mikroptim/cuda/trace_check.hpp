@@ -13,7 +13,9 @@ namespace mko::cuda {
 // Die Flächentabelle `table` (Zeiger auf Host-Speicher) wird auf die GPU kopiert und dort von
 // jedem Block in den Shared Memory geladen; jeder Thread traced einen Strahl aus `rays_in`
 // (lokale Koordinaten von Fläche 0) mit trace_ray über eine SurfaceTableView auf den Shared
-// Memory. Ergebnis pro Strahl: Endzustand, Status (TraceStatus als unsigned), versagende Fläche.
+// Memory. Dezentrierung und Verkippung (M8-T3) liest der Kernel aus dem globalen Speicher
+// (Geisterplatten werden nicht übertragen). Ergebnis pro Strahl: Endzustand, Status (TraceStatus
+// als unsigned), versagende Fläche.
 // Rückgabe false bei CUDA-Fehlern oder wenn die Tabelle nicht in 48 KB Shared Memory passt.
 bool trace_rays_gpu(const SurfaceTableView<double>& table, int wavelength_index,
                     const std::vector<Ray<double>>& rays_in, std::vector<Ray<double>>& rays_out,

@@ -40,7 +40,9 @@ __global__ void trace_kernel(SurfaceTableView<double> global, int wavelength_ind
     }
     __syncthreads();
 
-    const SurfaceTableView<double> sys{S, L, type, curvature, thickness, index};
+    SurfaceTableView<double> sys{S, L, type, curvature, thickness, index};
+    sys.decenter_tilt = global.decenter_tilt; // M8-T3: aus dem globalen Speicher
+    sys.tilt_trig = global.tilt_trig;
     const int k = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
     if (k < n) {
         Ray<double> ray = rays_in[k];
@@ -61,7 +63,11 @@ struct DeviceBuffers {
     Ray<double>* out = nullptr;
     unsigned* status = nullptr;
     int* failed = nullptr;
+    double* decenter_tilt = nullptr;
+    double* tilt_trig = nullptr;
     ~DeviceBuffers() {
+        cudaFree(decenter_tilt);
+        cudaFree(tilt_trig);
         cudaFree(type);
         cudaFree(curvature);
         cudaFree(thickness);
@@ -111,8 +117,22 @@ bool trace_rays_gpu(const SurfaceTableView<double>& table, int wavelength_index,
     MKO_CUDA_TRY(
         cudaMemcpy(b.in, rays_in.data(), count * sizeof(Ray<double>), cudaMemcpyHostToDevice));
 
-    const SurfaceTableView<double> device_table{table.surfaces, table.wavelengths, b.type,
-                                                b.curvature,    b.thickness,       b.index};
+    SurfaceTableView<double> device_table{table.surfaces, table.wavelengths, b.type,
+                                          b.curvature,    b.thickness,       b.index};
+    // Dezentrierung und Verkippung (M8-T3)
+    const std::size_t X = S * static_cast<std::size_t>(kSurfaceTransformValues);
+    if (table.decenter_tilt != nullptr) {
+        MKO_CUDA_TRY(cudaMalloc(&b.decenter_tilt, X * sizeof(double)));
+        MKO_CUDA_TRY(cudaMemcpy(b.decenter_tilt, table.decenter_tilt, X * sizeof(double),
+                                cudaMemcpyHostToDevice));
+        device_table.decenter_tilt = b.decenter_tilt;
+        if (table.tilt_trig != nullptr) {
+            MKO_CUDA_TRY(cudaMalloc(&b.tilt_trig, X * sizeof(double)));
+            MKO_CUDA_TRY(cudaMemcpy(b.tilt_trig, table.tilt_trig, X * sizeof(double),
+                                    cudaMemcpyHostToDevice));
+            device_table.tilt_trig = b.tilt_trig;
+        }
+    }
     const int n = static_cast<int>(count);
     constexpr int kBlock = 128;
     const int grid = (n + kBlock - 1) / kBlock;

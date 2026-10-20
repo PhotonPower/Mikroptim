@@ -19,6 +19,7 @@ add_executable(mikroptim_tests
     test_beam_search.cpp
     test_beam_search_optimization.cpp
     test_buchdahl_fit.cpp
+    test_coaxial_fingerprint.cpp
     test_cli_eval.cpp
     test_cli_insert.cpp
     test_cli_optimize.cpp
@@ -27,6 +28,7 @@ add_executable(mikroptim_tests
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_convex_hull.cpp
+    test_decenter.cpp
     test_df64.cpp
     test_dispersion.cpp
     test_eval.cpp
@@ -81,6 +83,8 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_adjoint_jacobian.cpp
         test_cuda_adjoint_lm.cpp
         test_cuda_beam_search.cpp
+        test_cuda_coaxial_fingerprint.cpp
+        test_cuda_decenter.cpp
         test_cuda_df64.cpp
         test_cuda_dispersion.cpp
         test_cuda_eval.cpp

@@ -167,6 +167,10 @@ void check_eval_settings(const EvalSettings& settings, const SystemBatchHost& ba
         throw std::invalid_argument("EVAL: halbe Pupille nur bei Symmetrie x → −x (Punktquelle "
                                     "mit x ≠ 0)");
     }
+    if (settings.half_pupil && !batch.coaxial()) {
+        throw std::invalid_argument("EVAL: halbe Pupille nur bei Symmetrie x → −x (System nicht "
+                                    "koaxial, ADR-0011)");
+    }
 }
 
 EvalGrid make_eval_grid(int size, bool half_pupil) {

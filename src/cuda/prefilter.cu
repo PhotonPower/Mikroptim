@@ -55,6 +55,7 @@ struct PrefilterKernelArgs {
     const ResidualFieldPlan* plan; // [F]
     int max_samples;               // Plätze für OPL und Klasse im dynamischen Shared Memory
     unsigned ghost_bytes;          // Geisterdaten (float) am Anfang des dynamischen Shared Memory
+    unsigned table_bytes;          // ghost_bytes + Transformationsdaten (float, M8-T3)
     PrefilterReal boundary;        // η
     double* merit_partial;         // [V · B]
     double* length_partial;        // [V · B]
@@ -82,6 +83,7 @@ __device__ inline R block_max(R* sh, R x, int tid) {
 // Klasse, Teilsummen des Kolbens über die sicher gültigen Strahlen), Kolben, Durchlauf 2
 // (Quadratsumme der sicher gültigen Strahlen), Blockreduktionen. Alle Threads durchlaufen jede
 // Schleife und jedes __syncthreads; versagte Strahlen laufen maskiert weiter.
+template <bool kTransforms>
 __global__ void __launch_bounds__(kBlockThreads) prefilter_kernel(const PrefilterKernelArgs a) {
     using R = PrefilterReal;
     __shared__ detail::BlockTable<R> sh_table;
@@ -91,9 +93,10 @@ __global__ void __launch_bounds__(kBlockThreads) prefilter_kernel(const Prefilte
     __shared__ std::int32_t sh_failed[kBlockWarps];
     __shared__ std::int32_t sh_uncertain_ok[kBlockWarps];
     __shared__ std::int32_t sh_uncertain_failed[kBlockWarps];
-    // Dynamisch: Geisterplatten (ghost_bytes), OPL [max_samples] (float), Klasse [max_samples]
+    // Dynamisch: Geisterplatten (ghost_bytes), Transformationsdaten (nur nicht koaxial, M8-T3),
+    // OPL [max_samples] (float), Klasse [max_samples]
     extern __shared__ __align__(16) unsigned char sh_dynamic[];
-    R* const sh_opl = reinterpret_cast<R*>(sh_dynamic + a.ghost_bytes);
+    R* const sh_opl = reinterpret_cast<R*>(sh_dynamic + a.table_bytes);
     std::uint8_t* const sh_class = reinterpret_cast<std::uint8_t*>(sh_opl + a.max_samples);
 
     const int S = a.batch.shape.surfaces;
@@ -108,9 +111,10 @@ __global__ void __launch_bounds__(kBlockThreads) prefilter_kernel(const Prefilte
     detail::load_block_table(sh_table, a.batch, a.pupil, plan, tu, tid);
     const detail::BlockGhosts<R> ghosts =
         detail::load_block_ghosts<R>(sh_dynamic, a.batch, tu, tid);
+    // Dezentrierung und Verkippung hinter den Geisterdaten (nur Instanz kTransforms, M8-T3)
+    const detail::KernelTable<R, kTransforms> table = detail::block_kernel_table<R, kTransforms>(
+        sh_table, S, ghosts, reinterpret_cast<R*>(sh_dynamic + a.ghost_bytes), a.batch, v, tid);
     __syncthreads();
-
-    const SurfaceTableView<R> table = detail::block_table_view(sh_table, S, ghosts);
     const Vec3<R> center = batch_image_point(a.batch, table, v, f);
     const R offset = prefilter_opl_offset(table, 0);
     const R abs_offset = offset < R(0) ? -offset : offset;
@@ -218,12 +222,21 @@ std::size_t ghost_bytes_float(int ghost_plates, int ghost_terms) {
     return (bytes + 7) / 8 * 8;
 }
 
+// Transformationsdaten in float (M8-T3): decenter_tilt und tilt_trig, je S · 4 Werte; 0 Byte
+// bei koaxialem Batch.
+std::size_t transform_bytes_float(int surfaces, bool non_coaxial) {
+    return non_coaxial
+               ? 2 * static_cast<std::size_t>(surfaces) *
+                     static_cast<std::size_t>(kSurfaceTransformValues) * sizeof(PrefilterReal)
+               : 0;
+}
+
 // OPL (float) und Klasse (1 Byte) pro Stützstelle.
 constexpr std::size_t kBytesPerSample = sizeof(PrefilterReal) + sizeof(std::uint8_t);
 
 std::size_t static_shared_bytes() {
     cudaFuncAttributes attr{};
-    MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, prefilter_kernel));
+    MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, prefilter_kernel<false>)); // wie <true>
     return attr.sharedSizeBytes;
 }
 
@@ -286,11 +299,12 @@ std::size_t prefilter_device_bytes(const BatchTopology& topology, int variants) 
            make_prefilter_output_layout(topology, variants).total_bytes;
 }
 
-int prefilter_max_samples(int ghost_plates, int ghost_terms) {
+int prefilter_max_samples(int ghost_plates, int ghost_terms, bool non_coaxial) {
     if (ghost_plates < 0 || ghost_terms < 0) {
         throw std::invalid_argument("prefilter_max_samples: negative Zahl von Geisterplatten");
     }
-    const std::size_t fixed = static_shared_bytes() + ghost_bytes_float(ghost_plates, ghost_terms);
+    const std::size_t fixed = static_shared_bytes() + ghost_bytes_float(ghost_plates, ghost_terms) +
+                              transform_bytes_float(kMaxSurfaces, non_coaxial);
     if (fixed >= kPrefilterMaxSharedBytes) {
         return 0;
     }
@@ -370,13 +384,17 @@ void DevicePrefilter::run(const DeviceSystemBatch& batch, const ResidualLayout& 
 
     const std::size_t ghost_bytes =
         ghost_bytes_float(view.shape.ghost_plates, view.shape.ghost_terms);
+    const bool non_coaxial = view.decenter_tilt != nullptr;
+    const std::size_t table_bytes =
+        ghost_bytes + transform_bytes_float(view.shape.surfaces, non_coaxial);
     const std::size_t dynamic =
-        ghost_bytes + static_cast<std::size_t>(max_samples) * kBytesPerSample;
+        table_bytes + static_cast<std::size_t>(max_samples) * kBytesPerSample;
     if (static_shared_bytes() + dynamic > kPrefilterMaxSharedBytes) {
         throw std::invalid_argument(
             "DevicePrefilter::run: " + std::to_string(max_samples) +
             " Stützstellen pro Feld passen nicht in das Shared Memory (höchstens " +
-            std::to_string(prefilter_max_samples(view.shape.ghost_plates, view.shape.ghost_terms)) +
+            std::to_string(prefilter_max_samples(view.shape.ghost_plates, view.shape.ghost_terms,
+                                                 non_coaxial)) +
             ")");
     }
 
@@ -400,11 +418,17 @@ void DevicePrefilter::run(const DeviceSystemBatch& batch, const ResidualLayout& 
         args.plan = region_ptr<ResidualFieldPlan>(buffer_, out.plan);
         args.max_samples = max_samples;
         args.ghost_bytes = static_cast<unsigned>(ghost_bytes);
+        args.table_bytes = static_cast<unsigned>(table_bytes);
         args.boundary = static_cast<PrefilterReal>(boundary_margin);
         args.merit_partial = region_ptr<double>(buffer_, out.merit_partial);
         args.length_partial = region_ptr<double>(buffer_, out.length_partial);
         args.counts_partial = region_ptr<std::int32_t>(buffer_, out.counts_partial);
-        prefilter_kernel<<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        if (non_coaxial) { // M8-T3
+            prefilter_kernel<true><<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        } else {
+            prefilter_kernel<false>
+                <<<static_cast<unsigned>(blocks), kBlockThreads, dynamic>>>(args);
+        }
         MKO_CUDA_CHECK(cudaGetLastError());
 
         PrefilterFinalizeArgs fin{};
@@ -516,7 +540,8 @@ TraceRunInfo TraceEngine::prefilter_variants(const SystemBatchHost& batch,
             samples = std::max(samples, p.samples);
         }
         const detail::DeviceGuard guard(device_);
-        const int limit = prefilter_max_samples(topology.ghost_plates, topology.ghost_terms);
+        const int limit = prefilter_max_samples(topology.ghost_plates, topology.ghost_terms,
+                                                topology.non_coaxial);
         if (samples > limit) {
             throw std::invalid_argument("TraceEngine: die Vorfilterung erlaubt höchstens " +
                                         std::to_string(limit) + " Stützstellen pro Feld (" +

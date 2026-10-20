@@ -59,7 +59,7 @@ struct MeritKernelArgs {
 // Quadratsumme pro Tupel in der Reihenfolge von M2 (128 virtuelle Lanes, Baum pro Gruppe,
 // Gruppen in fester Reihenfolge; im Rechentyp R, Ablage als double). Alle Threads durchlaufen
 // jede Schleife und jedes __syncthreads.
-template <class R, bool kExtrema>
+template <class R, bool kExtrema, bool kTransforms>
 __global__ void MKO_TRACE_LAUNCH_BOUNDS merit_kernel(const MeritKernelArgs a) {
     __shared__ detail::PackShared<R> sh;
     __shared__ detail::ExtremaSharedIf<R, kExtrema> sh_extrema;
@@ -73,11 +73,11 @@ __global__ void MKO_TRACE_LAUNCH_BOUNDS merit_kernel(const MeritKernelArgs a) {
     const TuplePack pack = a.packs[block % a.packs_per_variant];
     const int tid = static_cast<int>(threadIdx.x);
 
-    const SurfaceTableView<R> table = detail::load_pack(sh, sh_dynamic, a.batch, a.pupil, a.plan,
-                                                        pack, v, a.soft != 0, a.fail_weight, tid);
+    const detail::KernelTable<R, kTransforms> table = detail::load_pack<R, kTransforms>(
+        sh, sh_dynamic, a.batch, a.pupil, a.plan, pack, v, a.soft != 0, a.fail_weight, tid);
     R* const sh_opl = reinterpret_cast<R*>(
         sh_dynamic + pack_table_bytes(S, a.batch.shape.ghost_plates, a.batch.shape.ghost_terms,
-                                      pack.wavelengths));
+                                      pack.wavelengths, a.batch.decenter_tilt != nullptr));
     R* const sh_penalty = a.soft ? sh_opl + pack.rays : nullptr;
     std::uint8_t* const sh_status =
         reinterpret_cast<std::uint8_t*>(sh_opl + (a.soft ? 2 : 1) * pack.rays);
@@ -233,9 +233,9 @@ template <class R>
 std::size_t static_shared_bytes_of(bool extrema) {
     cudaFuncAttributes attr{};
     if (extrema) {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, true>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, true, false>));
     } else {
-        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, false>));
+        MKO_CUDA_CHECK(cudaFuncGetAttributes(&attr, merit_kernel<R, false, false>));
     }
     return attr.sharedSizeBytes;
 }
@@ -258,9 +258,15 @@ constexpr std::size_t bytes_per_ray(bool soft) {
 template <class R>
 void launch_merit(const MeritKernelArgs& args, bool extrema, unsigned grid, std::size_t dynamic) {
     if (extrema) {
-        merit_kernel<R, true><<<grid, kBlockThreads, dynamic>>>(args);
+        if (args.batch.decenter_tilt != nullptr) { // nicht koaxial (M8-T3)
+            merit_kernel<R, true, true><<<grid, kBlockThreads, dynamic>>>(args);
+        } else {
+            merit_kernel<R, true, false><<<grid, kBlockThreads, dynamic>>>(args);
+        }
+    } else if (args.batch.decenter_tilt != nullptr) {
+        merit_kernel<R, false, true><<<grid, kBlockThreads, dynamic>>>(args);
     } else {
-        merit_kernel<R, false><<<grid, kBlockThreads, dynamic>>>(args);
+        merit_kernel<R, false, false><<<grid, kBlockThreads, dynamic>>>(args);
     }
     MKO_CUDA_CHECK(cudaGetLastError());
 }
@@ -268,14 +274,15 @@ void launch_merit(const MeritKernelArgs& args, bool extrema, unsigned grid, std:
 } // namespace
 
 int merit_max_samples(bool extrema, int ghost_plates, int ghost_terms, Precision precision,
-                      FailureMode failure) {
+                      FailureMode failure, bool non_coaxial) {
     if (ghost_plates < 0 || ghost_terms < 0) {
         throw std::invalid_argument("merit_max_samples: negative Zahl von Geisterplatten");
     }
     check_precision(precision);
     // Ein Paket aus einem Tupel mit den Brechzahlen einer Wellenlänge für S = kMaxSurfaces
-    const std::size_t fixed = static_shared_bytes(extrema, precision) +
-                              pack_table_bytes(kMaxSurfaces, ghost_plates, ghost_terms, 1);
+    const std::size_t fixed =
+        static_shared_bytes(extrema, precision) +
+        pack_table_bytes(kMaxSurfaces, ghost_plates, ghost_terms, 1, non_coaxial);
     if (fixed >= kMeritMaxSharedBytes) {
         return 0;
     }
@@ -378,19 +385,21 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
     for (const ResidualFieldPlan& p : layout.plan()) {
         max_samples = std::max(max_samples, p.samples);
     }
-    const int limit =
-        merit_max_samples(options.extrema, view.shape.ghost_plates, view.shape.ghost_terms,
-                          options.precision, layout.settings().failure);
+    const int limit = merit_max_samples(options.extrema, view.shape.ghost_plates,
+                                        view.shape.ghost_terms, options.precision,
+                                        layout.settings().failure, view.decenter_tilt != nullptr);
     if (max_samples > limit) {
         throw std::invalid_argument("DeviceMerit::run: " + std::to_string(max_samples) +
                                     " Stützstellen pro Feld passen nicht in das Shared Memory "
                                     "(höchstens " +
                                     std::to_string(limit) + ")");
     }
-    const std::vector<TuplePack> packs =
-        make_tuple_packs(layout, view.shape, options.pack_rays, bytes_per_ray(soft),
-                         kMeritMaxSharedBytes - std::min(static_bytes, kMeritMaxSharedBytes));
-    const std::size_t dynamic = pack_dynamic_bytes(packs, view.shape, bytes_per_ray(soft));
+    const bool transforms = view.decenter_tilt != nullptr; // nicht koaxial (M8-T3)
+    const std::vector<TuplePack> packs = make_tuple_packs(
+        layout, view.shape, options.pack_rays, bytes_per_ray(soft),
+        kMeritMaxSharedBytes - std::min(static_bytes, kMeritMaxSharedBytes), transforms);
+    const std::size_t dynamic =
+        pack_dynamic_bytes(packs, view.shape, bytes_per_ray(soft), transforms);
     const auto P = static_cast<int>(packs.size());
     // Platz für F · L Pakete (höchstens so viele), damit der Puffer zur Abschätzung der
     // TraceEngine passt (fixed_run_bytes) und über Läufe wiederverwendet wird.

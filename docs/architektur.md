@@ -194,7 +194,7 @@ Ein Batch enthält V Varianten mit derselben Topologie (Flächenzahl und Fläche
 
 ### Topologie und Felder (M2-T1)
 
-Die Topologie `BatchTopology` umfasst S (Flächen, 2 … `kMaxSurfaces`), L (Wellenlängen), F (Felder), G (Geisterplatten), K (Koeffizienten pro Geisterplatte), die Quellenart (`SourceKind::Collimated` oder `Point`) und `type[s]`. Regeln (`validate_topology`, sonst `std::invalid_argument`): L, F ≥ 1; G = Anzahl der Flächen vom Typ `GhostPlate`; G > 0 ⇒ K ≥ 1, G = 0 ⇒ K = 0; Punktquelle ⇒ F = 1; `pupil_mode` leer oder mit F gültigen Einträgen.
+Die Topologie `BatchTopology` umfasst S (Flächen, 2 … `kMaxSurfaces`), L (Wellenlängen), F (Felder), G (Geisterplatten), K (Koeffizienten pro Geisterplatte), die Quellenart (`SourceKind::Collimated` oder `Point`), `type[s]` und seit M8-T3 das Flag `non_coaxial` (Dezentrierung und Verkippung, dann volle Pupille für alle Felder). Regeln (`validate_topology`, sonst `std::invalid_argument`): L, F ≥ 1; G = Anzahl der Flächen vom Typ `GhostPlate`; G > 0 ⇒ K ≥ 1, G = 0 ⇒ K = 0; Punktquelle ⇒ F = 1; `pupil_mode` leer oder mit F gültigen Einträgen.
 
 **Pupillenart pro Feld** (`pupil_mode[f]`, ab M2-T2): eine Eigenschaft des Batches, nicht der Variante, weil sie Zahl und Ablage der Residuen festlegt (`ResidualLayout`). `topology_of` setzt sie beim Aufbau aus dem Ausgangssystem mit derselben Regel wie `wavefront_pupil_mode`: kollimiert θ_f = 0 → `Axis` (N Stützstellen), sonst `Half` (N·M); Punktquelle auf der Achse → `Axis`, mit x = 0 → `Half`, sonst `Full`. Leer heißt „nicht festgelegt“ (erlaubt für reine Speicherrechnungen; der Residuen-Kernel verlangt die Festlegung). Varianten dürfen ein Achsfeld nicht verlassen: `check_pupil_modes(batch, first, count)` verlangt bei `Axis` den Feldwinkel 0 in jeder Variante (bei der Punktquelle x = y = 0, bei `Half` x = 0); `Half` und `Full` gelten für jeden Winkel, auch 0 (eine Feld-Homotopie darf also bei θ = 0 beginnen, ohne die Ablage zu ändern). Geprüft wird in `validate_values`, beim Upload (`DeviceSystemBatch::upload`) und in `residuals_cpu`.
 
@@ -221,6 +221,7 @@ Structure of Arrays, alle Werte FP64 (außer `type` und `ghost_surface`), Varian
 | `paraxial_index[v][s]` | R | pro Variante | Brechzahl nach Fläche s bei λ_ref (Paraxialrechnung, ab M3-T3) |
 | `paraxial_ghost_index[v][g]` | R | pro Variante | Brechzahl des Glases der Geisterplatte g bei λ_ref (ab M3-T3) |
 | `buchdahl_coeff[v][s][j]` | FP64 | pro Variante, **nur Host** | Buchdahl-Koeffizienten (n₀, ν₁, ν₂, ν₃) des Mediums nach Fläche s (Glasvariablen, ab M6-T1) |
+| `decenter_tilt[v][s][k]` | R | pro Variante, **nur nicht koaxial** | Dezentrierung (Δx, Δy) [mm] und Verkippung (α, β) [rad] der Fläche s (ab M8-T3, [Abschnitt unten](#dezentrierung-und-verkippung-m8-t3)) |
 
 Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 
@@ -235,6 +236,7 @@ Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 | `paraxial_index` | v·S + s (wie `curvature`) | S |
 | `paraxial_ghost_index` | v·G + g (`ghost_at`) | G |
 | `buchdahl_coeff` (nur Host) | (v·S + s)·4 + j | 4·S |
+| `decenter_tilt` (nur nicht koaxial) | (v·S + s)·4 + k (`transform_at`) | 4·S |
 
 Die Daten einer Variante liegen in jedem Feld zusammenhängend; Variante v der Flächentabelle ist daher eine `SurfaceTableView` mit um v·S bzw. v·S·L versetzten Zeigern (`SystemBatchView::surface_table(v)`), `type` ist für alle Varianten derselbe Zeiger. `index` hat für eine Variante dasselbe Layout wie `IndexTable::n`.
 
@@ -411,6 +413,54 @@ SurfaceMap make_surface_map(const SystemDescription&); int table_surface_count(c
 ```
 
 `trace_ray` zählt die Flächen vom Typ GhostPlate in Tracerichtung mit; die g-te erhält `GhostPlateParams{ghost_coeff + g·K, K, ghost_norm_radius[g], ghost_index[g·L + l]}`, Flächen vom Typ GhostPlate ohne Daten (g ≥ G) melden `Unsupported`. Tabellen ohne Geisterplatten (G = 0, Nullzeiger als Standardwerte) funktionieren unverändert.
+
+## Dezentrierung und Verkippung (M8-T3)
+
+Konventionen, Schritt an einer transformierten Fläche, Rückwärtsdurchlauf und Abnahme: [numerik.md, Abschnitt 2](numerik.md#dezentrierung-und-verkippung-m8-t3-adr-0011); Entscheidung: ADR-0011; Dateiformat: [dateiformat.md](dateiformat.md#flächen).
+
+```cpp
+// include/mikroptim/trace/surface_transform.hpp (header-only, MKO_HD)
+template <class R> struct SurfaceTransform { R dx, dy, ca, sa, cb, sb; };   // Δ, cos/sin α, β
+template <class R> SurfaceTransform<R> make_surface_transform(R dx, R dy, R alpha, R beta);
+template <class R> Vec3<R> rotate_to_surface(const SurfaceTransform<R>&, const Vec3<R>&);   // Rᵀ v
+template <class R> Vec3<R> rotate_from_surface(const SurfaceTransform<R>&, const Vec3<R>&); // R v
+template <class R> Vec3<R> point_to_surface(...);   // Rᵀ (p − Δ)
+template <class R> Vec3<R> point_from_surface(...); // R q + Δ
+template <class R> void ray_to_surface(Ray<R>&, const SurfaceTransform<R>&);
+template <class R> void ray_from_surface(Ray<R>&, const SurfaceTransform<R>&);
+template <class R, class Table> bool surface_transform_of(const Table&, int s, SurfaceTransform<R>&);
+// include/mikroptim/trace/trace.hpp: propagate_surface(…, branch, const SurfaceTransform<R>* transform = nullptr)
+// include/mikroptim/trace/surface_table.hpp
+inline constexpr int kSurfaceTransformValues = 4;
+struct SurfaceTableView { …; const R* decenter_tilt = nullptr;   // [S·4] Δx, Δy, α, β (nullptr: koaxial)
+                              const R* tilt_trig = nullptr; };   // [S·4] cos α, sin α, cos β, sin β (optional)
+// include/mikroptim/cpu/host_surface_table.hpp
+struct HostSurfaceTable { …; std::vector<double> decenter_tilt, tilt_trig; bool coaxial() const; };
+void set_surface_transform(HostSurfaceTable&, int s, double dx, double dy, double alpha, double beta);
+// include/mikroptim/model/system.hpp
+struct Surface { …; std::array<double, 2> decenter{}, tilt_deg{}; };
+bool is_transformed(const Surface&); bool is_coaxial(const SystemDescription&);
+// include/mikroptim/batch/system_batch.hpp
+struct BatchTopology { …; bool non_coaxial = false; };   // verlangt pupil_mode leer oder überall Full
+class SystemBatchHost { …; bool coaxial() const; double& decenter_tilt(int v, int s, int k);
+                        void set_surface_transform(int v, int s, double dx, double dy, double a, double b);
+                        std::span<double> decenter_tilt_data(); };
+SystemBatchHost make_non_coaxial(const SystemBatchHost&);  // Transformation 0, volle Pupille
+```
+
+**Tabelle.** `trace_segment` holt pro Fläche s die Transformation mit `surface_transform_of(sys, s, xf)`: `false` bei `decenter_tilt == nullptr` oder vier Nullen (dann der unveränderte koaxiale Aufruf von `propagate_surface`), sonst Δ und Sinus und Kosinus aus `tilt_trig` bzw. mit `msin`/`mcos` aus den Winkeln. `HostSurfaceTable` (aus der Datei: `make_surface_table`, von Hand: `set_surface_transform`) hält beide Felder; die Sicht eines Batches (`SystemBatchView::surface_table(v)`) zeigt nur auf `decenter_tilt` der Variante, die Kernel legen beide in den Shared Memory. Die Geisterplatten erhalten aus der Datei keine Transformation (Werte 0).
+
+**Batch.** Nicht koaxiale Topologie (`BatchTopology::non_coaxial`, `topology_of` setzt sie für Systeme mit `!is_coaxial`, `make_non_coaxial` für vorhandene Batches): pro Variante und Fläche vier FP64-Werte `decenter_tilt[v][s][k]` = (Δx, Δy, α, β), Index `BatchShape::transform_at(v, s, k)` = (v·S + s)·4 + k, `transform_stride()` = 4·S. Koaxiale Batches haben das Feld nicht (Länge 0, `view().decenter_tilt == nullptr`, lesender Zugriff liefert 0, schreibender wirft). `validate_topology` verlangt bei `non_coaxial` die volle Pupille für alle Felder; `validate_values` prüft Endlichkeit und |α|, |β| < π/2. Kopieren, Teil-Batches (`assign_variants`, auch für mehrere GPUs), `operator==` und `make_system_batch` berücksichtigen das Feld; `VariableSet::apply` lässt es unverändert (keine Variablen).
+
+**Gerätespeicher.** `SystemBatchLayout::decenter_tilt` (V·S·4·8 Byte) liegt **am Ende** des Batchpuffers und ist bei koaxialer Topologie leer: Koaxiale Batches haben dieselbe Ablage und Größe wie vor M8-T3. Upload und Download kopieren es nur bei nicht koaxialer Topologie; `DeviceSystemBatch::view()` setzt den Zeiger sonst auf nullptr.
+
+**Kernel.** Jeder Trace-Kernel (RESIDUALS, MERIT, EVAL, FP32-Vorfilterung, ADJOINT-Vorwärts, adjungierte Jacobi) hat einen Template-Parameter `kTransforms` und ist zweimal instanziiert; der Host wählt die Instanz nach `batch.decenter_tilt != nullptr`. Die koaxiale Instanz rechnet mit `CoaxialTableView` (`KernelTable<R, false>`), für die `surface_transform_of` zur Übersetzungszeit `false` liefert: Der übersetzte Trace enthält keinen Code für Transformationen (gemessen: gleiche Register und gleicher Stack wie vor M8-T3 bis auf die um zwei Zeiger größere Tabellensicht, gleiche Laufzeit). In der Instanz mit Transformationen lädt `load_block_transforms` (`src/cuda/wavefront_block.hpp`) die vier Werte jeder Fläche der Variante und ihre Sinus und Kosinus (einmal pro Block in FP64 gerechnet, dann in den Rechentyp gewandelt) in den **dynamischen** Shared Memory (2·4·S Werte, höchstens 4 KiB) und trägt beide Zeiger in die Tabellensicht ein; bei koaxialem Batch belegt er nichts und lädt nichts. Ablage: RESIDUALS und MERIT hinter den Brechzahlen des Pakets (`pack_table_bytes(…, transforms)`, auch in `make_tuple_packs` und `pack_dynamic_bytes`), EVAL, ADJOINT-Vorwärts und adjungierte Jacobi hinter den Geisterdaten (`ghost_shared_bytes` + `transform_shared_bytes`), FP32-Vorfilterung in float hinter den Geisterdaten (`PrefilterKernelArgs::table_bytes`). Die Grenzen der Stützstellen pro Feld berücksichtigen den Platz: `merit_max_samples(…, non_coaxial)` und `prefilter_max_samples(…, non_coaxial)` (für kMaxSurfaces Flächen; die TraceEngine übergibt `topology.non_coaxial`). Der Prüfkernel `trace_rays_gpu` liest die Transformationsdaten aus dem globalen Speicher. Die CPU-Referenz der Vorfilterung rechnet Sinus und Kosinus wie der Kernel in FP64 und wandelt sie nach float.
+
+**Kosten.** Koaxial: dieselben Ladebefehle und dieselbe Ablage wie vorher, im Trace pro Fläche ein Vergleich des Zeigers mit nullptr; die Ergebnisse sind bitgleich zu main (Fingerabdrücke aller Modi) und der Durchsatz unverändert ([benchmarks.md](benchmarks.md#dezentrierung-und-verkippung-m8-t3)). Nicht koaxial: pro transformierter Fläche und Strahl zwei Drehungen (je zwei ebene Drehungen) und die Verschiebung, dazu die volle Pupille für alle Felder (doppelt so viele Strahlen wie die halbe, auf der Achse N·M statt N).
+
+**Adjungierter Modus.** Der Vorwärtsdurchlauf mit Aufzeichnung (M5-T1) speichert die Zustände im nominellen System; `recompute_surface_step` meldet `transformed`, die Transformation und den Eingang im gekippten System (`p_local`, `d_local`), alle Zwischengrößen gelten dort. `backward_ray` dreht die Adjungierten an jeder transformierten Fläche (numerik.md, Abschnitt 2); `adjoint_jacobian_cpu` und `adjoint_jacobian_gpu` sind damit für dezentrierte Systeme korrekt (Abnahme gegen Richardson). Ableitungen nach den Transformationsparametern gibt es nicht.
+
+**Nicht berücksichtigt** (dokumentierte Grenzen): Paraxialoptik, Feldziele, Austrittspupille der Referenzsphäre in EVAL und die paraxialen und geometrischen mechanischen Nebenbedingungen rechnen mit dem nominellen, koaxialen System. Die sagittale Brennlinie in EVAL (Durchstoß durch die Meridionalebene x = 0) setzt die Spiegelsymmetrie voraus und ist bei Dezentrierung in x nur eine Näherung.
 
 ## Kernel-Abbildung
 

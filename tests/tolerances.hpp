@@ -409,5 +409,10 @@ inline constexpr double kAchromatFocalLength = 1e-3;
 // Schritte an (vgl. die Abnahmen von M3-T4 bis M6-T2: F GPU gegen CPU bis ~1e-10 nach einem
 // Lauf).
 inline constexpr double kHomotopyCpuGpuMerit = 1e-6;
+// Dezentrierung und Verkippung (M8-T3): OPD-Karte und Spots (EVAL) des an x = 0 gespiegelten
+// Systems (Δx → −Δx, β → −β) gegen die gespiegelte Karte [mm]. Alle Strahlen sind exakt
+// gespiegelt (Vorzeichen von x, gleiche Beträge); nur der Kolben summiert die Rasterpunkte in
+// anderer Reihenfolge (Rundung ≈ ε · |OPL − OPL_Hauptstrahl| ≈ 1e-16 · 1e-2 mm).
+inline constexpr double kDecenterMirror = 1e-13;
 
 } // namespace mko::test

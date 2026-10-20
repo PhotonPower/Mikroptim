@@ -156,6 +156,10 @@ void DeviceSystemBatch::upload(const SystemBatchHost& host, int first, int count
               host.paraxial_index_data().data() + v0 * sh.surface_stride());
     to_device(base, layout.paraxial_ghost_index,
               host.paraxial_ghost_index_data().data() + v0 * sh.ghost_stride());
+    if (!host.coaxial()) {
+        to_device(base, layout.decenter_tilt,
+                  host.decenter_tilt_data().data() + v0 * sh.transform_stride());
+    }
 
     topology_ = host.topology();
     variants_ = count;
@@ -212,6 +216,10 @@ void DeviceSystemBatch::download(SystemBatchHost& host, int first) const {
             host.paraxial_index_data().data() + v0 * sh.surface_stride());
     to_host(base, layout_.paraxial_ghost_index,
             host.paraxial_ghost_index_data().data() + v0 * sh.ghost_stride());
+    if (!host.coaxial()) {
+        to_host(base, layout_.decenter_tilt,
+                host.decenter_tilt_data().data() + v0 * sh.transform_stride());
+    }
     host.reference_wavelength_nm = reference_wavelength_nm_;
     host.source_point = source_point_;
     host.source_na = source_na_;
@@ -255,6 +263,8 @@ SystemBatchView<double> DeviceSystemBatch::view() const {
     b.ghost_index = region_ptr<double>(buffer_, layout_.ghost_index);
     b.paraxial_index = region_ptr<double>(buffer_, layout_.paraxial_index);
     b.paraxial_ghost_index = region_ptr<double>(buffer_, layout_.paraxial_ghost_index);
+    b.decenter_tilt =
+        topology_.non_coaxial ? region_ptr<double>(buffer_, layout_.decenter_tilt) : nullptr;
     return b;
 }
 

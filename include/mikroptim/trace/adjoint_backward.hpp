@@ -21,6 +21,11 @@
 // Abgeleitet werden die berechneten Formeln selbst (nicht ihre geometrische Bedeutung, z. B.
 // |d| = 1 oder |N| = 1 auf der Sphäre); damit stimmen die Ableitungen mit finiten Differenzen
 // der Implementierung überein.
+//
+// Dezentrierte und verkippte Flächen (M8-T3, numerik.md, Abschnitt 2): Der Schritt wird im
+// gekippten System der Fläche abgeleitet (Eingang Rᵀ (p − t e_z − Δ), Rᵀ d, Transfer um 0); die
+// Adjungierten werden mit Rᵀ hinein- und mit R zurückgedreht, t̄ = −p̄_z. Ableitungen nach den
+// Transformationsparametern selbst werden nicht gebildet.
 
 #include "mikroptim/config.hpp"
 #include "mikroptim/math/scalar.hpp"
@@ -29,6 +34,7 @@
 #include "mikroptim/trace/ghost_plate.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/surface_table.hpp"
+#include "mikroptim/trace/surface_transform.hpp"
 
 namespace mko {
 
@@ -480,6 +486,22 @@ MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, c
                 const R n_before = R(sys.index[s * L + wavelength_index]);
                 const R n_after = R(sys.index[j * L + wavelength_index]);
                 SurfaceAdjoint<R> par{R(0), R(0), R(0), R(0)};
+                // Dezentrierung und Verkippung (M8-T3): Schritt im gekippten System mit dem
+                // Eingang Rᵀ (p − t e_z − Δ), Rᵀ d und dem Transfer um 0 wie in
+                // propagate_surface; die Adjungierten werden mit Rᵀ hinein- und mit R
+                // zurückgedreht, t̄ = −p̄_z (p − t e_z).
+                SurfaceTransform<R> xf{};
+                const bool moved = surface_transform_of(sys, j, xf);
+                Vec3<R> pl = p;
+                Vec3<R> dl = d;
+                R tl = t;
+                if (moved) {
+                    pl = point_to_surface(xf, Vec3<R>{p.x, p.y, p.z - t});
+                    dl = rotate_to_surface(xf, d);
+                    tl = R(0);
+                    adj.p = rotate_to_surface(xf, adj.p);
+                    adj.d = rotate_to_surface(xf, adj.d);
+                }
                 if (kind == SurfaceKind::GhostPlate) {
                     --ghost;
                     const int g = ghost;
@@ -488,15 +510,20 @@ MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, c
                     plate.terms = sys.ghost_terms;
                     plate.norm_radius = R(sys.ghost_norm_radius[g]);
                     plate.n_glass = R(sys.ghost_index[g * L + wavelength_index]);
-                    ghost_step_backward(p, d, t, plate, n_before, n_after, next_branch, seed, adj,
-                                        par, [&](int k, R value) { sink.ghost(g, k, value); });
+                    ghost_step_backward(pl, dl, tl, plate, n_before, n_after, next_branch, seed,
+                                        adj, par, [&](int k, R value) { sink.ghost(g, k, value); });
                 } else {
                     const R c = surface_curvature(kind, R(sys.curvature[j]));
-                    refracting_step_backward(p, d, t, c, n_before, n_after, next_branch, seed, adj,
-                                             par);
+                    refracting_step_backward(pl, dl, tl, c, n_before, n_after, next_branch, seed,
+                                             adj, par);
                     if (kind == SurfaceKind::Sphere) {
                         sink.curvature(j, par.curvature);
                     }
+                }
+                if (moved) {
+                    adj.p = rotate_from_surface(xf, adj.p);
+                    adj.d = rotate_from_surface(xf, adj.d);
+                    par.thickness = -adj.p.z;
                 }
                 sink.thickness(s, par.thickness);
                 sink.index(j, par.n_after + n_carry);

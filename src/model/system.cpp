@@ -175,6 +175,19 @@ void check_surfaces(const std::vector<Surface>& surfaces) {
             fail(p + ".material", "die Blende ist eine Ebene in Luft, Material muss \"AIR\" sein");
         }
         require_positive(p + ".semi_diameter", s.semi_diameter);
+        // Dezentrierung und Verkippung (M8-T3, ADR-0011): endlich, |Winkel| < 90°, nicht an
+        // der Blende (sie legt das Bezugssystem und die Pupille fest)
+        for (std::size_t k = 0; k < 2; ++k) {
+            require_finite(at(p + ".decenter", k), s.decenter[k]);
+            require_finite(at(p + ".tilt_deg", k), s.tilt_deg[k]);
+            if (!(std::abs(s.tilt_deg[k]) < 90.0)) {
+                fail(at(p + ".tilt_deg", k), "Kippwinkel muss betragsmäßig kleiner als 90° sein");
+            }
+        }
+        if (i == 0 && is_transformed(s)) {
+            fail(p, "die Blende (Fläche 0) ist das Bezugssystem und darf nicht dezentriert oder "
+                    "verkippt werden");
+        }
     }
 }
 
@@ -237,6 +250,20 @@ void check_ghost_plates(const std::vector<GhostPlate>& plates,
 }
 
 } // namespace
+
+bool is_transformed(const Surface& surface) {
+    return surface.decenter[0] != 0.0 || surface.decenter[1] != 0.0 || surface.tilt_deg[0] != 0.0 ||
+           surface.tilt_deg[1] != 0.0;
+}
+
+bool is_coaxial(const SystemDescription& system) {
+    for (const Surface& s : system.surfaces) {
+        if (is_transformed(s)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 std::string_view to_string(SurfaceType type) {
     switch (type) {

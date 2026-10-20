@@ -51,6 +51,11 @@ void copy_slice(const std::vector<double>& src, int from, std::vector<double>& d
               dst.begin() + static_cast<std::ptrdiff_t>(to_size(to) * stride));
 }
 
+// Elemente der Transformationsdaten pro Variante (0 bei koaxialer Topologie).
+std::size_t transform_stride(const BatchTopology& t) {
+    return t.non_coaxial ? to_size(t.surfaces) * to_size(kSurfaceTransformValues) : 0;
+}
+
 // Ablage der Buchdahl-Koeffizienten [V][S][4] (nur Host).
 std::size_t buchdahl_stride(const BatchShape& sh) {
     return to_size(sh.surfaces) * to_size(SystemBatchHost::kBuchdahlCoefficients);
@@ -123,6 +128,11 @@ void validate_topology(const BatchTopology& t) {
         if (m != PupilMode::Half && m != PupilMode::Full && m != PupilMode::Axis) {
             fail_topology("Feld " + std::to_string(f) + ": unbekannte Pupillenart");
         }
+        if (t.non_coaxial && m != PupilMode::Full) {
+            fail_topology("Feld " + std::to_string(f) +
+                          ": eine nicht koaxiale Topologie verlangt die volle Pupille (Full, "
+                          "ADR-0011)");
+        }
     }
 }
 
@@ -166,6 +176,7 @@ void SystemBatchHost::resize(int variants) {
     paraxial_index_.resize(v * sh.surface_stride(), 0.0);
     paraxial_ghost_index_.resize(v * sh.ghost_stride(), 0.0);
     buchdahl_coeff_.resize(v * buchdahl_stride(sh), 0.0);
+    decenter_tilt_.resize(v * transform_stride(topology_), 0.0);
 }
 
 int SystemBatchHost::add_variant_copy(int from) {
@@ -198,6 +209,7 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.paraxial_index_, from, paraxial_index_, to, sh.surface_stride());
     copy_slice(other.paraxial_ghost_index_, from, paraxial_ghost_index_, to, sh.ghost_stride());
     copy_slice(other.buchdahl_coeff_, from, buchdahl_coeff_, to, buchdahl_stride(sh));
+    copy_slice(other.decenter_tilt_, from, decenter_tilt_, to, transform_stride(topology_));
 }
 
 void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, int count) {
@@ -238,6 +250,7 @@ void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, i
     range(other.paraxial_index_, paraxial_index_, sh.surface_stride());
     range(other.paraxial_ghost_index_, paraxial_ghost_index_, sh.ghost_stride());
     range(other.buchdahl_coeff_, buchdahl_coeff_, buchdahl_stride(sh));
+    range(other.decenter_tilt_, decenter_tilt_, transform_stride(topology_));
 }
 
 void SystemBatchHost::check(int i, int count, const char* what) {
@@ -409,6 +422,30 @@ double SystemBatchHost::buchdahl_coeff(int v, int s, int j) const {
     return buchdahl_coeff_[buchdahl_at(shape(), v, s, j)];
 }
 
+double& SystemBatchHost::decenter_tilt(int v, int s, int k) {
+    if (!topology_.non_coaxial) {
+        throw std::invalid_argument("SystemBatch: koaxialer Batch hat keine Dezentrierung und "
+                                    "Verkippung (make_non_coaxial)");
+    }
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    check(k, kTransformValues, "Transformationswert");
+    return decenter_tilt_[shape().transform_at(v, s, k)];
+}
+double SystemBatchHost::decenter_tilt(int v, int s, int k) const {
+    check(v, variants_, "Variante");
+    check(s, topology_.surfaces, "Fläche");
+    check(k, kTransformValues, "Transformationswert");
+    return topology_.non_coaxial ? decenter_tilt_[shape().transform_at(v, s, k)] : 0.0;
+}
+void SystemBatchHost::set_surface_transform(int v, int s, double dx, double dy, double alpha,
+                                            double beta) {
+    decenter_tilt(v, s, 0) = dx;
+    decenter_tilt(v, s, 1) = dy;
+    decenter_tilt(v, s, 2) = alpha;
+    decenter_tilt(v, s, 3) = beta;
+}
+
 SystemBatchView<double> SystemBatchHost::view() const {
     SystemBatchView<double> b{};
     b.shape = shape();
@@ -434,6 +471,7 @@ SystemBatchView<double> SystemBatchHost::view() const {
     b.ghost_index = ghost_index_.data();
     b.paraxial_index = paraxial_index_.data();
     b.paraxial_ghost_index = paraxial_ghost_index_.data();
+    b.decenter_tilt = topology_.non_coaxial ? decenter_tilt_.data() : nullptr;
     return b;
 }
 
@@ -479,6 +517,16 @@ void SystemBatchHost::validate_values() const {
     finite(paraxial_index_, "paraxial_index");
     finite(paraxial_ghost_index_, "paraxial_ghost_index");
     finite(buchdahl_coeff_, "buchdahl_coeff");
+    finite(decenter_tilt_, "decenter_tilt");
+    for (std::size_t i = 2; i < decenter_tilt_.size(); i += 4) {
+        for (std::size_t k = i; k < i + 2; ++k) {
+            if (!(std::abs(decenter_tilt_[k]) < std::numbers::pi / 2)) {
+                fail("decenter_tilt[" + std::to_string(k) +
+                     "]: Kippwinkel muss betragsmäßig "
+                     "kleiner als π/2 sein");
+            }
+        }
+    }
     if (!(reference_wavelength_nm > 0.0) || !std::isfinite(reference_wavelength_nm)) {
         fail("reference_wavelength_nm muss endlich und > 0 sein");
     }
@@ -591,7 +639,8 @@ bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
            same_bits(a.ghost_coeff_, b.ghost_coeff_) && same_bits(a.ghost_index_, b.ghost_index_) &&
            same_bits(a.paraxial_index_, b.paraxial_index_) &&
            same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_) &&
-           same_bits(a.buchdahl_coeff_, b.buchdahl_coeff_);
+           same_bits(a.buchdahl_coeff_, b.buchdahl_coeff_) &&
+           same_bits(a.decenter_tilt_, b.decenter_tilt_);
 }
 
 // ---- Aufbau aus einem System -------------------------------------------------------------
@@ -606,9 +655,12 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
     t.type = table.type;
     t.ghost_plates = table.ghost_plates;
     t.ghost_terms = table.ghost_terms;
+    t.non_coaxial = !table.coaxial();
     // Pupillenart pro Feld, gleiche Regel wie wavefront_pupil_mode (merit/wavefront.cpp)
     for (int f = 0; f < t.fields; ++f) {
-        if (t.source == SourceKind::Collimated) {
+        if (t.non_coaxial) {
+            t.pupil_mode.push_back(PupilMode::Full);
+        } else if (t.source == SourceKind::Collimated) {
             t.pupil_mode.push_back(system.source.field_angles_deg[to_size(f)] == 0.0
                                        ? PupilMode::Axis
                                        : PupilMode::Half);
@@ -786,6 +838,11 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
             b.field_target(0, f) = *focal_length * std::tan(theta);
         }
     }
+    // Dezentrierung und Verkippung (M8-T3)
+    if (!table.coaxial()) {
+        std::copy(table.decenter_tilt.begin(), table.decenter_tilt.end(),
+                  b.decenter_tilt_data().begin());
+    }
     b.resize(variants);
     for (int v = 1; v < variants; ++v) {
         b.copy_variant(0, v);
@@ -817,6 +874,40 @@ SystemBatchHost make_system_batch(const SystemDescription& system, const IndexTa
         focal_length = focal_length_of(compute_paraxial(system, column, 0));
     }
     return build_batch(system, index, variants, focal_length);
+}
+
+SystemBatchHost make_non_coaxial(const SystemBatchHost& batch) {
+    if (batch.topology().non_coaxial) {
+        return batch;
+    }
+    BatchTopology t = batch.topology();
+    t.non_coaxial = true;
+    t.pupil_mode.assign(to_size(t.fields), PupilMode::Full);
+    SystemBatchHost out(t, batch.variants());
+    // Gemeinsame Felder
+    out.reference_wavelength_nm = batch.reference_wavelength_nm;
+    out.source_point = batch.source_point;
+    out.source_na = batch.source_na;
+    const auto copy = [](std::span<const double> from, std::span<double> to) {
+        std::copy(from.begin(), from.end(), to.begin());
+    };
+    copy(batch.ghost_norm_radius_data(), out.ghost_norm_radius_data());
+    copy(batch.wavelength_nm_data(), out.wavelength_nm_data());
+    copy(batch.wavelength_weight_data(), out.wavelength_weight_data());
+    copy(batch.field_weight_data(), out.field_weight_data());
+    // Felder pro Variante
+    copy(batch.curvature_data(), out.curvature_data());
+    copy(batch.thickness_data(), out.thickness_data());
+    copy(batch.index_data(), out.index_data());
+    copy(batch.pupil_radius_data(), out.pupil_radius_data());
+    copy(batch.field_angle_data(), out.field_angle_data());
+    copy(batch.field_target_data(), out.field_target_data());
+    copy(batch.ghost_coeff_data(), out.ghost_coeff_data());
+    copy(batch.ghost_index_data(), out.ghost_index_data());
+    copy(batch.paraxial_index_data(), out.paraxial_index_data());
+    copy(batch.paraxial_ghost_index_data(), out.paraxial_ghost_index_data());
+    copy(batch.buchdahl_coeff_data(), out.buchdahl_coeff_data());
+    return out;
 }
 
 SystemBatchHost make_system_batch(const LoadedSystem& loaded, int variants) {

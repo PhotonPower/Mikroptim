@@ -2,8 +2,11 @@
 
 #include "mikroptim/cpu/host_surface_table.hpp"
 
+#include "mikroptim/trace/surface_transform.hpp"
+
 #include <algorithm>
 #include <cstddef>
+#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -157,7 +160,46 @@ HostSurfaceTable make_surface_table(const SystemDescription& system, const Index
         t.ghost_norm_radius.push_back(system.ghost_plates[g].norm_radius);
     }
     t.ghost_index = index.ghost_n;
+    if (!is_coaxial(system)) {
+        for (std::size_t j = 0; j < total; ++j) {
+            const int file = map.file_of_table[j];
+            if (file < 0) {
+                continue;
+            }
+            const Surface& s = system.surfaces[to_size(file)];
+            set_surface_transform(t, static_cast<int>(j), s.decenter[0], s.decenter[1],
+                                  s.tilt_deg[0] * (std::numbers::pi / 180.0),
+                                  s.tilt_deg[1] * (std::numbers::pi / 180.0));
+        }
+    }
     return t;
+}
+
+void set_surface_transform(HostSurfaceTable& table, int s, double dx, double dy, double alpha,
+                           double beta) {
+    if (s < 0 || s >= table.surfaces) {
+        throw std::out_of_range("Flächentabelle: Fläche " + std::to_string(s) +
+                                " außerhalb von [0, " + std::to_string(table.surfaces) + ")");
+    }
+    const std::size_t n = to_size(table.surfaces) * to_size(kSurfaceTransformValues);
+    if (table.decenter_tilt.size() != n) {
+        table.decenter_tilt.assign(n, 0.0);
+        table.tilt_trig.assign(n, 0.0);
+        for (std::size_t i = 0; i < n; i += 2) {
+            table.tilt_trig[i] = 1.0; // cos 0
+        }
+    }
+    const std::size_t o = to_size(s) * to_size(kSurfaceTransformValues);
+    table.decenter_tilt[o] = dx;
+    table.decenter_tilt[o + 1] = dy;
+    table.decenter_tilt[o + 2] = alpha;
+    table.decenter_tilt[o + 3] = beta;
+    // Dieselben Ausdrücke wie surface_transform_of ohne tilt_trig (bitgleich)
+    const SurfaceTransform<double> x = make_surface_transform(dx, dy, alpha, beta);
+    table.tilt_trig[o] = x.ca;
+    table.tilt_trig[o + 1] = x.sa;
+    table.tilt_trig[o + 2] = x.cb;
+    table.tilt_trig[o + 3] = x.sb;
 }
 
 } // namespace mko

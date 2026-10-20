@@ -39,6 +39,7 @@ Misst den Durchsatz der Trace-Kernel über die öffentliche `mko::cuda::TraceEng
 | `--fields F` | Felder (Feldwinkel 0 … 3°) | 3 |
 | `--wavelengths L` | Wellenlängen | 3 |
 | `--rings N`, `--spokes M` | Pupillenquadratur N × M | 10 × 8 |
+| `--geometry G` | Geometrie der Batches (M8-T3): `coaxial`; `full-pupil` (koaxial, aber volle Pupille für alle Felder, Vergleich ohne Transformationen); `decentered` (nicht koaxial, alle Flächen außer der Blende in allen Varianten zufällig um bis 0,01 mm dezentriert und um bis 0,05° verkippt, volle Pupille). Steht in der Tabellenüberschrift und in JSON unter `settings.geometry` | coaxial |
 | `--pack-rays P` | größte Paketgröße der Kernel RESIDUALS und MERIT in Strahlen (M7-T4, `TraceSettings::pack_rays`; 1 = ein Tupel pro Block wie vor M7-T4; Ergebnisse für jeden Wert bitgleich) | 512 |
 | `--repeat R` | gemessene Läufe pro Fall | 10 |
 | `--warmup W` | Aufwärmläufe pro Fall | 2 |

@@ -115,11 +115,12 @@ MeritResult run_merit(const DeviceSystemBatch& batch, const ResidualLayout& layo
 // n_f · 17 Byte (weich) zusätzlich zum statischen Shared Memory, den Geisterdaten
 // (G · K + 2 G) · 8 Byte und den Brechzahlen einer Wellenlänge für kMaxSurfaces Flächen,
 // zusammen <= kMeritMaxSharedBytes (Tupelpakete, M7-T4); mit Max-Reduktionen und
-// Geisterplatten kleiner. Fragt die Kernelattribute der Kernel-Variante für `precision` auf dem
-// aktuellen Gerät ab (CudaError); std::invalid_argument bei negativen Zahlen oder unbekanntem
-// Zahlentyp.
+// Geisterplatten kleiner, ebenso bei nicht koaxialem Batch (`non_coaxial`, M8-T3:
+// Transformationsdaten 2 · 4 · kMaxSurfaces · 8 Byte). Fragt die Kernelattribute der
+// Kernel-Variante für `precision` auf dem aktuellen Gerät ab (CudaError);
+// std::invalid_argument bei negativen Zahlen oder unbekanntem Zahlentyp.
 int merit_max_samples(bool extrema, int ghost_plates = 0, int ghost_terms = 0,
                       Precision precision = Precision::Fp64,
-                      FailureMode failure = FailureMode::Soft);
+                      FailureMode failure = FailureMode::Soft, bool non_coaxial = false);
 
 } // namespace mko::cuda
