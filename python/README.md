@@ -25,16 +25,16 @@ Die Version des Pakets stammt aus `include/mikroptim/version.hpp` (gleich `proje
 Standard ist ein reines CPU-Wheel. Mit CUDA (Toolkit 12.x wie für den C++-Teil, [docs/hardware.md](../docs/hardware.md)):
 
 ```bash
-MIKROPTIM_ENABLE_CUDA=ON python -m pip wheel . -w dist --no-deps          # Linux
+MIKROPTIM_ENABLE_CUDA=ON python -m pip wheel . -w dist --no-deps -C build-dir=build/wheel-cuda   # Linux
 ```
 
 ```powershell
 # Windows: Toolkit 12.9 ausdrücklich wählen, wenn ein neueres (13.x) im PATH liegt
 $env:MIKROPTIM_ENABLE_CUDA = "ON"
-python -m pip wheel . -w dist --no-deps -C cmake.args="-T cuda=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9"
+python -m pip wheel . -w dist --no-deps -C build-dir=build/wheel-cuda "-Ccmake.args=-T cuda=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9"
 ```
 
-Das CUDA-Wheel braucht zur Laufzeit die CUDA-Laufzeitbibliotheken (cudart, cuFFT) des Toolkits. Unter Windows trägt `mikroptim/__init__.py` das `bin`-Verzeichnis des Toolkits, mit dem gebaut wurde, per `os.add_dll_directory` ein (Angabe in `mikroptim/_build_info.py`); ein anderes Verzeichnis lässt sich mit der Umgebungsvariable `MIKROPTIM_CUDA_BIN_DIR` angeben. Ohne CUDA-Build oder ohne Gerät werfen GPU-Funktionen `mikroptim.GpuUnavailableError`.
+Das eigene Build-Verzeichnis (`build-dir`) ist nötig, weil der Standard `build/wheel/<wheel-tag>` sonst den CMake-Cache des CPU-Wheels (ohne CUDA, anderes Toolset) wiederverwenden würde. Das CUDA-Wheel braucht zur Laufzeit die CUDA-Laufzeitbibliotheken (cudart, cuFFT) des Toolkits. Unter Windows trägt `mikroptim/__init__.py` das `bin`-Verzeichnis des Toolkits, mit dem gebaut wurde, per `os.add_dll_directory` ein (Angabe in `mikroptim/_build_info.py`); ein anderes Verzeichnis lässt sich mit der Umgebungsvariable `MIKROPTIM_CUDA_BIN_DIR` angeben. Ohne CUDA-Build oder ohne Gerät werfen GPU-Funktionen `mikroptim.GpuUnavailableError`.
 
 ### Im CMake-Build (Entwicklung, ctest)
 

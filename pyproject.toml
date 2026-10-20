@@ -43,5 +43,6 @@ MIKROPTIM_BUILD_PYTHON = "ON"
 MIKROPTIM_BUILD_TESTS = "OFF"
 MIKROPTIM_BUILD_BENCH = "OFF"
 # CUDA im Wheel optional (Standard: nur CPU); mit CUDA z. B.
-#   MIKROPTIM_ENABLE_CUDA=ON pip wheel . -w dist
+#   MIKROPTIM_ENABLE_CUDA=ON pip wheel . -w dist -C build-dir=build/wheel-cuda
+# (eigenes Build-Verzeichnis, siehe python/README.md)
 MIKROPTIM_ENABLE_CUDA = { env = "MIKROPTIM_ENABLE_CUDA", default = "OFF" }
