@@ -528,6 +528,34 @@ TEST(OpticalHomotopy, InsertMeniscusStagesAndFinish) {
     EXPECT_DOUBLE_EQ(ins2.branches[0].surfaces[4].curvature, c0 - 0.01);
     EXPECT_DOUBLE_EQ(ins2.branches[1].surfaces[3].curvature, c0 - 0.01);
     EXPECT_DOUBLE_EQ(ins2.branches[1].surfaces[4].curvature, c0 + 0.01);
+
+    // Schranken der neuen Krümmungsvariablen enger als |c₀| bzw. c₀ ± δ (M6-T6: c₀ von einer
+    // Fläche auf ihrer Schranke): Startkrümmungen bleiben innerhalb, die Zweige laden.
+    ASSERT_GT(std::abs(c0), 0.006);
+    o.meniscus.curvature_variables.min = -0.006;
+    o.meniscus.curvature_variables.max = 0.006;
+    OpticalHomotopyModel m3(start, o);
+    const HomotopyInsertion ins3 = m3.insert(s, p, need); // Spanne 0,012 < 2δ
+    ASSERT_EQ(ins3.branches.size(), 2U);
+    for (const SystemDescription& br : ins3.branches) {
+        for (int j = 3; j <= 4; ++j) {
+            EXPECT_GE(br.surfaces[static_cast<std::size_t>(j)].curvature, -0.006);
+            EXPECT_LE(br.surfaces[static_cast<std::size_t>(j)].curvature, 0.006);
+        }
+        EXPECT_NO_THROW((void)m3.load(m3.realize(br, p)));
+    }
+    o.meniscus.curvature_variables.max = std::abs(c0) - 0.005; // c₀ außerhalb der Schranken
+    o.meniscus.curvature_variables.min = -(std::abs(c0) - 0.005);
+    OpticalHomotopyModel m4(start, o);
+    const HomotopyInsertion ins4 = m4.insert(s, p, need);
+    ASSERT_EQ(ins4.branches.size(), 2U);
+    const double lim = std::abs(c0) - 0.005;
+    const double c4 = c0 > 0.0 ? lim - 0.01 : -lim + 0.01; // c₀ auf [min + δ, max − δ]
+    EXPECT_DOUBLE_EQ(ins4.branches[0].surfaces[3].curvature, c4 + 0.01);
+    EXPECT_DOUBLE_EQ(ins4.branches[1].surfaces[3].curvature, c4 - 0.01);
+    for (const SystemDescription& br : ins4.branches) {
+        EXPECT_NO_THROW((void)m4.load(m4.realize(br, p)));
+    }
 }
 
 // Ziel am realen System: Geisterkoeffizienten 0, RMS pro Tupel in Wellen.

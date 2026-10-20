@@ -478,8 +478,32 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
         }
     }
     if (need.recommendation == GhostOperator::A) {
-        const MeniscusPlan plan =
-            meniscus_from_diagnosis(realized, need.diagnosis, options_.meniscus);
+        MeniscusPlan plan = meniscus_from_diagnosis(realized, need.diagnosis, options_.meniscus);
+        // Startkrümmungen innerhalb der Schranken des neuen Krümmungseintrags halten: c₀ kommt
+        // aus einer vorhandenen Fläche (deren Schranken weiter sein können), die Sattelstarts
+        // liegen bei c₀ ± δ. Ohne Begrenzung lehnt der Lader einen Start außerhalb der Schranken
+        // ab (FormatError) und der Lauf bricht ab. Bei Dicke 0 ändert c₀ die Merit nicht.
+        const NewCurvatureVariables& cv = options_.meniscus.curvature_variables;
+        const auto clamp_new = [&cv](double c) {
+            if (!cv.enabled) {
+                return c;
+            }
+            if (cv.min) {
+                c = std::max(c, *cv.min);
+            }
+            if (cv.max) {
+                c = std::min(c, *cv.max);
+            }
+            return c;
+        };
+        {
+            const double d = options_.saddle_delta;
+            double c0 = clamp_new(plan.insertion.curvature);
+            if (cv.enabled && d > 0.0 && cv.min && cv.max && *cv.max - *cv.min >= 2.0 * d) {
+                c0 = std::clamp(c0, *cv.min + d, *cv.max - d);
+            }
+            plan.insertion.curvature = c0;
+        }
         InsertionResult r = insert_meniscus(system, plan.insertion);
         scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
         ins.first_surface = r.first_new_surface;
@@ -511,6 +535,13 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
             const auto starts = meniscus_saddle_starts(
                 r.system, r.first_new_surface, options_.saddle_delta, -options_.saddle_delta);
             ins.branches.assign(starts.begin(), starts.end());
+            // Schranken enger als 2δ: die Sattelstarts selbst begrenzen
+            for (SystemDescription& br : ins.branches) {
+                for (int j = r.first_new_surface; j <= r.first_new_surface + 1; ++j) {
+                    double& c = br.surfaces[static_cast<std::size_t>(j)].curvature;
+                    c = clamp_new(c);
+                }
+            }
         } else {
             ins.branches.push_back(r.system);
         }

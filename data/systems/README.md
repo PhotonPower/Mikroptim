@@ -19,6 +19,7 @@
 | `einzellinse_achromat_start.json` | frei erfundene Einzellinse N-BK7, f = 50 mm (NA 0,05, 480 und 644 nm), Krümmungen und Arbeitsabstand variabel, Brennweite und Glas-Hülle; Abnahme des Operators B (Kittglied mit freiem Glas, Farblängsfehler um mehr als den Faktor 10 kleiner, M6-T2) und Beispiel für `mikroptim insert` |
 | `einzellinse_homotopie_start.json` | frei erfundene Einzellinse aus einem hochbrechenden Glas (Buchdahl-Koordinaten des Testglases SYN-36), f = 10 mm, NA 0,3, Achse, 546 nm, mit Geisterplatten-Wörterbuch (N-BK7 und das hochbrechende Glas vor und hinter der Linse), L1-Strafe aus dem Beugungsziel und Rand- und Spaltbedingungen; Start der Abnahme des Homotopie-Controllers (NA 0,3 → 0,6, M6-T3) und Beispiel für `mikroptim synth` |
 | `zweilinser_petzval.json` | frei erfundener Zweilinser (Sammellinse n = 1,8, Zerstreuungslinse CaF₂, f = 20 mm) mit Variablen, Brennweiten- und Petzval-Bedingung (κ_max = 0,01/mm); Abnahme der Petzval-Nebenbedingung (M4-T4) |
+| `zielspezifikation_start.json` | frei erfundene Einzellinse (Buchdahl-Fit des Testglases SYN-36), f = 3,29 mm, NA 0,3, 546 nm, Felder 0/3,045/4,345°, Blendenspalt variabel, Geisterplatten-Wörterbuch (hochbrechend, CAF2, Schwerflint; K = 10) auf zwei Hilfsebenen, alle Nebenbedingungen der Zielspezifikation; Start des Laufs auf der Zielspezifikation (M6-T6, [Bericht](../../docs/ergebnisse/m6-t6-zielspezifikation.md)) |
 
 Geplante Start- und Referenzsysteme (Linsendaten trägt der Maintainer ein, Agenten erfinden keine Daten realer Objektive):
 
