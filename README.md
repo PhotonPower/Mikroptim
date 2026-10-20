@@ -67,6 +67,13 @@ Die Variablen eines Systems optimieren (Levenberg-Marquardt, Iterationsprotokoll
 
 Mit Visual Studio liegt das Programm unter `build/<preset>/Release/mikroptim.exe` bzw. `Debug/`.
 
+Aus Python (Modul `mikroptim`, Ergebnisse als NumPy-Arrays; Installation und API: [python/README.md](python/README.md)):
+
+```bash
+python -m pip wheel . -w dist --no-deps && python -m pip install --no-index --find-links dist mikroptim
+python -c "import mikroptim as m; print(m.trace(m.load_system('data/systems/einzellinse_bk7.json')).rms_waves)"
+```
+
 ## Verzeichnisstruktur
 
 ```
@@ -75,7 +82,7 @@ src/cli/             Kommandozeilenprogramm
 src/cuda/            CUDA-Backend (Kernel, Batch-Trace, Reduktionen)
 tests/               GoogleTest-Tests (analytische Orakel, CPU/GPU-Abgleich)
 bench/               Benchmarks
-python/              Python-Bindings (ab M9)
+python/              Python-Bindings (nanobind, Modul mikroptim, M9-T1)
 tools/               Hilfsskripte (z. B. Generator der Quadraturtabelle)
 data/systems/        Testsysteme und Startsysteme (JSON)
 data/glass/          Glasdaten (JSON)

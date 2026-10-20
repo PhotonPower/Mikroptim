@@ -26,7 +26,7 @@ mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log
 | `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
 | `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
 
-Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio).
+Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio). Mit dem Python-Paket (M9-T1, [python/README.md](../python/README.md)) sind dieselben Unterbefehle auch als `python -m mikroptim <befehl> …` bzw. `mikroptim.run_cli([...])` erreichbar (Ausgabe erst am Ende des Befehls).
 
 ## `mikroptim trace`
 

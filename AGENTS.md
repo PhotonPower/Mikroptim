@@ -76,7 +76,7 @@ Die CI kompiliert CUDA, hat aber **keine GPU**. GPU-Tests müssen lokal laufen: 
 - Änderungen an Koordinaten- und Vorzeichenkonventionen oder an der Tracerichtung
 - Inkompatible Änderungen am Dateiformat (Hauptversion von `mikroptim.system/…`)
 - Abweichungen von den Numerik-Regeln in Abschnitt 6
-- Externe Abhängigkeiten über GoogleTest, CUDA-Bibliotheken (cuBLAS, cuSOLVER, cuFFT), nlohmann/json und nanobind hinaus
+- Externe Abhängigkeiten über GoogleTest, CUDA-Bibliotheken (cuBLAS, cuSOLVER, cuFFT), nlohmann/json, nanobind und (nur zum Bauen der Python-Wheels) scikit-build-core hinaus
 
 ## 10. Definition of Done
 

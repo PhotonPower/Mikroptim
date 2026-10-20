@@ -10,11 +10,18 @@ option(MIKROPTIM_BUILD_TESTS "Tests bauen" ON)
 option(MIKROPTIM_WARNINGS_AS_ERRORS "Warnungen als Fehler behandeln" OFF)
 # Benchmarks unter bench/ (nur zusammen mit MIKROPTIM_ENABLE_CUDA)
 option(MIKROPTIM_BUILD_BENCH "Benchmarks bauen (nur mit CUDA)" ON)
+# Python-Bindings unter python/ (nanobind, M9-T1; python/README.md)
+option(MIKROPTIM_BUILD_PYTHON "Python-Bindings bauen (nanobind)" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(MIKROPTIM_BUILD_PYTHON)
+    # Die statischen Bibliotheken werden in das Python-Erweiterungsmodul (gemeinsame Bibliothek)
+    # gelinkt und brauchen dafür positionsunabhängigen Code.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # --------------------------------------------------------------------------
 # CUDA (siehe docs/adr/0002-cuda-12.md und docs/hardware.md)
@@ -286,4 +293,11 @@ endif()
 if(MIKROPTIM_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# --------------------------------------------------------------------------
+# Python-Bindings (M9-T1): Erweiterungsmodul mikroptim._mikroptim, pytest als ctest
+# --------------------------------------------------------------------------
+if(MIKROPTIM_BUILD_PYTHON)
+    add_subdirectory(python)
 endif()

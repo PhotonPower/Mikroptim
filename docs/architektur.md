@@ -38,7 +38,7 @@ flowchart TD
 | Synthese (ab M6-T3: Homotopie-Controller, `Mikroptim::synth`) | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`; M8-T2: PSF, MTF, Strehl) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
-| Python | – | `python/` | M9 |
+| Python-Bindings (M9-T1, Modul `mikroptim`, [python/README.md](../python/README.md)) | – | `python/src/` (C++), `python/mikroptim/` (Python) | M9 |
 
 ## Datenmodell und IO
 
@@ -1443,6 +1443,30 @@ Die P100 führt SASS für sm_60 aus, die RTX 3090 SASS für sm_86; beide erzeugt
 5. **JIT auf der RTX 3090:** Ein lokaler Prüfbau nur mit `60-virtual` (PTX für `compute_60`, auf der 3090 mit `CUDA_CACHE_DISABLE=1` per JIT zu sm_86-SASS übersetzt, ca. 8 s) liefert dieselben Fingerabdrücke (FP64, df64, Vorfilterung) wie der native sm_86-Build (Test `MultiTraceEngine.ResultFingerprint`), und die Tests mit logischen Geräten sind dort ebenfalls grün. Das zeigt, dass das `compute_60`-PTX auf sm_86 dieselben Bits ergibt; das sm_60-Backend von ptxas prüft es nicht.
 
 **Ergebnis:** Nach Bau und Analyse sind bitgleiche Ergebnisse auf sm_60 und sm_86 zu erwarten (gleiches PTX, korrekt gerundete Grundoperationen, gleiche Zahl kontrahierter FMA), bewiesen ist es ohne P100 nicht. Die Prüfung auf dem Rechner mit beiden Karten: `MultiTraceEngine.RealDevicesBitIdenticalToSingle` (jedes Gerät einzeln gegen Gerät 0 und die Verteilung auf alle Geräte, FP64 und df64, beide Modi, Vorfilterung) und `MultiTraceEngine.ResultFingerprint` (gleiche Zahlen auf getrennten Rechnern = gleiche Bits). Sollte sich ein Unterschied zeigen, wären Gegenmaßnahmen Änderungen an Numerik- bzw. Toolchain-Regeln und brauchen eine Entscheidung des Maintainers (z. B. `-fmad=false` für die Kernel-Übersetzungseinheiten, explizite `__fma_rn`/`__dmul_rn`/`__dadd_rn` im Mathe-Kern, nur gleichartige Geräte in einer Verteilung oder eine Toleranz statt Bitgleichheit in ADR-0007).
+
+## Python-Bindings (M9-T1)
+
+Python-Paket `mikroptim` mit dem Erweiterungsmodul `mikroptim._mikroptim` ([nanobind](https://github.com/wjakob/nanobind) 3.1.0, per FetchContent aus Git mit Untermodulen, `NB_STATIC`). Benutzung, Installation und vollständige API: [python/README.md](../python/README.md).
+
+**Aufbau.** `python/CMakeLists.txt` (nur mit `MIKROPTIM_BUILD_PYTHON=ON`, Standard `OFF`; dann baut CMake alle statischen Bibliotheken positionsunabhängig) linkt das Modul gegen dieselben Bibliotheken wie die CLI (`Mikroptim::model` … `Mikroptim::optim`, `mikroptim_cli`, mit CUDA `Mikroptim::cuda`). Die Quellen unter `python/src/` sind dünne Schichten über die vorhandenen Host-APIs, eine Datei pro Bereich:
+
+| Datei | Python | C++ |
+|---|---|---|
+| `bind_system.cpp` | `load_system`, `System`, `paraxial` | `load_system`, `prepare_system`, `read_system_json`/`write_system_json`, `cli::catalogs_for`, `compute_paraxial`, `VariableSet` |
+| `bind_trace.cpp` | `trace`, `SystemBatch`, `residuals_cpu`, `merit_cpu`, `TraceEngine` | `evaluate_wavefront` bzw. Kernel RESIDUALS über `cuda::TraceEngine` und `tuple_wavefronts` (wie `mikroptim trace --gpu`), `SystemBatchHost`, `residuals_cpu`, `merit_cpu` |
+| `bind_eval.cpp` | `evaluate`, `Evaluation`, `Psf` | `eval_cpu` bzw. `TraceEngine::evaluate`, `eval_statistics`, `eval_opd_map`, `make_psf_pupil`, `psf_cpu` bzw. `cuda::PsfEngine` |
+| `bind_optimize.cpp` | `optimize`, `OptimizeResult` | Aufbau der Merit wie `mikroptim optimize` (Glasvariablen, `VariableSet`, paraxiale und mechanische Nebenbedingungen, L1-Strafe der Geisterkoeffizienten, Glas-Hülle, Multistart mit `perturbed_vector`, Auswahl des besten Laufs, `LmOptions::jacobian_method`), `optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu` |
+| `bind_cli.cpp` | `run_cli`, `python -m mikroptim` | `cli::run_*_command` mit `std::ostringstream` |
+
+Der Aufbau der Optimierung ist eine Kopie des Ablaufs in `src/cli/optimize_command.cpp` (ohne Berichte); die pytest-Suite prüft, dass beide bitgleiche Ergebnisse liefern. Wer den Ablauf der CLI ändert, ändert ihn hier mit (oder zieht ihn in eine gemeinsame Bibliotheksfunktion).
+
+**Daten.** Ergebnisse werden in Host-Vektoren gerechnet und als NumPy-Arrays (`float64`, `int64`, `uint8`) zurückgegeben: als Kopie (der Vektor geht in eine Kapsel, die das Array besitzt), als schreibgeschützte Sicht auf ein unveränderliches Ergebnisobjekt (`Wavefront`, `Psf`) oder als beschreibbare Sicht auf die Felder eines `SystemBatchHost` (`SystemBatch`; die Größe des Batches ist aus Python nicht änderbar, die Sichten bleiben daher gültig). Die Ablage der Batch-Felder ist die von `SystemBatchView` ([SystemBatch und Datenlayout](#systembatch-und-datenlayout)), z. B. `curvatures` (V, S) zeilenweise.
+
+**GIL und Fehler.** Laden, Trace, Auswertung und Optimierung laufen ohne GIL; der Rückruf von `optimize` holt sie im Thread des Aufrufers (`LmOptions::on_iteration` läuft dort). Eine Python-Ausnahme im Rückruf wird als C++-Ausnahme aus dem LM getragen und nach der Rückkehr wieder ausgelöst. C++-Ausnahmen werden übersetzt: `FormatError` → `mikroptim.FormatError` (`ValueError`, mit `json_path`, `message`, `file`), `GlassError` → `mikroptim.GlassError`, `cuda::CudaError` → `mikroptim.CudaError`, fehlendes GPU-Backend → `mikroptim.GpuUnavailableError`, sonst die Standardregeln von nanobind (`std::invalid_argument` → `ValueError`, `std::out_of_range` → `IndexError`).
+
+**GPU.** GPU-Funktionen gibt es nur mit `MIKROPTIM_HAS_CUDA`; ohne werfen sie `GpuUnavailableError` (wie Exit-Code 3 der CLI). `trace(gpu=True)` und `evaluate(gpu=True)` legen pro Aufruf eine `TraceEngine` an; für viele Läufe ist `mikroptim.TraceEngine` gedacht (Puffer bleiben zwischen den Aufrufen erhalten). Unter Windows trägt `mikroptim/__init__.py` das `bin`-Verzeichnis des CUDA-Toolkits aus `_build_info.py` (von CMake erzeugt) mit `os.add_dll_directory` ein.
+
+**Tests.** `python/tests/` (pytest): Laden aller Systeme unter `data/systems`, JSON-Roundtrip, Paraxialdaten und Wellenfront bitgleich zu `mikroptim trace --json`, Auswertung und PSF bitgleich zu `mikroptim eval --json`, Optimierung bitgleich zu `mikroptim optimize --json` (Biegungsbeispiel, Multistart, hartes Versagen), Batch-Sichten, Residuen und Merit, GPU gegen CPU mit den Toleranzen aus `tests/tolerances.hpp` (übersprungen ohne Gerät), Fehlerfälle. Die CLI ist das Programm des Builds (`MIKROPTIM_CLI`, ctest `PythonBindings.pytest`) oder, im Wheel, dieselben Unterbefehle im Modul.
 
 ## Verhältnis zu Raytatouille
 
