@@ -1,0 +1,34 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6\p2_final.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 9 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  2.451391e-03  2.407791e-03  0.06010   2.112e-06   9  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        max_iterations       500  1.615001e-03  1.594910e-03  0.04916   1.506e-06   9  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        converged_step       108  1.658028e-03  1.595223e-03  0.04914   1.505e-06   9  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.5200  1.000   0  0.02000  max_iterations       500  1.174544e-02  1.119970e-02  0.10613   1.985e-05   9  shrink (Delta 0.01000)
+      4  aperture         0.5100  1.000   0  0.01000  max_iterations       500  3.104021e-03  2.953374e-03  0.06794   3.985e-06   9  keep (Delta 0.01000)
+      5  aperture         0.5200  1.000   0  0.01000  max_iterations       500  6.440787e-03  6.065051e-03  0.09043   9.089e-06   9  shrink (Delta 0.00500)
+      6  aperture         0.5150  1.000   0  0.00500  max_iterations       500  3.451994e-03  3.282652e-03  0.07077   4.630e-06   9  keep (Delta 0.00500)
+      7  aperture         0.5200  1.000   0  0.00500  max_iterations       500  4.016020e-03  3.819627e-03  0.07518   5.322e-06   9  keep (Delta 0.00500)
+      8  aperture         0.5250  1.000   0  0.00500  max_iterations       500  4.849144e-03  4.620229e-03  0.08194   5.878e-06   9  keep (Delta 0.00500)
+      9  aperture         0.5300  1.000   0  0.00500  max_iterations       500  5.968612e-03  5.697824e-03  0.09090   6.246e-06   9  shrink (Delta 0.00250)
+     10  aperture         0.5275  1.000   0  0.00250  max_iterations       500  4.594160e-03  4.417029e-03  0.07942   5.306e-06   9  keep (Delta 0.00250)
+     11  aperture         0.5300  1.000   0  0.00250  max_iterations       500  4.465171e-03  4.329104e-03  0.07792   4.785e-06   9  keep (Delta 0.00250)
+     12  aperture         0.5325  1.000   0  0.00250  converged_step       171  4.225279e-03  4.117163e-03  0.07582   4.236e-06   9  keep (Delta 0.00250)
+     13  aperture         0.5350  1.000   0  0.00250  converged_step       213  4.373724e-03  4.279006e-03  0.07693   4.034e-06   9  keep (Delta 0.00250)
+     14  aperture         0.5375  1.000   0  0.00250  converged_step       200  4.526093e-03  4.439819e-03  0.07815   3.835e-06   9  keep (Delta 0.00250)
+     15  aperture         0.5400  1.000   0  0.00250  converged_step       150  4.780142e-03  4.700862e-03  0.08039   3.629e-06   9  keep (Delta 0.00250)
+     16  aperture         0.5425  1.000   0  0.00250  converged_step       201  5.118942e-03  5.040268e-03  0.08274   3.670e-06   9  keep (Delta 0.00250)
+     17  aperture         0.5450  1.000   0  0.00250  converged_step       203  5.616587e-03  5.542082e-03  0.08710   3.565e-06   9  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.5425: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00554208); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5425, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 9 -> 9 (0 Einfügungen), Optimierungen: 18, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                30.8
+Ergebnis geschrieben: docs\ergebnisse\m6-t6\p3_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6\p3_r0_log.json

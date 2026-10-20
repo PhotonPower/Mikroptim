@@ -1,0 +1,31 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6\a1_r8_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.9325, Feldanteil 0.100, 4 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Strahlsuche                                 B = 2, Seed 0, Varianten 2, gestörte Starts 0
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Kand  Gr    Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+  #0     0        0  penalty          0.9325  0.100   0  -        max_iterations       500  2.562228e-03  2.554429e-03  0.05830   5.724e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.01
+  #0     1        1  penalty          0.9325  0.100   0  -        converged_step        68  2.568360e-03  2.556471e-03  0.05813   5.693e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+  #0     2        2  penalty          0.9325  0.100   0  -        converged_step        26  2.592255e-03  2.556255e-03  0.05812   5.630e-06   4  ok: Gewichte der einseitigen Bedingungen ×1
+  #0     3        3  aperture         0.9500  0.100   0  0.02000  max_iterations       500  7.107759e-02  5.672098e-02  0.26193   3.071e-04   4  shrink (Delta 0.01000)
+  #0     4        4  aperture         0.9425  0.100   0  0.01000  max_iterations       500  2.734400e-02  2.115593e-02  0.17115   6.233e-05   4  shrink (Delta 0.00500)
+  #0     5        5  aperture         0.9375  0.100   0  0.00500  max_iterations       500  9.068660e-03  7.444183e-03  0.10163   1.469e-05   4  shrink (Delta 0.00250)
+  #0     6        6  aperture         0.9350  0.100   0  0.00250  max_iterations       500  4.541523e-03  4.012546e-03  0.07268   8.917e-06   4  keep (Delta 0.00250)
+  #0     7        7  aperture         0.9375  0.100   0  0.00250  max_iterations       500  8.915649e-03  7.377265e-03  0.10086   1.453e-05   4  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.935: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00737727); keine Geisterplatte aktiv (kein Bedarf))
+Strahlsuche: B = 2, Seed 0, 1 Kandidaten, 0 Einfügungen, 8 Optimierungen in 8 Aufrufen
+Ergebnis: Kandidat #0, Strahl am Ende: #0
+Endpunkt: NA 0.9350, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 4 -> 4, F_max = 5.102041e-03 Wellen^2
+
+Stammbaum (Kandidat, Herkunft @ Punkt der Entstehung: letzte Merit @ Punkt, Elemente, Optimierungen [Status]):
+#0 start @ NA 0.9325, Feld 0.100, Sp 0: F 4.5415e-03, F_B 4.0125e-03 @ NA 0.9350, Feld 0.100, Sp 0, El 4, 8 Opt. [behalten: Apertur 0.935: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00737727); keine Geisterplatte aktiv (kein Bedarf); Ergebnis]
+
+  Laufzeit [s]                                14.8
+Ergebnis geschrieben: docs\ergebnisse\m6-t6\a1_r9.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6\a1_r9_log.json

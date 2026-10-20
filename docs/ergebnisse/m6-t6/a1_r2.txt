@@ -1,0 +1,45 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6\a1_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6075, Feldanteil 0.100, 4 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Strahlsuche                                 B = 2, Seed 0, Varianten 2, gestörte Starts 0
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Kand  Gr    Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+  #0     0        0  penalty          0.6075  0.100   0  -        max_iterations       500  2.423228e-05  2.397458e-05  0.00603   7.007e-08   4  ok: Gewichte der einseitigen Bedingungen ×0.01
+  #0     1        1  penalty          0.6075  0.100   0  -        max_iterations       500  2.568031e-05  2.317335e-05  0.00592   6.556e-08   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+  #0     2        2  penalty          0.6075  0.100   0  -        max_iterations       500  4.738902e-05  2.238278e-05  0.00581   6.262e-08   4  ok: Gewichte der einseitigen Bedingungen ×1
+  #0     3        3  aperture         0.6275  0.100   0  0.02000  max_iterations       500  5.759421e-05  3.258822e-05  0.00677   6.655e-08   4  keep (Delta 0.02000)
+  #0     4        4  aperture         0.6475  0.100   0  0.02000  max_iterations       500  7.423936e-05  4.923535e-05  0.00810   7.482e-08   4  keep (Delta 0.02000)
+  #0     5        5  aperture         0.6675  0.100   0  0.02000  converged_step        49  1.527740e-04  1.276778e-04  0.01193   2.864e-07   4  grow (Delta 0.04000)
+  #0     6        6  aperture         0.7075  0.100   0  0.04000  max_iterations       500  4.850711e-04  4.592037e-04  0.02756   5.417e-07   4  keep (Delta 0.04000)
+  #0     7        7  aperture         0.7475  0.100   0  0.04000  max_iterations       500  4.555437e-02  4.388588e-02  0.27890   5.713e-05   4  shrink (Delta 0.02000)
+  #0     8        8  aperture         0.7275  0.100   0  0.02000  max_iterations       500  5.456600e-04  5.192204e-04  0.02897   6.616e-07   4  keep (Delta 0.02000)
+  #0     9        9  aperture         0.7475  0.100   0  0.02000  converged_step        76  4.208784e-04  3.952515e-04  0.02329   4.535e-07   4  keep (Delta 0.02000)
+  #0    10       10  aperture         0.7675  0.100   0  0.02000  max_iterations       500  7.717205e-04  7.434948e-04  0.03576   8.262e-07   4  keep (Delta 0.02000)
+  #0    11       11  aperture         0.7875  0.100   0  0.02000  converged_step        48  1.999102e-03  1.951132e-03  0.06227   2.006e-06   4  grow (Delta 0.04000)
+  #0    12       12  aperture         0.8275  0.100   0  0.04000  max_iterations       500  5.979913e-04  5.729211e-04  0.02830   1.683e-06   4  keep (Delta 0.04000)
+  #0    13       13  aperture         0.8675  0.100   0  0.04000  converged_step       497  9.025774e-04  8.754363e-04  0.03774   1.366e-06   4  keep (Delta 0.04000)
+  #0    14       14  aperture         0.9075  0.100   0  0.04000  converged_step       483  9.844204e-03  9.084305e-03  0.12417   8.852e-06   4  shrink (Delta 0.02000)
+  #0    15       15  aperture         0.8875  0.100   0  0.02000  max_iterations       500  1.575443e-03  1.539883e-03  0.05150   2.091e-06   4  keep (Delta 0.02000)
+  #0    16       16  aperture         0.9075  0.100   0  0.02000  converged_step       144  9.645079e-03  8.922316e-03  0.12312   8.705e-06   4  shrink (Delta 0.01000)
+  #0    17       17  aperture         0.8975  0.100   0  0.01000  converged_step        43  3.530664e-03  3.364013e-03  0.07578   4.159e-06   4  grow (Delta 0.02000)
+  #0    18       18  aperture         0.9175  0.100   0  0.02000  converged_step       289  2.183571e-02  1.965138e-02  0.17871   1.721e-05   4  shrink (Delta 0.01000)
+  #0    19       19  aperture         0.9075  0.100   0  0.01000  converged_step       417  1.075022e-02  9.905637e-03  0.12948   9.513e-06   4  shrink (Delta 0.00500)
+  #0    20       20  aperture         0.9025  0.100   0  0.00500  max_iterations       500  8.340211e-03  7.749445e-03  0.11479   7.984e-06   4  shrink (Delta 0.00250)
+  #0    21       21  aperture         0.9000  0.100   0  0.00250  max_iterations       500  6.104092e-03  5.538210e-03  0.09567   7.889e-06   4  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.8975: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00553821); keine Geisterplatte aktiv (kein Bedarf))
+Strahlsuche: B = 2, Seed 0, 1 Kandidaten, 0 Einfügungen, 22 Optimierungen in 22 Aufrufen
+Ergebnis: Kandidat #0, Strahl am Ende: #0
+Endpunkt: NA 0.8975, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 4 -> 4, F_max = 5.102041e-03 Wellen^2
+
+Stammbaum (Kandidat, Herkunft @ Punkt der Entstehung: letzte Merit @ Punkt, Elemente, Optimierungen [Status]):
+#0 start @ NA 0.6075, Feld 0.100, Sp 0: F 3.5307e-03, F_B 3.3640e-03 @ NA 0.8975, Feld 0.100, Sp 0, El 4, 22 Opt. [behalten: Apertur 0.8975: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00553821); keine Geisterplatte aktiv (kein Bedarf); Ergebnis]
+
+  Laufzeit [s]                                51.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t6\a1_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6\a1_r2_log.json

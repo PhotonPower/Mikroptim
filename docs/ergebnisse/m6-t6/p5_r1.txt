@@ -1,0 +1,33 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6\p5_r0_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5700, Feldanteil 1.000, 18 Glaselement(e)
+  Ziel                                        NA 0.5700, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5700  1.000   0  -        max_iterations       500  3.671925e-01  3.660478e-01  0.63098   9.792e-04  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5700  1.000   0  -        converged_step        35  3.680108e-01  3.676610e-01  0.63130   9.830e-04  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5700  1.000   0  -        converged_step        66  3.682811e-01  3.678970e-01  0.63200   9.838e-04  18  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.5700  1.000   0  -        -                      -  -             -             -         -            18  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -2.38773e-05/mm, Glas CAF2 (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      4  insertion_stage  0.5700  1.000   0  -        max_iterations       500  1.146515e+00  1.144130e+00  0.89733   3.967e-04  18  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.5700  1.000   0  -        converged_step        49  1.145571e+00  1.143253e+00  0.89748   3.951e-04  18  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.5700  1.000   0  -        converged_step        46  1.145349e+00  1.143051e+00  0.90128   3.940e-04  18  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.5700  1.000   0  -        converged_step        39  1.144145e+00  1.141846e+00  0.90480   3.916e-04  18  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.5700  1.000   0  -        converged_step        80  1.143549e+00  1.141243e+00  0.91045   3.897e-04  18  ok, Zweig 0, Stufe 0.5
+      9  insertion_stage  0.5700  1.000   0  -        max_iterations       500  1.144960e+00  1.142617e+00  0.88764   3.963e-04  18  ok, Zweig 1, Stufe 0.03125
+     10  insertion_stage  0.5700  1.000   0  -        converged_step        40  1.144629e+00  1.142324e+00  0.88826   3.958e-04  18  ok, Zweig 1, Stufe 0.0625
+     11  insertion_stage  0.5700  1.000   0  -        converged_step        38  1.143840e+00  1.141576e+00  0.89128   3.941e-04  18  ok, Zweig 1, Stufe 0.125
+     12  insertion_stage  0.5700  1.000   0  -        converged_step        39  1.142460e+00  1.140143e+00  0.89778   3.913e-04  18  ok, Zweig 1, Stufe 0.25
+     13  insertion_stage  0.5700  1.000   0  -        converged_step       124  1.142261e+00  1.139982e+00  0.90872   3.896e-04  18  ok, Zweig 1, Stufe 0.5
+     14  penalty          0.5700  1.000   0  -        converged_step       102  1.133493e+00  1.127630e+00  0.91055   3.844e-04  19  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     15  penalty          0.5700  1.000   0  -        max_iterations       500  1.136878e+00  1.132783e+00  0.91261   3.857e-04  19  ok: Gewichte der einseitigen Bedingungen ×0.1
+     16  penalty          0.5700  1.000   0  -        converged_step       124  1.137294e+00  1.134953e+00  0.91907   3.848e-04  19  ok: Gewichte der einseitigen Bedingungen ×1
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 1.13495 > F_max = 0.00510204); Bedarf (Operator A), aber höchste Elementzahl 19 erreicht)
+Endpunkt: NA 0.5700, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5700)
+Glaselemente: 18 -> 19 (1 Einfügungen), Optimierungen: 16, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                29.4
+Ergebnis geschrieben: docs\ergebnisse\m6-t6\p5_r1.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6\p5_r1_log.json

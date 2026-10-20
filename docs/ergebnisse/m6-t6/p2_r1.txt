@@ -1,0 +1,27 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6\p2_r0_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 0.225, 4 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  0.225   0  -        max_iterations       500  2.502980e-04  2.491768e-04  0.02072   4.186e-07   4  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  0.225   0  -        converged_step        60  2.525389e-04  2.492427e-04  0.02071   4.095e-07   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  0.225   0  -        converged_step       145  2.749424e-04  2.492116e-04  0.02070   3.994e-07   4  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.5000  0.350   0  0.12500  max_iterations       500  1.364798e-03  1.329038e-03  0.04929   1.854e-06   4  keep (Delta 0.12500)
+      4  field            0.5000  0.475   0  0.12500  max_iterations       500  5.328894e-03  5.231789e-03  0.09458   5.909e-06   4  shrink (Delta 0.06250)
+      5  field            0.5000  0.412   0  0.06250  max_iterations       500  2.792525e-03  2.735635e-03  0.06981   3.559e-06   4  keep (Delta 0.06250)
+      6  field            0.5000  0.475   0  0.06250  max_iterations       500  4.557125e-03  4.411213e-03  0.08784   6.400e-06   4  keep (Delta 0.06250)
+      7  field            0.5000  0.537   0  0.06250  max_iterations       500  7.896040e-03  7.613573e-03  0.11296   1.047e-05   4  shrink (Delta 0.03125)
+      8  field            0.5000  0.506   0  0.03125  max_iterations       500  5.979398e-03  5.772134e-03  0.09946   8.137e-06   4  shrink (Delta 0.01562)
+      9  field            0.5000  0.491   0  0.01562  max_iterations       500  5.218901e-03  5.045473e-03  0.09346   7.177e-06   4  keep (Delta 0.01562)
+     10  field            0.5000  0.506   0  0.01562  max_iterations       500  5.741738e-03  5.525932e-03  0.09728   8.109e-06   4  stop (Delta 0.00781): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Feldanteil 0.490625: Schrittweite unter Δ_min = 0.015625 (letzter Versuch F_B = 0.00552593); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5000, Feldanteil 0.491, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 4 -> 4 (0 Einfügungen), Optimierungen: 11, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                19.2
+Ergebnis geschrieben: docs\ergebnisse\m6-t6\p2_r1.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6\p2_r1_log.json
