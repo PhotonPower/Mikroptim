@@ -5,6 +5,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionier
 ## [Unreleased]
 
 ### Hinzugefügt
+- Entwürfe (nur Dokumentation, kein Code): M10 Steuerung der Synthese durch ein lokales Sprachmodell (`docs/sprachmodell-steuerung.md`, JSON-Schemas `mikroptim.agent.state/1` und `mikroptim.agent.action/1` unter `data/agent/schemas/`) und M11 Erweiterungen des Optimierers (`docs/optimierung-erweiterungen.md`: glattes Maximum, Augmented Lagrangian, Homotopie-Prädiktor, Sinusbedingung, algebraische Glasvorauswahl, toleranzbewusste Optimierung, memetische Suche, Netz der Minima); Einträge im Meilensteinplan als Vorschlag.
 - M0: Projektgerüst mit CMake (CPU und optional CUDA), CI, Mathe-Kern für Transfer, Sphärenschnitt und Brechung, analytische Tests, CUDA-Smoke-Test, Dokumentation, ADRs und Meilensteinplan für Agenten.
 - M1-T1: Datenmodell `mko::SystemDescription` und Bibliothek `Mikroptim::model`; Einlesen, Validieren (Fehler mit JSON-Pfad) und verlustfreies Schreiben von `mikroptim.system/1` mit nlohmann/json 3.12.0.
 - M1-T2: Glaskatalog `mikroptim.glass/1` (Bibliothek `Mikroptim::glass`, nlohmann/json 3.12.0), Sellmeier- und Buchdahl-Formeln header-only für CPU und GPU, Brechzahltabelle n[Fläche][Wellenlänge] für die Materialien `AIR`, Katalogname, `constant` und `buchdahl`.

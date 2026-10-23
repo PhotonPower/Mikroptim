@@ -17,6 +17,9 @@ flowchart LR
     M4 --> M8[M8 Auswertung, Tolerierung]
     M6 --> M9[M9 Python, Raytatouille-Adapter]
     M8 --> M9
+    M6 --> M11[M11 Erweiterungen des Optimierers, Vorschlag]
+    M9 --> M10[M10 Steuerung durch Sprachmodell, Vorschlag]
+    M11 --> M10
 ```
 
 M7 kann ab M2 parallel laufen, wird aber erst gebraucht, wenn die Laufzeiten der Synthese stören. Die P100 deckt FP64 bis dahin ab.
@@ -312,6 +315,93 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 ### M9-T2 – Adapter Raytatouille
 - **Inhalt:** Konvertierung `*.rtt.json` ↔ `mikroptim.system/1` für den unterstützten Teilumfang (sequenziell, koaxial, sphärisch).
 - **Abnahme:** Roundtrip für Testsysteme; nicht abbildbare Elemente werden klar gemeldet.
+
+---
+
+## M10 – Steuerung der Synthese durch ein lokales Sprachmodell (Vorschlag)
+
+Entwurf, noch nicht freigegeben. Beschreibung, Schnittstellen und Fragen an den Maintainer: [sprachmodell-steuerung.md](../sprachmodell-steuerung.md); Schemas unter `data/agent/schemas/`. Vor Beginn ist eine ADR nötig (Vorschlag ADR-0012).
+
+### M10-T1 – Aberrationsbericht pro Fläche
+- **Abhängig von:** M4
+- **Inhalt:** paraxiale Rand- und Hauptstrahldaten, Seidel-Beiträge und Wellenfrontkoeffizienten, sphärische Aberration aller Ordnungen nach Delano und Zonenfehler, Sphärochromasie 3. Ordnung, OSC; C++ mit Python-Binding, `mikroptim trace --aberrations`.
+- **Abnahme:** Summe der Flächenbeiträge gegen den getracten Randstrahl; Σ S_I gegen W₀₄₀ bei NA ≤ 0,05 (< 1 %); Sphärochromasie gegen die Differenz der Vollordnungs-Summen zweier Wellenlängen.
+
+### M10-T2 – Gruppen, Kennzahlen, Klassen
+- **Abhängig von:** M10-T1
+- **Inhalt:** Gruppenzuordnung, Gruppenbilanzen, Retrofokusfaktor, κ, Etendue und Zone, Farb- und Feldklasse (sprachmodell-steuerung.md, Abschnitt 3.3).
+- **Abnahme:** frei erfundene Testsysteme mit bekannter Antwort.
+
+### M10-T3 – Empfindlichkeiten und Herstellbarkeit
+- **Abhängig von:** M8-T3
+- **Inhalt:** Dezentrier- und Kippempfindlichkeit pro Element, Empfindlichkeit aus der Jacobi-Matrix, einfache Herstellbarkeitsprüfungen.
+- **Abnahme:** gegen Einzelrechnungen mit ADR-0011 bzw. FD.
+
+### M10-T4 – Executor und neue Operatoren
+- **Abhängig von:** M10-T2, M6-T4
+- **Inhalt:** Aktionsschema, Prüfung der Vorbedingungen, `insert_module`, `remove_element`, `replace_glass`, `replace_group`, `start_from_skeleton`, `place_ghost_dictionary`.
+- **Abnahme:** Merit-Invarianz von `place_ghost_dictionary`; aplanatische Vorlage ändert die Gruppensumme der sphärischen Aberration beim Einfügen um < 10⁻³; `remove_element` nach `insert_null_meniscus` ergibt das Ausgangssystem.
+
+### M10-T5 – Wissensbasis und Glasabfrage
+- **Abhängig von:** M10-T4, M11-T5
+- **Inhalt:** Linsenmodule, Brechkraftverteilungen und Glasregeln als JSON in eigenen Worten mit Quellenangabe; `glass_query`.
+- **Abnahme:** Filter gegen Bruteforce auf den Testkatalogen; jede Regel mit Quelle.
+
+### M10-T6 – Strategie-Schleife, Modelladapter, Wiedereinspielen
+- **Abhängig von:** M10-T4, M9-T1
+- **Inhalt:** Python-Paket `mikroptim.agent`, Anbindung an einen lokalen Modellserver mit schema-beschränkter Ausgabe, Protokoll `mikroptim.agent.log/1`, Wiedereinspielen.
+- **Abnahme:** Wiedereinspielen ergibt denselben Kandidatenbaum bis aufs Bit; ungültige Modellausgaben werden abgefangen.
+
+### M10-T7 – Bewertung
+- **Abhängig von:** M10-T6
+- **Inhalt:** Benchmarks B1–B3 (und lokal B4) gegen V0–V3, insbesondere gegen die regelbasierte Strategie ohne Modell.
+- **Abnahme:** Bericht unter `docs/ergebnisse/`.
+
+---
+
+## M11 – Erweiterungen des Optimierers (Vorschlag)
+
+Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung-erweiterungen.md](../optimierung-erweiterungen.md). Empfohlene Reihenfolge: T1, T2, T3, dann T4, T5, dann T6, zuletzt T7, T8.
+
+### M11-T1 – Glattes Maximum für Strahlhöhen und Einfallswinkel
+- **Abhängig von:** M4-T3
+- **Inhalt:** Log-Sum-Exp-Reduktion pro Fläche neben dem harten Maximum, β als Homotopie-Parameter; ADR zur Reduktion mit exp/log.
+- **Abnahme:** Grenzwert für β → ∞, Gradient über Trägerwechsel, Konvergenz der Abnahmesysteme von M4-T3 und M6-T3 ohne `max_iterations`.
+
+### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
+- **Abhängig von:** M6-T3
+- **Inhalt:** Verschiebung θ pro einseitigem Residuum, Fortschreibung nach jedem LM-Lauf, Option im Homotopie-Controller.
+- **Abnahme:** Petzval- und Mechanik-Abnahme mit festem, moderatem Gewicht unter den heutigen Toleranzen, nicht mehr LM-Zyklen.
+
+### M11-T3 – Tangentenprädiktor in der Homotopie
+- **Abhängig von:** M6-T3
+- **Inhalt:** dx/dp aus JᵀJ und einer FD-Spalte über p, Sicherung über gemeinsame Merit-Auswertung.
+- **Abnahme:** Abnahme von M6-T3 mit gleichem Ergebnis und mindestens 30 % weniger LM-Zyklen; deterministisch.
+
+### M11-T4 – Sinusbedingung als Residuum
+- **Abhängig von:** M4-T3
+- **Inhalt:** OSC aus Zonenstrahlen des Achsbündels als trace-abhängiges Zusatzresiduum.
+- **Abnahme:** OSC = 0 für aplanatische Orakel; M6-T6-Versuch „Apertur zuerst“ mit deutlich kleinerem RMS bei 7 % und 10 % Feld.
+
+### M11-T5 – Algebraische Glasvorauswahl
+- **Abhängig von:** M6-T2
+- **Inhalt:** Bewertung von Glaspaaren und -tripeln über Buchdahl-Koeffizienten und Randstrahlhöhen, Anbindung an Operator B.
+- **Abnahme:** Zwei Gläser entsprechen dem dünnen Achromat; konstruiertes Tripel gefunden; bester Vorschlag unter den besten fünf nach Raytrace.
+
+### M11-T6 – Toleranzbewusste Optimierung
+- **Abhängig von:** M8-T3
+- **Inhalt:** erwartete Merit über feste Störungen als zusätzliche Varianten im Batch.
+- **Abnahme:** wählt von zwei nominal gleichwertigen Lösungen die unempfindlichere.
+
+### M11-T7 – Memetische globale Suche
+- **Abhängig von:** M7-T2
+- **Inhalt:** CMA-ES über normierte Variablen, kurzer gebündelter LM pro Individuum, Vorfilter.
+- **Abnahme:** kleinere beste Merit als `perturbed_starts` bei gleicher Zahl von LM-Zyklen.
+
+### M11-T8 – Netz der Minima, Escape-Funktion (Forschung)
+- **Abhängig von:** M5-T3
+- **Inhalt:** Sattelsuche mit der Dimer-Methode in fester Topologie, Abstieg in beide Richtungen als neue Kandidaten; Escape-Funktion als Alternative.
+- **Abnahme:** Zweilinser mit zwei bekannten Minima; Bericht an M6-T6-Zwischenständen.
 
 ---
 
