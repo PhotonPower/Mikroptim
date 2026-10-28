@@ -57,6 +57,9 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
+    double extrema_beta = 0.0; // M11-T1b
+    int extrema_stages = HomotopyOptions{}.extrema_stages;
+    double extrema_factor = HomotopyOptions{}.extrema_factor;
     int max_elements = HomotopyOptions{}.max_elements;
     int max_steps = HomotopyOptions{}.max_steps;
     int max_iterations = kDefaultMaxIterations;
@@ -134,6 +137,18 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--extrema-beta") {
+            a.extrema_beta = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--extrema-stages") {
+            a.extrema_stages = parse_int(arg, next_value(args, i, arg));
+            if (a.extrema_stages < 0) {
+                throw UsageError("--extrema-stages muss >= 0 sein");
+            }
+        } else if (arg == "--extrema-factor") {
+            a.extrema_factor = positive(arg, next_value(args, i, arg));
+            if (!(a.extrema_factor > 1.0)) {
+                throw UsageError("--extrema-factor muss > 1 sein");
+            }
         } else if (arg == "--max-elements") {
             a.max_elements = parse_int(arg, next_value(args, i, arg));
             if (a.max_elements < 0) {
@@ -261,6 +276,10 @@ void print_synth_usage(std::ostream& out) {
            "  --target-field F          Feldanteil am Ende (Standard: wie der Start)\n"
            "  --rms-target W            Beugungsziel [Wellen] pro Feld und Wellenlänge (1/14)\n"
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
+           "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
+           "Standard);\n"
+           "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
+           "                            --extrema-factor (10), danach hart (nur CPU)\n"
            "  --step D0,DMIN,DMAX       Schrittweite der Apertur (Standard 0.02,0.002,0.1)\n"
            "  --max-elements N          höchstens N Glaselemente (Standard 6)\n"
            "  --max-steps N             höchstens N Optimierungen (Standard 400)\n"
@@ -380,6 +399,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.target_field = a.target_field.value_or(-1.0);
         h.target_rms = a.rms_target;
         h.merit_factor = a.merit_factor;
+        h.extrema_beta = a.extrema_beta;
+        h.extrema_stages = a.extrema_stages;
+        h.extrema_factor = a.extrema_factor;
         h.max_elements = a.max_elements;
         h.max_steps = a.max_steps;
         h.aperture_step.initial = a.step.initial;

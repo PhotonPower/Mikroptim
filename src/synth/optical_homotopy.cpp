@@ -285,7 +285,7 @@ SystemDescription OpticalHomotopyModel::realize(const SystemDescription& system,
                                                 const HomotopyPoint& p, bool margins) const {
     if (!(p.aperture > 0.0) || !std::isfinite(p.aperture) || !(p.field >= 0.0) ||
         !std::isfinite(p.field) || !(p.ghost_weight > 0.0) || !(p.ghost_smoothing > 0.0) ||
-        !(p.penalty_scale > 0.0)) {
+        !(p.penalty_scale > 0.0) || !(p.extrema_beta >= 0.0) || !std::isfinite(p.extrema_beta)) {
         invalid("ungültiger Homotopie-Punkt");
     }
     SystemDescription d = system;
@@ -313,6 +313,10 @@ SystemDescription OpticalHomotopyModel::realize(const SystemDescription& system,
             invalid("Spektrumstufe " + std::to_string(p.spectrum) + " außerhalb der Liste");
         }
         d.spectrum = options_.spectra[static_cast<std::size_t>(p.spectrum)];
+    }
+    if (d.constraints && p.extrema_beta > 0.0) {
+        // β-Fortsetzung der Strahl-Extrema (M11-T1b); bei β = 0 gilt die Angabe der Datei
+        d.constraints->extrema_smoothing = ExtremaSmoothingSpec{p.extrema_beta, p.extrema_beta};
     }
     if (d.constraints) {
         for (ConstraintSpec& c : d.constraints->items) {

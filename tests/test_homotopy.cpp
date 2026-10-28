@@ -204,6 +204,41 @@ TEST(HomotopyControl, PenaltySmoothingAndGhostWeightContinuation) {
     EXPECT_TRUE(r.goal.reached);
 }
 
+// β-Fortsetzung der Strahl-Extrema (M11-T1b): Start mit β, am Ende β · 10, β · 100, dann hart,
+// vor der ε-Fortsetzung; ohne extrema_beta keine solchen Schritte.
+TEST(HomotopyControl, ExtremaSmoothingContinuation) {
+    MockModel m{MockSpec{}};
+    HomotopyOptions o = mock_options(0.32);
+    o.extrema_beta = 300.0;
+    o.extrema_stages = 2;
+    o.extrema_factor = 10.0;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_DOUBLE_EQ(m.calls.front().point.extrema_beta, 300.0);
+    const std::vector<const HomotopyStep*> e = steps_of(r, HomotopyStepKind::ExtremaSmoothing);
+    ASSERT_EQ(e.size(), 3U);
+    EXPECT_DOUBLE_EQ(e[0]->point.extrema_beta, 3000.0);
+    EXPECT_DOUBLE_EQ(e[1]->point.extrema_beta, 30000.0);
+    EXPECT_EQ(e[2]->point.extrema_beta, 0.0);
+    EXPECT_EQ(r.point.extrema_beta, 0.0);
+    const auto first_smoothing =
+        std::find_if(r.steps.begin(), r.steps.end(),
+                     [](const HomotopyStep& s) { return s.kind == HomotopyStepKind::Smoothing; });
+    const auto last_extrema =
+        std::find_if(r.steps.rbegin(), r.steps.rend(), [](const HomotopyStep& s) {
+            return s.kind == HomotopyStepKind::ExtremaSmoothing;
+        });
+    EXPECT_LT(&*last_extrema, &*first_smoothing);
+    // ohne β: keine Schritte, Punkt hart
+    MockModel m2{MockSpec{}};
+    const HomotopyResult r2 =
+        run_homotopy(m2, MockModel::start(0.3), mock_point(0.3), mock_options(0.32));
+    EXPECT_TRUE(steps_of(r2, HomotopyStepKind::ExtremaSmoothing).empty());
+    HomotopyOptions bad = mock_options(0.32);
+    bad.extrema_factor = 1.0;
+    EXPECT_THROW(check_homotopy_options(bad), std::invalid_argument);
+}
+
 // Ziel am Endpunkt verfehlt: μ-Fortsetzung, danach Einfügen am Zustand vor dem Abschluss und
 // erneuter Abschluss; ohne weitere Elemente Abbruch.
 TEST(HomotopyControl, GoalMissedInsertsAtEndThenStops) {
@@ -399,6 +434,19 @@ TEST(OpticalHomotopy, RealizeAppliesPointAndMargins) {
     EXPECT_THROW(m.realize(m.start_system(), HomotopyPoint{}), std::invalid_argument);
     p.spectrum = 2;
     EXPECT_THROW(m.realize(m.start_system(), p), std::invalid_argument);
+}
+
+TEST(OpticalHomotopy, RealizeSetsExtremaSmoothing) {
+    const LoadedSystem start = load_residual_system("zweilinser_mechanik.json");
+    OpticalHomotopyModel m(start, OpticalHomotopyOptions{});
+    HomotopyPoint p = m.start_point();
+    EXPECT_FALSE(m.realize(m.start_system(), p).constraints->extrema_smoothing.has_value());
+    p.extrema_beta = 2500.0;
+    const SystemDescription d = m.realize(m.start_system(), p);
+    ASSERT_TRUE(d.constraints->extrema_smoothing.has_value());
+    EXPECT_EQ(*d.constraints->extrema_smoothing, (ExtremaSmoothingSpec{2500.0, 2500.0}));
+    p.extrema_beta = -1.0;
+    EXPECT_THROW((void)m.realize(m.start_system(), p), std::invalid_argument);
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

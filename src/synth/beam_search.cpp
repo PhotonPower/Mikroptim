@@ -796,6 +796,16 @@ private:
     // Zustand vor dem Abschluss und erneut. Endet, sobald ein Kandidat das Ziel erreicht.
     void finish_phase() {
         for (;;) {
+            // β-Fortsetzung der Strahl-Extrema (M11-T1b), zuletzt hart
+            if (point.extrema_beta > 0.0) {
+                for (int j = 0; j <= h_.extrema_stages; ++j) {
+                    point.extrema_beta =
+                        j < h_.extrema_stages ? point.extrema_beta * h_.extrema_factor : 0.0;
+                    solve_beam(HomotopyStepKind::ExtremaSmoothing,
+                               point.extrema_beta > 0.0 ? "β = " + number(point.extrema_beta)
+                                                        : std::string("Extrema hart"));
+                }
+            }
             const std::vector<Cand> saved = beam;
             const HomotopyPoint saved_point = point;
             for (int j = 0; j < h_.smoothing_stages; ++j) {
@@ -937,6 +947,7 @@ Json point_json(const HomotopyPoint& p) {
                 {"spectrum", p.spectrum},
                 {"ghost_weight", num(p.ghost_weight)},
                 {"ghost_smoothing", num(p.ghost_smoothing)},
+                {"extrema_beta", num(p.extrema_beta)},
                 {"penalty_scale", num(p.penalty_scale)}};
 }
 
