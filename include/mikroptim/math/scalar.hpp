@@ -37,4 +37,18 @@ MKO_HD inline float mpow(float x, float y) {
     return ::powf(x, y);
 }
 
+// Exponentialfunktion und natürlicher Logarithmus (glattes Maximum, M11-T1), gleiches Schema.
+MKO_HD inline double mexp(double x) {
+    return ::exp(x);
+}
+MKO_HD inline float mexp(float x) {
+    return ::expf(x);
+}
+MKO_HD inline double mlog(double x) {
+    return ::log(x);
+}
+MKO_HD inline float mlog(float x) {
+    return ::logf(x);
+}
+
 } // namespace mko

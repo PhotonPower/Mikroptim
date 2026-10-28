@@ -19,6 +19,7 @@
 // dem Status Ok (SurfaceExtrema::add_ray).
 
 #include "mikroptim/config.hpp"
+#include "mikroptim/math/scalar.hpp"
 #include "mikroptim/math/vec3.hpp"
 #include "mikroptim/trace/ray.hpp"
 #include "mikroptim/trace/surface_table.hpp"
@@ -108,5 +109,46 @@ struct SurfaceExtrema {
         }
     }
 };
+
+// ---- Glattes Maximum (Log-Sum-Exp, M11-T1, ADR-0013) ---------------------------------------
+//
+// smax_β(x_1 … x_N) = m + ln(Σ_i e^{β(x_i − m)})/β mit m = max_i x_i; es gilt
+// max ≤ smax_β ≤ max + ln N/β (konservativ für obere Schranken). Fortschreibung pro Wert mit
+// verschobenem Exponenten (kein Überlauf): Akkumulator (m, sum), leer bei sum = 0.
+template <class R>
+MKO_HD inline void smooth_max_add(R& m, R& sum, R x, R beta) {
+    if (sum == R(0)) {
+        m = x;
+        sum = R(1);
+    } else if (x > m) {
+        sum = sum * mexp(beta * (m - x)) + R(1);
+        m = x;
+    } else {
+        sum += mexp(beta * (x - m));
+    }
+}
+
+// Zwei Akkumulatoren zusammenführen (Tranchen, Reduktionen).
+template <class R>
+MKO_HD inline void smooth_max_merge(R& m, R& sum, R m2, R sum2, R beta) {
+    if (sum2 == R(0)) {
+        return;
+    }
+    if (sum == R(0)) {
+        m = m2;
+        sum = sum2;
+    } else if (m2 > m) {
+        sum = sum * mexp(beta * (m - m2)) + sum2;
+        m = m2;
+    } else {
+        sum += sum2 * mexp(beta * (m2 - m));
+    }
+}
+
+// Wert des Akkumulators; `empty` bei sum = 0 (kein gültiger Strahl).
+template <class R>
+MKO_HD inline R smooth_max_value(R m, R sum, R beta, R empty) {
+    return sum == R(0) ? empty : m + mlog(sum) / beta;
+}
 
 } // namespace mko

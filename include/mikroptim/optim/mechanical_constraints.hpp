@@ -65,6 +65,8 @@ struct MechanicalConstraints {
     // In der Reihenfolge der Einträge, pro Eintrag die Flächen in der Reihenfolge von
     // constraint_surfaces.
     std::vector<MechanicalConstraint> items;
+    // Glättung der Extrema (constraints.extrema_smoothing, M11-T1)
+    ExtremaSmoothing smoothing{};
 
     int size() const { return static_cast<int>(items.size()); }
     bool empty() const { return items.empty(); }

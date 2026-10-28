@@ -744,7 +744,8 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
             std::copy(one.status.begin(), one.status.end(),
                       rays.status.begin() + static_cast<std::ptrdiff_t>(o));
             if (traced) {
-                const SurfaceExtremaResult e = surface_extrema_cpu(fd.batch, v, layout_);
+                const SurfaceExtremaResult e = surface_extrema_cpu(
+                    fd.batch, v, layout_, options_.jacobian.trace_extra.smoothing);
                 std::copy(e.values.begin(), e.values.end(),
                           extrema.values.begin() +
                               static_cast<std::ptrdiff_t>(extrema.index(v, 0)));
@@ -773,7 +774,7 @@ void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
     detail::parallel_for_variants(
         0, batch.variants(), lm_host_threads(options_.threads, ray_work, kLmRaySurfacesPerThread),
         [&](int v) {
-            const MeritResult m = merit_cpu(batch, v, layout_, traced.count > 0);
+            const MeritResult m = merit_cpu(batch, v, layout_, traced.count > 0, traced.smoothing);
             const auto vv = static_cast<std::size_t>(v);
             merit[vv] = extra.empty() ? m.merit[0] : m.merit[0] + extra[vv];
             if (traced.count > 0) {

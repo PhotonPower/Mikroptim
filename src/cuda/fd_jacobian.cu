@@ -212,6 +212,7 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
         throw std::invalid_argument("DeviceFdJacobian: negative Zahl von Zusatzresiduen");
     }
     check_trace_extra_residuals(options.trace_extra, "DeviceFdJacobian");
+    require_hard_extrema(options.trace_extra, "DeviceFdJacobian");
     // Zusatzresiduen [V · E] mit E = E_extra + E_trace; die trace-abhängigen (Spalten ab
     // E_extra) entstehen erst pro Tranche aus deren Extrema und sind bis dahin 0.
     const int V = fd.batch.variants();

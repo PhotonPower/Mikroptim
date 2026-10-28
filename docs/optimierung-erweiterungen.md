@@ -38,6 +38,10 @@ mit $\max_i h_i \le \widetilde{\max}_\beta \le \max_i h_i + \ln N/\beta$. Die Ü
 - β ist Homotopie-Parameter (Fortsetzung in β wie in ε, optimierung.md §7). Am Ende wird β so gewählt, dass ln N/β kleiner als der Vorhalt ist (Standard 5·10⁻⁵ mm). Der Vorhalt bleibt dann gültig.
 - β in Einheiten der Größe: 1/mm für Höhen, dimensionslos für cos I.
 
+**Stand M11-T1a (CPU):** umgesetzt als Option `constraints.extrema_smoothing` (Standard hart, [dateiformat.md](dateiformat.md#glättung-der-strahl-extrema-ab-m11-t1)). Gemeinsame Formeln `smooth_max_add`, `smooth_max_merge`, `smooth_max_value` (`surface_extrema.hpp`, `MKO_HD`, für den Kernel in M11-T1b), Reduktion in `surface_extrema_cpu` und `merit_cpu`, Glättung über `TraceExtraResiduals::smoothing` an LM, FD- und adjungierte Jacobi sowie Geisterdiagnose; die GPU-Pfade lehnen sie bis M11-T1b ab (`require_hard_extrema`). Die β-Fortsetzung im Homotopie-Controller folgt mit M11-T1b.
+
+**Befund am Zweilinser mit mechanischen Bedingungen** (`zweilinser_mechanik.json`, CLI `optimize`, CPU): Hart konvergiert er (`converged_step`, 483 Zyklen, F = 18,53). Mit festem β ab dem stark verletzten Start (F₀ = 2,3·10⁶) landet der LM in anderen Minima (β = 10³: F = 673, β = 10⁴: F = 3,2·10⁴; nachbewertet mit harten Extrema gleich, also kein Bias der Glättung, sondern ein anderer Weg); β = 10⁵ ist bitgleich zum harten Lauf. Ab dem harten Optimum als Fortsetzung in β (3·10³ → 10⁶) bleibt F bei 18,53 und jede Stufe konvergiert in 7–21 Zyklen. Folgerung: Die Glättung ist kein Ersatz für einen guten Start; sinnvoll ist sie als Fortsetzung (großes β am Ende, kleines nur nahe der Zulässigkeit). Ob sie das Kriechen aus F10 behebt, ist am System von M6-T3 mit der β-Fortsetzung des Controllers zu messen (M11-T1b, auf herkules3).
+
 **Abnahme.**
 - Grenzwert: Für β → ∞ stimmt der Wert mit dem harten Maximum überein (Toleranz ln N/β).
 - Glattheit: zentrale Differenzen über einen Trägerwechsel hinweg stimmen mit dem analytischen Gradienten der Glättung überein.

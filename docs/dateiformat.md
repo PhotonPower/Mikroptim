@@ -89,6 +89,21 @@ Beispiel `einzellinse_geisterplatte.json` (Platten bei 1,0 und 3,5 mm im 5-mm-Sp
 
 Die Abbildung liefert `mko::make_surface_map(system)` (`include/mikroptim/model/system.hpp`) als `SurfaceMap` mit `table_of_file`, `file_of_table` (−1 bei Geisterplatten), `ghost_of_table`, `table_of_ghost` und den Funktionen `file_surface(j)` und `table_surface(i)`, die zusätzlich die Referenzsphäre abbilden (j = S_Tabelle ↔ i = S_Datei). **Ausgaben mit Flächennummern beziehen sich auf Tabellenflächen**, insbesondere `failed_surface` in `CpuTraceResult`, `WavefrontMap` und der Batch-Trace; für Meldungen in Dateiflächen ist `file_surface` anzuwenden. `table_surface_count(system)` = Zahl der Tabellenflächen; zusammen höchstens `kMaxSurfaces` = 64. Die Paraxialoptik rechnet über dieselben Tabellenflächen. Optimierungsvariablen (M3-T1) beziehen sich auf Dateiflächen; die Dicke eines geteilten Luftspalts ist eine Variable mit dem Wert der Dateidicke (siehe [Variablen](#variablen-ab-m3-t1)).
 
+### Glättung der Strahl-Extrema (ab M11-T1)
+
+Im Abschnitt `constraints` optional:
+
+```json
+"constraints": { "items": [ … ], "extrema_smoothing": { "height_beta": 2000.0, "cos_beta": 500.0 } }
+```
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `height_beta` | number ≥ 0 | β [1/mm] des glatten Maximums der Strahlhöhe pro Fläche; 0 = hartes Maximum (Standard) |
+| `cos_beta` | number ≥ 0 | β [dimensionslos] des glatten Minimums von cos I pro Fläche; 0 = hart |
+
+Betrifft die trace-abhängigen mechanischen Bedingungen (`max_semi_diameter`, `min_edge_thickness` mit `height: "rays"`, `max_incidence_angle`). Log-Sum-Exp über die gültigen Strahlen, konservativ: Der geglättete Wert liegt um höchstens ln N/β über der größten Höhe bzw. unter dem kleinsten cos I (N Strahlen pro Variante). Formeln und Befunde: [optimierung-erweiterungen.md, Abschnitt 1](optimierung-erweiterungen.md#1-glattes-maximum-über-strahlen-m11-t1); ADR-0013. Bis M11-T1b nur auf der CPU; die GPU-Pfade lehnen gesetzte Werte ab.
+
 ### Variablen (ab M3-T1)
 
 Beispiel: [data/systems/einzellinse_bk7_variablen.json](../data/systems/einzellinse_bk7_variablen.json).

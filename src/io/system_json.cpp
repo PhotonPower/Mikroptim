@@ -539,7 +539,23 @@ private:
         for (std::size_t i = 0; i < items.size(); ++i) {
             cons.items.push_back(read_constraint(items[i], at(items_path, i)));
         }
-        warn_unknown(j, path, {"items"});
+        if (const Json* sm = member(j, "extrema_smoothing")) {
+            const std::string sp = join(path, "extrema_smoothing");
+            expect_object(*sm, sp);
+            ExtremaSmoothingSpec e;
+            for (const auto& [key, field] :
+                 {std::pair{"height_beta", &e.height_beta}, std::pair{"cos_beta", &e.cos_beta}}) {
+                if (const Json* v = member(*sm, key)) {
+                    *field = as_number(*v, join(sp, key));
+                    if (!std::isfinite(*field) || *field < 0.0) {
+                        fail(join(sp, key), "endliche Zahl >= 0 erwartet");
+                    }
+                }
+            }
+            warn_unknown(*sm, sp, {"height_beta", "cos_beta"});
+            cons.extrema_smoothing = e;
+        }
+        warn_unknown(j, path, {"items", "extrema_smoothing"});
         return cons;
     }
 
@@ -777,6 +793,10 @@ Json constraints_to_json(const Constraints& cons) {
     }
     Json root;
     root["items"] = std::move(items);
+    if (cons.extrema_smoothing) {
+        root["extrema_smoothing"] = Json{{"height_beta", cons.extrema_smoothing->height_beta},
+                                         {"cos_beta", cons.extrema_smoothing->cos_beta}};
+    }
     return root;
 }
 

@@ -187,9 +187,10 @@ FdJacobian fd_jacobian_cpu(const VariableSet& set, const SystemBatchHost& base,
     const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, options.scheme);
     const ResidualResult rays = residuals_cpu(fd.batch, layout);
     // Extrema jeder FD-Variante aus ihrem eigenen Trace (nur für trace-abhängige Residuen)
-    const SurfaceExtremaResult extrema = options.trace_extra.count > 0
-                                             ? surface_extrema_cpu(fd.batch, layout)
-                                             : SurfaceExtremaResult{};
+    const SurfaceExtremaResult extrema =
+        options.trace_extra.count > 0
+            ? surface_extrema_cpu(fd.batch, layout, options.trace_extra.smoothing)
+            : SurfaceExtremaResult{};
     const std::vector<double> extra = fd_extra_residuals(options, fd.batch, extrema);
     FdJacobian out;
     fd_jacobian_from_residuals(fd, rays, extra, options.extra_count(), out);

@@ -407,6 +407,7 @@ void DeviceAdjointJacobian::compute(TraceEngine& engine, const VariableSet& set,
         throw std::invalid_argument("DeviceAdjointJacobian: Zusatzresiduen ungültig");
     }
     check_trace_extra_residuals(options.trace_extra, "DeviceAdjointJacobian");
+    require_hard_extrema(options.trace_extra, "DeviceAdjointJacobian");
     const auto t_prepared = std::chrono::steady_clock::now();
 
     // ---- Gerät: Puffer und Batch vor dem Lauf der Engine anlegen (sie sieht sie als belegt,

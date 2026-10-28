@@ -431,4 +431,8 @@ inline constexpr double kFullOrderSmallAperture = 1e-3;
 // OSC gegen −S_II/(2H) bei a = 0,02 a_Datei, relativ (Rest ∝ NA²).
 inline constexpr double kOscThirdOrder = 1e-2;
 
+// M11-T1a: Log-Sum-Exp-Akkumulator gegen die direkte Formel in long double, relativ zu
+// (1 + |Wert|) (Rundung von exp/log und der Fortschreibung).
+inline constexpr double kSmoothMaxFormula = 1e-13;
+
 } // namespace mko::test

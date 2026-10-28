@@ -384,12 +384,18 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ## M11 – Erweiterungen des Optimierers (Vorschlag)
 
-Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung-erweiterungen.md](../optimierung-erweiterungen.md). Empfohlene Reihenfolge: T1, T2, T3, dann T4, T5, dann T6, zuletzt T7, T8.
+Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung-erweiterungen.md](../optimierung-erweiterungen.md). Empfohlene Reihenfolge: T1a, T1b, T2, T3, dann T4, T5, dann T6, zuletzt T7, T8.
 
-### M11-T1 – Glattes Maximum für Strahlhöhen und Einfallswinkel
+### M11-T1a – Glattes Maximum: Formeln und CPU
 - **Abhängig von:** M4-T3
-- **Inhalt:** Log-Sum-Exp-Reduktion pro Fläche im Kernel neben dem harten Maximum, β als Homotopie-Parameter ([ADR-0013](../adr/0013-glattes-maximum-und-mehrere-gpus.md), Variante A).
-- **Abnahme:** Grenzwert für β → ∞, Gradient über Trägerwechsel, Konvergenz der Abnahmesysteme von M4-T3 und M6-T3 ohne `max_iterations`; CPU/GPU und mehrere GPUs innerhalb der neuen Toleranz `kSmoothMaxCpuGpuRelative`.
+- **Inhalt:** Log-Sum-Exp-Akkumulator (`MKO_HD`), Reduktion auf der CPU, Dateiformat `constraints.extrema_smoothing`, Durchreichen an LM, Jacobi und Merit; GPU-Pfade lehnen die Glättung ab.
+- **Abnahme:** Formel gegen direkte Rechnung, Schranken max ≤ smax ≤ max + ln N/β, Grenzwert β → ∞, Dateiformat, mechanische Bedingungen; Befund am Zweilinser dokumentiert.
+- **Stand:** umgesetzt.
+
+### M11-T1b – Glattes Maximum: Kernel und β-Fortsetzung
+- **Abhängig von:** M11-T1a
+- **Inhalt:** Akkumulator (m, Σ) pro Fläche in Beobachter, Warp-/Block-Reduktion (`wavefront_block.hpp`) und Zusammenführen der Tranchen; β als Homotopie-Parameter im Controller ([ADR-0013](../adr/0013-glattes-maximum-und-mehrere-gpus.md), Variante A).
+- **Abnahme:** CPU gegen GPU innerhalb `kSmoothMaxCpuGpuRelative`; Abnahmesystem von M6-T3 mit β-Fortsetzung gegen den harten Lauf (Zyklen, Status) auf herkules3.
 
 ### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
 - **Abhängig von:** M6-T3
