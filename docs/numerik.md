@@ -702,7 +702,9 @@ Die effektive Brennweite ist 1/φ und nicht −y₀/u′_L, damit sie auch bei e
 
 ## 10. Glasmodelle
 
-**Sellmeier** (λ in µm): n² = 1 + Σ_i B_i λ² / (λ² − C_i). Basis für Katalogdaten.
+**Sellmeier** (λ in µm): n² = 1 + A + Σ_{i=1}^{k} B_i λ² / (λ² − C_i), k ≤ 8, A optional (ab M9-T4, ADR-0014; bis dahin k = 3, A = 0). Basis für Katalogdaten. Mit k = 3 und A = 0 ist `sellmeier_index_n` bitgleich zu `sellmeier_index` (gleiche Operationen, 1 + 0 = 1 exakt; Test `GlassModels.ThreeTermSellmeierBitIdenticalToLegacyFormula`).
+
+**Polynom** (ab M9-T4, ADR-0014): n² = Σ_j a_j λ^{p_j} (Schott-Formel, erweiterte Formeln des AGF-Formats, Polynomformel von refractiveindex.info). Ganzzahlige Exponenten mit wiederholter Multiplikation (`int_power`), andere mit `pow` (`mpow`).
 
 **Buchdahl** (für kontinuierliche Glasvariablen): λ₀ = 0,546074 µm, δλ = λ − λ₀,
 

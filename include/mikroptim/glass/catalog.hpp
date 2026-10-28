@@ -19,11 +19,27 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-// Ein Katalogglas mit Sellmeier-Koeffizienten (lambda in µm, C in µm^2).
+// Dispersionsmodell eines Katalogglases (docs/dateiformat.md, Glasdaten; ADR-0014).
+enum class GlassModel {
+    Sellmeier,  // n^2 = 1 + A + sum B_i lambda^2 / (lambda^2 - C_i)
+    Polynomial, // n^2 = sum a_j lambda^{p_j}
+};
+
+// Höchstzahlen der Terme (Dateiformat; die Kataloge brauchen höchstens 5 bzw. 9).
+inline constexpr std::size_t kMaxSellmeierTerms = 8;
+inline constexpr std::size_t kMaxPolynomialTerms = 12;
+
+// Ein Katalogglas (lambda in µm, C in µm^2).
 struct Glass {
     std::string name;
-    std::array<double, 3> B{0.0, 0.0, 0.0};
-    std::array<double, 3> C{0.0, 0.0, 0.0};
+    GlassModel model = GlassModel::Sellmeier;
+    // Sellmeier: Konstante A (Standard 0) und 1 … kMaxSellmeierTerms Terme (B, C gleich lang)
+    double A = 0.0;
+    std::vector<double> B;
+    std::vector<double> C;
+    // Polynom: Koeffizienten a_j und Exponenten p_j (gleich lang, 1 … kMaxPolynomialTerms)
+    std::vector<double> coefficients;
+    std::vector<double> exponents;
     std::array<double, 2> range_nm{0.0, 0.0}; // Gültigkeitsbereich [min, max] in nm
     std::optional<double> reference_n_d;      // Kontrollwert bei 587,56 nm, falls angegeben
     std::string source;                       // Herkunft der Daten, falls angegeben
