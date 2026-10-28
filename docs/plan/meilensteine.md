@@ -339,6 +339,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T1b – Aberrationsbericht: alle Ordnungen, Zonenfehler, OSC
 - **Abhängig von:** M10-T1
+- **Stand:** umgesetzt mit einer exakten additiven Zerlegung aus realen Randstrahlen statt der Formel nach Delano ([numerik.md, Abschnitt 14](../numerik.md#14-aberrationsbericht-m10-t1)).
 - **Inhalt:** sphärische Aberration aller Ordnungen pro Fläche nach Delano und Anteil höherer Ordnung (Zhang Gl. 2.6, 2.7), Zonenfehler (ρ = 0,707), Verletzung der Sinusbedingung (OSC, zugleich Merit-Term M11-T4); Formeln vor der Umsetzung aus der Literatur übernehmen (Welford, Delano).
 - **Abnahme:** Summe der Flächenbeiträge gegen den getracten Randstrahl; bei NA ≤ 0,05 gegen Σ S_I; OSC = 0 für aplanatische Orakel.
 

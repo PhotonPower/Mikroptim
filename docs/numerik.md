@@ -967,5 +967,27 @@ Strahlen und n bei λ_ref, δn = n(λ_kurz) − n(λ_lang) des Mediums (Standard
 | C_I gegen −n′u′²(s′_F(λ_kurz) − s′_F(λ_lang)) | 3,6·10⁻³ bzw. 6,0·10⁻³ (Differenz statt Differential) |
 | Sphärochromasie gegen S_I(λ_kurz) − S_I(λ_lang) aus zwei Berichten | ≤ 10⁻¹² |
 
-**Noch nicht enthalten** (M10-T1b): sphärische Aberration aller Ordnungen pro Fläche (Delano) und Zonenfehler aus realen Strahlen, Verletzung der Sinusbedingung (OSC). Dafür sind die genauen Formeln vor der Umsetzung aus der Literatur zu übernehmen und mit Orakeln wie oben zu prüfen.
+**Sphärische Aberration aller Ordnungen** (M10-T1b, aus einem realen meridionalen Randstrahl bei λ_ref, Pupillenhöhe ρa, ohne Geisterplatten). Mit dem paraxialen Randstrahl derselben Höhe (y, u) und dem realen Strahl (Schnittpunkt (Y, z) in lokalen Koordinaten, Richtung mit sin U = d_y, cos U = d_z) ist
 
+$$Q = n\,u\,\sin U\,\delta L,\qquad \delta L = L - l,\qquad u\sin U\,\delta L = u\sin U\,z - u\,Y\cos U + y\sin U$$
+
+(L, l: Achsenschnittweiten von realem und paraxialem Strahl ab dem Scheitel; die rechte Form braucht L nicht und bleibt bei U → 0 stabil). Beim Übergang zwischen zwei Flächen ändern sich n, u, U und δL nicht, Q ist also invariant. Der Beitrag der Fläche s ist
+
+$$S_{\mathrm{FSPH},s} = -2\,(Q'_s - Q_s),\qquad \sum_s S_{\mathrm{FSPH},s} = -2\,n'u'\sin U'\,\delta L'\ \text{(Endraum, exakt)}.$$
+
+Bei kleiner Apertur geht S_FSPH,s in S_I,s über (dieselbe Rolle wie der Beitrag nach Delano bei Zhang, Gl. 2.6; die Normierung −2 macht beide gleich); der Anteil höherer Ordnung ist S_HSPH,s = S_FSPH,s − S_I,s (Zhang Gl. 2.7). Die Zone ρ = 1/√2 liefert S_FSPH bei ρ, dort ≈ S_I ρ⁴ = S_I/4; die Abweichung davon beschreibt den Zonenfehler. In Wellen wie W040: W040_full = S_FSPH/(8λ), W040_higher, W040_zone.
+
+**Verletzung der Sinusbedingung** (Conrady), am Rand und in der Zone: mit f_real = −ρa/sin U′, paraxialer Brennweite f, paraxialer Schnittweite l′ und Lage l′_P der Austrittspupille (beide ab der letzten Fläche, Abschnitt 9)
+
+$$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f}\cdot\frac{l' - l'_P}{L' - l'_P} - 1$$
+
+(bildseitig telezentrisch: der zweite Faktor entfällt). Bei kleiner Apertur ist OSC = −S_II/(2H) (lineare Koma 3. Ordnung pro Bildhöhe), in der Zone die Hälfte.
+
+**Prüfungen M10-T1b** (Tests `Aberrations.FullOrder*`, `Aberrations.OscMatchesThirdOrderComa`, Toleranzen `kFullOrderSmallAperture`, `kOscThirdOrder`):
+
+| Prüfung | Ergebnis |
+|---|---|
+| Invarianz von Q beim Übergang zwischen Flächen | bitgleich (Erkundung, Mehrlinser) |
+| Σ S_FSPH gegen −2n′u′ sin U′ δL′ des getracten Randstrahls, volle Apertur | ≤ 10⁻¹¹ relativ (Mehrlinser, Zielspezifikation) |
+| S_FSPH,s gegen S_I,s bzw. S_I,s ρ⁴ bei a = 0,02 a | ≤ 10⁻³ relativ (gemessen ≈ 10⁻⁵), drei Systeme |
+| OSC gegen −S_II/(2H) bei a = 0,02 a; Zone gegen OSC/2 | ≤ 10⁻² relativ, drei Systeme |

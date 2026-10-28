@@ -425,4 +425,10 @@ inline constexpr double kSeidelIdentity = 1e-13;
 // 3,6·10⁻³ bzw. 6,0·10⁻³ über F–C bzw. g–C), relativ.
 inline constexpr double kSeidelChromaticFirstOrder = 1e-2;
 
+// M10-T1b: Vollordnung pro Fläche gegen S_I (bzw. S_I ρ⁴ in der Zone) bei a = 0,02 a_Datei,
+// relativ (Rest: Terme höherer Ordnung ∝ NA²).
+inline constexpr double kFullOrderSmallAperture = 1e-3;
+// OSC gegen −S_II/(2H) bei a = 0,02 a_Datei, relativ (Rest ∝ NA²).
+inline constexpr double kOscThirdOrder = 1e-2;
+
 } // namespace mko::test

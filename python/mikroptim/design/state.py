@@ -10,7 +10,10 @@ from ._cli import ToolError, cli_json
 from .files import elements, read_system
 
 FORMAT = "mikroptim.design.state/1"
-WAVE_KEYS = ("W040", "W131", "W222", "W220", "W311", "dW020", "dW111", "dW040")
+WAVE_KEYS = ("W040", "W131", "W222", "W220", "W311", "dW020", "dW111", "dW040", "W040_full",
+             "W040_higher", "W040_zone")
+#: Spalten der Textansicht
+TEXT_KEYS = ("W040", "W040_full", "W131", "W222", "W220", "dW020", "dW111", "dW040")
 #: Gruppengrenze: Mittelgruppe = Elemente mit Randstrahlhöhe ≥ MIDDLE_FRACTION · h_max
 MIDDLE_FRACTION = 0.8
 #: Etendue-Zonen nach Zhang, Abb. 4.4 (Näherung über G bei 22 mm Zwischenbild) [mm²]
@@ -129,8 +132,8 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
         b["elements"] = [e["element"] for e in elems if groups[e["element"]] == name]
         balance[name] = b
     top = {}
-    for key in ("W040", "W131", "W220", "dW020", "dW111", "dW040"):
-        vals = [(s["surface"], s["waves"][key]) for s in ab["surfaces"] if s["waves"][key]]
+    for key in ("W040", "W040_higher", "W131", "W220", "dW020", "dW111", "dW040"):
+        vals = [(s["surface"], s["waves"][key]) for s in ab["surfaces"] if s["waves"].get(key)]
         vals.sort(key=lambda t: -abs(t[1]))
         top[key] = [[i, v] for i, v in vals[:8]]
 
@@ -151,7 +154,9 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
         "elements": len(elems), "surfaces": len(data["surfaces"]),
         "spec": spec_out, "homotopy_point": {"field": 1.0, "aperture": na},
         "merit": merit, "classes": None, "paraxial": paraxial, "groups": balance,
-        "top_contributors": top, "ghosts": ghosts, "mechanics": mechanics,
+        "top_contributors": top,
+        "sine_condition": {"osc": ab["totals"].get("osc"), "osc_zone": ab["totals"].get("osc_zone")},
+        "ghosts": ghosts, "mechanics": mechanics,
         "sensitivity": None, "glasses": glasses,
         "aberration_settings": {k: ab[k] for k in ("reference_nm", "short_nm", "long_nm",
                                                    "field_angle_deg", "sign_convention")},
@@ -182,13 +187,14 @@ def format_state(state: dict) -> str:
         f"Retrofokus r {_n(p['retrofocus_factor'])}, κ {_n(p['kappa'])}",
         f"  RMS max {_n(m['rms_max_waves'])} Wellen, Merit F {_n(m['F'])}, "
         f"versagte Strahlen {m['failed_rays']}",
-        "  Gruppenbilanzen [Wellen]:  " + "  ".join(f"{k:>7}" for k in WAVE_KEYS),
+        f"  OSC Rand {_n(state['sine_condition']['osc'])}, Zone {_n(state['sine_condition']['osc_zone'])}",
+        "  Gruppenbilanzen [Wellen]:  " + "  ".join(f"{k:>7}" for k in TEXT_KEYS),
     ]
     for name in ("front", "middle", "rear"):
         g = state["groups"].get(name)
         if g:
             lines.append(f"    {name:<8} Fl. {g['surfaces'][0]:>2}–{g['surfaces'][1]:<2}"
-                         + "".join(f"{_n(g[k]):>9}" for k in WAVE_KEYS))
+                         + "".join(f"{_n(g[k]):>9}" for k in TEXT_KEYS))
     if state.get("ghosts") and state["ghosts"].get("active"):
         lines.append(f"  aktive Geisterplatten: {len(state['ghosts']['active'])}")
     if state.get("last_errors"):

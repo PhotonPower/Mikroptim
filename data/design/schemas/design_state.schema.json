@@ -373,6 +373,23 @@
     "aberration_settings": {
       "type": "object",
       "description": "Wellenlängen, Feldwinkel und Vorzeichen des Aberrationsberichts"
+    },
+    "sine_condition": {
+      "type": "object",
+      "properties": {
+        "osc": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "osc_zone": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
     }
   },
   "$defs": {
@@ -468,6 +485,18 @@
           "items": {
             "type": "integer"
           }
+        },
+        "W040_full": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "W040_zone": {
+          "type": [
+            "number",
+            "null"
+          ]
         }
       }
     }

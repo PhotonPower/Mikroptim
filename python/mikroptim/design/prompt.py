@@ -12,7 +12,10 @@ Konventionen:
   Randstrahlhöhe, Hintergruppe = blendennah.
 - Aberrationen in Wellen bei der Referenzwellenlänge nach Welford: W040 sphärisch, W131 Koma,
   W222 Astigmatismus, W220 Petzval, W311 Verzeichnung, dW020 Farblängsfehler, dW111
-  Farbquerfehler, dW040 Sphärochromasie. Gruppenbilanzen sind Summen der Flächenbeiträge.
+  Farbquerfehler, dW040 Sphärochromasie, W040_full sphärische Aberration aller Ordnungen
+  (aus realen Randstrahlen), W040_higher deren Anteil höherer Ordnung, W040_zone in der Zone
+  ρ = 0,707. Gruppenbilanzen sind Summen der Flächenbeiträge. sine_condition.osc ist die
+  Verletzung der Sinusbedingung (Koma bei kleinem Feld; Ziel 0).
 - Ziel: RMS ≤ 0,0714 Wellen pro Feld und Wellenlänge, mit möglichst wenigen Elementen.
 
 Regeln (Zhang 2019, gekürzt):
