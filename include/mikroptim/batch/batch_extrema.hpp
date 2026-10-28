@@ -42,15 +42,27 @@ struct SurfaceExtremaResult {
     }
 };
 
+// Glättung der Reduktionen (M11-T1, ADR-0013; aus constraints.extrema_smoothing): β > 0
+// ersetzt das harte Maximum der Strahlhöhe [1/mm] bzw. das harte Minimum von cos I
+// [dimensionslos] durch Log-Sum-Exp über die gültigen Strahlen (smooth_max_* in
+// surface_extrema.hpp). 0 = hart. Die Ablage von SurfaceExtremaResult bleibt gleich.
+struct ExtremaSmoothing {
+    double height = 0.0;
+    double cos_incidence = 0.0;
+    bool enabled() const { return height > 0.0 || cos_incidence > 0.0; }
+    friend bool operator==(const ExtremaSmoothing&, const ExtremaSmoothing&) = default;
+};
+
 // CPU-Referenz der Max-Reduktionen für Variante v: für jedes Tupel (f, l) und jede Stützstelle
 // k batch_ray_opl mit einem RaySurfaceRecord als Beobachter, bei Status Ok
 // SurfaceExtrema::add_ray; zuletzt √ der größten Höhenquadrate. Ergebnis mit variants = 1.
 // Wirft wie residuals_cpu (std::out_of_range, std::invalid_argument).
 SurfaceExtremaResult surface_extrema_cpu(const SystemBatchHost& batch, int v,
-                                         const ResidualLayout& layout);
+                                         const ResidualLayout& layout,
+                                         const ExtremaSmoothing& smoothing = {});
 
 // Wie oben für alle Varianten.
-SurfaceExtremaResult surface_extrema_cpu(const SystemBatchHost& batch,
-                                         const ResidualLayout& layout);
+SurfaceExtremaResult surface_extrema_cpu(const SystemBatchHost& batch, const ResidualLayout& layout,
+                                         const ExtremaSmoothing& smoothing = {});
 
 } // namespace mko

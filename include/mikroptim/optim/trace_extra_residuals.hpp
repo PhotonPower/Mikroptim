@@ -38,7 +38,14 @@ using TraceExtraResidualFn = std::function<void(
 struct TraceExtraResiduals {
     int count = 0;
     TraceExtraResidualFn evaluate;
+    // Glättung der Extrema, aus denen die Residuen entstehen (M11-T1; Standard hart). Die
+    // Aufrufer berechnen die Extrema damit (surface_extrema_cpu, merit_cpu).
+    ExtremaSmoothing smoothing{};
 };
+
+// Für Pfade ohne geglättete Extrema (GPU bis M11-T1b): wirft std::invalid_argument mit `who`,
+// wenn extra.smoothing gesetzt ist.
+void require_hard_extrema(const TraceExtraResiduals& extra, const char* who);
 
 // Prüft count ≥ 0 und eine Auswertefunktion bei count > 0; wirft std::invalid_argument mit
 // `who` in der Meldung.

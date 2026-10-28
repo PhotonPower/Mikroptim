@@ -285,7 +285,7 @@ BatchMeritFn make_cpu_merit(const ResidualSettings& quadrature, ExtraResiduals e
         const std::vector<double> e = extra_merit_values(extra, batch, threads);
         std::vector<double> f(to_size(batch.variants()), 0.0);
         detail::parallel_for_variants(0, batch.variants(), threads, [&](int v) {
-            const MeritResult m = merit_cpu(batch, v, layout, traced.count > 0);
+            const MeritResult m = merit_cpu(batch, v, layout, traced.count > 0, traced.smoothing);
             f[to_size(v)] = e.empty() ? m.merit[0] : m.merit[0] + e[to_size(v)];
             if (traced.count > 0) {
                 f[to_size(v)] += trace_extra_merit(traced, batch, v, variant_extrema(m.extrema, 0));

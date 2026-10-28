@@ -323,9 +323,10 @@ ExtraRowsJacobian extra_rows_cpu(const VariableSet& set, const SystemBatchHost& 
     }
     const FdJacobianBatch fd = make_fd_jacobian_batch(set, base, x0, FdScheme::Central);
     const ResidualLayout layout(base.topology(), options.quadrature);
-    const SurfaceExtremaResult extrema = options.trace_extra.count > 0
-                                             ? surface_extrema_cpu(fd.batch, layout)
-                                             : SurfaceExtremaResult{};
+    const SurfaceExtremaResult extrema =
+        options.trace_extra.count > 0
+            ? surface_extrema_cpu(fd.batch, layout, options.trace_extra.smoothing)
+            : SurfaceExtremaResult{};
     const std::vector<double> extra = fd_extra_residuals(fd_options_of(options), fd.batch, extrema);
     return extra_rows_from_fd(fd, extra, E);
 }

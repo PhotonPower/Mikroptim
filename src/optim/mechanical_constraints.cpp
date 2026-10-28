@@ -91,6 +91,10 @@ MechanicalConstraints make_mechanical_constraints(const SystemDescription& syste
     if (!system.constraints) {
         return out;
     }
+    if (system.constraints->extrema_smoothing) {
+        out.smoothing.height = system.constraints->extrema_smoothing->height_beta;
+        out.smoothing.cos_incidence = system.constraints->extrema_smoothing->cos_beta;
+    }
     const SurfaceMap map = make_surface_map(system);
     const std::vector<ConstraintSpec>& items = system.constraints->items;
     for (std::size_t k = 0; k < items.size(); ++k) {
@@ -295,6 +299,7 @@ MechanicalResiduals make_mechanical_residuals(const MechanicalConstraints& const
     }
     if (!traced.empty()) {
         out.traced.count = static_cast<int>(traced.size());
+        out.traced.smoothing = constraints.smoothing;
         out.traced.evaluate = [items = std::move(traced)](const SystemBatchHost& batch, int v,
                                                           const VariantExtrema& extrema,
                                                           std::span<double> values) {

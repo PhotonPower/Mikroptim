@@ -43,10 +43,10 @@ struct MeritResult {
 // variants = 1.
 // Wirft wie residuals_cpu (std::out_of_range, std::invalid_argument).
 MeritResult merit_cpu(const SystemBatchHost& batch, int v, const ResidualLayout& layout,
-                      bool extrema = true);
+                      bool extrema = true, const ExtremaSmoothing& smoothing = {});
 
 // Wie oben für alle Varianten (CPU-Pfad ohne GPU).
 MeritResult merit_cpu(const SystemBatchHost& batch, const ResidualLayout& layout,
-                      bool extrema = true);
+                      bool extrema = true, const ExtremaSmoothing& smoothing = {});
 
 } // namespace mko

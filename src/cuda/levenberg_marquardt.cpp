@@ -29,6 +29,7 @@ GpuLmBackend::GpuLmBackend(TraceEngine& engine, const VariableSet& set, const Sy
         throw std::invalid_argument("Levenberg-Marquardt (GPU): ungültige Zusatzresiduen");
     }
     check_trace_extra_residuals(options.jacobian.trace_extra, "Levenberg-Marquardt (GPU)");
+    require_hard_extrema(options.jacobian.trace_extra, "Levenberg-Marquardt (GPU)");
 }
 
 int GpuLmBackend::max_jacobian_runs() const {

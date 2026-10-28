@@ -154,9 +154,20 @@ struct ConstraintSpec {
     EdgeHeight height_or_default() const { return height.value_or(EdgeHeight::SemiDiameter); }
 };
 
+// Glättung der Max-Reduktionen über Strahlen (M11-T1, ADR-0013): β > 0 ersetzt das harte
+// Maximum der Strahlhöhe [1/mm] bzw. das harte Minimum von cos I [dimensionslos] durch
+// Log-Sum-Exp; 0 = hart (Standard).
+struct ExtremaSmoothingSpec {
+    double height_beta = 0.0;
+    double cos_beta = 0.0;
+
+    friend bool operator==(const ExtremaSmoothingSpec&, const ExtremaSmoothingSpec&) = default;
+};
+
 // Abschnitt `constraints` der Systemdatei.
 struct Constraints {
     std::vector<ConstraintSpec> items;
+    std::optional<ExtremaSmoothingSpec> extrema_smoothing{}; // ab M11-T1
 
     friend bool operator==(const Constraints&, const Constraints&) = default;
 };

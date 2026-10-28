@@ -26,6 +26,14 @@ VariantExtrema variant_extrema(const SurfaceExtremaResult& extrema, int i) {
     return VariantExtrema{extrema.surfaces, extrema.values.data() + extrema.index(i, 0)};
 }
 
+void require_hard_extrema(const TraceExtraResiduals& extra, const char* who) {
+    if (extra.count > 0 && extra.smoothing.enabled()) {
+        throw std::invalid_argument(std::string(who) +
+                                    ": geglättete Extrema (constraints.extrema_smoothing) gibt es "
+                                    "auf der GPU noch nicht (M11-T1b); CPU verwenden");
+    }
+}
+
 void check_trace_extra_residuals(const TraceExtraResiduals& extra, const char* who) {
     if (extra.count < 0) {
         throw std::invalid_argument(std::string(who) +

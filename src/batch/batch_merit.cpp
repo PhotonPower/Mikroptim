@@ -49,23 +49,24 @@ MeritResult make_result(int variants, const ResidualLayout& layout) {
 } // namespace
 
 MeritResult merit_cpu(const SystemBatchHost& batch, int v, const ResidualLayout& layout,
-                      bool extrema) {
+                      bool extrema, const ExtremaSmoothing& smoothing) {
     MeritResult r = make_result(1, layout);
     variant_merit(batch, v, layout, r.merit[0], r.failed[0], r.hard_failed[0]);
     if (extrema) {
-        r.extrema = surface_extrema_cpu(batch, v, layout);
+        r.extrema = surface_extrema_cpu(batch, v, layout, smoothing);
     }
     return r;
 }
 
-MeritResult merit_cpu(const SystemBatchHost& batch, const ResidualLayout& layout, bool extrema) {
+MeritResult merit_cpu(const SystemBatchHost& batch, const ResidualLayout& layout, bool extrema,
+                      const ExtremaSmoothing& smoothing) {
     MeritResult r = make_result(batch.variants(), layout);
     for (int v = 0; v < batch.variants(); ++v) {
         const auto i = static_cast<std::size_t>(v);
         variant_merit(batch, v, layout, r.merit[i], r.failed[i], r.hard_failed[i]);
     }
     if (extrema) {
-        r.extrema = surface_extrema_cpu(batch, layout);
+        r.extrema = surface_extrema_cpu(batch, layout, smoothing);
     }
     return r;
 }
