@@ -147,9 +147,9 @@ Das Residuum ist √w · OSC(ρ_k) für zwei bis drei Zonen (etwa die äußeren 
 
 **Problem.** Die Farbstufen scheitern (F9, F13). Die Diagnose empfiehlt keinen Operator B, und die freien Glasvariablen finden aus einem monochromatisch aufgebauten System mit Gläsern ähnlicher Dispersion nicht heraus. Was fehlt, ist eine gezielte Glaswahl.
 
-**Vorschlag.** Vor dem Trace werden Gläser auf dünnen Elementen bewertet. Für m Elemente mit Brechkräften φ_i, paraxialen Randstrahlhöhen h_i (aus dem aktuellen System, normiert auf die erste) und Buchdahl-Dispersionskoeffizienten ν_ij des Materials i (vorhanden, numerik.md §10) lautet die Bedingung für Farbkorrektur in den Buchdahl-Termen j = 1 … k:
+**Vorschlag.** Vor dem Trace werden Gläser auf dünnen Elementen bewertet. Für m Elemente mit Brechkräften φ_i, paraxialen Randstrahlhöhen h_i (aus dem aktuellen System, normiert auf die erste) und den Dispersionskoeffizienten η_ij = ν_ij/(n₀,i − 1) des Materials i (aus den Buchdahl-Koeffizienten ν_ij, numerik.md §10; bei der Umsetzung korrigiert: für ein dünnes Element gilt φ ∝ n − 1, deshalb η statt ν) lautet die Bedingung für Farbkorrektur in den Buchdahl-Termen j = 1 … k:
 
-$$\sum_i h_i^2\,\varphi_i = \varphi,\qquad \sum_i h_i^2\,\varphi_i\,\nu_{ij} = 0\quad (j = 1,\dots,k).$$
+$$\sum_i h_i^2\,\varphi_i = \varphi,\qquad \sum_i h_i^2\,\varphi_i\,\eta_{ij} = 0\quad (j = 1,\dots,k).$$
 
 - k = 1 entspricht Achromasie (zwei Gläser), k = 2 Apochromasie (drei Gläser bzw. zwei mit gleicher Teildispersion).
 - Für m = k + 1 ist das ein lineares Gleichungssystem in φ_i.
@@ -162,6 +162,8 @@ Grundlage sind die Arbeiten zur Glaswahl mit Buchdahl-Koeffizienten (Robb, Merca
 - Alle Paare (N²/2) und Tripel (N³/6) der Gläser der Glas-Hülle, vektorisiert auf dem Host. Bei einigen hundert Gläsern sind das bis 10⁷ kleine Systeme, also Sekunden.
 - Filter: Regeln aus entwurfssteuerung.md, Abschnitt 5.3 (Autofluoreszenz, Transmission, Merte-Paar).
 - Ergebnis: Rangliste mit Startbrechkräften. Sie fließt in `split_from_diagnosis` (Zielglas und c_s statt nur nach Abbezahl), in Operator B und in `glass_query` (M10).
+
+**Stand M11-T5:** Kern, Kommandozeile `mikroptim glasses` und Aktion `glass_preselect` in `mikroptim.design` umgesetzt ([numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)). Paraxiale Probe mit Katalog-Gläsern: Spanne der Schnittweiten über g … C bei f = 100 mm für die Einzellinse 2,36 mm, für das beste Paar 0,016 mm, für das beste Tripel 0,004 mm. Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Anbindung an `split_from_diagnosis` und Operator B (`split_lens` mit Zielglas), Abnahme gegen Bruteforce-Raytrace.
 
 **Abnahme.**
 - Orakel: Für zwei Gläser entspricht das Ergebnis dem dünnen Achromat (`achromat_split_curvature`).

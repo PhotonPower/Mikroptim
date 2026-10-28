@@ -1,5 +1,6 @@
 #include "cli/aberrations_command.hpp"
 #include "cli/eval_command.hpp"
+#include "cli/glasses_command.hpp"
 #include "cli/insert_command.hpp"
 #include "cli/optimize_command.hpp"
 #include "cli/snap_command.hpp"
@@ -32,6 +33,7 @@ void print_usage() {
         "        mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json]\n"
         "                        [--log <protokoll.json>] [--gpu [--device N]]\n"
         "        mikroptim aberrations <system.json> [--json] [--field-deg θ]\n"
+        "        mikroptim glasses <katalog.json>... [--order 1|2] [--fixed GLAS] [--json]\n"
         "  --version   Version ausgeben\n"
         "  --devices   CUDA-Geräte auflisten\n"
         "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
@@ -40,7 +42,8 @@ void print_usage() {
         "  snap        auf Katalog-Gläser einrasten (Hilfe: mikroptim snap --help)\n"
         "  insert      Einfüge-Operator A oder B anwenden (Hilfe: mikroptim insert --help)\n"
         "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)\n"
-        "  aberrations Aberrationsbericht pro Fläche (Hilfe: mikroptim aberrations --help)");
+        "  aberrations Aberrationsbericht pro Fläche (Hilfe: mikroptim aberrations --help)\n"
+        "  glasses     Glasvorauswahl für Farbkorrektur (Hilfe: mikroptim glasses --help)");
 }
 
 } // namespace
@@ -86,6 +89,10 @@ int main(int argc, char** argv) {
     if (arg == "aberrations") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_aberrations_command(args, std::cout, std::cerr);
+    }
+    if (arg == "glasses") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_glasses_command(args, std::cout, std::cerr);
     }
     if (arg == "insert") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

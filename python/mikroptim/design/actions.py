@@ -3,7 +3,7 @@ Abschnitt 4). Jeder Entscheider (Mensch, Sprachmodell, Regel) benutzt genau dies
 
 Umgesetzt (M10-T6a), jeweils über die Kommandozeile von Mikroptim:
 
-- lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``
+- lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``, ``glass_preselect``
 - Läufe: ``optimize``, ``synth_segment``, ``snap_glasses``
 - Variablen: ``free_gaps``
 - Topologie (Merit unverändert): ``insert_null_meniscus``, ``split_lens``
@@ -21,12 +21,13 @@ from .. import aberrations
 from ._cli import ToolError, cli_json, cli_text
 from .files import elements, is_air, read_system, write_system
 
-READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate"}
+READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect"}
 MODIFY_ACTIONS = {"optimize", "synth_segment", "snap_glasses", "free_gaps",
                   "insert_null_meniscus", "split_lens"}
 CONTROL_ACTIONS = {"branch", "abandon", "finish"}
 SCHEMA_ACTIONS = {
-    "get_surface_table", "get_ghost_diagnosis", "evaluate", "sensitivity", "glass_query",
+    "get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect", "sensitivity",
+    "glass_query",
     "module_lookup", "optimize", "synth_segment", "penalty_continuation", "snap_glasses",
     "free_gaps", "freeze", "set_bounds", "set_constraint", "set_homotopy_plan",
     "place_ghost_dictionary", "scale_ghost_penalty", "insert_null_meniscus", "split_lens",
@@ -94,6 +95,24 @@ def read_action(a: dict, system_path) -> dict:
             raise ActionError("precondition", "Geisterdiagnose braucht Variablen im System")
         opt = cli_json(["optimize", system_path, "--max-iterations", "0", "--quiet"])
         return {"ghost_diagnosis": opt.get("ghost_diagnosis")}
+    if name == "glass_preselect":
+        args = ["glasses", "--system", system_path, "--order", int(a.get("order", 1)),
+                "--top", int(a.get("top", 10))]
+        if "element" in a:
+            data = read_system(system_path)
+            elems = elements(data)
+            k = int(a["element"])
+            if not 0 <= k < len(elems):
+                raise ActionError("precondition", f"Element {k} existiert nicht")
+            glass = data["surfaces"][elems[k]["front"]].get("material")
+            if not isinstance(glass, str):
+                raise ActionError("precondition",
+                                  f"Element {k} hat kein Katalogglas (Glasvariable oder Modell)")
+            args += ["--fixed", glass]
+        rep = cli_json(args)
+        return {"order": rep["order"], "results": [
+            {key: r[key] for key in ("glasses", "powers", "power_sum", "residual")}
+            for r in rep["results"]]}
     if name == "evaluate":
         args = ["eval", system_path]
         if a.get("grid"):
