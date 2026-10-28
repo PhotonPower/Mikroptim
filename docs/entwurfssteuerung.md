@@ -110,7 +110,7 @@ Die genauen Parameternamen der Ollama-API sind bei der Umsetzung gegen die aktue
 | Homotopie-Protokoll (`mikroptim.synth/1`) | Punkt, F, F_B, F_G, LM-Status, Entscheidungen |
 | mechanische Nebenbedingungen | Restverletzungen pro Eintrag |
 
-### 3.2 Neu: Aberrationsbericht pro Fläche (M10-T1)
+### 3.2 Neu: Aberrationsbericht pro Fläche (M10-T1, Seidel-Teil umgesetzt; Vollordnung und OSC in M10-T1b)
 
 Die folgenden Größen braucht man, um Zhangs Modulwissen anzuwenden, als Mensch wie als Modell (Zhang §2.2 und Tab. 6.1).
 

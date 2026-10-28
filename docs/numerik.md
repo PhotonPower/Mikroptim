@@ -932,3 +932,40 @@ Zusätzlich behalten (erlaubt) wird vor allem nahe den Merit-Schwellen (Faktor (
 - A. Boivin, E. Wolf: Electromagnetic field in the neighborhood of the focus of a coherent beam, Physical Review 138 (1965).
 - M. Leutenegger, R. Rao, R. A. Leitgeb, T. Lasser: Fast focus field calculations, Optics Express 14 (2006).
 - L. Novotny, B. Hecht: Principles of Nano-Optics, Kap. 3.6 (Fokussierung mit hoher NA).
+
+## 14. Aberrationsbericht (M10-T1)
+
+Implementiert in `include/mikroptim/paraxial/aberrations.hpp` (`compute_aberrations`, Bibliothek `Mikroptim::paraxial`), Kommandozeile `mikroptim aberrations` ([cli.md](cli.md#mikroptim-aberrations)), Python `mikroptim.aberrations`. Grundlage für die Diagnose der Entwurfssteuerung ([entwurfssteuerung.md](entwurfssteuerung.md), Abschnitt 3.2).
+
+**Strahlen.** Nur kollimierte Quelle. Über die Dateiflächen (Geisterplatten werden nicht berücksichtigt, der Bericht meldet die Zahl der Platten mit Koeffizienten ≠ 0) wird der y-nu-Trace aus Abschnitt 9 für zwei Strahlen gerechnet: Randstrahl y₀ = a (Blendenradius), u₀ = 0; Hauptstrahl ȳ₀ = 0, ū₀ = tan θ mit θ = größter Feldwinkel der Datei (Option `field_angle_deg`). Mikroptim tract vom kollimierten Raum mit kleiner NA zum Objekt mit großer NA; in dieser Richtung sind die paraxialen Daten auch bei hoher NA verlässlich (Zhang, Dissertation Jena 2019, Abschnitt 2.2.3), ein iteratives Verfahren wie dort in Anhang I ist nicht nötig.
+
+**Seidel-Beiträge** pro Fläche (Welford, *Aberrations of Optical Systems*), mit A = n(u + yc), Ā = n(ū + ȳc) vor der Brechung, Δ(x) = x′ − x und der Lagrange-Invariante H = n(ū y − u ȳ) = a tan θ:
+
+| Beitrag | Formel |
+|---|---|
+| sphärische Aberration | S_I = −A² y Δ(u/n) |
+| Koma | S_II = −A Ā y Δ(u/n) |
+| Astigmatismus | S_III = −Ā² y Δ(u/n) |
+| Petzval | S_IV = −H² c Δ(1/n) |
+| Verzeichnung | S_V = (Ā/A)(S_III + S_IV); nicht definiert bei A = 0 und Ā ≠ 0 (NaN, `distortion_defined`) |
+| Farblängsfehler | C_I = A y Δ(δn/n) |
+| Farbquerfehler | C_II = Ā y Δ(δn/n) |
+| Sphärochromasie | S_I(λ_kurz) − S_I(λ_lang), jeweils mit den paraxialen Strahlen der Wellenlänge |
+
+Strahlen und n bei λ_ref, δn = n(λ_kurz) − n(λ_lang) des Mediums (Standard: kürzeste und längste Wellenlänge der Datei). Die Sphärochromasie ist so pro Fläche die gesamte Änderung der Seidel-Sphärik über das Spektrum, intrinsisch und induziert zusammen (Berner et al., JOSA A 35(8), 2018, trennen beide Anteile).
+
+**Wellenfrontkoeffizienten** in Wellen bei λ_ref, Bezug Pupillenrand und volles Feld: W040 = S_I/8, W131 = S_II/2, W222 = S_III/2, W220 = S_IV/4, W311 = S_V/2, ΔW020 = C_I/2, ΔW111 = C_II, ΔW040 = Sphärochromasie/8.
+
+**Vorzeichen.** Der Bericht folgt Welford. Die OPD von Mikroptim (Abschnitt 7) ist −W: Eine Anpassung der getracten OPD ergibt die Koeffizienten mit umgekehrtem Vorzeichen (Test `Aberrations.SeidelSumsMatchTracedWavefront`; φ = 0 liegt in der Meridionalebene, cos φ in Richtung +y).
+
+**Prüfungen** (Tests `Aberrations.*`, Toleranzen `kSeidel…`):
+
+| Prüfung | Ergebnis |
+|---|---|
+| Seidel-Summen gegen die getracte Wellenfront (Anpassung bis 6. Ordnung, 12 × 12 Stützstellen), kleine Apertur und kleines Feld | Einzellinse (a = 2 mm, θ = 0,5°) 1,3·10⁻⁵ relativ; Mehrlinser (a = 0,6 mm, θ = 0,3°) ≤ 1,2·10⁻³ (Rest: höhere Ordnungen) |
+| S_IV = H² P (Petzvalsumme aus Abschnitt 9), Lagrange-Invariante an jeder Fläche | ≤ 10⁻¹³ relativ, vier Systeme |
+| C_I gegen −n′u′²(s′_F(λ_kurz) − s′_F(λ_lang)) | 3,6·10⁻³ bzw. 6,0·10⁻³ (Differenz statt Differential) |
+| Sphärochromasie gegen S_I(λ_kurz) − S_I(λ_lang) aus zwei Berichten | ≤ 10⁻¹² |
+
+**Noch nicht enthalten** (M10-T1b): sphärische Aberration aller Ordnungen pro Fläche (Delano) und Zonenfehler aus realen Strahlen, Verletzung der Sinusbedingung (OSC). Dafür sind die genauen Formeln vor der Umsetzung aus der Literatur zu übernehmen und mit Orakeln wie oben zu prüfen.
+

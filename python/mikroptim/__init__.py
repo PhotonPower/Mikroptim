@@ -58,6 +58,7 @@ from ._mikroptim import (  # noqa: E402  (nach dem DLL-Verzeichnis)
 from ._mikroptim import load_system as _load_system  # noqa: E402
 
 __all__ = [
+    "aberrations",
     "CudaError",
     "Evaluation",
     "FormatError",
@@ -116,6 +117,24 @@ def system_from_dict(data, base_dir="."):
 def gpu_available():
     """``True``, wenn das Modul mit CUDA gebaut ist und ein CUDA-Gerät sichtbar ist."""
     return has_cuda and device_count() > 0
+
+
+def aberrations(path, field_angle_deg=None, reference_nm=None, short_nm=None, long_nm=None):
+    """Aberrationsbericht pro Fläche (M10-T1) als ``dict`` im Format ``mikroptim.aberrations/1``.
+
+    Paraxiale Rand- und Hauptstrahlen, Seidel-Beiträge S_I … S_V, C_I, C_II und
+    Sphärochromasie pro Dateifläche, dazu Summen und Wellenfrontkoeffizienten in Wellen
+    (docs/numerik.md, Abschnitt 14). Fehler: ``RuntimeError`` mit der Meldung der CLI.
+    """
+    args = ["aberrations", _os.fspath(path), "--json"]
+    for option, value in (("--field-deg", field_angle_deg), ("--reference-nm", reference_nm),
+                          ("--short-nm", short_nm), ("--long-nm", long_nm)):
+        if value is not None:
+            args += [option, repr(float(value))]
+    code, out, err = run_cli(args)
+    if code != 0:
+        raise RuntimeError(err.strip())
+    return _json.loads(out)
 
 
 def run_cli(args):

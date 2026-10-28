@@ -10,6 +10,7 @@ set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mikroptim_tests
+    test_aberrations.cpp
     test_adjoint_jacobian.cpp
     test_adjoint_lm.cpp
     test_adjoint_record.cpp
