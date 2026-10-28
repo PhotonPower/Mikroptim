@@ -75,6 +75,7 @@ Programme tracen über `mko::cuda::TraceEngine` ([architektur.md, „Host-API Tr
 
 `mko::cuda::MultiTraceEngine` verteilt einen Batch auf mehrere Geräte im selben Rechner (Standard: alle sichtbaren ab sm_60, also RTX 3090 und P100), je eine `TraceEngine` und ein Host-Thread pro Gerät, Anteile nach gemessenem Durchsatz pro Art und Zahlentyp ([architektur.md, „Mehrere GPUs (M7-T3)“](architektur.md#mehrere-gpus-m7-t3)). Hinweise für den Betrieb:
 
+- **Bitgleichheit (seit ADR-0013 keine Anforderung):** Ergebnisse dürfen sich je nach Verteilung auf die Geräte in den letzten Bits unterscheiden; verbindlich sind die Toleranzen aus `tests/tolerances.hpp`. Die folgenden Hinweise zur Bitgleichheit beschreiben den Stand von M7-T3 und gelten als Information.
 - **Zahlentyp:** Alle Geräte rechnen denselben Zahlentyp (`TraceSettings::precision`). Für gemischte Läufe ist FP64 die natürliche Wahl (P100 schnell, RTX 3090 langsam, die Kalibrierung gibt der P100 den größeren Anteil); df64 lohnt nur auf der RTX 3090. Läufe in df64 und FP64 sind nicht bitgleich.
 - **Architekturen:** Bitgleichheit „unabhängig von der Verteilung“ setzt voraus, dass sm_60 und sm_86 dieselben Bits liefern. Nach der Analyse von PTX und SASS (gleiche Gleitkommabefehle im PTX, korrekt gerundete Division und Wurzel, gleiche Zahl kontrahierter FMA auf beiden Architekturen, JIT aus `compute_60`-PTX auf der 3090 bitgleich, [architektur.md](architektur.md#gemischte-architekturen-sm_60-und-sm_86)) ist das zu erwarten, aber erst auf der P100 nachgewiesen, wenn diese Tests dort grün sind:
   ```powershell
