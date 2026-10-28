@@ -7,6 +7,7 @@ import math
 
 from .. import aberrations
 from ._cli import ToolError, cli_json
+from .classes import best_focus_field_shift, color_class, depth_of_focus, field_class
 from .files import elements, read_system
 
 FORMAT = "mikroptim.design.state/1"
@@ -149,11 +150,30 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
     glasses = [{"element": e["element"], "surface": e["front"], "name": e["material"],
                 "group": groups.get(e["element"])} for e in elems]
 
+    # Farb- und Feldklassen (M10-T2)
+    classes = None
+    last_s = ab["surfaces"][-1]
+    if na:
+        dof = depth_of_focus(na, last_s["n_after"])
+        shifts = {f["line"]: f["shift_mm"] for f in ab.get("focal_shifts", [])}
+        col = color_class(shifts, dof)
+        S = ab["totals"]["S"]
+        # Seidel bei vollem Feld θ_max (Bericht mit Standard-Feldwinkel = θ_max)
+        fshift = best_focus_field_shift(S[2], S[3], last_s["n_after"], last_s["u_after"])
+        edge = [w for w in trace["wavefront"] if theta and abs(w["field_angle_deg"]) == theta]
+        edge_ref = [w["rms_waves"] for w in edge
+                    if abs(w["wavelength_nm"] - trace["reference_nm"]) < 1e-9]
+        edge_rms = edge_ref[0] if edge_ref else (max(w["rms_waves"] for w in edge) if edge else None)
+        fld = field_class(field_shift=fshift, dof=dof, na=na, etendue=G, edge_rms=edge_rms,
+                          edge_failed=sum(w["failed_rays"] for w in edge))
+        classes = {"color": col["color"], "field": fld["field"], "dof_mm": dof,
+                   "color_detail": col, "field_detail": fld}
+
     return {
         "format": FORMAT, "candidate": candidate, "parent": parent,
         "elements": len(elems), "surfaces": len(data["surfaces"]),
         "spec": spec_out, "homotopy_point": {"field": 1.0, "aperture": na},
-        "merit": merit, "classes": None, "paraxial": paraxial, "groups": balance,
+        "merit": merit, "classes": classes, "paraxial": paraxial, "groups": balance,
         "top_contributors": top,
         "sine_condition": {"osc": ab["totals"].get("osc"), "osc_zone": ab["totals"].get("osc_zone")},
         "ghosts": ghosts, "mechanics": mechanics,
@@ -185,6 +205,8 @@ def format_state(state: dict) -> str:
         f"Zone {sp['zone']}",
         f"  f {_n(p['f'])} mm, Arbeitsabstand {_n(p['working_distance'])} mm, "
         f"Retrofokus r {_n(p['retrofocus_factor'])}, κ {_n(p['kappa'])}",
+        f"  Klassen: Farbe {(state.get('classes') or {}).get('color', '–')}, "
+        f"Feld {(state.get('classes') or {}).get('field', '–')} (Zhang)",
         f"  RMS max {_n(m['rms_max_waves'])} Wellen, Merit F {_n(m['F'])}, "
         f"versagte Strahlen {m['failed_rays']}",
         f"  OSC Rand {_n(state['sine_condition']['osc'])}, Zone {_n(state['sine_condition']['osc_zone'])}",

@@ -88,6 +88,7 @@ std::vector<double> least_squares(const std::vector<std::vector<double>>& X,
 // einer Anpassung mit Termen bis zur 6. Ordnung. Die OPD von Mikroptim ist −W (Welford).
 struct FittedWave {
     double W040, W131, W222;
+    double W220_total; // ρ²-Koeffizient am Feldrand minus auf der Achse: (S_III + S_IV)/4
 };
 
 FittedWave fit_wavefront(const mko::LoadedSystem& l) {
@@ -112,7 +113,17 @@ FittedWave fit_wavefront(const mko::LoadedSystem& l) {
         y.push_back(-m.opd[k]);
     }
     const std::vector<double> x = least_squares(X, y);
-    return {x[2], x[4], x[5]};
+    // Achse: nur ρ-Abhängigkeit (Defokus der Bildebene steckt in beiden ρ²-Koeffizienten)
+    const mko::WavefrontMap& a = wf.at(0, lref);
+    std::vector<std::vector<double>> X0;
+    std::vector<double> y0;
+    for (int k = 0; k < a.samples(); ++k) {
+        const double r = a.pupil[k].rho;
+        X0.push_back({1.0, r * r, r * r * r * r, std::pow(r, 6)});
+        y0.push_back(-a.opd[k]);
+    }
+    const std::vector<double> x0 = least_squares(X0, y0);
+    return {x[2], x[4], x[5], x[1] - x0[1]};
 }
 
 void expect_relative(double value, double reference, double tol, const std::string& what) {
@@ -133,6 +144,9 @@ TEST(Aberrations, SeidelSumsMatchTracedWavefront) {
         expect_relative(rep.S[0] / 8.0, fit.W040, kSeidelSmallAperture, name + " W040");
         expect_relative(rep.S[1] / 2.0, fit.W131, kSeidelSmallAperture, name + " W131");
         expect_relative(rep.S[2] / 2.0, fit.W222, kSeidelSmallAperture, name + " W222");
+        // Bildfeldwölbung (M10-T2, Feldklassen): (S_III + S_IV)/4
+        expect_relative((rep.S[2] + rep.S[3]) / 4.0, fit.W220_total, kSeidelSmallAperture,
+                        name + " W220 gesamt");
         const mko::SeidelWaves w = rep.waves();
         EXPECT_DOUBLE_EQ(w.W040, rep.S[0] / 8.0 / (rep.reference_nm * 1e-6));
     }
@@ -284,4 +298,23 @@ TEST(Aberrations, OscMatchesThirdOrderComa) {
     EXPECT_FALSE(rep.real_rays_valid);
     EXPECT_TRUE(std::isnan(rep.osc));
     EXPECT_TRUE(std::isnan(rep.surfaces[1].full_order_spherical));
+}
+
+// M10-T2: chromatischer Fokusverlauf über die Spektrallinien gegen die Paraxialoptik.
+TEST(Aberrations, FocalShiftsMatchParaxialFoci) {
+    const mko::LoadedSystem l = mko::load_system(system_path("testsystem_mehrlinser.json"));
+    const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog);
+    ASSERT_EQ(rep.focal_shifts.size(), std::size(mko::kSpectralLines));
+    const double ref =
+        mko::compute_paraxial(l.system, l.catalog, rep.reference_nm).back_focal_distance;
+    for (const mko::FocalShift& f : rep.focal_shifts) {
+        const double bfd = mko::compute_paraxial(l.system, l.catalog, f.nm).back_focal_distance;
+        EXPECT_EQ(f.shift, bfd - ref) << f.line;
+        if (f.nm == rep.reference_nm) {
+            EXPECT_EQ(f.shift, 0.0);
+        }
+    }
+    mko::AberrationOptions o;
+    o.focal_shift = false;
+    EXPECT_TRUE(mko::compute_aberrations(l.system, l.catalog, o).focal_shifts.empty());
 }

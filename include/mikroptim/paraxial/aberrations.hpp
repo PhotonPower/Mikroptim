@@ -11,6 +11,7 @@
 
 #include <array>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace mko {
@@ -39,6 +40,25 @@ struct SurfaceAberration {
     double full_order_spherical_zone = 0.0;
 };
 
+// Spektrallinien für den chromatischen Fokusverlauf (M10-T2; Farbklassen nach Zhang 2019,
+// Abschnitt 4.2.1): Name und Wellenlänge [nm].
+struct SpectralLine {
+    const char* name;
+    double nm;
+};
+inline constexpr SpectralLine kSpectralLines[] = {
+    {"i", 365.01}, {"h", 404.66}, {"g", 435.83}, {"F", 486.13}, {"e", 546.07},
+    {"d", 587.56}, {"C", 656.27}, {"A'", 768.2}, {"s", 852.11}, {"t", 1013.98}};
+
+// Paraxialer Fokus bei einer Wellenlänge relativ zu λ_ref: Differenz der hinteren Schnittweiten
+// [mm] (> 0: Fokus weiter hinten, in Tracerichtung). NaN, wenn eine Brechzahl bei λ nicht
+// bestimmbar ist (Gültigkeitsbereich eines Glases).
+struct FocalShift {
+    std::string line; // Name der Spektrallinie oder leer
+    double nm = 0.0;
+    double shift = 0.0;
+};
+
 // Pupillenzone der Zonenwerte (ρ² = 1/2).
 inline constexpr double kZoneRho = 0.70710678118654752;
 
@@ -61,6 +81,8 @@ struct AberrationOptions {
     std::optional<double> long_nm;
     // Reale Randstrahlen für Vollordnung, Zone und OSC (M10-T1b).
     bool real_rays = true;
+    // Chromatischer Fokusverlauf (M10-T2): Standard die Linien kSpectralLines.
+    bool focal_shift = true;
 };
 
 struct AberrationReport {
@@ -83,6 +105,8 @@ struct AberrationReport {
     double osc = 0.0;
     double osc_zone = 0.0;
     bool real_rays_valid = false;
+    // M10-T2: chromatischer Fokusverlauf über kSpectralLines
+    std::vector<FocalShift> focal_shifts;
     // Geisterplatten werden nicht berücksichtigt (Bericht über die Dateiflächen); Zahl der
     // Platten mit Koeffizienten ungleich 0, deren Wirkung damit fehlt.
     int ghost_plates_ignored = 0;

@@ -345,6 +345,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T2 – Gruppen, Kennzahlen, Klassen
 - **Abhängig von:** M10-T1
+- **Stand:** umgesetzt; Gruppen, Kennzahlen und Zone in M10-T6a (`mikroptim/design/state.py`), Farb- und Feldklassen in `mikroptim/design/classes.py` mit dem chromatischen Fokusverlauf aus dem Aberrationsbericht.
 - **Inhalt:** Gruppenzuordnung, Gruppenbilanzen, Retrofokusfaktor, κ, Etendue und Zone, Farb- und Feldklasse (entwurfssteuerung.md, Abschnitt 3.3).
 - **Abnahme:** frei erfundene Testsysteme mit bekannter Antwort.
 

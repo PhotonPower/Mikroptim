@@ -15,7 +15,9 @@ Konventionen:
   Farbquerfehler, dW040 Sphärochromasie, W040_full sphärische Aberration aller Ordnungen
   (aus realen Randstrahlen), W040_higher deren Anteil höherer Ordnung, W040_zone in der Zone
   ρ = 0,707. Gruppenbilanzen sind Summen der Flächenbeiträge. sine_condition.osc ist die
-  Verletzung der Sinusbedingung (Koma bei kleinem Feld; Ziel 0).
+  Verletzung der Sinusbedingung (Koma bei kleinem Feld; Ziel 0). classes enthält die Farbklasse
+  (a Achromat … c Apochromat … g UV-IR-Superapochromat) und die Feldklasse 1–7 nach Zhang;
+  spec.target_color_class und spec.target_field_class sind die Ziele.
 - Ziel: RMS ≤ 0,0714 Wellen pro Feld und Wellenlänge, mit möglichst wenigen Elementen.
 
 Regeln (Zhang 2019, gekürzt):
