@@ -63,6 +63,8 @@ struct SynthArgs {
     int max_elements = HomotopyOptions{}.max_elements;
     int max_steps = HomotopyOptions{}.max_steps;
     int max_iterations = kDefaultMaxIterations;
+    int stall_window = 0; // M11-T1c, 0 = aus
+    double stall_tolerance = 1e-3;
     int rings = 10;
     int spokes = 8;
     // Verfahren der Jacobi-Matrix der LM-Läufe (M5-T3): --jacobian fd|adjoint
@@ -158,6 +160,17 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.max_steps = parse_int(arg, next_value(args, i, arg));
             if (a.max_steps < 1) {
                 throw UsageError("--max-steps muss >= 1 sein");
+            }
+        } else if (arg == "--stall") {
+            // W oder W,T: Stagnation über W Zyklen mit relativer Abnahme ≤ T (M11-T1c)
+            const std::string v(next_value(args, i, arg));
+            const std::size_t comma = v.find(',');
+            a.stall_window = parse_int(arg, std::string_view(v).substr(0, comma));
+            if (comma != std::string::npos) {
+                a.stall_tolerance = parse_double(arg, std::string_view(v).substr(comma + 1));
+            }
+            if (a.stall_window < 0 || !(a.stall_tolerance >= 0.0)) {
+                throw UsageError("--stall: W >= 0 und T >= 0 erwartet");
             }
         } else if (arg == "--max-iterations") {
             a.max_iterations = parse_int(arg, next_value(args, i, arg));
@@ -284,6 +297,8 @@ void print_synth_usage(std::ostream& out) {
            "  --max-elements N          höchstens N Glaselemente (Standard 6)\n"
            "  --max-steps N             höchstens N Optimierungen (Standard 400)\n"
            "  --max-iterations N        LM-Zyklen pro Schritt (Standard 500)\n"
+           "  --stall W[,T]             LM-Abbruch bei Stagnation: F sank in W Zyklen um <= T·F\n"
+           "                            (T Standard 1e-3; W = 0: aus, Standard)\n"
            "  --rings N, --spokes M     Pupillenquadratur (Standard 10 x 8)\n"
            "  --element-thickness T     Mittendicke eines eingefügten Meniskus [mm] (0.5)\n"
            "  --element-max-thickness T danach Variable bis T [mm] (5; <= Dicke: fest)\n"
@@ -362,6 +377,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
+        o.lm.stall_window = a.stall_window;
+        o.lm.stall_tolerance = a.stall_tolerance;
         o.lm.jacobian.quadrature.rings = a.rings;
         o.lm.jacobian.quadrature.spokes = a.spokes;
         o.lm.jacobian_method = a.jacobian;

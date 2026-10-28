@@ -71,6 +71,8 @@ struct OptimizeArgs {
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
     int max_iterations = kDefaultMaxIterations;
+    int stall_window = 0; // M11-T1c, 0 = aus
+    double stall_tolerance = 1e-3;
     int runs = 1;
     bool have_perturbation = false;
     double perturbation = kDefaultPerturbation;
@@ -126,6 +128,17 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             a.spokes = parse_int(arg, next_value(args, i, arg));
             if (a.spokes < 1) {
                 throw UsageError("--spokes muss >= 1 sein");
+            }
+        } else if (arg == "--stall") {
+            // W oder W,T: Stagnation über W Zyklen mit relativer Abnahme ≤ T (M11-T1c)
+            const std::string v(next_value(args, i, arg));
+            const std::size_t comma = v.find(',');
+            a.stall_window = parse_int(arg, std::string_view(v).substr(0, comma));
+            if (comma != std::string::npos) {
+                a.stall_tolerance = parse_double(arg, std::string_view(v).substr(comma + 1));
+            }
+            if (a.stall_window < 0 || !(a.stall_tolerance >= 0.0)) {
+                throw UsageError("--stall: W >= 0 und T >= 0 erwartet");
             }
         } else if (arg == "--max-iterations") {
             a.max_iterations = parse_int(arg, next_value(args, i, arg));
@@ -901,6 +914,8 @@ void print_optimize_usage(std::ostream& out) {
            "  --max-iterations N Zyklen pro Lauf, >= 0 (Standard "
         << kDefaultMaxIterations
         << "; 0 = nur auswerten)\n"
+           "  --stall W[,T]      Abbruch bei Stagnation: F sank in W Zyklen um <= T·F\n"
+           "                     (T Standard 1e-3; W = 0: aus, Standard)\n"
            "  --rings N          radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -1053,6 +1068,8 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
 
         LmOptions options;
         options.max_iterations = a.max_iterations;
+        options.stall_window = a.stall_window;
+        options.stall_tolerance = a.stall_tolerance;
         options.jacobian.quadrature.rings = a.rings;
         options.jacobian.quadrature.spokes = a.spokes;
         options.jacobian.quadrature.failure =

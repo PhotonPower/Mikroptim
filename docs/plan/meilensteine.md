@@ -397,10 +397,11 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Inhalt:** β als Homotopie-Parameter in Controller und Strahlsuche (`HomotopyPoint::extrema_beta`, `synth --extrema-beta`), optisches Modell setzt `constraints.extrema_smoothing`.
 - **Stand:** β-Fortsetzung umgesetzt. Messung am System von M6-T3: keine Verbesserung; Ursache von F10 sind die Randdicken-Bedingungen selbst, nicht das Maximum über Strahlen ([optimierung-erweiterungen.md, Abschnitt 1](../optimierung-erweiterungen.md#1-glattes-maximum-über-strahlen-m11-t1)). Der Kernel (Akkumulator in `wavefront_block.hpp`) ist deshalb zurückgestellt, bis ein System zeigt, dass er nützt.
 
-### M11-T1c – Knick der einseitigen Strafe (neu)
+### M11-T1c – Kriechen an einseitigen Strafen: Stagnationskriterium
 - **Abhängig von:** M11-T1b
-- **Inhalt:** Ursache der `max_iterations`-Läufe bei Randdicken eingrenzen (aktive Menge, Gewichte) und eine Glättung von max(0, g) (z. B. Softplus mit Fortsetzung) gegen M11-T2 vergleichen.
-- **Abnahme:** System von M6-T3: deutlich weniger Läufe mit `max_iterations` und LM-Zyklen bei gleichem Ziel und gleicher Einhaltung der Randdicken.
+- **Inhalt:** Ursache eingegrenzt (Modellkriterien greifen am Knick von max(0, g) nicht, F sinkt nur noch unmerklich); Stagnationskriterium im LM (`stall_window`, `stall_tolerance`, `converged_stall`, CLI `--stall`).
+- **Abnahme:** System von M6-T3 mit `--stall 20,1e-3`: Ziel erreicht, gleiche Topologie, LM-Zyklen 21.216 → 6.436, Zeit 14,6 → 4,8 s; deterministischer LM-Test des Kriteriums.
+- **Stand:** umgesetzt; Standard aus. Offen: Entscheidung über den Standard in `synth`, Glättung von max(0, g) nur noch, falls ein System sie braucht.
 
 ### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
 - **Abhängig von:** M6-T3
