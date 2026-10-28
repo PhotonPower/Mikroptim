@@ -12,7 +12,7 @@ Dieses Dokument ändert nichts am vorhandenen Verhalten. Alle Erweiterungen sind
 |---|---|---|---|---|
 | M11-T1 | glattes Maximum für Strahlhöhen und Einfallswinkel | F10 (LM endet mit `max_iterations`) | mittel (Kernel-Reduktion) | 1 |
 | M11-T2 | Augmented Lagrangian für einseitige Bedingungen | Penalty-Stufen, Kondition, Restverletzung | klein | 2 |
-| M11-T3 | Tangentenprädiktor in der Homotopie | LM-Zyklen pro Schritt, Δ < Δ_min | klein | 3 |
+| M11-T3 | Tangentenprädiktor in der Homotopie (Sekante umgesetzt, ohne Zyklengewinn) | LM-Zyklen pro Schritt, Δ < Δ_min | klein | 3 |
 | M11-T4 | Verletzung der Sinusbedingung (OSC) als Residuum | F4, F5 (Koma bei kleinem Feld unsichtbar) | klein | 4 |
 | M11-T5 | algebraische Glasvorauswahl für Achromasie und Apochromasie | F9, F13 (Farbstufen scheitern) | mittel | 5 |
 | M11-T6 | toleranzbewusste Optimierung | Baubarkeit, Vorgriff auf M8-T4 | mittel | 6 |
@@ -110,6 +110,17 @@ $$\frac{dx}{dp} \approx -\,(J^\top J + \mu D)^{-1} J^\top \frac{\partial r}{\par
 **Abnahme.**
 - Abnahme von M6-T3 (Einzellinse NA 0,3 → 0,6): gleiches Ergebnis (`goal_reached`) mit weniger LM-Zyklen insgesamt, Ziel −30 %.
 - Determinismus wie `HomotopySmoke.DeterministicCpu`.
+
+**Stand M11-T3 (erste Stufe: Sekante) und Befund.** Umgesetzt ist der günstigere Sekantenprädiktor statt der Tangente: x₀ = x_k + (Δp_neu/Δp_alt)·(x_k − x_{k−1}) aus den beiden letzten angenommenen Zuständen derselben Topologie (`HomotopyModel::predict`, im optischen Modell über die `VariableSet` am Punkt, auf die Schranken projiziert), Option `HomotopyOptions::predictor`, CLI `synth --predictor` (nicht mit `--beam`). Nach einem Einfügen wird die Sekante neu aufgebaut. Gemessen am Abnahmesystem (CPU):
+
+| Lauf | Ziel | RMS [Wellen] | Lösungen | LM-Zyklen |
+|---|---|---|---|---|
+| Standard (`--stall 20,1e-3`) | erreicht, 4 Elemente | 0,0166 | 67 | 6.436 |
+| `--predictor` | erreicht, 4 Elemente | 0,0166 | 64 | 6.919 |
+| `--stall 0` | erreicht, 4 Elemente | 0,0154 | 63 | 21.216 |
+| `--stall 0 --predictor` | erreicht, 4 Elemente | **0,0047** | 65 | 22.216 |
+
+Der Prädiktor senkt die Merit am Start eines Schritts um zwei bis drei Größenordnungen (z. B. NA 0,36: 0,38 statt ≈ 500), spart aber **keine LM-Zyklen**: Die Läufe enden durch das Stagnationsfenster (mindestens etwa 20 Zyklen) oder am Iterationslimit, nicht weil der Start schlecht war. Abgelehnte Schritte bei NA ≈ 0,44 liegen am fehlenden Element (F_B über der Schwelle), nicht am Prädiktor; eine Wiederholung ohne Prädiktor brachte dort nichts und wurde wieder entfernt. Ohne Stagnationsabbruch führt der Prädiktor zu einem besseren Endsystem (RMS 0,0047 statt 0,0154 Wellen). Das Abnahmeziel −30 % Zyklen ist damit nicht erreicht; der Prädiktor bleibt eine Option (Standard aus). Die Tangente lohnt sich erst, wenn die Zahl der Zyklen pro Schritt von der Startgüte abhängt (z. B. mit einem kürzeren Stagnationsfenster nach gutem Start).
 
 ## 4. Sinusbedingung als Residuum (M11-T4)
 

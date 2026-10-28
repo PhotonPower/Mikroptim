@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -185,6 +186,12 @@ std::vector<HomotopyNeed> HomotopyModel::insertion_options(const SystemDescripti
                                                            const HomotopyPoint&,
                                                            const HomotopyNeed& need, int) {
     return {need};
+}
+
+std::optional<SystemDescription> HomotopyModel::predict(const SystemDescription&,
+                                                        const SystemDescription&,
+                                                        const HomotopyPoint&, double) {
+    return std::nullopt;
 }
 
 double HomotopyModel::distance(const SystemDescription&, const SystemDescription&,
@@ -434,6 +441,9 @@ private:
                           const HomotopyStepControl& c) {
         double delta = c.initial;
         const char* name = kind == HomotopyStepKind::Aperture ? "Apertur" : "Feldanteil";
+        // Prädiktor (M11-T3): letzter angenommener Zustand vor s und sein Parameterwert
+        std::optional<State> prev;
+        double prev_value = 0.0;
         while (parameter(s.point, kind) != target) {
             State trial = s;
             const double from = parameter(s.point, kind);
@@ -443,8 +453,20 @@ private:
             if (std::abs(target - value) <= 1e-6 * c.min) {
                 value = target;
             }
+            bool predicted = false;
+            if (o_.predictor && prev && from != prev_value) {
+                const double ratio = (value - from) / (from - prev_value);
+                if (std::optional<SystemDescription> p =
+                        model_.predict(prev->system, s.system, trial.point, ratio)) {
+                    trial.system = std::move(*p);
+                    predicted = true;
+                }
+            }
             HomotopyStep step = solve(trial.system, trial.point, kind);
             step.delta = delta;
+            if (predicted) {
+                step.operation = "Prädiktor (Sekante)";
+            }
             if (acceptable(step.solve)) {
                 step.accepted = true;
                 if (fast(step.solve)) {
@@ -455,6 +477,8 @@ private:
                 }
                 step.next_delta = delta;
                 emit(step);
+                prev = s;
+                prev_value = from;
                 s = std::move(trial);
                 continue;
             }
@@ -473,6 +497,7 @@ private:
                               : HomotopyAction::Insert;
             step.operation = need.text;
             emit(step);
+            prev.reset(); // neue Topologie: Sekante neu aufbauen
             insert(s, need, HomotopyStatus::StepTooSmall,
                    std::string(name) + " " + number(from) + ": Schrittweite unter Δ_min = " +
                        number(c.min) + " (letzter Versuch F_B = " +

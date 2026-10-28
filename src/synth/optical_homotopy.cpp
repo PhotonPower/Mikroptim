@@ -789,6 +789,33 @@ double OpticalHomotopyModel::distance(const SystemDescription& a, const SystemDe
     return d;
 }
 
+std::optional<SystemDescription> OpticalHomotopyModel::predict(const SystemDescription& previous,
+                                                               const SystemDescription& current,
+                                                               const HomotopyPoint& p,
+                                                               double ratio) {
+    if (!std::isfinite(ratio) || previous.surfaces.size() != current.surfaces.size() ||
+        previous.ghost_plates.size() != current.ghost_plates.size()) {
+        return std::nullopt;
+    }
+    try {
+        const Prepared pa = prepare(*this, previous, p);
+        const Prepared pc = prepare(*this, current, p);
+        if (!same_topology(pa, pc)) {
+            return std::nullopt;
+        }
+        std::vector<double> x(pc.x0.size());
+        for (std::size_t k = 0; k < x.size(); ++k) {
+            x[k] = pc.x0[k] + ratio * (pc.x0[k] - pa.x0[k]);
+        }
+        pc.set.clamp_to_bounds(x);
+        SystemDescription out = current;
+        pc.set.apply_to_description(out, x);
+        return out;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
 std::vector<SystemDescription>
 OpticalHomotopyModel::perturbed_starts(const SystemDescription& start, const HomotopyInsertion& ins,
                                        const HomotopyPoint& p, int count, std::uint64_t seed) {

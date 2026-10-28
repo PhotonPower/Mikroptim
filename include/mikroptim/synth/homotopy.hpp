@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <ostream>
 #include <span>
 #include <string>
@@ -168,6 +169,13 @@ public:
     // Topologie). Standard: +∞ (keine Deduplizierung).
     virtual double distance(const SystemDescription& a, const SystemDescription& b,
                             const HomotopyPoint& point);
+    // Prädiktor (M11-T3): Startsystem für den nächsten Punkt aus den beiden letzten angenommenen
+    // Zuständen derselben Topologie, x = x_cur + ratio · (x_cur − x_prev) (Sekante; ratio =
+    // Verhältnis der Schrittweiten), auf die Schranken projiziert. Leer, wenn nicht möglich
+    // (andere Topologie). Standard: leer.
+    virtual std::optional<SystemDescription> predict(const SystemDescription& previous,
+                                                     const SystemDescription& current,
+                                                     const HomotopyPoint& point, double ratio);
     // `count` gestörte Kopien des Startsystems `start` eines Zweigs von `insertion` (Multistart),
     // Kopie j = 1 … count mit dem Zufallsstrom variant_seed(seed, j). Standard: keine.
     virtual std::vector<SystemDescription> perturbed_starts(const SystemDescription& start,
@@ -283,6 +291,11 @@ struct HomotopyOptions {
     // extrema_stages Stufen mit Faktor extrema_factor, danach hart. 0 = aus (Standard).
     double extrema_beta = 0.0;
     int extrema_stages = 2;
+    // Prädiktor der stetigen Phasen (M11-T3): Start jedes Schritts aus der Sekante der beiden
+    // letzten angenommenen Zustände (HomotopyModel::predict); Ablehnung wie ohne Prädiktor (Δ
+    // sinkt; eine Wiederholung ohne Prädiktor brachte in der Messung nichts). Nur im Controller
+    // ohne Strahlsuche.
+    bool predictor = false;
     double extrema_factor = 10.0;
     // μ-Fortsetzung am Ende, solange das Ziel verfehlt ist: höchstens ghost_weight_stages
     // Stufen mit Faktor ghost_weight_factor auf μ.

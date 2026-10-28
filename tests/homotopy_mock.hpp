@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <random>
 #include <span>
 #include <vector>
@@ -38,6 +39,7 @@ struct MockSpec {
     double perturbation = 0.0;     // gestörte Starts: Marke ± perturbation
     double prefilter_max = std::numeric_limits<double>::infinity(); // Vorfilter: Marke ≤ Wert
     bool group_by_elements = false; // solve_all bündelt Systeme gleicher Flächenzahl
+    bool predict = false;           // Prädiktor (M11-T3): predict liefert den aktuellen Zustand
 };
 
 struct MockCall {
@@ -52,8 +54,19 @@ public:
 
     std::vector<MockCall> calls;
     int finishes = 0;
-    std::vector<int> batches;         // Größe jedes gemeinsamen Aufrufs (solve_all)
-    std::vector<std::uint64_t> seeds; // Startwerte der gestörten Starts
+    std::vector<int> batches;           // Größe jedes gemeinsamen Aufrufs (solve_all)
+    std::vector<std::uint64_t> seeds;   // Startwerte der gestörten Starts
+    std::vector<double> predict_ratios; // Verhältnisse der Aufrufe von predict
+
+    std::optional<SystemDescription> predict(const SystemDescription&,
+                                             const SystemDescription& current, const HomotopyPoint&,
+                                             double ratio) override {
+        if (!spec_.predict) {
+            return std::nullopt;
+        }
+        predict_ratios.push_back(ratio);
+        return current;
+    }
 
     static SystemDescription start(double aperture) {
         SystemDescription d;
