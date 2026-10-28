@@ -167,7 +167,7 @@ struct ExtremaSmoothingSpec {
 // Abschnitt `constraints` der Systemdatei.
 struct Constraints {
     std::vector<ConstraintSpec> items;
-    std::optional<ExtremaSmoothingSpec> extrema_smoothing; // ab M11-T1
+    std::optional<ExtremaSmoothingSpec> extrema_smoothing{}; // ab M11-T1
 
     friend bool operator==(const Constraints&, const Constraints&) = default;
 };
