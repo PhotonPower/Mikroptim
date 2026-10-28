@@ -3,6 +3,7 @@
 // `python -m mikroptim` und der Vergleiche Python-API gegen CLI in den Tests.
 
 #include "bindings.hpp"
+#include "cli/aberrations_command.hpp"
 #include "cli/eval_command.hpp"
 #include "cli/insert_command.hpp"
 #include "cli/optimize_command.hpp"
@@ -33,7 +34,7 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
     {
         nb::gil_scoped_release release;
         if (argv.empty()) {
-            err << "Aufruf: mikroptim <trace|optimize|eval|snap|insert|synth> ... "
+            err << "Aufruf: mikroptim <trace|optimize|eval|snap|insert|synth|aberrations> ... "
                    "(Hilfe: <befehl> --help)\n";
         } else if (argv[0] == "--version") {
             out << "mikroptim " << kVersion << '\n';
@@ -53,6 +54,8 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
                 code = cli::run_insert_command(args, out, err);
             } else if (command == "synth") {
                 code = cli::run_synth_command(args, out, err);
+            } else if (command == "aberrations") {
+                code = cli::run_aberrations_command(args, out, err);
             } else {
                 err << "mikroptim: unbekannter Befehl " << command << '\n';
             }

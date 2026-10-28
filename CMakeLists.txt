@@ -110,6 +110,7 @@ target_link_libraries(mikroptim_glass
 # Paraxialoptik (Host): Brennweite, Schnittweite, Hauptebenen, Petzval, Pupillen
 # --------------------------------------------------------------------------
 add_library(mikroptim_paraxial STATIC
+    src/paraxial/aberrations.cpp
     src/paraxial/paraxial.cpp)
 add_library(Mikroptim::paraxial ALIAS mikroptim_paraxial)
 target_link_libraries(mikroptim_paraxial
@@ -255,6 +256,7 @@ endif()
 # --------------------------------------------------------------------------
 # Unterbefehle als Bibliothek, damit die Tests sie direkt aufrufen können (docs/cli.md)
 add_library(mikroptim_cli STATIC
+    src/cli/aberrations_command.cpp
     src/cli/cli_util.cpp
     src/cli/eval_command.cpp
     src/cli/insert_command.cpp

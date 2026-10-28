@@ -332,10 +332,15 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 
 Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI, Python) und lokalem Sprachmodell (Ollama, Instruktions- oder Thinking-Modell) gleichermaßen zur Verfügung. Beschreibung, Schnittstellen und offene Fragen: [entwurfssteuerung.md](../entwurfssteuerung.md); Grundsatz: [ADR-0012](../adr/0012-entwurfswerkzeuge-und-entscheider.md); Schemas unter `data/design/schemas/`.
 
-### M10-T1 – Aberrationsbericht pro Fläche
+### M10-T1 – Aberrationsbericht pro Fläche (Seidel)
 - **Abhängig von:** M4
-- **Inhalt:** paraxiale Rand- und Hauptstrahldaten, Seidel-Beiträge und Wellenfrontkoeffizienten, sphärische Aberration aller Ordnungen nach Delano und Zonenfehler, Sphärochromasie 3. Ordnung, OSC; C++ mit Python-Binding, `mikroptim trace --aberrations`.
-- **Abnahme:** Summe der Flächenbeiträge gegen den getracten Randstrahl; Σ S_I gegen W₀₄₀ bei NA ≤ 0,05 (< 1 %); Sphärochromasie gegen die Differenz der Vollordnungs-Summen zweier Wellenlängen.
+- **Inhalt:** paraxiale Rand- und Hauptstrahldaten, Seidel-Beiträge S_I … S_V, C_I, C_II, Sphärochromasie 3. Ordnung und Wellenfrontkoeffizienten pro Dateifläche; C++ (`compute_aberrations`), `mikroptim aberrations`, Python `mikroptim.aberrations` ([numerik.md, Abschnitt 14](../numerik.md#14-aberrationsbericht-m10-t1)).
+- **Abnahme:** Σ S_I, S_II, S_III gegen die angepasste getracte Wellenfront bei kleiner Apertur (< 1 %, gemessen ≤ 1,2·10⁻³); S_IV = H² P und Lagrange-Invariante ≤ 10⁻¹³; C_I gegen den paraxialen Farblängsfehler; Sphärochromasie gegen die Differenz zweier Berichte.
+
+### M10-T1b – Aberrationsbericht: alle Ordnungen, Zonenfehler, OSC
+- **Abhängig von:** M10-T1
+- **Inhalt:** sphärische Aberration aller Ordnungen pro Fläche nach Delano und Anteil höherer Ordnung (Zhang Gl. 2.6, 2.7), Zonenfehler (ρ = 0,707), Verletzung der Sinusbedingung (OSC, zugleich Merit-Term M11-T4); Formeln vor der Umsetzung aus der Literatur übernehmen (Welford, Delano).
+- **Abnahme:** Summe der Flächenbeiträge gegen den getracten Randstrahl; bei NA ≤ 0,05 gegen Σ S_I; OSC = 0 für aplanatische Orakel.
 
 ### M10-T2 – Gruppen, Kennzahlen, Klassen
 - **Abhängig von:** M10-T1

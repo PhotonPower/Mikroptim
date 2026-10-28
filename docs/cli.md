@@ -1407,3 +1407,36 @@ Stammbaum des längeren Laufs NA 0,3 → 0,6 mit `--beam 2 --alternatives 2 --cu
 **JSON** (`--json`, `--log`): Format `mikroptim.synth/1`, kompatibel erweitert. `options.beam` (`width`, `seed`, `alternatives`, `perturbed_starts`, `start_perturbation`, `prefilter`, `dedup_tolerance`); `result` wie oben und zusätzlich `beam_search` mit `beam_width`, `seed`, `best` (Kandidat des Ergebnisses), `beam` (Kandidaten am Ende nach Rang), `groups` (LM-Aufrufe) und `candidates` (Stammbaum): pro Kandidat `id`, `parent` (`null` bei der Wurzel), `children`, `operation`, `operator`, `option`, `branch`, `start`, `created` (Punkt), `created_step`, `point`, `merit`, `evaluation` (F_B), `rms_waves`, `failed_rays`, `acceptable`, `elements`, `solves`, `goal`, `status` (`kept`, `finished`, `discarded`, `expanded`), `reason`, `final_step`. Jeder Schritt hat zusätzlich `candidate` und `group` (`null` ohne Optimierung). Ohne die Laufzeiten (`seconds`) ist die Ausgabe zweier Läufe mit gleicher Eingabe und gleichem Startwert bitgleich.
 
 **Tests:** `tests/test_cli_synth.cpp` (Hilfe und Fehler der Kommandozeile, Kurzlauf mit JSON, derselbe Kurzlauf mit `--jacobian adjoint` mit gleichem Status, gleichen Einfügungen und gleichem Endpunkt (M5-T3), Protokolldatei gleich der Ausgabe, Ergebnisdatei am Endpunkt, Textausgabe mit und ohne `--quiet`; Strahlsuche: Optionen nur mit `--beam`, Kurzlauf mit JSON, Stammbaum, Protokoll- und DOT-Datei, Textausgabe mit Baum). Implementierung: `src/cli/synth_command.cpp`.
+
+## `mikroptim aberrations`
+
+Aberrationsbericht pro Fläche (M10-T1, Formeln und Prüfungen: [numerik.md, Abschnitt 14](numerik.md#14-aberrationsbericht-m10-t1)): paraxiale Rand- und Hauptstrahlen, Seidel-Beiträge S_I … S_V, chromatische Beiträge C_I, C_II und Sphärochromasie, pro Dateifläche und als Summe, zusätzlich als Wellenfrontkoeffizienten in Wellen bei λ_ref. Nur Systeme mit kollimierter Quelle; Geisterplatten werden nicht berücksichtigt.
+
+```
+mikroptim aberrations <system.json> [--json] [--field-deg θ] [--reference-nm λ] [--short-nm λ] [--long-nm λ]
+```
+
+| Option | Bedeutung |
+|---|---|
+| `--json` | Ausgabe im Format `mikroptim.aberrations/1` |
+| `--field-deg θ` | Feldwinkel des Hauptstrahls (Standard: größter Feldwinkel der Datei) |
+| `--reference-nm λ` | Referenzwellenlänge (Standard: `spectrum.reference_nm`) |
+| `--short-nm λ`, `--long-nm λ` | Wellenlängen für C_I, C_II und Sphärochromasie (Standard: kürzeste und längste der Datei) |
+
+Exit-Codes: 0 Erfolg, 1 Fehler beim Laden oder Rechnen (z. B. Punktquelle), 2 ungültige Kommandozeile.
+
+**JSON** (`mikroptim.aberrations/1`): `reference_nm`, `short_nm`, `long_nm`, `field_angle_deg`, `stop_semi_diameter`, `lagrange`, `ghost_plates_ignored`, `sign_convention`, `totals` (`S` [5], `C` [2], `spherochromatism`, `waves`) und `surfaces[]` mit `surface`, `curvature`, `n_before`, `n_after`, `y`, `u_before`, `u_after`, `ybar`, `ubar_before`, `ubar_after`, `A`, `Abar`, `S`, `C`, `spherochromatism`, `waves` (`W040`, `W131`, `W222`, `W220`, `W311`, `dW020`, `dW111`, `dW040`). Nicht definierte Verzeichnung (A = 0) steht als `null`.
+
+**Python:** `mikroptim.aberrations(pfad, field_angle_deg=None, reference_nm=None, short_nm=None, long_nm=None)` liefert dasselbe als `dict`.
+
+**Text** (Ausschnitt, `data/systems/testsystem_mehrlinser.json`):
+
+```
+Beiträge in Wellen bei λ_ref (Welford, W = −OPD):
+ Fl.           y        W040        W131        W222        W220        W311       ΔW020       ΔW111       ΔW040
+   1      4.0000   4.583e-01   7.927e-01   3.428e-01   2.033e-01   3.240e-01   1.554e+00   1.344e+00   1.897e-03
+   2      3.8586  -1.169e+00   5.704e-01  -6.958e-02  -6.407e-02   2.412e-02  -8.303e+00   2.025e+00  -7.766e-02
+   …
+   Σ               1.907e+00  -2.805e+00   9.189e-01   6.879e-01   6.297e-01   1.145e-01   2.819e-01  -6.797e-02
+```
+

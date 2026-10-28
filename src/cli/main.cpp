@@ -1,3 +1,4 @@
+#include "cli/aberrations_command.hpp"
 #include "cli/eval_command.hpp"
 #include "cli/insert_command.hpp"
 #include "cli/optimize_command.hpp"
@@ -30,6 +31,7 @@ void print_usage() {
         "        mikroptim insert <system.json> -o <neu.json> (--meniscus ... | --split ...)\n"
         "        mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json]\n"
         "                        [--log <protokoll.json>] [--gpu [--device N]]\n"
+        "        mikroptim aberrations <system.json> [--json] [--field-deg θ]\n"
         "  --version   Version ausgeben\n"
         "  --devices   CUDA-Geräte auflisten\n"
         "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
@@ -37,7 +39,8 @@ void print_usage() {
         "  eval        Auswertung auf dem Pupillenraster (Hilfe: mikroptim eval --help)\n"
         "  snap        auf Katalog-Gläser einrasten (Hilfe: mikroptim snap --help)\n"
         "  insert      Einfüge-Operator A oder B anwenden (Hilfe: mikroptim insert --help)\n"
-        "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)");
+        "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)\n"
+        "  aberrations Aberrationsbericht pro Fläche (Hilfe: mikroptim aberrations --help)");
 }
 
 } // namespace
@@ -79,6 +82,10 @@ int main(int argc, char** argv) {
     if (arg == "synth") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_synth_command(args, std::cout, std::cerr);
+    }
+    if (arg == "aberrations") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_aberrations_command(args, std::cout, std::cerr);
     }
     if (arg == "insert") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

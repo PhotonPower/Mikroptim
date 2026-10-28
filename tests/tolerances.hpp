@@ -415,4 +415,14 @@ inline constexpr double kHomotopyCpuGpuMerit = 1e-6;
 // anderer Reihenfolge (Rundung ≈ ε · |OPL − OPL_Hauptstrahl| ≈ 1e-16 · 1e-2 mm).
 inline constexpr double kDecenterMirror = 1e-13;
 
+// M10-T1 Aberrationsbericht: Seidel-Summen gegen die aus der getracten Wellenfront angepassten
+// Koeffizienten bei kleiner Apertur und kleinem Feld (relativ; gemessen Einzellinse 1,3·10⁻⁵,
+// Mehrlinser 1,2·10⁻³; Rest sind Terme höherer Ordnung, die mit NA² und Feld² fallen).
+inline constexpr double kSeidelSmallAperture = 3e-3;
+// Exakte Identitäten des Berichts (Petzval S_IV = H² P, Lagrange-Invariante, Summen), relativ.
+inline constexpr double kSeidelIdentity = 1e-13;
+// C_I gegen −n'u'² δl' aus den paraxialen Schnittweiten (Differenz statt Differential; gemessen
+// 3,6·10⁻³ bzw. 6,0·10⁻³ über F–C bzw. g–C), relativ.
+inline constexpr double kSeidelChromaticFirstOrder = 1e-2;
+
 } // namespace mko::test
