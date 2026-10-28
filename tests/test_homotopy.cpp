@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -57,6 +58,32 @@ TEST(HomotopyControl, StepGrowsAfterFastConvergence) {
     EXPECT_EQ(r.point.aperture, 0.6);
     EXPECT_EQ(r.elements, 1);
     EXPECT_EQ(r.insertions, 0);
+}
+
+// Prädiktor (M11-T3): ab dem zweiten Aperturschritt Start aus der Sekante, Verhältnis der
+// Schrittweiten (0,04/0,02, 0,08/0,04, 0,08/0,08, 0,08/0,08); ohne Option kein Aufruf.
+TEST(HomotopyControl, PredictorUsesSecantRatios) {
+    MockSpec spec;
+    spec.predict = true;
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.6);
+    o.predictor = true;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    ASSERT_EQ(m.predict_ratios.size(), 4U);
+    const std::vector<double> ratios{2.0, 2.0, 1.0, 1.0};
+    for (std::size_t i = 0; i < ratios.size(); ++i) {
+        EXPECT_NEAR(m.predict_ratios[i], ratios[i], 1e-12) << i;
+    }
+    const auto a = steps_of(r, HomotopyStepKind::Aperture);
+    ASSERT_EQ(a.size(), 5U);
+    EXPECT_TRUE(a[0]->operation.empty());
+    for (std::size_t i = 1; i < a.size(); ++i) {
+        EXPECT_EQ(a[i]->operation, "Prädiktor (Sekante)") << i;
+    }
+    MockModel off(spec);
+    (void)run_homotopy(off, MockModel::start(0.3), mock_point(0.3), mock_options(0.6));
+    EXPECT_TRUE(off.predict_ratios.empty());
 }
 
 // Abgelehnter Schritt: Δ halbiert, der nächste Versuch startet am letzten guten Zustand (nicht
@@ -447,6 +474,34 @@ TEST(OpticalHomotopy, RealizeSetsExtremaSmoothing) {
     EXPECT_EQ(*d.constraints->extrema_smoothing, (ExtremaSmoothingSpec{2500.0, 2500.0}));
     p.extrema_beta = -1.0;
     EXPECT_THROW((void)m.realize(m.start_system(), p), std::invalid_argument);
+}
+
+// Prädiktor des optischen Modells (M11-T3): Sekante über die Variablen, projiziert auf die
+// Schranken; andere Topologie → leer.
+TEST(OpticalHomotopy, PredictExtrapolatesVariables) {
+    const LoadedSystem start = load_residual_system("zweilinser_mechanik.json");
+    OpticalHomotopyModel m(start, OpticalHomotopyOptions{});
+    const HomotopyPoint p = m.start_point();
+    const SystemDescription cur = m.start_system();
+    SystemDescription prev = cur;
+    prev.surfaces[1].curvature -= 0.001;
+    prev.surfaces[2].thickness -= 0.05;
+    const std::optional<SystemDescription> out = m.predict(prev, cur, p, 2.0);
+    ASSERT_TRUE(out.has_value());
+    EXPECT_NEAR(out->surfaces[1].curvature, cur.surfaces[1].curvature + 0.002, 1e-15);
+    EXPECT_NEAR(out->surfaces[2].thickness, cur.surfaces[2].thickness + 0.1, 1e-14);
+    EXPECT_EQ(out->surfaces[3].curvature, cur.surfaces[3].curvature); // gleich in beiden
+    // Projektion auf die Schranke max = 0,3 der Krümmungen
+    SystemDescription far = cur;
+    far.surfaces[1].curvature = -0.3; // untere Schranke; die Sekante mit Faktor 10 überschießt
+    ASSERT_GT(cur.surfaces[1].curvature, -0.27);
+    const std::optional<SystemDescription> clamped = m.predict(far, cur, p, 10.0);
+    ASSERT_TRUE(clamped.has_value());
+    EXPECT_EQ(clamped->surfaces[1].curvature, 0.3);
+    // andere Topologie
+    SystemDescription other = cur;
+    other.surfaces.pop_back();
+    EXPECT_FALSE(m.predict(other, cur, p, 1.0).has_value());
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

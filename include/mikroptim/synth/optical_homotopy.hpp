@@ -142,6 +142,11 @@ public:
                                                 const HomotopyNeed& need, int max) override;
     double distance(const SystemDescription& a, const SystemDescription& b,
                     const HomotopyPoint& point) override;
+    // Sekante über die Variablen (VariableSet am Punkt), projiziert auf die Schranken; leer bei
+    // anderer Topologie oder wenn die Werte nicht geschrieben werden können.
+    std::optional<SystemDescription> predict(const SystemDescription& previous,
+                                             const SystemDescription& current,
+                                             const HomotopyPoint& point, double ratio) override;
     std::vector<SystemDescription> perturbed_starts(const SystemDescription& start,
                                                     const HomotopyInsertion& insertion,
                                                     const HomotopyPoint& point, int count,

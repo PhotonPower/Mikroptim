@@ -412,6 +412,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M6-T3
 - **Inhalt:** dx/dp aus JᵀJ und einer FD-Spalte über p, Sicherung über gemeinsame Merit-Auswertung.
 - **Abnahme:** Abnahme von M6-T3 mit gleichem Ergebnis und mindestens 30 % weniger LM-Zyklen; deterministisch.
+- **Stand:** Sekantenprädiktor umgesetzt (`synth --predictor`, Standard aus). Messung: Startmerit zwei bis drei Größenordnungen kleiner, aber keine Ersparnis an LM-Zyklen (Abschluss durch Stagnationsfenster bzw. Limit); ohne Stagnationsabbruch besseres Endsystem. Abnahmeziel −30 % nicht erreicht ([optimierung-erweiterungen.md, Abschnitt 3](../optimierung-erweiterungen.md#3-tangentenprädiktor-in-der-homotopie-m11-t3)).
 
 ### M11-T4 – Sinusbedingung als Residuum
 - **Abhängig von:** M4-T3

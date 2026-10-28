@@ -244,6 +244,8 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     EXPECT_EQ(synth({kStart, "--stall", "-1"}).code, cli::kExitUsage);
     EXPECT_EQ(synth({kStart, "--stall", "x"}).code, cli::kExitUsage);
     EXPECT_NE(synth({"--help"}).out.find("Standard 20,1e-3"), std::string::npos);
+    // Prädiktor (M11-T3) nur ohne Strahlsuche
+    EXPECT_EQ(synth({kStart, "--predictor", "--beam", "2"}).code, cli::kExitUsage);
 }
 
 } // namespace

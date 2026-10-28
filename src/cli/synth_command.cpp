@@ -63,6 +63,7 @@ struct SynthArgs {
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
     double extrema_beta = 0.0; // M11-T1b
+    bool predictor = false;    // M11-T3
     int extrema_stages = HomotopyOptions{}.extrema_stages;
     double extrema_factor = HomotopyOptions{}.extrema_factor;
     int max_elements = HomotopyOptions{}.max_elements;
@@ -146,6 +147,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--predictor") {
+            a.predictor = true;
         } else if (arg == "--extrema-beta") {
             a.extrema_beta = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-stages") {
@@ -262,6 +265,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     }
     if (a.have_device && !a.gpu) {
         throw UsageError("--device verlangt --gpu");
+    }
+    if (a.beam && a.predictor) {
+        throw UsageError("--predictor gibt es nur ohne --beam");
     }
     if (!a.beam && (a.seed || a.alternatives || a.starts || a.start_perturbation || a.prefilter ||
                     a.dedup || !a.dot.empty())) {
@@ -424,6 +430,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.target_rms = a.rms_target;
         h.merit_factor = a.merit_factor;
         h.extrema_beta = a.extrema_beta;
+        h.predictor = a.predictor;
         h.extrema_stages = a.extrema_stages;
         h.extrema_factor = a.extrema_factor;
         h.max_elements = a.max_elements;
