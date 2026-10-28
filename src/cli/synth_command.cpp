@@ -42,6 +42,11 @@ using Json = nlohmann::ordered_json;
 
 constexpr int kDefaultMaxIterations = 500;
 
+// Standard der Stagnation in der Synthese (M11-T1c, docs/optimierung-erweiterungen.md, Abschnitt
+// 1).
+constexpr int kDefaultStallWindow = 20;
+constexpr double kDefaultStallTolerance = 1e-3;
+
 struct SynthArgs {
     std::string file;
     std::string output;
@@ -63,8 +68,10 @@ struct SynthArgs {
     int max_elements = HomotopyOptions{}.max_elements;
     int max_steps = HomotopyOptions{}.max_steps;
     int max_iterations = kDefaultMaxIterations;
-    int stall_window = 0; // M11-T1c, 0 = aus
-    double stall_tolerance = 1e-3;
+    // Stagnation des LM (M11-T1c): Standard der Synthese 20 Zyklen, 1e-3 (3-mal weniger
+    // LM-Zyklen am Abnahmesystem von M6-T3 bei gleicher Güte); --stall 0 schaltet ab.
+    int stall_window = kDefaultStallWindow;
+    double stall_tolerance = kDefaultStallTolerance;
     int rings = 10;
     int spokes = 8;
     // Verfahren der Jacobi-Matrix der LM-Läufe (M5-T3): --jacobian fd|adjoint
@@ -298,7 +305,7 @@ void print_synth_usage(std::ostream& out) {
            "  --max-steps N             höchstens N Optimierungen (Standard 400)\n"
            "  --max-iterations N        LM-Zyklen pro Schritt (Standard 500)\n"
            "  --stall W[,T]             LM-Abbruch bei Stagnation: F sank in W Zyklen um <= T·F\n"
-           "                            (T Standard 1e-3; W = 0: aus, Standard)\n"
+           "                            (Standard 20,1e-3; --stall 0: aus, wie vor M11-T1c)\n"
            "  --rings N, --spokes M     Pupillenquadratur (Standard 10 x 8)\n"
            "  --element-thickness T     Mittendicke eines eingefügten Meniskus [mm] (0.5)\n"
            "  --element-max-thickness T danach Variable bis T [mm] (5; <= Dicke: fest)\n"
@@ -507,6 +514,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"merit_factor", a.merit_factor},
                      {"max_elements", a.max_elements},
                      {"max_iterations", a.max_iterations},
+                     {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
                      {"jacobian", to_string(a.jacobian)},
                      {"element_thickness", o.element_thickness},

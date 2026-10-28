@@ -63,7 +63,7 @@ Weitere Eingrenzung (hart): nur der Glasrand 4 von 40 Läufen mit `max_iteration
 | 20, 10⁻² | erreicht | 0,0323 | 4 | 3.021 | 2,0 s | 66 × `converged_stall` |
 | 10, 10⁻³ | erreicht | 0,0610 | 4 | 2.051 | 1,4 s | zu knapp am Ziel 0,0714 |
 
-Empfehlung `--stall 20,1e-3`: dreifach schneller bei praktisch gleicher Güte. Am Zweilinser mit mechanischen Bedingungen (`optimize --max-iterations 1000`) endet der Lauf ohne Fenster nach 6.053 Zyklen bei F = 31.914, mit `--stall 20,1e-3` nach 159 Zyklen bei F = 18,53 (wie mit dem Standardlimit 100). Standard bleibt aus, bis der Wechsel entschieden ist.
+`--stall 20,1e-3` ist seit dieser Messung der **Standard von `mikroptim synth`** (dreifach schneller bei praktisch gleicher Güte; `--stall 0` schaltet ab). In `optimize` und in der Bibliothek (`LmOptions`) bleibt der Standard aus. Am Zweilinser mit mechanischen Bedingungen (`optimize --max-iterations 1000`) endet der Lauf ohne Fenster nach 6.053 Zyklen bei F = 31.914, mit `--stall 20,1e-3` nach 159 Zyklen bei F = 18,53 (wie mit dem Standardlimit 100).
 
 Die Glättung ändert am Kriechen nichts. Die Ursache von F10 sind die **Randdicken-Bedingungen selbst**, auch ganz ohne Maximum über Strahlen (Variante mit Halbdurchmesser). Naheliegend sind das Ein- und Ausschalten der einseitigen Strafe max(0, g) (wechselnde aktive Menge, Knick der Jacobi-Zeile bei g = 0) und die steife Strafe bei großen Gewichten. Deshalb: **Kernel für das glatte Maximum zurückgestellt**; als Nächstes M11-T2 (Augmented Lagrangian, kleine feste Gewichte) und eine Glättung des Knicks max(0, g) selbst (z. B. Softplus mit Fortsetzung) am selben System messen.
 

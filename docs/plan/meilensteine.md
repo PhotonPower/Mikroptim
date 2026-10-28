@@ -401,7 +401,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M11-T1b
 - **Inhalt:** Ursache eingegrenzt (Modellkriterien greifen am Knick von max(0, g) nicht, F sinkt nur noch unmerklich); Stagnationskriterium im LM (`stall_window`, `stall_tolerance`, `converged_stall`, CLI `--stall`).
 - **Abnahme:** System von M6-T3 mit `--stall 20,1e-3`: Ziel erreicht, gleiche Topologie, LM-Zyklen 21.216 → 6.436, Zeit 14,6 → 4,8 s; deterministischer LM-Test des Kriteriums.
-- **Stand:** umgesetzt; Standard aus. Offen: Entscheidung über den Standard in `synth`, Glättung von max(0, g) nur noch, falls ein System sie braucht.
+- **Stand:** umgesetzt; Standard in `synth` `20,1e-3` (Entscheidung des Maintainers), in `optimize` und `LmOptions` aus. Glättung von max(0, g) nur noch, falls ein System sie braucht.
 
 ### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
 - **Abhängig von:** M6-T3
