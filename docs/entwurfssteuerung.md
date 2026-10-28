@@ -1,16 +1,25 @@
-# Steuerung der Systemsynthese durch ein lokales Sprachmodell (Entwurf, M10)
+# Entwurfssteuerung: Mensch oder Sprachmodell als Entscheider (Entwurf, M10)
 
-- **Status:** Entwurf, braucht eine ADR (Vorschlag ADR-0012) und Entscheidungen des Maintainers (Abschnitt 10)
+- **Status:** Entwurf; Grundsatzentscheidung in [ADR-0012](adr/0012-entwurfswerkzeuge-und-entscheider.md)
 - **Verwandt:** [optimierung-erweiterungen.md](optimierung-erweiterungen.md) (vorgeschlagene Erweiterungen des Optimierers, M11; mehrere davon liefern Diagnosen und Aktionen für diesen Entwurf)
 - **Grundlage:** Befunde aus [m6-t6-zielspezifikation.md](ergebnisse/m6-t6-zielspezifikation.md); Y. Zhang, *Systematic Design of Microscope Objectives*, Dissertation FSU Jena 2019 (im Folgenden „Zhang“, mit Kapitel- bzw. Tabellennummer)
 
 ## 1. Ziel und Abgrenzung
 
-Ein lokales Sprachmodell übernimmt die **Entscheidungen**, die heute Heuristiken oder das Skript `tools/m6t6_zielspezifikation.py` treffen. Die **Numerik** bleibt unverändert: Trace, Merit, LM, Homotopie, Strahlsuche und Einrasten.
+Mikroptim bekommt eine Schicht von **Entwurfswerkzeugen**: Diagnosen, die einen Kandidaten beschreiben, und Aktionen, die ihn verändern. Wer die Entscheidungen trifft, ist austauschbar:
 
-Gemeint sind konkret die Stellen, an denen M6-T6 gescheitert ist:
+- ein **Mensch** (Optikdesigner) über die GUI (GUI-Mikroptim), die Kommandozeile oder Python,
+- ein **lokales Sprachmodell** über Ollama, wahlweise ein Instruktions- oder ein Thinking-Modell,
+- eine **feste Regel** (Vergleichsstrategie ohne Modell, Abschnitt 8),
+- ein **Wiedereinspieler**, der gespeicherte Entscheidungen wiederholt.
 
-| Befund | Heutige Entscheidung | Was das Modell entscheiden soll |
+Ziel ist, dass das Sprachmodell den Optikdesigner ersetzen *kann*, ohne dass der Mensch Werkzeuge verliert. Es gibt keine Diagnose und keine Aktion nur für das Modell und keine nur für den Menschen. Beide arbeiten mit demselben Zustand, denselben Aktionen und denselben Prüfungen. Gemischte Betriebsarten (Modell schlägt vor, Mensch bestätigt) ergeben sich daraus von selbst (Abschnitt 2.2).
+
+Die **Numerik** bleibt unverändert: Trace, Merit, LM, Homotopie, Strahlsuche und Einrasten.
+
+Die Werkzeuge setzen an den Entscheidungen an, die heute Heuristiken oder das Skript `tools/m6t6_zielspezifikation.py` treffen, vor allem an den Stellen, an denen M6-T6 gescheitert ist:
+
+| Befund | Heutige Entscheidung | Was der Entscheider entscheiden soll |
 |---|---|---|
 | F2 | Spalte hinter neuen Elementen bleiben fest | wann welche Spalte und Glasdicken frei werden |
 | F3 | „kein Bedarf“, obwohl F_B > F_max | wo und welcher Operator eingefügt wird, wenn keine Platte aktiv ist |
@@ -21,43 +30,74 @@ Gemeint sind konkret die Stellen, an denen M6-T6 gescheitert ist:
 
 **Leitregeln**
 
-1. Das Modell sieht nur Größen, die Mikroptim berechnet hat. Glasdaten, Aberrationen und Empfindlichkeiten nimmt es nie aus dem eigenen Gedächtnis.
-2. Jede Aktion ist eine deterministische Operation mit geprüften Vorbedingungen. Das Modell schreibt nie Systemdateien.
-3. Die Rangfolge der Kandidaten bleibt deterministisch (`beam_rank_before`, optimierung.md §8). Das Modell schlägt Kandidaten vor, bewertet sie aber nicht.
-4. Bitgleichheit der Numerik (ADR-0007) bleibt unberührt. Nichtdeterministisch ist nur die Modellantwort. Sie wird protokolliert und ist wieder einspielbar (Abschnitt 7).
+1. **Gleichberechtigung:** Jede Diagnose und jede Aktion ist über dieselbe öffentliche Python-API erreichbar. Die GUI nutzt nur diese API (GUI-Mikroptim, ADR-0002 dort), das Sprachmodell ebenso.
+2. Ein Entscheider sieht nur Größen, die Mikroptim berechnet hat. Das Sprachmodell nimmt Glasdaten, Aberrationen und Empfindlichkeiten nie aus dem eigenen Gedächtnis.
+3. Jede Aktion ist eine deterministische Operation mit geprüften Vorbedingungen. Kein Entscheider schreibt Systemdateien an den Werkzeugen vorbei. (Ein Mensch kann eine Systemdatei weiterhin von Hand bearbeiten; sie geht dann als neuer Wurzelkandidat in den Baum ein.)
+4. Die Rangfolge der Kandidaten bleibt deterministisch (`beam_rank_before`, optimierung.md §8). Entscheider schlagen Kandidaten vor oder wählen zwischen ihnen; die Merit und die Zielprüfung bleiben der Maßstab.
+5. Reproduzierbar sind Läufe über das Protokoll: Jede Entscheidung, gleich von wem, wird gespeichert und ist wieder einspielbar (Abschnitt 7).
 
 ## 2. Architektur
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ Modellserver (RTX 3090): llama.cpp-Server oder vLLM,             │
-│ OpenAI-kompatible API, Ausgabe durch JSON-Schema beschränkt      │
-└───────────────▲──────────────────────────────┬───────────────────┘
-                │ Zustand (agent_state/1)       │ Aktionen (agent_action/1)
-┌───────────────┴──────────────────────────────▼───────────────────┐
-│ Python-Paket mikroptim.agent (neu)                               │
-│  state.py     Zustand aus Diagnose verdichten (Token-Budget)     │
-│  executor.py  Aktionen prüfen und ausführen, Fehler als JSON     │
-│  knowledge/   Linsenmodule, Brechkraftverteilungen, Glasregeln   │
-│  policy.py    Schleife, Budget, Wiederholen, Protokoll           │
-│  replay.py    gespeicherte Modellantworten statt Modellaufruf    │
-└───────────────▲──────────────────────────────┬───────────────────┘
-                │ Python-Bindings (M9-T1)       │
-┌───────────────┴──────────────────────────────▼───────────────────┐
-│ C++/CUDA-Kern (P100 für FP64, unverändert)                       │
-│  + neu: aberration_report, Gruppen, Klassen, Empfindlichkeiten   │
-│  + neu: Operatoren insert_module, remove_element, replace_glass  │
-└──────────────────────────────────────────────────────────────────┘
+ Mensch                       Sprachmodell (Ollama)          Regel, Wiedereinspieler
+ GUI-Mikroptim, CLI, Python   Instruktions- oder Thinking-   (ohne Modell)
+        │                     Modell, lokal
+        │                            │                                │
+        ▼                            ▼                                ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Entscheider-Schnittstelle  Decider.decide(state) → actions                   │
+│   HumanDecider · OllamaDecider · RuleDecider · ReplayDecider · ConfirmDecider│
+└───────────────▲──────────────────────────────────────────────┬───────────────┘
+                │ Zustand  mikroptim.design.state/1             │ Aktionen  mikroptim.design.action/1
+┌───────────────┴──────────────────────────────────────────────▼───────────────┐
+│ Python-Paket mikroptim.design (neu, öffentliche API)                         │
+│  state.py     Zustand aus den Diagnosen verdichten                           │
+│  tools.py     Lese-Werkzeuge (Diagnosen), einzeln aufrufbar                  │
+│  executor.py  Aktionen prüfen und ausführen, Fehler als JSON                 │
+│  knowledge/   Linsenmodule, Brechkraftverteilungen, Glasregeln               │
+│  session.py   Kandidatenbaum, Budget, Protokoll mikroptim.design.log/1       │
+└───────────────▲──────────────────────────────────────────────┬───────────────┘
+                │ Python-Bindings (M9-T1)                        │
+┌───────────────┴──────────────────────────────────────────────▼───────────────┐
+│ C++/CUDA-Kern (FP64-Trace auf der P100)                                      │
+│  + neu: aberration_report, Gruppen, Klassen, Empfindlichkeiten               │
+│  + neu: Operatoren insert_module, remove_element, replace_glass, …           │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Hardware.** Das Modell läuft auf der RTX 3090: Tensor Cores, 24 GB, gute Unterstützung in den Inferenz-Frameworks. Der FP64-Trace läuft auf der P100, die ohnehin die FP64-Rolle hat (hardware.md: rund 4,7 gegen 0,55 TFLOPS FP64). Das setzt die noch offene Abnahme auf der P100 voraus. Bis dahin teilen sich Modell und Tracer die 3090; dann ist `EngineOptions::memory_limit_bytes` zu setzen.
+Die Kommandozeile bekommt dieselben Werkzeuge als Unterbefehle, etwa `mikroptim design state`, `mikroptim design tool get_surface_table …` und `mikroptim design act actions.json`. Damit sind sie auch in Skripten und Jobs der GUI nutzbar.
 
-**Zwei Ebenen der Einbindung**
+### 2.1 Entscheider
 
-- **Makroebene (zuerst umsetzen):** Das Modell entscheidet zwischen Synthese-Abschnitten, so wie heute `synth_loop` im M6-T6-Skript. Am C++-Kern ändert sich dafür nur die Diagnose (M10-T1 bis T3).
-- **Mikroebene (später):** Ein Rückruf in `run_homotopy` bzw. `run_beam_search` an der Stelle „Δ < Δ_min, Diagnose“. Er ersetzt `insertion_options` und das Abbruchkriterium „kein Bedarf“. Umsetzung als `PolicyHomotopyModel`, das `OpticalHomotopyModel` umhüllt und nur diese zwei Methoden überschreibt.
+`Decider` ist eine einzige Schnittstelle: `decide(state, tools) → Antwort im Format mikroptim.design.action/1`. Über `tools` kann ein Entscheider vor der Antwort Lese-Werkzeuge aufrufen (Diagnosen, Glasabfrage, Modulsuche). Ein Mensch tut das in der GUI durch Ansehen der Seiten, das Sprachmodell über Tool-Calls.
 
-## 3. Diagnose: was das Modell sieht
+| Entscheider | Verhalten |
+|---|---|
+| `HumanDecider` | Zustand wird angezeigt (GUI-Seite oder Text auf der Kommandozeile), der Mensch wählt Aktionen aus Formularen bzw. schreibt sie als JSON; dieselbe Prüfung wie beim Modell |
+| `OllamaDecider` | Abschnitt 2.3 |
+| `RuleDecider` | feste Heuristik auf derselben Wissensbasis (Vergleichsstrategie V3) |
+| `ReplayDecider` | liefert die gespeicherten Antworten eines Protokolls |
+| `ConfirmDecider(vorschlag, bestätigung)` | ein Entscheider schlägt vor, ein zweiter nimmt an, ändert oder verwirft; typisch Modell vorschlagend, Mensch bestätigend |
+
+### 2.2 Betriebsarten
+
+- **manuell:** `HumanDecider`. Der Mensch nutzt die Werkzeuge wie ein Entwurfsprogramm, mit Protokoll und Kandidatenbaum.
+- **assistiert:** `ConfirmDecider(OllamaDecider, HumanDecider)`. Das Modell schlägt vor und begründet, der Mensch entscheidet.
+- **autonom:** `OllamaDecider` mit Budget. Am Ende sieht der Mensch den Kandidatenbaum und das Protokoll.
+- **Wechsel im Lauf:** Die Betriebsart ist pro Entscheidung wählbar. Ein Mensch kann einen autonomen Lauf an jedem Kandidaten übernehmen und umgekehrt, weil der Zustand vollständig im Kandidatenbaum liegt.
+
+### 2.3 Sprachmodell über Ollama
+
+- **Modellwahl:** Name und Art (Instruktion oder Thinking) stehen in einer Konfigurationsdatei und sind pro Lauf wählbar. Getestet werden mehrere Modelle gegen dieselben Benchmarks (Abschnitt 8).
+- **Ausgabe:** Lese-Werkzeuge als Tool-Calls der Chat-API von Ollama; die Entscheidung am Ende als strukturierte Ausgabe, beschränkt durch das JSON-Schema `design_action.schema.json` (Parameter `format`). Bei Thinking-Modellen wird der Denktext getrennt geliefert und mitprotokolliert, aber nie ausgeführt.
+- **Einstellungen:** Temperatur 0, fester `seed`, Kontextlänge `num_ctx` ausdrücklich setzen (der Standard von Ollama ist für Zustand plus Werkzeugergebnisse zu klein), `keep_alive` passend zur Laufdauer.
+- **GPU:** Ollama nur auf der RTX 3090 (`CUDA_VISIBLE_DEVICES`), der FP64-Trace auf der P100. Läuft der Trace ebenfalls auf der 3090, belegt das geladene Modell Speicher; dann `EngineOptions::memory_limit_bytes` setzen.
+- **Fehler:** Ungültige oder abgelehnte Aktionen gehen mit Fehlercode an das Modell zurück, höchstens zwei Nachbesserungen; danach entscheidet der Rückfall-Entscheider (Konfiguration: Regel, Mensch oder Abbruch).
+- **Prüfsummen** von Modell (Ollama-Digest), System-Prompt und Wissensbasis stehen im Protokoll.
+
+Die genauen Parameternamen der Ollama-API sind bei der Umsetzung gegen die aktuelle Ollama-Dokumentation zu prüfen.
+
+## 3. Diagnose: was der Entscheider sieht
 
 ### 3.1 Vorhandene Größen
 
@@ -72,7 +112,7 @@ Gemeint sind konkret die Stellen, an denen M6-T6 gescheitert ist:
 
 ### 3.2 Neu: Aberrationsbericht pro Fläche (M10-T1)
 
-Die folgenden Größen braucht man, um Zhangs Modulwissen anzuwenden (Zhang §2.2 und Tab. 6.1).
+Die folgenden Größen braucht man, um Zhangs Modulwissen anzuwenden, als Mensch wie als Modell (Zhang §2.2 und Tab. 6.1).
 
 **Paraxiale Strahlen.** Rand- und Hauptstrahl bei λ_ref mit h, u, i bzw. h̄, ū, ī pro Fläche. `ynu_trace` liefert sie. Mikroptim tract vom kollimierten Raum (Blende) zum Objekt, also von kleiner zu großer NA. In dieser Richtung sind die paraxialen Daten nach Zhang §2.2.3 verlässlich; das iterative Verfahren aus seinem Anhang I ist deshalb **nicht** nötig.
 
@@ -139,15 +179,15 @@ Das Ziel der Spezifikation ist Farbklasse (c), Feldklasse 4 oder 5.
   - Glas in der Autofluoreszenz-Sperrzone (Zhang Anh. VII)
   - Elementzahl gegen den Richtwert für die Abgleichlänge (Zhang Abb. 4.6: 13–15 Elemente bei 45 mm)
 
-### 3.5 Zustandsformat `mikroptim.agent.state/1`
+### 3.5 Zustandsformat `mikroptim.design.state/1`
 
-Schema: `data/agent/schemas/agent_state.schema.json`.
+Schema: `data/design/schemas/design_state.schema.json`.
 
-Das Budget liegt bei etwa 4.000 Tokens. Pro Fläche werden nur die acht größten Beiträge jeder Aberrationsart gemeldet; die vollständige Tabelle liefert die Lese-Aktion `get_surface_table`. Beispiel (gekürzt, Zahlen erfunden):
+Derselbe Zustand ist Grundlage der GUI-Ansicht eines Kandidaten und der Eingabe für das Sprachmodell. Für das Modell gilt ein Budget von etwa 4.000 Tokens. Pro Fläche werden nur die acht größten Beiträge jeder Aberrationsart gemeldet; die vollständige Tabelle liefert die Lese-Aktion `get_surface_table`. Beispiel (gekürzt, Zahlen erfunden):
 
 ```json
 {
-  "format": "mikroptim.agent.state/1",
+  "format": "mikroptim.design.state/1",
   "candidate": 17, "parent": 12, "elements": 9, "surfaces": 21,
   "spec": {"magnification": 50, "na": 0.95, "field_number": 25, "tube_focal_length": 164.5,
            "parfocal_max": 45.0, "spectrum_nm": [435.83, 656.27], "target_color_class": "c",
@@ -179,15 +219,17 @@ Das Budget liegt bei etwa 4.000 Tokens. Pro Fläche werden nur die acht größte
 }
 ```
 
-## 4. Aktionen `mikroptim.agent.action/1`
+## 4. Aktionen `mikroptim.design.action/1`
 
-Schema: `data/agent/schemas/agent_action.schema.json`.
+Schema: `data/design/schemas/design_action.schema.json`.
 
-Eine Antwort enthält 1–4 Aktionen und zu jeder eine kurze Begründung. Der Executor prüft die Vorbedingungen, führt aus und meldet pro Aktion zurück: `ok` oder `error` mit maschinenlesbarem Grund, neue Kandidatennummer und Änderungen der Kennzahlen. Bei einem Fehler darf das Modell höchstens zweimal nachbessern.
+Eine Antwort enthält 1–4 Aktionen und zu jeder eine kurze Begründung. Das gilt für jeden Entscheider; in der GUI füllt der Mensch dieselben Felder über Formulare aus, die Begründung ist dort optional. Der Executor prüft die Vorbedingungen, führt aus und meldet pro Aktion zurück: `ok` oder `error` mit maschinenlesbarem Grund, neue Kandidatennummer und Änderungen der Kennzahlen. Bei einem Fehler darf das Modell höchstens zweimal nachbessern; ein Mensch sieht die Fehlermeldung im Formular.
 
 „Merit unverändert“ heißt: Die Aktion ist ein Einfüge-Operator im Sinn von optimierung.md §6 und lässt F bis auf den Rundungsboden gleich. Alle anderen strukturellen Aktionen erzeugen einen neuen Kandidaten, der vor dem Vergleich nachoptimiert wird.
 
 ### 4.1 Lesen (ohne Kandidatenänderung)
+
+Diese Werkzeuge stehen dem Sprachmodell als Tool-Calls zur Verfügung und dem Menschen als GUI-Ansichten bzw. als `mikroptim design tool …`.
 
 | Aktion | Parameter | Umsetzung |
 |---|---|---|
@@ -249,11 +291,11 @@ Eine Antwort enthält 1–4 Aktionen und zu jeder eine kurze Begründung. Der Ex
 - **Topologie:** höchstens `kMaxSurfaces` Tabellenflächen, Elementbudget, Spalt breit genug für Lage und Mindestspalt.
 - **Glas:** nur Gläser aus den geladenen Katalogen. Filter, die leer ausgehen, werden als Fehler gemeldet und nicht still aufgeweicht.
 - **Daten:** AGENTS.md §8. Keine Linsendaten realer Objektive im Repository; Patentsysteme nur aus `data/glass/private/` bzw. einem privaten Systemverzeichnis.
-- **Kosten:** Jede Aktion verbraucht Budget (Zahl der Aktionen, LM-Zyklen, Laufzeit). Ist das Budget leer, folgt `finish` mit dem besten Kandidaten.
+- **Kosten:** Jede Aktion verbraucht Budget (Zahl der Aktionen, LM-Zyklen, Laufzeit). Ist das Budget leer, folgt `finish` mit dem besten Kandidaten. Für den Menschen ist das Budget eine Anzeige, keine Grenze.
 
 ## 5. Wissensbasis
 
-Sie liegt unter `data/agent/knowledge/` als JSON. Formuliert ist sie **in eigenen Worten** als Regeln mit Quellenangabe, nicht als Textauszug der Dissertation. Im Prompt steht davon nur eine kurze Zusammenfassung (etwa 1.500 Tokens). Den Rest holt das Modell gezielt mit `module_lookup` und `glass_query`.
+Sie liegt unter `data/design/knowledge/` als JSON. Formuliert ist sie **in eigenen Worten** als Regeln mit Quellenangabe, nicht als Textauszug der Dissertation. Im Prompt des Sprachmodells steht davon nur eine kurze Zusammenfassung (etwa 1.500 Tokens). Den Rest holt das Modell gezielt mit `module_lookup` und `glass_query`. Dieselben Einträge zeigt die GUI dem Menschen als nachschlagbare Modultabelle.
 
 ### 5.1 Linsenmodule (`modules.json`)
 
@@ -324,7 +366,7 @@ Für Kittglieder und Gruppen mit Farbziel greift `glass_query` zusätzlich auf d
 
 Mit den frei erfundenen Testgläsern liefern viele Filter wenig oder nichts. Das ist ein Grund mehr, lizenzierte Kataloge unter `data/glass/private/` bereitzustellen (M6-T6, Punkt 8.4).
 
-## 6. Vorgehen der Strategie
+## 6. Vorgehen beim Entwurf
 
 1. **Einordnen:** Etendue-Zone, Ziel-Farb- und Feldklasse, Richtwert für die Elementzahl.
 2. **Gerüste vorschlagen:** 3–6 Gerüste nach Brechkraftverteilung (Zhang Tab. 6.2) und Modulfolge (`start_from_skeleton`, mit `branch`). Für 50×/0,95 trocken liegt nahe:
@@ -340,13 +382,16 @@ Mit den frei erfundenen Testgläsern liefern viele Filter wenig oder nichts. Das
    - Wörterbücher an Feldlagen setzen, wenn der Bedarf unsichtbar ist (F3, F4)
 5. **Abschluss:** volles Spektrum, Einrasten, Empfindlichkeiten. Bei auffälliger Empfindlichkeit `replace_group` (etwa Gauss → Petzval, Zhang §6.4.3) und Vergleich.
 
-Gegen Überkonstruktion (Zhang Kap. 8) gilt: Jede strukturelle Aktion muss in ihrer Begründung angeben, welche Gruppenbilanz sie ändern soll. Die Rangfolge bevorzugt weniger Elemente (optimierung.md §8).
+Dieses Vorgehen steht im System-Prompt des Modells und ist zugleich die Grundlage des `RuleDecider`. Für den Menschen ist es eine Empfehlung.
 
-## 7. Determinismus und Protokoll
+Gegen Überkonstruktion (Zhang Kap. 8) gilt: Jede strukturelle Aktion des Modells muss in ihrer Begründung angeben, welche Gruppenbilanz sie ändern soll. Die Rangfolge bevorzugt weniger Elemente (optimierung.md §8).
 
-- **Modellaufruf:** Temperatur 0, fester Startwert, beschränkte Ausgabe (JSON-Schema). Prüfsumme von Modelldatei, System-Prompt und Wissensbasis stehen im Protokoll.
-- **Protokoll:** pro Aufruf Zustand (Prüfsumme und Datei), Rohantwort, geprüfte Aktionen, Ergebnisse. Format `mikroptim.agent.log/1`, verweist auf die Einträge von `mikroptim.synth/1`.
-- **Wiedereinspielen** (`replay.py`): Gespeicherte Antworten ersetzen den Modellaufruf. Ergebnis ist derselbe Kandidatenbaum bis aufs Bit. Damit sind Läufe ohne Modellserver prüfbar (CI) und Fehler reproduzierbar.
+## 7. Reproduzierbarkeit und Protokoll
+
+- **Protokoll** `mikroptim.design.log/1`: pro Entscheidung der Zustand (Prüfsumme und Datei), der Entscheider (Art, bei Ollama Modellname, Digest und Optionen), aufgerufene Lese-Werkzeuge, Rohantwort und Denktext (Thinking-Modelle), geprüfte Aktionen, Ergebnisse. Verweise auf die Einträge von `mikroptim.synth/1`.
+- **Wiedereinspielen** (`ReplayDecider`): Gespeicherte Antworten ersetzen den Entscheider, auch einen Menschen. Ergebnis ist derselbe Kandidatenbaum, im Rahmen der Reproduzierbarkeit der Numerik: bitgleich auf derselben GPU-Konfiguration (ADR-0007), innerhalb der Toleranzen bei anderer Verteilung auf GPUs (ADR-0013).
+- **CI:** Wiedereinspiel-Läufe brauchen weder Ollama noch einen Menschen und laufen deshalb in der CI (CPU).
+- **Modell selbst:** Temperatur 0 und fester `seed` machen die Antworten meist, aber nicht garantiert wiederholbar (Ollama-Version, Treiber, GPU). Verbindlich ist deshalb das Protokoll, nicht der erneute Modellaufruf.
 
 ## 8. Bewertung
 
@@ -361,11 +406,12 @@ Gegen Überkonstruktion (Zhang Kap. 8) gilt: Jede strukturelle Aktion muss in ih
 - V0: `run_homotopy`
 - V1: Strahlsuche mit Varianten
 - V2: M6-T6-Skript
-- V3: **regelbasierte Strategie ohne Modell**. Sie verwendet dieselbe Aktions-API und Wissensbasis, die Entscheidungen trifft eine feste Heuristik.
+- V3: **regelbasierte Strategie ohne Modell** (`RuleDecider`). Sie verwendet dieselbe Aktions-API und Wissensbasis, die Entscheidungen trifft eine feste Heuristik.
+- V4: **Mensch mit denselben Werkzeugen** (`HumanDecider`), soweit Zeit dafür ist; mindestens an B2.
 
-V3 ist der entscheidende Vergleich. Er trennt den Nutzen der neuen Diagnose und der Operatoren vom Nutzen des Sprachmodells.
+V3 ist der entscheidende Vergleich. Er trennt den Nutzen der neuen Diagnose und der Operatoren vom Nutzen des Sprachmodells. V4 zeigt, wie weit das Modell vom Designer entfernt ist, der dieselben Werkzeuge hat. Verglichen werden mehrere Ollama-Modelle, jeweils Instruktions- und Thinking-Variante.
 
-**Messgrößen:** Ziel erreicht, Elementzahl, RMS bzw. Strehl, Empfindlichkeit, LM-Aufrufe, Laufzeit, Tokens, Anteil abgelehnter Aktionen.
+**Messgrößen:** Ziel erreicht, Elementzahl, RMS bzw. Strehl, Empfindlichkeit, LM-Aufrufe, Laufzeit, Tokens (bei Thinking-Modellen getrennt nach Denken und Antwort), Anteil abgelehnter Aktionen.
 
 ## 9. Aufgaben (Vorschlag M10)
 
@@ -392,21 +438,26 @@ V3 ist der entscheidende Vergleich. Er trennt den Nutzen der neuen Diagnose und 
 - **Inhalt:** Abschnitt 5
 - **Abnahme:** Filter gegen Bruteforce auf den Testkatalogen; jede Regel mit Quelle
 
-### M10-T6 – Strategie-Schleife, Modelladapter, Wiedereinspielen
-- **Inhalt:** Abschnitte 2 und 7
-- **Abnahme:** Wiedereinspielen bitgleich; ungültige Ausgaben werden abgefangen
+### M10-T6 – Entscheider-Schnittstelle, Ollama, Wiedereinspielen
+- **Inhalt:** Abschnitte 2 und 7: `Decider` mit `HumanDecider` (Kommandozeile), `OllamaDecider` (Instruktion und Thinking, Tool-Calls, schema-beschränkte Antwort), `RuleDecider`, `ReplayDecider`, `ConfirmDecider`; Unterbefehle `mikroptim design …`
+- **Abnahme:** Wiedereinspielen eines Laufs mit Modell und eines Laufs mit Mensch ergibt denselben Kandidatenbaum (gleiche GPU-Konfiguration bitgleich); ungültige Ausgaben werden abgefangen; derselbe Lauf mit zwei verschiedenen Ollama-Modellen ist allein über die Konfiguration umschaltbar
 
 ### M10-T7 – Bewertung
 - **Inhalt:** Abschnitt 8
-- **Abnahme:** Bericht unter `docs/ergebnisse/` mit V0–V3 auf B1–B3
+- **Abnahme:** Bericht unter `docs/ergebnisse/` mit V0–V3 auf B1–B3, mehrere Modelle, V4 an B2
+
+**Folgeaufgabe in GUI-Mikroptim** (eigener Meilenstein dort): Seite „Entwurf“ mit Kandidatenbaum, Zustandsansicht, Formularen für alle Aktionen aus `design_action.schema.json`, Lese-Werkzeugen und der Betriebsart assistiert (Vorschlag des Modells mit Begründung annehmen, ändern, verwerfen). Die GUI nutzt dafür nur `mikroptim.design`.
 
 **Abhängigkeiten zu M11.** M10-T4 profitiert von M11-T1 bis M11-T3 (Operatoren mit Nachoptimierung konvergieren dann verlässlicher), M10-T5 nutzt M11-T5, M10-T3 und M11-T6 teilen sich die Empfindlichkeitsrechnung.
 
 ## 10. Fragen an den Maintainer
 
-1. **Ort der Strategie-Schicht:** Python über die Bindings (Vorschlag) oder C++?
-2. **Rolle der GPUs:** Modell auf der RTX 3090, FP64-Trace auf der P100?
-3. **Farbquerfehler-Ziel für Zeiss ICS:** Nach Zhang §6.1 lassen Leica und Zeiss einen festen Farbquerfehler im Objektiv, den die Tubuslinse ausgleicht. Mit welchem Sollwert soll die Merit rechnen?
-4. **Gruppenzuordnung:** automatisch nach h ≥ 0,8 h_max oder ausdrücklich in der Systemdatei?
-5. **Private Benchmarks (B4):** welches Verzeichnis, welches Format?
-6. **Wissensbasis im Repository:** Regeln in eigenen Worten mit Quellenangabe sind unbedenklich. Bitte bestätigen, dass das so gewünscht ist.
+Entschieden (ADR-0012, ADR-0013): Python-Schicht über die Bindings; Ollama mit wählbarem Modell; Mensch und Modell gleichberechtigt; Modell auf der RTX 3090, FP64-Trace auf der P100; glattes Maximum im Kernel mit Bibliotheksfunktionen, Bitgleichheit bei Verteilung auf mehrere GPUs entfällt.
+
+Offen:
+
+1. **Farbquerfehler-Ziel für Zeiss ICS:** Nach Zhang §6.1 lassen Leica und Zeiss einen festen Farbquerfehler im Objektiv, den die Tubuslinse ausgleicht. Mit welchem Sollwert soll die Merit rechnen?
+2. **Gruppenzuordnung:** automatisch nach h ≥ 0,8 h_max oder ausdrücklich in der Systemdatei?
+3. **Private Benchmarks (B4):** welches Verzeichnis, welches Format?
+4. **Rückfall-Entscheider** bei wiederholt ungültigen Modellantworten: Regel, Mensch oder Abbruch als Standard?
+5. **Erste Modelle** für die Bewertung (Abschnitt 8): welche Ollama-Modelle sollen verglichen werden?

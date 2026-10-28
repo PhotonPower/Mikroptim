@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "mikroptim.agent.action/1",
-  "title": "Antwort des Sprachmodells: 1–4 Aktionen mit Begründung",
+  "$id": "mikroptim.design.action/1",
+  "title": "Antwort eines Entscheiders (Mensch, Sprachmodell, Regel): 1–4 Aktionen mit Begründung",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "candidate", "assessment", "actions"],
   "properties": {
-    "format": {"const": "mikroptim.agent.action/1"},
+    "format": {"const": "mikroptim.design.action/1"},
     "candidate": {"type": "integer", "minimum": 0, "description": "Kandidat, auf den sich die Aktionen beziehen"},
     "assessment": {"type": "string", "maxLength": 600, "description": "Kurze Einschätzung der Gruppenbilanz: was fehlt, wo"},
     "actions": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/action"}}

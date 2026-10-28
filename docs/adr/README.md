@@ -10,8 +10,10 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0004](0004-batch-ueber-varianten.md) | Parallelisierung über Systemvarianten | angenommen |
 | [0005](0005-gemeinsamer-mathe-kern.md) | Gemeinsamer Mathe-Kern für CPU und GPU | angenommen |
 | [0006](0006-blende-erste-flaeche.md) | Blende als erste Fläche, kollimierte Quelle | angenommen |
-| [0007](0007-deterministische-reduktionen.md) | Deterministische Reduktionen | angenommen |
+| [0007](0007-deterministische-reduktionen.md) | Deterministische Reduktionen | angenommen, geändert durch ADR-0013 |
 | [0008](0008-dateiformat-json.md) | Eigenes JSON-Systemformat, Raytatouille per Adapter | angenommen |
 | [0009](0009-ableitungen.md) | Erst finite Differenzen, dann Adjungierte | angenommen |
 | [0010](0010-normalgleichungen-ohne-cublas.md) | Normalgleichungen mit eigenem Kernel, Cholesky auf dem Host | vorgeschlagen |
 | [0011](0011-dezentrierung-verkippung.md) | Dezentrierung und Verkippung einzelner Flächen | angenommen |
+| [0012](0012-entwurfswerkzeuge-und-entscheider.md) | Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider | angenommen |
+| [0013](0013-glattes-maximum-und-mehrere-gpus.md) | Glattes Maximum im Kernel; keine Bitgleichheit bei Verteilung auf mehrere GPUs | angenommen |

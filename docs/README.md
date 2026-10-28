@@ -7,7 +7,7 @@
 | [numerik.md](numerik.md) | Konventionen, Formeln, Pupillenquadratur, Glasmodelle, Genauigkeit |
 | [optimierung.md](optimierung.md) | Merit, gebündelter Levenberg-Marquardt, Geisterplatten, Homotopie, Einfüge-Operatoren |
 | [optimierung-erweiterungen.md](optimierung-erweiterungen.md) | Vorschlag M11: weitere Optimierungsverfahren (Entwurf) |
-| [sprachmodell-steuerung.md](sprachmodell-steuerung.md) | Vorschlag M10: Steuerung der Synthese durch ein lokales Sprachmodell (Entwurf) |
+| [entwurfssteuerung.md](entwurfssteuerung.md) | Vorschlag M10: Entwurfswerkzeuge mit Mensch oder Sprachmodell (Ollama) als Entscheider (Entwurf) |
 | [hardware.md](hardware.md) | RTX 3090, Tesla P100, CUDA-Version, Durchsatzabschätzung |
 | [dateiformat.md](dateiformat.md) | Systembeschreibung und Glasdaten (JSON) |
 | [cli.md](cli.md) | Kommandozeilenprogramm `mikroptim` (`trace`, Text- und JSON-Ausgabe) |

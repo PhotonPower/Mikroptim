@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "mikroptim.agent.state/1",
-  "title": "Verdichteter Zustand eines Kandidaten für das Sprachmodell",
+  "$id": "mikroptim.design.state/1",
+  "title": "Verdichteter Zustand eines Kandidaten für einen Entscheider (GUI-Ansicht und Eingabe des Sprachmodells)",
   "type": "object",
   "required": ["format", "candidate", "elements", "surfaces", "spec", "homotopy_point", "merit", "paraxial", "groups", "budget"],
   "properties": {
-    "format": {"const": "mikroptim.agent.state/1"},
+    "format": {"const": "mikroptim.design.state/1"},
     "candidate": {"type": "integer"}, "parent": {"type": ["integer", "null"]},
     "elements": {"type": "integer"}, "surfaces": {"type": "integer"},
     "spec": {"type": "object", "required": ["magnification", "na", "field_number", "tube_focal_length", "spectrum_nm"],

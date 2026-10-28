@@ -18,7 +18,7 @@ flowchart LR
     M6 --> M9[M9 Python, Raytatouille-Adapter]
     M8 --> M9
     M6 --> M11[M11 Erweiterungen des Optimierers, Vorschlag]
-    M9 --> M10[M10 Steuerung durch Sprachmodell, Vorschlag]
+    M9 --> M10[M10 Entwurfssteuerung: Mensch oder Sprachmodell, Vorschlag]
     M11 --> M10
 ```
 
@@ -318,9 +318,9 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 
 ---
 
-## M10 – Steuerung der Synthese durch ein lokales Sprachmodell (Vorschlag)
+## M10 – Entwurfssteuerung: Mensch oder Sprachmodell als Entscheider (Vorschlag)
 
-Entwurf, noch nicht freigegeben. Beschreibung, Schnittstellen und Fragen an den Maintainer: [sprachmodell-steuerung.md](../sprachmodell-steuerung.md); Schemas unter `data/agent/schemas/`. Vor Beginn ist eine ADR nötig (Vorschlag ADR-0012).
+Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI, Python) und lokalem Sprachmodell (Ollama, Instruktions- oder Thinking-Modell) gleichermaßen zur Verfügung. Beschreibung, Schnittstellen und offene Fragen: [entwurfssteuerung.md](../entwurfssteuerung.md); Grundsatz: [ADR-0012](../adr/0012-entwurfswerkzeuge-und-entscheider.md); Schemas unter `data/design/schemas/`.
 
 ### M10-T1 – Aberrationsbericht pro Fläche
 - **Abhängig von:** M4
@@ -329,7 +329,7 @@ Entwurf, noch nicht freigegeben. Beschreibung, Schnittstellen und Fragen an den 
 
 ### M10-T2 – Gruppen, Kennzahlen, Klassen
 - **Abhängig von:** M10-T1
-- **Inhalt:** Gruppenzuordnung, Gruppenbilanzen, Retrofokusfaktor, κ, Etendue und Zone, Farb- und Feldklasse (sprachmodell-steuerung.md, Abschnitt 3.3).
+- **Inhalt:** Gruppenzuordnung, Gruppenbilanzen, Retrofokusfaktor, κ, Etendue und Zone, Farb- und Feldklasse (entwurfssteuerung.md, Abschnitt 3.3).
 - **Abnahme:** frei erfundene Testsysteme mit bekannter Antwort.
 
 ### M10-T3 – Empfindlichkeiten und Herstellbarkeit
@@ -347,14 +347,14 @@ Entwurf, noch nicht freigegeben. Beschreibung, Schnittstellen und Fragen an den 
 - **Inhalt:** Linsenmodule, Brechkraftverteilungen und Glasregeln als JSON in eigenen Worten mit Quellenangabe; `glass_query`.
 - **Abnahme:** Filter gegen Bruteforce auf den Testkatalogen; jede Regel mit Quelle.
 
-### M10-T6 – Strategie-Schleife, Modelladapter, Wiedereinspielen
+### M10-T6 – Entscheider-Schnittstelle, Ollama, Wiedereinspielen
 - **Abhängig von:** M10-T4, M9-T1
-- **Inhalt:** Python-Paket `mikroptim.agent`, Anbindung an einen lokalen Modellserver mit schema-beschränkter Ausgabe, Protokoll `mikroptim.agent.log/1`, Wiedereinspielen.
-- **Abnahme:** Wiedereinspielen ergibt denselben Kandidatenbaum bis aufs Bit; ungültige Modellausgaben werden abgefangen.
+- **Inhalt:** Python-Paket `mikroptim.design` mit `Decider` (`HumanDecider`, `OllamaDecider` für Instruktions- und Thinking-Modelle, `RuleDecider`, `ReplayDecider`, `ConfirmDecider`), Unterbefehle `mikroptim design …`, Protokoll `mikroptim.design.log/1`.
+- **Abnahme:** Wiedereinspielen eines Laufs mit Modell und eines mit Mensch ergibt denselben Kandidatenbaum (gleiche GPU-Konfiguration bitgleich); ungültige Modellausgaben werden abgefangen; Modellwechsel allein über die Konfiguration.
 
 ### M10-T7 – Bewertung
 - **Abhängig von:** M10-T6
-- **Inhalt:** Benchmarks B1–B3 (und lokal B4) gegen V0–V3, insbesondere gegen die regelbasierte Strategie ohne Modell.
+- **Inhalt:** Benchmarks B1–B3 (und lokal B4) gegen V0–V4, mehrere Ollama-Modelle (Instruktion und Thinking), insbesondere gegen die regelbasierte Strategie ohne Modell und gegen den Menschen mit denselben Werkzeugen.
 - **Abnahme:** Bericht unter `docs/ergebnisse/`.
 
 ---
@@ -365,8 +365,8 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 
 ### M11-T1 – Glattes Maximum für Strahlhöhen und Einfallswinkel
 - **Abhängig von:** M4-T3
-- **Inhalt:** Log-Sum-Exp-Reduktion pro Fläche neben dem harten Maximum, β als Homotopie-Parameter; ADR zur Reduktion mit exp/log.
-- **Abnahme:** Grenzwert für β → ∞, Gradient über Trägerwechsel, Konvergenz der Abnahmesysteme von M4-T3 und M6-T3 ohne `max_iterations`.
+- **Inhalt:** Log-Sum-Exp-Reduktion pro Fläche im Kernel neben dem harten Maximum, β als Homotopie-Parameter ([ADR-0013](../adr/0013-glattes-maximum-und-mehrere-gpus.md), Variante A).
+- **Abnahme:** Grenzwert für β → ∞, Gradient über Trägerwechsel, Konvergenz der Abnahmesysteme von M4-T3 und M6-T3 ohne `max_iterations`; CPU/GPU und mehrere GPUs innerhalb der neuen Toleranz `kSmoothMaxCpuGpuRelative`.
 
 ### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
 - **Abhängig von:** M6-T3

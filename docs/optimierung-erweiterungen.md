@@ -1,8 +1,8 @@
 # Vorgeschlagene Erweiterungen des Optimierers (Entwurf, M11)
 
-- **Status:** Entwurf. Jede Erweiterung ist eine eigene Aufgabe (Abschnitt 9). Grundsätzliche Punkte (neue Reduktion im Kernel, Merit-Terme) brauchen eine ADR.
+- **Status:** Entwurf. Jede Erweiterung ist eine eigene Aufgabe (Abschnitt 9). Für das glatte Maximum ist die Grundsatzentscheidung getroffen ([ADR-0013](adr/0013-glattes-maximum-und-mehrere-gpus.md)); weitere grundsätzliche Punkte (neue Merit-Terme) brauchen bei der Umsetzung eine eigene ADR.
 - **Anlass:** Befunde F3–F5, F9, F10 und F13 aus [m6-t6-zielspezifikation.md](ergebnisse/m6-t6-zielspezifikation.md)
-- **Bezug:** [optimierung.md](optimierung.md) (vorhandener Stand); [sprachmodell-steuerung.md](sprachmodell-steuerung.md) (M10) nutzt mehrere der hier vorgeschlagenen Größen als Diagnose oder Aktion.
+- **Bezug:** [optimierung.md](optimierung.md) (vorhandener Stand); [entwurfssteuerung.md](entwurfssteuerung.md) (M10) nutzt mehrere der hier vorgeschlagenen Größen als Diagnose oder Aktion.
 
 Dieses Dokument ändert nichts am vorhandenen Verhalten. Alle Erweiterungen sind abschaltbar und mit dem heutigen Verfahren als Standard einzuführen, bis eine Messung den Wechsel begründet.
 
@@ -33,7 +33,8 @@ mit $\max_i h_i \le \widetilde{\max}_\beta \le \max_i h_i + \ln N/\beta$. Die Ü
 
 **Umsetzung.**
 - Zweite Reduktion im Beobachter von `trace_ray` (`surface_extrema.hpp`): pro Fläche das harte Maximum m und die Summe Σ e^{β(h−m)}. Mit verschobenem Exponenten ist das stabil. Die Rechnung läuft in zwei Durchgängen oder mit der üblichen Online-Fortschreibung (m und Summe gemeinsam aktualisieren).
-- Deterministische Baumreduktion wie die vorhandenen Max-Reduktionen (ADR-0007). Exp und Log sind keine korrekt gerundeten Funktionen; Bitgleichheit CPU/GPU ist deshalb nicht zu erwarten, wohl aber Wiederholbarkeit auf demselben Gerät. Das gehört in eine ADR (Vorschlag ADR-0013), ebenso eine CPU/GPU-Toleranz.
+- Deterministische Baumreduktion wie die vorhandenen Max-Reduktionen (ADR-0007), direkt im Kernel mit `exp` und `log` der jeweiligen Mathematikbibliothek (ADR-0013, Variante A). Diese Funktionen sind nicht korrekt gerundet: Wiederholbar ist das Ergebnis auf demselben Gerät, zwischen CPU und GPU sowie zwischen sm_60 und sm_86 nur innerhalb einer Toleranz (`kSmoothMaxCpuGpuRelative` in `tests/tolerances.hpp`, bei der Umsetzung zu messen).
+- Im Zahlentyp df64 wird die glatte Reduktion in FP64 gerechnet (Eingaben in FP64 umgewandelt). Die Reduktion ist nicht OPD-kritisch, die Genauigkeit von df64 ist hier nicht nötig.
 - β ist Homotopie-Parameter (Fortsetzung in β wie in ε, optimierung.md §7). Am Ende wird β so gewählt, dass ln N/β kleiner als der Vorhalt ist (Standard 5·10⁻⁵ mm). Der Vorhalt bleibt dann gültig.
 - β in Einheiten der Größe: 1/mm für Höhen, dimensionslos für cos I.
 
@@ -96,7 +97,7 @@ Das Residuum ist √w · OSC(ρ_k) für zwei bis drei Zonen (etwa die äußeren 
 **Umsetzung.**
 - Die Zonenstrahlen liegen im Trace der Achse schon vor (Speichen nahe dem Meridian). Gebraucht wird nur der Austrittswinkel und die Schnittweite des meridionalen Strahls jedes Rings.
 - Als trace-abhängiges Zusatzresiduum (optimierung.md §2.1) oder als zusätzliche Ausgabe des Kernels.
-- Gleichzeitig Diagnosegröße für M10 (sprachmodell-steuerung.md, Abschnitt 3.2).
+- Gleichzeitig Diagnosegröße für M10 (entwurfssteuerung.md, Abschnitt 3.2).
 
 **Abnahme.**
 - Orakel: aplanatische Fläche bzw. aplanatisches Linsenpaar (Zhang §3.2) ergibt OSC = 0 bis auf Rundung; eine Einzellinse ergibt das Vorzeichen und die Größenordnung aus der Seidel-Koma (S_II ∝ OSC bei kleiner NA).
@@ -119,7 +120,7 @@ Grundlage sind die Arbeiten zur Glaswahl mit Buchdahl-Koeffizienten (Robb, Merca
 
 **Umsetzung.**
 - Alle Paare (N²/2) und Tripel (N³/6) der Gläser der Glas-Hülle, vektorisiert auf dem Host. Bei einigen hundert Gläsern sind das bis 10⁷ kleine Systeme, also Sekunden.
-- Filter: Regeln aus sprachmodell-steuerung.md, Abschnitt 5.3 (Autofluoreszenz, Transmission, Merte-Paar).
+- Filter: Regeln aus entwurfssteuerung.md, Abschnitt 5.3 (Autofluoreszenz, Transmission, Merte-Paar).
 - Ergebnis: Rangliste mit Startbrechkräften. Sie fließt in `split_from_diagnosis` (Zielglas und c_s statt nur nach Abbezahl), in Operator B und in `glass_query` (M10).
 
 **Abnahme.**
