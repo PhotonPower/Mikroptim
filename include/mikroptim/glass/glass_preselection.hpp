@@ -58,7 +58,7 @@ struct GlassPreselectionOptions {
     double singular_tolerance = 1e-9;
 };
 
-struct GlassCombination {
+struct PreselectedGlasses {
     std::vector<int> glasses;   // Indizes in der Glasliste, Reihenfolge der Elemente
     std::vector<double> powers; // φ_i (ohne Gewicht)
     double power_sum = 0.0;     // Σ|w_i φ_i| / |φ|
@@ -69,7 +69,7 @@ struct GlassCombination {
 // filtern (singulär, Σ|w φ|/|φ| > max_power_sum) und nach dem Rest, bei Gleichheit nach der
 // Summe der Brechkräfte, sortieren; höchstens max_results. Deterministisch (feste Reihenfolge).
 // Wirft std::invalid_argument bei ungültigen Optionen.
-std::vector<GlassCombination> preselect_glasses(std::span<const GlassDispersion> glasses,
-                                                const GlassPreselectionOptions& options = {});
+std::vector<PreselectedGlasses> preselect_glasses(std::span<const GlassDispersion> glasses,
+                                                  const GlassPreselectionOptions& options = {});
 
 } // namespace mko

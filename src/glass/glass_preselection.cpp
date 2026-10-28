@@ -136,14 +136,14 @@ void check(const GlassPreselectionOptions& o, std::size_t n) {
 
 } // namespace
 
-std::vector<GlassCombination> preselect_glasses(std::span<const GlassDispersion> glasses,
-                                                const GlassPreselectionOptions& o) {
+std::vector<PreselectedGlasses> preselect_glasses(std::span<const GlassDispersion> glasses,
+                                                  const GlassPreselectionOptions& o) {
     check(o, glasses.size());
     const int k = o.order;
     const auto m = static_cast<std::size_t>(k + 1);
     const std::vector<double> w = o.weights.empty() ? std::vector<double>(m, 1.0) : o.weights;
     const auto n = static_cast<int>(glasses.size());
-    std::vector<GlassCombination> all;
+    std::vector<PreselectedGlasses> all;
 
     // Kombination: feste Gläser zuerst, freie aufsteigend ohne Wiederholung
     std::vector<int> free;
@@ -184,7 +184,7 @@ std::vector<GlassCombination> preselect_glasses(std::span<const GlassDispersion>
         if (!(sum <= o.max_power_sum)) {
             return;
         }
-        all.push_back(GlassCombination{idx, phi, sum, res});
+        all.push_back(PreselectedGlasses{idx, phi, sum, res});
     };
     if (nfree == 0) {
         evaluate();
@@ -205,7 +205,7 @@ std::vector<GlassCombination> preselect_glasses(std::span<const GlassDispersion>
             }
         }
     }
-    const auto better = [](const GlassCombination& a, const GlassCombination& b) {
+    const auto better = [](const PreselectedGlasses& a, const PreselectedGlasses& b) {
         if (a.residual != b.residual) {
             return a.residual < b.residual;
         }

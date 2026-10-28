@@ -153,7 +153,7 @@ int run_glasses_command(std::span<const std::string_view> args, std::ostream& ou
             }
             a.options.fixed.push_back(static_cast<int>(it - g.begin()));
         }
-        const std::vector<GlassCombination> r = preselect_glasses(g, a.options);
+        const std::vector<PreselectedGlasses> r = preselect_glasses(g, a.options);
         if (a.json) {
             Json j;
             j["format"] = "mikroptim.glasses/1";
@@ -163,7 +163,7 @@ int run_glasses_command(std::span<const std::string_view> args, std::ostream& ou
             j["glasses"] = g.size();
             j["skipped"] = skipped;
             Json list = Json::array();
-            for (const GlassCombination& c : r) {
+            for (const PreselectedGlasses& c : r) {
                 Json e;
                 Json names = Json::array();
                 Json eta = Json::array();
@@ -192,7 +192,7 @@ int run_glasses_command(std::span<const std::string_view> args, std::ostream& ou
             out << pad_left("Rang", 5) << "  " << pad_right("Gläser", 36) << pad_left("Rest", 12)
                 << pad_left("Σ|wφ|/|φ|", 11) << "  Brechkräfte\n";
             int rank = 1;
-            for (const GlassCombination& c : r) {
+            for (const PreselectedGlasses& c : r) {
                 std::string names;
                 std::string powers;
                 for (std::size_t i = 0; i < c.glasses.size(); ++i) {

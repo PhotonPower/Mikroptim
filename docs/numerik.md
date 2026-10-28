@@ -998,7 +998,7 @@ $$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f}\cdot\frac{l' - l'_P}{L' - l'_P} - 1
 
 ## 15. Algebraische Glasvorauswahl (M11-T5)
 
-Implementiert in `include/mikroptim/glass/glass_preselection.hpp` (`catalog_dispersions`, `preselect_glasses`, Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses` ([cli.md](cli.md#mikroptim-glasses)), Aktion `glass_preselect` in `mikroptim.design`.
+Implementiert in `include/mikroptim/glass/glass_preselection.hpp` (`catalog_dispersions`, `preselect_glasses` → `PreselectedGlasses`, Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses` ([cli.md](cli.md#mikroptim-glasses)), Aktion `glass_preselect` in `mikroptim.design`.
 
 **Dispersionskoeffizienten.** Aus dem 3-Term-Buchdahl-Fit (Abschnitt 10, 400–700 nm) n(ω) = n₀ + ν₁ω + ν₂ω² + ν₃ω³. Ein dünnes Element hat φ(ω) = (n(ω) − 1)·K, also φ(ω) = φ₀(1 + η₁ω + η₂ω² + η₃ω³) mit **η_j = ν_j/(n₀ − 1)** (Robb und Mercado). Gläser, deren Bereich den Fitbereich nicht abdeckt, werden übersprungen und gemeldet.
 

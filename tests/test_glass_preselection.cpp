@@ -31,7 +31,7 @@ mko::GlassDispersion glass(const char* name, double n0, double e1, double e2, do
 }
 
 // Erfüllt das Ergebnis die Bedingungen Σ w φ = φ und Σ w φ η_j = 0 (j ≤ k)?
-void expect_conditions(const mko::GlassCombination& c, const std::vector<mko::GlassDispersion>& g,
+void expect_conditions(const mko::PreselectedGlasses& c, const std::vector<mko::GlassDispersion>& g,
                        const mko::GlassPreselectionOptions& o) {
     const std::size_t m = c.glasses.size();
     const std::vector<double> w = o.weights.empty() ? std::vector<double>(m, 1.0) : o.weights;
@@ -61,7 +61,7 @@ TEST(GlassPreselection, PairMatchesThinAchromat) {
                                               glass("B", 1.72, -0.090, 0.009, 0.0)};
     mko::GlassPreselectionOptions o;
     o.power = 0.02;
-    const std::vector<mko::GlassCombination> r = mko::preselect_glasses(g, o);
+    const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
     ASSERT_EQ(r.size(), 1U);
     expect_conditions(r[0], g, o);
     const double c1 = 0.03;
@@ -86,7 +86,7 @@ TEST(GlassPreselection, FindsConstructedApochromaticTriple) {
     mko::GlassPreselectionOptions o;
     o.order = 2;
     o.max_results = 50;
-    const std::vector<mko::GlassCombination> r = mko::preselect_glasses(g, o);
+    const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
     ASSERT_FALSE(r.empty());
     const std::vector<int> expected{1, 3, 5}; // A, B, C
     EXPECT_EQ(r[0].glasses, expected);
@@ -95,7 +95,7 @@ TEST(GlassPreselection, FindsConstructedApochromaticTriple) {
     EXPECT_NEAR(r[0].powers[2], 0.5, kGlassPreselectionAlgebra);
     EXPECT_LT(r[0].residual, 1e-15);
     EXPECT_NEAR(r[0].power_sum, 3.0, kGlassPreselectionAlgebra);
-    for (const mko::GlassCombination& c : r) {
+    for (const mko::PreselectedGlasses& c : r) {
         expect_conditions(c, g, o);
     }
     for (std::size_t i = 1; i < r.size(); ++i) {
@@ -116,14 +116,14 @@ TEST(GlassPreselection, WeightsFixedFilterAndErrors) {
     o.fixed = {4};
     o.max_power_sum = 1e9;
     o.max_results = 1000;
-    const std::vector<mko::GlassCombination> r = mko::preselect_glasses(g, o);
+    const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
     EXPECT_EQ(r.size(), 55U); // C(11, 2), alle lösbar
-    for (const mko::GlassCombination& c : r) {
+    for (const mko::PreselectedGlasses& c : r) {
         EXPECT_EQ(c.glasses[0], 4);
         expect_conditions(c, g, o);
     }
     o.max_power_sum = 5.0;
-    for (const mko::GlassCombination& c : mko::preselect_glasses(g, o)) {
+    for (const mko::PreselectedGlasses& c : mko::preselect_glasses(g, o)) {
         EXPECT_LE(c.power_sum, 5.0);
     }
     // gleiche Dispersion: singulär, kein Ergebnis
@@ -186,9 +186,9 @@ TEST(GlassPreselection, ThinGroupsAreParaxiallyCorrected) {
     mko::GlassPreselectionOptions o;
     o.power = phi;
     o.max_power_sum = 6.0;
-    const std::vector<mko::GlassCombination> pairs = mko::preselect_glasses(g, o);
+    const std::vector<mko::PreselectedGlasses> pairs = mko::preselect_glasses(g, o);
     ASSERT_FALSE(pairs.empty());
-    const auto names = [&](const mko::GlassCombination& c) {
+    const auto names = [&](const mko::PreselectedGlasses& c) {
         std::vector<std::string> n;
         for (int i : c.glasses) {
             n.push_back(g[static_cast<std::size_t>(i)].name);
@@ -197,7 +197,7 @@ TEST(GlassPreselection, ThinGroupsAreParaxiallyCorrected) {
     };
     const double achromat = spread(names(pairs[0]), pairs[0].powers);
     o.order = 2;
-    const std::vector<mko::GlassCombination> triples = mko::preselect_glasses(g, o);
+    const std::vector<mko::PreselectedGlasses> triples = mko::preselect_glasses(g, o);
     ASSERT_FALSE(triples.empty());
     const double apochromat = spread(names(triples[0]), triples[0].powers);
     std::printf("Spanne g … C: Einzellinse %.3e mm, Achromat %.3e mm, Apochromat %.3e mm\n", single,
