@@ -1,10 +1,14 @@
 #include "mikroptim/paraxial/aberrations.hpp"
 
+#include "mikroptim/cpu/host_surface_table.hpp"
 #include "mikroptim/glass/index_table.hpp"
+#include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/trace/trace.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <stdexcept>
 
@@ -70,6 +74,67 @@ double seidel_spherical(const Rays& r, std::size_t s, double c) {
     return -A * A * r.y[s] * d;
 }
 
+struct RealRayTerms {
+    bool valid = false;
+    std::vector<double> full; // −2 ΔQ pro Fläche
+    double osc = 0.0;
+};
+
+// Exakte additive Zerlegung der sphärischen Aberration aus einem realen meridionalen Randstrahl
+// (Pupillenhöhe ρ a) und dem paraxialen Randstrahl derselben Höhe: Q = n u sin U δL mit
+// δL = L − l (Achsenschnittweiten von realem und paraxialem Strahl ab dem Scheitel) ist beim
+// Übergang zwischen zwei Flächen invariant; −2 (Q′ − Q) an Fläche s ist ihr Beitrag, die Summe
+// −2 n′u′ sin U′ δL′ im Endraum. Stabil geschrieben ohne L: u sin U δL = u sin U z − u Y cos U
+// + y sin U (Schnittpunkt (Y, z) in lokalen Koordinaten). OSC nach Conrady am letzten Raum.
+RealRayTerms real_ray_terms(const SystemDescription& sys, const GlassCatalog& catalog,
+                            const Rays& r, double rho) {
+    RealRayTerms out;
+    const std::size_t S = sys.surfaces.size();
+    out.full.assign(S, std::numeric_limits<double>::quiet_NaN());
+    const IndexTable index = make_system_index_table(sys, catalog);
+    const HostSurfaceTable table = make_surface_table(sys, index);
+    const auto view = table.view();
+    const double a = sys.surfaces[0].semi_diameter;
+    Ray<double> ray = collimated_ray<double>(a, 0.0, rho, 0.0);
+    auto rec = std::make_unique<TraceRecord<double>>();
+    int failed = -1;
+    if (trace_ray(view, 0, ray, rec.get(), &failed) != TraceStatus::Ok) {
+        return out;
+    }
+    for (std::size_t s = 1; s < S; ++s) {
+        const Vec3<double>& p = rec->p[s];
+        const Vec3<double>& db = rec->d[s - 1];
+        const Vec3<double>& da = rec->d[s];
+        const double y = rho * r.y[s];
+        const double ub = rho * r.u_before[s];
+        const double ua = rho * r.u_after[s];
+        const double nb = n_before_of(r, s);
+        const double na = r.n[s];
+        const double qb = nb * (ub * db.y * p.z - ub * p.y * db.z + y * db.y);
+        const double qa = na * (ua * da.y * p.z - ua * p.y * da.z + y * da.y);
+        out.full[s] = -2.0 * (qa - qb);
+    }
+    out.full[0] = 0.0;
+    // OSC (Conrady): (f_real / f) · (l′ − l′_P) / (L′ − l′_P) − 1, f_real = −h / sin U′
+    const ParaxialData pd = compute_paraxial(sys, catalog);
+    const Vec3<double>& p = rec->p[S - 1];
+    const Vec3<double>& d = rec->d[S - 1];
+    if (d.y != 0.0 && std::isfinite(pd.focal_length)) {
+        const double f_real = -rho * a / d.y;
+        const double L = p.z - p.y * d.z / d.y;
+        double factor = 1.0;
+        if (!pd.exit_pupil_at_infinity) {
+            factor =
+                (pd.back_focal_distance - pd.exit_pupil_position) / (L - pd.exit_pupil_position);
+        }
+        out.osc = f_real / pd.focal_length * factor - 1.0;
+    } else {
+        out.osc = std::numeric_limits<double>::quiet_NaN();
+    }
+    out.valid = true;
+    return out;
+}
+
 } // namespace
 
 SeidelWaves AberrationReport::waves() const {
@@ -83,6 +148,9 @@ SeidelWaves AberrationReport::waves() const {
     w.dW020 = C[0] / 2.0 / lam;
     w.dW111 = C[1] / lam;
     w.dW040 = spherochromatism / 8.0 / lam;
+    w.W040_full = full_order_spherical / 8.0 / lam;
+    w.W040_higher = higher_order_spherical / 8.0 / lam;
+    w.W040_zone = full_order_spherical_zone / 8.0 / lam;
     return w;
 }
 
@@ -97,6 +165,9 @@ SeidelWaves AberrationReport::waves(const SurfaceAberration& s) const {
     w.dW020 = s.C[0] / 2.0 / lam;
     w.dW111 = s.C[1] / lam;
     w.dW040 = s.spherochromatism / 8.0 / lam;
+    w.W040_full = s.full_order_spherical / 8.0 / lam;
+    w.W040_higher = s.higher_order_spherical / 8.0 / lam;
+    w.W040_zone = s.full_order_spherical_zone / 8.0 / lam;
     return w;
 }
 
@@ -188,6 +259,39 @@ AberrationReport compute_aberrations(const SystemDescription& system, const Glas
         rep.C[1] += out.C[1];
         rep.spherochromatism += out.spherochromatism;
     }
+
+    // M10-T1b: reale Randstrahlen bei λ_ref (ohne Geisterplatten, eine Wellenlänge)
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    bool valid = false;
+    if (options.real_rays) {
+        SystemDescription ref = system;
+        ref.ghost_plates.clear();
+        ref.spectrum.wavelengths_nm = {rep.reference_nm};
+        ref.spectrum.weights = {1.0};
+        ref.spectrum.reference_nm = rep.reference_nm;
+        const RealRayTerms edge = real_ray_terms(ref, catalog, r, 1.0);
+        const RealRayTerms zone = real_ray_terms(ref, catalog, r, kZoneRho);
+        valid = edge.valid && zone.valid;
+        rep.osc = edge.valid ? edge.osc : nan;
+        rep.osc_zone = zone.valid ? zone.osc : nan;
+        for (std::size_t s = 0; s < S; ++s) {
+            SurfaceAberration& out = rep.surfaces[s];
+            out.full_order_spherical = valid ? edge.full[s] : nan;
+            out.higher_order_spherical = valid ? edge.full[s] - out.S[0] : nan;
+            out.full_order_spherical_zone = valid ? zone.full[s] : nan;
+            rep.full_order_spherical += out.full_order_spherical;
+            rep.higher_order_spherical += out.higher_order_spherical;
+            rep.full_order_spherical_zone += out.full_order_spherical_zone;
+        }
+    } else {
+        rep.osc = rep.osc_zone = nan;
+        for (SurfaceAberration& out : rep.surfaces) {
+            out.full_order_spherical = out.higher_order_spherical = out.full_order_spherical_zone =
+                nan;
+        }
+        rep.full_order_spherical = rep.higher_order_spherical = rep.full_order_spherical_zone = nan;
+    }
+    rep.real_rays_valid = valid;
     return rep;
 }
 

@@ -75,7 +75,10 @@ Json waves_json(const SeidelWaves& w) {
                 {"W311", number_or_null(w.W311)},
                 {"dW020", w.dW020},
                 {"dW111", w.dW111},
-                {"dW040", w.dW040}};
+                {"dW040", w.dW040},
+                {"W040_full", number_or_null(w.W040_full)},
+                {"W040_higher", number_or_null(w.W040_higher)},
+                {"W040_zone", number_or_null(w.W040_zone)}};
 }
 
 Json report_json(const AberrationReport& rep, const std::string& file) {
@@ -90,11 +93,18 @@ Json report_json(const AberrationReport& rep, const std::string& file) {
     j["stop_semi_diameter"] = rep.stop_semi_diameter;
     j["lagrange"] = rep.lagrange;
     j["ghost_plates_ignored"] = rep.ghost_plates_ignored;
+    j["real_rays_valid"] = rep.real_rays_valid;
+    j["zone_rho"] = kZoneRho;
     j["sign_convention"] = "Welford: W = -OPD von Mikroptim";
     Json totals;
     totals["S"] = Json::array({rep.S[0], rep.S[1], rep.S[2], rep.S[3], number_or_null(rep.S[4])});
     totals["C"] = Json::array({rep.C[0], rep.C[1]});
     totals["spherochromatism"] = rep.spherochromatism;
+    totals["full_order_spherical"] = number_or_null(rep.full_order_spherical);
+    totals["higher_order_spherical"] = number_or_null(rep.higher_order_spherical);
+    totals["full_order_spherical_zone"] = number_or_null(rep.full_order_spherical_zone);
+    totals["osc"] = number_or_null(rep.osc);
+    totals["osc_zone"] = number_or_null(rep.osc_zone);
     totals["waves"] = waves_json(rep.waves());
     j["totals"] = totals;
     Json surfaces = Json::array();
@@ -115,6 +125,9 @@ Json report_json(const AberrationReport& rep, const std::string& file) {
         e["S"] = Json::array({s.S[0], s.S[1], s.S[2], s.S[3], number_or_null(s.S[4])});
         e["C"] = Json::array({s.C[0], s.C[1]});
         e["spherochromatism"] = s.spherochromatism;
+        e["full_order_spherical"] = number_or_null(s.full_order_spherical);
+        e["higher_order_spherical"] = number_or_null(s.higher_order_spherical);
+        e["full_order_spherical_zone"] = number_or_null(s.full_order_spherical_zone);
         e["waves"] = waves_json(rep.waves(s));
         surfaces.push_back(e);
     }
@@ -129,6 +142,11 @@ void print_text(std::ostream& out, const AberrationReport& rep, const std::strin
            fixed(rep.long_nm, 2) + " nm");
     kv(out, "Feldwinkel", fixed(rep.field_angle_deg, 4) + "°");
     kv(out, "Lagrange-Invariante", sci(rep.lagrange, 6) + " mm");
+    if (rep.real_rays_valid) {
+        kv(out, "OSC (Rand / Zone)", sci(rep.osc, 3) + " / " + sci(rep.osc_zone, 3));
+    } else {
+        kv(out, "Reale Strahlen", "versagt (Vollordnung und OSC nicht bestimmt)");
+    }
     if (rep.ghost_plates_ignored > 0) {
         kv(out, "Hinweis",
            std::to_string(rep.ghost_plates_ignored) +
@@ -137,14 +155,17 @@ void print_text(std::ostream& out, const AberrationReport& rep, const std::strin
     out << "Beiträge in Wellen bei λ_ref (Welford, W = −OPD):\n";
     out << pad_left("Fl.", 4) << pad_left("y", 12) << pad_left("W040", 12) << pad_left("W131", 12)
         << pad_left("W222", 12) << pad_left("W220", 12) << pad_left("W311", 12)
-        << pad_left("ΔW020", 12) << pad_left("ΔW111", 12) << pad_left("ΔW040", 12) << '\n';
+        << pad_left("ΔW020", 12) << pad_left("ΔW111", 12) << pad_left("ΔW040", 12)
+        << pad_left("W040voll", 12) << pad_left("W040zone", 12) << '\n';
     auto row = [&](const std::string& label, double y, const SeidelWaves& w) {
         out << pad_left(label, 4) << pad_left(std::isfinite(y) ? fixed(y, 4) : "", 12)
             << pad_left(sci(w.W040, 3), 12) << pad_left(sci(w.W131, 3), 12)
             << pad_left(sci(w.W222, 3), 12) << pad_left(sci(w.W220, 3), 12)
             << pad_left(std::isfinite(w.W311) ? sci(w.W311, 3) : "–", 12)
             << pad_left(sci(w.dW020, 3), 12) << pad_left(sci(w.dW111, 3), 12)
-            << pad_left(sci(w.dW040, 3), 12) << '\n';
+            << pad_left(sci(w.dW040, 3), 12)
+            << pad_left(std::isfinite(w.W040_full) ? sci(w.W040_full, 3) : "–", 12)
+            << pad_left(std::isfinite(w.W040_zone) ? sci(w.W040_zone, 3) : "–", 12) << '\n';
     };
     for (const SurfaceAberration& s : rep.surfaces) {
         row(std::to_string(s.surface), s.y, rep.waves(s));
@@ -158,7 +179,8 @@ void print_aberrations_usage(std::ostream& out) {
     out << "Aufruf: mikroptim aberrations <system.json> [--json] [--field-deg θ]\n"
            "                              [--reference-nm λ] [--short-nm λ] [--long-nm λ]\n"
            "Aberrationsbericht pro Fläche: paraxiale Rand- und Hauptstrahlen, Seidel-Beiträge\n"
-           "S_I … S_V, chromatische Beiträge C_I, C_II und Sphärochromasie (docs/numerik.md,\n"
+           "S_I … S_V, chromatische Beiträge C_I, C_II, Sphärochromasie, sphärische Aberration\n"
+           "aller Ordnungen (Rand, Zone) und OSC aus realen Randstrahlen (docs/numerik.md,\n"
            "Abschnitt 14). Nur kollimierte Quelle; Geisterplatten werden nicht berücksichtigt.\n"
            "Optionen:\n"
            "  --json               maschinenlesbare Ausgabe (Format mikroptim.aberrations/1)\n"

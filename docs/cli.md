@@ -1410,7 +1410,7 @@ Stammbaum des längeren Laufs NA 0,3 → 0,6 mit `--beam 2 --alternatives 2 --cu
 
 ## `mikroptim aberrations`
 
-Aberrationsbericht pro Fläche (M10-T1, Formeln und Prüfungen: [numerik.md, Abschnitt 14](numerik.md#14-aberrationsbericht-m10-t1)): paraxiale Rand- und Hauptstrahlen, Seidel-Beiträge S_I … S_V, chromatische Beiträge C_I, C_II und Sphärochromasie, pro Dateifläche und als Summe, zusätzlich als Wellenfrontkoeffizienten in Wellen bei λ_ref. Nur Systeme mit kollimierter Quelle; Geisterplatten werden nicht berücksichtigt.
+Aberrationsbericht pro Fläche (M10-T1, Vollordnung und OSC M10-T1b, Formeln und Prüfungen: [numerik.md, Abschnitt 14](numerik.md#14-aberrationsbericht-m10-t1)): paraxiale Rand- und Hauptstrahlen, Seidel-Beiträge S_I … S_V, chromatische Beiträge C_I, C_II und Sphärochromasie, pro Dateifläche und als Summe, zusätzlich als Wellenfrontkoeffizienten in Wellen bei λ_ref. Nur Systeme mit kollimierter Quelle; Geisterplatten werden nicht berücksichtigt.
 
 ```
 mikroptim aberrations <system.json> [--json] [--field-deg θ] [--reference-nm λ] [--short-nm λ] [--long-nm λ]
@@ -1425,7 +1425,7 @@ mikroptim aberrations <system.json> [--json] [--field-deg θ] [--reference-nm λ
 
 Exit-Codes: 0 Erfolg, 1 Fehler beim Laden oder Rechnen (z. B. Punktquelle), 2 ungültige Kommandozeile.
 
-**JSON** (`mikroptim.aberrations/1`): `reference_nm`, `short_nm`, `long_nm`, `field_angle_deg`, `stop_semi_diameter`, `lagrange`, `ghost_plates_ignored`, `sign_convention`, `totals` (`S` [5], `C` [2], `spherochromatism`, `waves`) und `surfaces[]` mit `surface`, `curvature`, `n_before`, `n_after`, `y`, `u_before`, `u_after`, `ybar`, `ubar_before`, `ubar_after`, `A`, `Abar`, `S`, `C`, `spherochromatism`, `waves` (`W040`, `W131`, `W222`, `W220`, `W311`, `dW020`, `dW111`, `dW040`). Nicht definierte Verzeichnung (A = 0) steht als `null`.
+**JSON** (`mikroptim.aberrations/1`): `reference_nm`, `short_nm`, `long_nm`, `field_angle_deg`, `stop_semi_diameter`, `lagrange`, `ghost_plates_ignored`, `sign_convention`, `real_rays_valid`, `zone_rho`, `totals` (`S` [5], `C` [2], `spherochromatism`, `full_order_spherical`, `higher_order_spherical`, `full_order_spherical_zone`, `osc`, `osc_zone`, `waves`) und `surfaces[]` mit `surface`, `curvature`, `n_before`, `n_after`, `y`, `u_before`, `u_after`, `ybar`, `ubar_before`, `ubar_after`, `A`, `Abar`, `S`, `C`, `spherochromatism`, `full_order_spherical`, `higher_order_spherical`, `full_order_spherical_zone`, `waves` (`W040`, `W131`, `W222`, `W220`, `W311`, `dW020`, `dW111`, `dW040`, `W040_full`, `W040_higher`, `W040_zone`). Nicht definierte Verzeichnung (A = 0) steht als `null`.
 
 **Python:** `mikroptim.aberrations(pfad, field_angle_deg=None, reference_nm=None, short_nm=None, long_nm=None)` liefert dasselbe als `dict`.
 

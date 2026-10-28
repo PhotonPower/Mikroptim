@@ -32,3 +32,14 @@ def test_aberrations_error_point_source(tmp_path):
     p.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(RuntimeError, match="kollimierte Quelle"):
         mikroptim.aberrations(p)
+
+
+def test_full_order_and_osc():
+    rep = mikroptim.aberrations(SYSTEMS / "testsystem_mehrlinser.json")
+    t = rep["totals"]
+    assert rep["real_rays_valid"] is True and rep["zone_rho"] == pytest.approx(2 ** -0.5)
+    assert t["higher_order_spherical"] == pytest.approx(
+        t["full_order_spherical"] - t["S"][0], rel=1e-9, abs=1e-15)
+    assert t["osc"] is not None and t["osc_zone"] is not None
+    assert set(["W040_full", "W040_higher", "W040_zone"]) <= set(t["waves"])
+

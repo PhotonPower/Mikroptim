@@ -5,6 +5,7 @@
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/trace/trace.hpp"
 #include "tolerances.hpp"
 
 #include <gtest/gtest.h>
@@ -12,12 +13,15 @@
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+using mko::test::kFullOrderSmallAperture;
+using mko::test::kOscThirdOrder;
 using mko::test::kSeidelChromaticFirstOrder;
 using mko::test::kSeidelIdentity;
 using mko::test::kSeidelSmallAperture;
@@ -204,4 +208,80 @@ TEST(Aberrations, OptionsAndErrors) {
     EXPECT_THROW((void)mko::compute_aberrations(l.system, l.catalog, bad), std::invalid_argument);
     l.system.source.type = mko::SourceType::Point;
     EXPECT_THROW((void)mko::compute_aberrations(l.system, l.catalog), std::invalid_argument);
+}
+
+// --- M10-T1b: Vollordnung, Zone, OSC ---------------------------------------------------------
+
+// Bei kleiner Apertur geht die Vollordnung pro Fläche in S_I über, in der Zone in S_I ρ⁴.
+TEST(Aberrations, FullOrderTendsToSeidelAtSmallAperture) {
+    for (const char* name :
+         {"einzellinse_bk7.json", "testsystem_mehrlinser.json", "zweilinser_petzval.json"}) {
+        const mko::LoadedSystem l = scaled_system(name, 0.02, 1.0);
+        const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog);
+        ASSERT_TRUE(rep.real_rays_valid) << name;
+        const double r4 = std::pow(mko::kZoneRho, 4);
+        for (const mko::SurfaceAberration& s : rep.surfaces) {
+            if (s.S[0] == 0.0) {
+                continue;
+            }
+            expect_relative(s.full_order_spherical, s.S[0], kFullOrderSmallAperture,
+                            std::string(name) + " Fläche " + std::to_string(s.surface));
+            expect_relative(s.full_order_spherical_zone, s.S[0] * r4, kFullOrderSmallAperture,
+                            std::string(name) + " Zone, Fläche " + std::to_string(s.surface));
+            EXPECT_EQ(s.higher_order_spherical, s.full_order_spherical - s.S[0]);
+        }
+    }
+}
+
+// Summe der Flächenbeiträge = −2 n′u′ sin U′ δL′ des realen Randstrahls im Endraum (exakt bis
+// auf Rundung, auch bei voller Apertur mit großem Anteil höherer Ordnung).
+TEST(Aberrations, FullOrderSumEqualsFinalRealRayAberration) {
+    for (const char* name : {"testsystem_mehrlinser.json", "zielspezifikation_start.json"}) {
+        mko::LoadedSystem l = mko::load_system(system_path(name));
+        const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog);
+        ASSERT_TRUE(rep.real_rays_valid) << name;
+        // eigener Trace bei λ_ref ohne Geisterplatten
+        mko::SystemDescription sys = l.system;
+        sys.ghost_plates.clear();
+        sys.variables = {}; // Variablen verweisen u. U. auf die Geisterplatten
+        sys.constraints = {};
+        sys.spectrum.wavelengths_nm = {rep.reference_nm};
+        sys.spectrum.weights = {1.0};
+        const mko::LoadedSystem p = mko::prepare_system(sys, system_path(name).parent_path());
+        const auto view = p.table.view();
+        mko::Ray<double> ray = mko::collimated_ray<double>(rep.stop_semi_diameter, 0.0, 1.0, 0.0);
+        auto rec = std::make_unique<mko::TraceRecord<double>>();
+        int failed = -1;
+        ASSERT_EQ(mko::trace_ray(view, 0, ray, rec.get(), &failed), mko::TraceStatus::Ok);
+        const std::size_t S = rep.surfaces.size();
+        const mko::SurfaceAberration& last = rep.surfaces.back();
+        const mko::Vec3<double>& pt = rec->p[S - 1];
+        const mko::Vec3<double>& d = rec->d[S - 1];
+        const double L = pt.z - pt.y * d.z / d.y;
+        const double l_par = -last.y / last.u_after;
+        const double final_value = -2.0 * last.n_after * last.u_after * d.y * (L - l_par);
+        expect_relative(rep.full_order_spherical, final_value, 1e-11, std::string(name) + " Σ");
+        EXPECT_NE(rep.higher_order_spherical, 0.0);
+    }
+}
+
+// OSC → −S_II / (2H) bei kleiner Apertur (Koma 3. Ordnung); ohne reale Strahlen NaN.
+TEST(Aberrations, OscMatchesThirdOrderComa) {
+    for (const char* name :
+         {"einzellinse_bk7.json", "testsystem_mehrlinser.json", "zweilinser_petzval.json"}) {
+        const mko::LoadedSystem l = scaled_system(name, 0.02, 1.0);
+        const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog);
+        expect_relative(rep.osc, -rep.S[1] / (2.0 * rep.lagrange), kOscThirdOrder,
+                        std::string(name) + " OSC");
+        // Zone: dritte Ordnung skaliert mit ρ²
+        expect_relative(rep.osc_zone, 0.5 * rep.osc, 2.0 * kOscThirdOrder,
+                        std::string(name) + " OSC Zone");
+    }
+    mko::LoadedSystem l = mko::load_system(system_path("einzellinse_bk7.json"));
+    mko::AberrationOptions o;
+    o.real_rays = false;
+    const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog, o);
+    EXPECT_FALSE(rep.real_rays_valid);
+    EXPECT_TRUE(std::isnan(rep.osc));
+    EXPECT_TRUE(std::isnan(rep.surfaces[1].full_order_spherical));
 }

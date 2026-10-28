@@ -114,7 +114,7 @@ add_library(mikroptim_paraxial STATIC
     src/paraxial/paraxial.cpp)
 add_library(Mikroptim::paraxial ALIAS mikroptim_paraxial)
 target_link_libraries(mikroptim_paraxial
-    PUBLIC mikroptim_core mikroptim_model mikroptim_glass
+    PUBLIC mikroptim_core mikroptim_model mikroptim_glass mikroptim_cpu
     PRIVATE mikroptim_warnings)
 
 # --------------------------------------------------------------------------
