@@ -38,6 +38,8 @@ Die Werkzeuge setzen an den Entscheidungen an, die heute Heuristiken oder das Sk
 
 ## 2. Architektur
 
+**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Ollama, Regel und Bestätigung folgen in M10-T6b, die GUI-Seite in GUI-Mikroptim.
+
 ```
  Mensch                       Sprachmodell (Ollama)          Regel, Wiedereinspieler
  GUI-Mikroptim, CLI, Python   Instruktions- oder Thinking-   (ohne Modell)

@@ -129,3 +129,22 @@ Lange Rechnungen (Laden, Trace, Auswertung, Optimierung) geben die GIL frei; der
 
 `mikroptim.glass_import` wandelt Glaskataloge der Hersteller (AGF) und YAML-Dateien der Datenbank refractiveindex.info in `mikroptim.glass/1` um; reines Python mit NumPy, für YAML zusätzlich PyYAML (`pip install pyyaml` bzw. Extra `mikroptim[glass]`). Kommandozeile: `python -m mikroptim.glass_import <dateien> -o <katalog.json> [--report bericht.json]`. Regeln und Beispiele: [data/glass/README.md](../data/glass/README.md#glasimport-ab-m9-t3).
 
+## Entwurfswerkzeuge (M10-T6a)
+
+`mikroptim.design` stellt Diagnosen und Aktionen für einen Entscheider bereit, Mensch oder später Sprachmodell (ADR-0012, [docs/entwurfssteuerung.md](../docs/entwurfssteuerung.md)). Eine Sitzung ist ein Verzeichnis mit Kandidatenbaum und Protokoll:
+
+```bash
+python -m mikroptim.design new data/systems/testsystem_mehrlinser.json sitzung   # Kandidat 0, Zustand
+python -m mikroptim.design act sitzung antwort.json -c 0                         # Aktionen ausführen
+python -m mikroptim.design state sitzung -c 4 [--json]                           # Zustand eines Kandidaten
+python -m mikroptim.design tree sitzung                                          # Kandidatenbaum
+python -m mikroptim.design replay sitzung sitzung_neu                            # Protokoll abspielen
+```
+
+`antwort.json` im Format `mikroptim.design.action/1` (Schema `data/design/schemas/design_action.schema.json`), z. B.:
+
+```json
+{"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "Spalte frei, dann optimieren",
+ "actions": [{"action": "free_gaps"}, {"action": "optimize", "cycles": 50}]}
+```
+

@@ -362,10 +362,15 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 - **Inhalt:** Linsenmodule, Brechkraftverteilungen und Glasregeln als JSON in eigenen Worten mit Quellenangabe; `glass_query`.
 - **Abnahme:** Filter gegen Bruteforce auf den Testkatalogen; jede Regel mit Quelle.
 
-### M10-T6 – Entscheider-Schnittstelle, Ollama, Wiedereinspielen
-- **Abhängig von:** M10-T4, M9-T1
-- **Inhalt:** Python-Paket `mikroptim.design` mit `Decider` (`HumanDecider`, `OllamaDecider` für Instruktions- und Thinking-Modelle, `RuleDecider`, `ReplayDecider`, `ConfirmDecider`), Unterbefehle `mikroptim design …`, Protokoll `mikroptim.design.log/1`.
-- **Abnahme:** Wiedereinspielen eines Laufs mit Modell und eines mit Mensch ergibt denselben Kandidatenbaum (gleiche GPU-Konfiguration bitgleich); ungültige Modellausgaben werden abgefangen; Modellwechsel allein über die Konfiguration.
+### M10-T6a – Grundgerüst `mikroptim.design`
+- **Abhängig von:** M10-T1, M9-T1
+- **Inhalt:** Python-Unterpaket `mikroptim.design` als dünne Schicht über der Kommandozeile: Zustand `mikroptim.design.state/1` (Paraxialdaten, RMS pro Tupel, Merit und Geisterdiagnose, Gruppenbilanzen aus dem Aberrationsbericht, Etendue-Zone, Retrofokusfaktor), Aktionen `get_surface_table`, `get_ghost_diagnosis`, `evaluate`, `optimize`, `synth_segment`, `snap_glasses`, `free_gaps`, `insert_null_meniscus` (mit Sattelzweigen), `split_lens`, `branch`, `abandon`, `finish`; Kandidatenbaum, Protokoll `mikroptim.design.log/1`, `HumanDecider`, `ReplayDecider`, `python -m mikroptim.design`.
+- **Abnahme:** Zustand gegen das Schema; Gruppenbilanzen summieren sich zur Summe des Berichts; Einfügen, Freigeben, Optimieren, Verzweigen; strukturierte Fehler; Wiedereinspielen ergibt identische Kandidaten.
+
+### M10-T6b – Ollama, Regel, Bestätigung
+- **Abhängig von:** M10-T6a
+- **Inhalt:** `OllamaDecider` (Instruktions- und Thinking-Modelle, Lese-Werkzeuge als Tool-Calls, schema-beschränkte Antwort, Protokoll von Denktext und Prüfsummen), `RuleDecider` (Vergleichsstrategie V3), `ConfirmDecider` (Modell schlägt vor, Mensch bestätigt), Rückfall-Entscheider.
+- **Abnahme:** Modellwechsel allein über die Konfiguration; ungültige Modellausgaben werden abgefangen; Wiedereinspielen eines Laufs mit Modell ohne Ollama.
 
 ### M10-T7 – Bewertung
 - **Abhängig von:** M10-T6

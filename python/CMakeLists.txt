@@ -40,10 +40,11 @@ set(MKO_PY_PACKAGE_DIR ${CMAKE_CURRENT_BINARY_DIR}/mikroptim)
 set_target_properties(_mikroptim PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${MKO_PY_PACKAGE_DIR}$<0:>
     RUNTIME_OUTPUT_DIRECTORY ${MKO_PY_PACKAGE_DIR}$<0:>)
-file(GLOB MKO_PY_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/mikroptim/*.py)
-foreach(f IN LISTS MKO_PY_SOURCES)
-    get_filename_component(name ${f} NAME)
-    configure_file(${f} ${MKO_PY_PACKAGE_DIR}/${name} COPYONLY)
+# Auch Unterpakete (z. B. mikroptim/design, M10-T6a) mit ihrer Verzeichnisstruktur
+file(GLOB_RECURSE MKO_PY_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/mikroptim
+    ${CMAKE_CURRENT_SOURCE_DIR}/mikroptim/*.py)
+foreach(rel IN LISTS MKO_PY_SOURCES)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mikroptim/${rel} ${MKO_PY_PACKAGE_DIR}/${rel} COPYONLY)
 endforeach()
 
 # Angaben zum Build für das Paket: CUDA-Build und (Windows) Verzeichnis der CUDA-DLLs, das
