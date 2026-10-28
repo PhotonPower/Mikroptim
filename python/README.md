@@ -124,3 +124,8 @@ Lange Rechnungen (Laden, Trace, Auswertung, Optimierung) geben die GIL frei; der
 
 - Nicht gebunden: Systemsynthese (`mikroptim synth`), Einfüge-Operatoren, Glas-Einrasten, vektorielle PSF, Mehr-GPU-Engine; über `run_cli` sind die Unterbefehle aber erreichbar.
 - `OptimizeResult` enthält keine Berichte der Nebenbedingungen und keine Geisterdiagnose (die stehen in `mikroptim optimize --json`).
+
+## Glasimport (M9-T3)
+
+`mikroptim.glass_import` wandelt Glaskataloge der Hersteller (AGF) und YAML-Dateien der Datenbank refractiveindex.info in `mikroptim.glass/1` um; reines Python mit NumPy, für YAML zusätzlich PyYAML (`pip install pyyaml` bzw. Extra `mikroptim[glass]`). Kommandozeile: `python -m mikroptim.glass_import <dateien> -o <katalog.json> [--report bericht.json]`. Regeln und Beispiele: [data/glass/README.md](../data/glass/README.md#glasimport-ab-m9-t3).
+

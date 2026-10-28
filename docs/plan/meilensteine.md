@@ -312,6 +312,11 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Inhalt:** nanobind; Systeme laden, tracen, optimieren, Ergebnisse als NumPy.
 - **Abnahme:** pytest-Suite, Wheel-Build für Linux und Windows.
 
+### M9-T3 – Glasimport (AGF, refractiveindex.info)
+- **Abhängig von:** M9-T1
+- **Inhalt:** Python-Modul `mikroptim.glass_import` und `python -m mikroptim.glass_import`: AGF-Dateien der Hersteller und YAML-Dateien der Datenbank refractiveindex.info nach `mikroptim.glass/1`; 3-Term-Sellmeier exakt oder als geprüfter Fit, Kontrolle gegen n_d, Reintransmission, Bericht. Glasdateien werden nie committet (data/glass/README.md); die GUI bietet später den Upload und ruft dieses Modul auf.
+- **Abnahme:** Tests mit synthetischen Daten (exakte Übernahme, Fit innerhalb der Toleranz, Einschränkung des Bereichs, Kontrolle n_d, Kodierungen, Status, Namen, Luftumrechnung, Transmission, Kommandozeile); der erzeugte Katalog wird vom Leser von Mikroptim angenommen und liefert bei gleichen Koeffizienten bitgleiche Paraxialdaten. Lokaler Plausibilitätslauf über die Herstellergläser der Datenbank refractiveindex.info (Ergebnis im PR).
+
 ### M9-T2 – Adapter Raytatouille
 - **Inhalt:** Konvertierung `*.rtt.json` ↔ `mikroptim.system/1` für den unterstützten Teilumfang (sequenziell, koaxial, sphärisch).
 - **Abnahme:** Roundtrip für Testsysteme; nicht abbildbare Elemente werden klar gemeldet.

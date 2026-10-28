@@ -61,7 +61,7 @@ jobs:
         run: python -m pip wheel . -w dist --no-deps -C cmake.define.MIKROPTIM_WARNINGS_AS_ERRORS=ON
       - name: Installieren
         run: |
-          python -m pip install numpy pytest
+          python -m pip install numpy pytest pyyaml
           python -m pip install --no-index --find-links dist mikroptim
       - name: Testen
         run: python -m pytest python/tests -q
