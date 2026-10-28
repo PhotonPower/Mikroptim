@@ -148,3 +148,11 @@ python -m mikroptim.design replay sitzung sitzung_neu                           
  "actions": [{"action": "free_gaps"}, {"action": "optimize", "cycles": 50}]}
 ```
 
+Entscheider (M10-T6b): `--decider rule` (feste Vergleichsstrategie), `--decider ollama --model <modell>` (lokales Sprachmodell über Ollama auf `--host`, Standard `http://localhost:11434`; `--think`/`--no-think` für Thinking-Modelle), `--confirm` (Mensch bestätigt jeden Vorschlag), `--fallback rule|human` bei ungültigen Modellantworten:
+
+```bash
+python -m mikroptim.design run sitzung --decider ollama --model qwen3:30b --think --steps 10 --fallback rule
+```
+
+Ollama läuft am besten auf der RTX 3090 (`CUDA_VISIBLE_DEVICES` beim Start von `ollama serve`), der FP64-Trace auf der P100. Läufe mit Modell sind über das Protokoll ohne Ollama wiederholbar (`replay`).
+

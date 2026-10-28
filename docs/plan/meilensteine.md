@@ -369,6 +369,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T6b – Ollama, Regel, Bestätigung
 - **Abhängig von:** M10-T6a
+- **Stand:** umgesetzt; Bewertung mit echten Modellen auf herkules3 in M10-T7.
 - **Inhalt:** `OllamaDecider` (Instruktions- und Thinking-Modelle, Lese-Werkzeuge als Tool-Calls, schema-beschränkte Antwort, Protokoll von Denktext und Prüfsummen), `RuleDecider` (Vergleichsstrategie V3), `ConfirmDecider` (Modell schlägt vor, Mensch bestätigt), Rückfall-Entscheider.
 - **Abnahme:** Modellwechsel allein über die Konfiguration; ungültige Modellausgaben werden abgefangen; Wiedereinspielen eines Laufs mit Modell ohne Ollama.
 

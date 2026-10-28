@@ -38,7 +38,15 @@ Die Werkzeuge setzen an den Entscheidungen an, die heute Heuristiken oder das Sk
 
 ## 2. Architektur
 
-**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Ollama, Regel und Bestätigung folgen in M10-T6b, die GUI-Seite in GUI-Mikroptim.
+**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Seit M10-T6b gibt es außerdem `OllamaDecider` (`mikroptim/design/ollama.py`: Lese-Werkzeuge als Tool-Calls, danach Antwort mit `format` = eingebettetes Antwortschema `mikroptim/design/schema.py`, bis zu zwei Nachbesserungen, Protokoll von Modell, Digest, Optionen, Prüfsumme des Prompts, Denktext und Tool-Calls), `RuleDecider` (einfache Vergleichsstrategie V3), `ConfirmDecider` (Vorschlag annehmen, ändern, verwerfen) und einen Rückfall-Entscheider bei ungültigen Modellantworten. Die GUI-Seite folgt in GUI-Mikroptim.
+
+```bash
+python -m mikroptim.design new start.json sitzung --spec spec.json
+python -m mikroptim.design run sitzung --decider ollama --model <modell> [--think] --steps 10 --fallback rule
+python -m mikroptim.design run sitzung --decider ollama --model <modell> --confirm      # assistiert
+python -m mikroptim.design run sitzung --decider rule --steps 10                          # Vergleich V3
+python -m mikroptim.design replay sitzung sitzung_wieder                                  # ohne Ollama
+```
 
 ```
  Mensch                       Sprachmodell (Ollama)          Regel, Wiedereinspieler
