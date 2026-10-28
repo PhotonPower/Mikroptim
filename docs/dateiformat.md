@@ -314,3 +314,7 @@ Regeln des Lesers (Fehler als `mko::GlassError`, Meldung mit Datei und JSON-Pfad
 - Optional: `reference.n_d` (wird gespeichert), `source` (wird gespeichert), `transmission` und `comment` (werden ignoriert). Unbekannte Felder werden ignoriert und in `GlassCatalog::warnings()` gemeldet.
 
 Die Brechzahltabelle für ein System beschreibt [architektur.md](architektur.md#brechzahltabelle).
+
+### Erzeugen aus Herstellerkatalogen (ab M9-T3)
+
+AGF-Dateien und YAML-Dateien von refractiveindex.info wandelt `python -m mikroptim.glass_import` um (Regeln, Fit und Kontrollen: [data/glass/README.md](../data/glass/README.md#glasimport-ab-m9-t3)). Das Feld `transmission` schreibt der Import als `{"thickness_mm": d, "nm": [...], "tau": [...]}` (Reintransmission bei der Probendicke d, aufsteigende Wellenlängen).
