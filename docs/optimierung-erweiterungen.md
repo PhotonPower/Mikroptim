@@ -52,6 +52,8 @@ mit $\max_i h_i \le \widetilde{\max}_\beta \le \max_i h_i + \ln N/\beta$. Die Ü
 | ohne Randdicken (`min_edge_thickness`) | 45 | 2 | 4.611 | 1,7 s | erreicht, 3 Elemente |
 | Randdicken mit `height: semi_diameter` (ohne Strahl-Extrema) | 55 | 28 | 15.545 | 9 s | Start abgelehnt |
 
+Weitere Eingrenzung (hart): nur der Glasrand 4 von 40 Läufen mit `max_iterations` (5.547 Zyklen), nur der Luftrand 7 von 63 (7.834), beide 36 von 63 (21.216); beide mit Gewicht 10³ statt 10⁴ 28 von 63 (18.484), mit 10² 21 von 63 (14.950). Das Kriechen entsteht vor allem, wenn Glas- und Luftrand **gleichzeitig** aktiv sind (sie hängen über dieselben Pfeilhöhen zusammen), und nimmt mit dem Gewicht ab.
+
 Die Glättung ändert am Kriechen nichts. Die Ursache von F10 sind die **Randdicken-Bedingungen selbst**, auch ganz ohne Maximum über Strahlen (Variante mit Halbdurchmesser). Naheliegend sind das Ein- und Ausschalten der einseitigen Strafe max(0, g) (wechselnde aktive Menge, Knick der Jacobi-Zeile bei g = 0) und die steife Strafe bei großen Gewichten. Deshalb: **Kernel für das glatte Maximum zurückgestellt**; als Nächstes M11-T2 (Augmented Lagrangian, kleine feste Gewichte) und eine Glättung des Knicks max(0, g) selbst (z. B. Softplus mit Fortsetzung) am selben System messen.
 
 **Abnahme.**
