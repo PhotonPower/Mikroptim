@@ -292,6 +292,26 @@ AberrationReport compute_aberrations(const SystemDescription& system, const Glas
         rep.full_order_spherical = rep.higher_order_spherical = rep.full_order_spherical_zone = nan;
     }
     rep.real_rays_valid = valid;
+
+    // M10-T2: chromatischer Fokusverlauf (paraxiale hintere Schnittweite gegen λ_ref)
+    if (options.focal_shift) {
+        double bfd_ref = nan;
+        try {
+            bfd_ref = compute_paraxial(system, catalog, rep.reference_nm).back_focal_distance;
+        } catch (const GlassError&) {
+        }
+        for (const SpectralLine& line : kSpectralLines) {
+            FocalShift f;
+            f.line = line.name;
+            f.nm = line.nm;
+            try {
+                f.shift = compute_paraxial(system, catalog, line.nm).back_focal_distance - bfd_ref;
+            } catch (const GlassError&) {
+                f.shift = nan;
+            }
+            rep.focal_shifts.push_back(f);
+        }
+    }
     return rep;
 }
 

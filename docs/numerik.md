@@ -991,3 +991,8 @@ $$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f}\cdot\frac{l' - l'_P}{L' - l'_P} - 1
 | Σ S_FSPH gegen −2n′u′ sin U′ δL′ des getracten Randstrahls, volle Apertur | ≤ 10⁻¹¹ relativ (Mehrlinser, Zielspezifikation) |
 | S_FSPH,s gegen S_I,s bzw. S_I,s ρ⁴ bei a = 0,02 a | ≤ 10⁻³ relativ (gemessen ≈ 10⁻⁵), drei Systeme |
 | OSC gegen −S_II/(2H) bei a = 0,02 a; Zone gegen OSC/2 | ≤ 10⁻² relativ, drei Systeme |
+
+**Chromatischer Fokusverlauf** (M10-T2): Differenz der paraxialen hinteren Schnittweiten zu λ_ref an den Linien i, h, g, F, e, d, C, A′, s, t (`kSpectralLines`; NaN, wenn ein Glas die Linie nicht abdeckt), JSON `focal_shifts`. Grundlage der Farbklassen (`mikroptim/design/classes.py`, [entwurfssteuerung.md, Abschnitt 3.3](entwurfssteuerung.md)). Test `Aberrations.FocalShiftsMatchParaxialFoci`.
+
+**Bildfeldwölbung für die Feldklassen** (M10-T2): Der ρ²-Koeffizient der Wellenfront am Feldrand minus der auf der Achse ist (S_III + S_IV)/4 (Welford; in `waves` ist `W220` nur der Petzval-Anteil S_IV/4). Die beste (mediale) Bildschale liegt um Δz = (2S_III + S_IV)/(2n′u′²) neben dem Achsfokus. Prüfung gegen die getracte Wellenfront im Test `Aberrations.SeidelSumsMatchTracedWavefront` (gemessen 5·10⁻⁴ relativ).
+

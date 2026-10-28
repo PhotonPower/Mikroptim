@@ -173,7 +173,7 @@ Ein Feld `"group"` an der Dateifläche überschreibt die Zuordnung. Module setze
 
 Für das Zielsystem (FZ 25, 50×, NA 0,95: y_obj = 0,25 mm) ist G ≈ 0,18 mm². Das ist **Zone 3**, also ein dreigruppiges System mit besonderen Korrekturmodulen, kein Zweigruppen-System.
 
-**Klassen** des aktuellen Kandidaten und Zielklassen aus der Spezifikation:
+**Klassen** des aktuellen Kandidaten und Zielklassen aus der Spezifikation (umgesetzt in M10-T2, `mikroptim/design/classes.py`; Fluorit über g … C in 2,5 DoF, Feldkrümmung in Seidel-Näherung, Vignettierung über versagte Strahlen am Feldrand):
 - Farbklasse (a)–(g) aus dem chromatischen Fokusverlauf gegen die Schärfentiefe DoF = λ/(2 NA²) im trockenen Objektraum (Zhang Tab. 4.1, Abb. 4.2).
 - Feldklasse 1–7 aus Bildfeldwölbung (Grenze 2,5 DoF), Koma und Vignettierung (Zhang Tab. 4.2).
 

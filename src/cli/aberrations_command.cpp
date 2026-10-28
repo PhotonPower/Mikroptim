@@ -95,6 +95,12 @@ Json report_json(const AberrationReport& rep, const std::string& file) {
     j["ghost_plates_ignored"] = rep.ghost_plates_ignored;
     j["real_rays_valid"] = rep.real_rays_valid;
     j["zone_rho"] = kZoneRho;
+    Json shifts = Json::array();
+    for (const FocalShift& f : rep.focal_shifts) {
+        shifts.push_back(
+            Json{{"line", f.line}, {"nm", f.nm}, {"shift_mm", number_or_null(f.shift)}});
+    }
+    j["focal_shifts"] = shifts;
     j["sign_convention"] = "Welford: W = -OPD von Mikroptim";
     Json totals;
     totals["S"] = Json::array({rep.S[0], rep.S[1], rep.S[2], rep.S[3], number_or_null(rep.S[4])});
