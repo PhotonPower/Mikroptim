@@ -35,6 +35,8 @@ const char* to_string(HomotopyStepKind kind) {
         return "insertion_stage";
     case HomotopyStepKind::Smoothing:
         return "smoothing";
+    case HomotopyStepKind::ExtremaSmoothing:
+        return "extrema_smoothing";
     case HomotopyStepKind::GhostWeight:
         return "ghost_weight";
     case HomotopyStepKind::Goal:
@@ -123,6 +125,10 @@ void check_options_impl(const HomotopyOptions& o) {
         !(o.ghost_weight_factor > 1.0) || !std::isfinite(o.ghost_weight_factor) ||
         !(o.smoothing_factor > 0.0) || !(o.smoothing_factor < 1.0)) {
         invalid("Faktoren der Fortsetzungen ungültig (penalty, μ > 1; 0 < ε-Faktor < 1)");
+    }
+    if (!(o.extrema_beta >= 0.0) || !std::isfinite(o.extrema_beta) || o.extrema_stages < 0 ||
+        !(o.extrema_factor > 1.0) || !std::isfinite(o.extrema_factor)) {
+        invalid("β-Fortsetzung ungültig (β ≥ 0, Stufen ≥ 0, Faktor > 1)");
     }
     check_control(o.aperture_step, "Apertur");
     check_control(o.field_step, "Feld");
@@ -518,10 +524,28 @@ private:
         emit(step);
     }
 
+    // β-Fortsetzung der Strahl-Extrema (M11-T1b): β wächst um extrema_factor je Stufe, zuletzt
+    // hart (β = 0). Ohne geglättete Extrema nichts.
+    void extrema_phase(State& s) {
+        if (s.point.extrema_beta <= 0.0) {
+            return;
+        }
+        for (int j = 0; j <= o_.extrema_stages; ++j) {
+            s.point.extrema_beta =
+                j < o_.extrema_stages ? s.point.extrema_beta * o_.extrema_factor : 0.0;
+            HomotopyStep step = solve(s.system, s.point, HomotopyStepKind::ExtremaSmoothing);
+            step.accepted = true;
+            step.operation = s.point.extrema_beta > 0.0 ? "β = " + number(s.point.extrema_beta)
+                                                        : std::string("Extrema hart");
+            emit(step);
+        }
+    }
+
     // Abschluss am Endpunkt: ε-Fortsetzung, Ziel prüfen; verfehlt: μ-Fortsetzung, danach bei
     // Bedarf Einfügen am Zustand vor dem Abschluss und erneut.
     void finish_phase(State& s) {
         for (;;) {
+            extrema_phase(s);
             const State saved = s;
             for (int j = 0; j < o_.smoothing_stages; ++j) {
                 s.point.ghost_smoothing *= o_.smoothing_factor;
@@ -565,6 +589,7 @@ HomotopyResult run_homotopy(HomotopyModel& model, SystemDescription system,
     r.target = homotopy_target(start, options);
     const auto t0 = std::chrono::steady_clock::now();
     State s{std::move(system), start};
+    s.point.extrema_beta = options.extrema_beta;
     Controller c(model, options, r);
     try {
         c.run(s);
@@ -599,7 +624,8 @@ Json point_json(const HomotopyPoint& p) {
                 {"spectrum", p.spectrum},
                 {"ghost_weight", num(p.ghost_weight)},
                 {"ghost_smoothing", num(p.ghost_smoothing)},
-                {"penalty_scale", num(p.penalty_scale)}};
+                {"penalty_scale", num(p.penalty_scale)},
+                {"extrema_beta", num(p.extrema_beta)}};
 }
 
 Json goal_json(const HomotopyGoal& g) {

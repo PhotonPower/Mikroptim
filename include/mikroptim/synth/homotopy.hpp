@@ -41,6 +41,7 @@ struct HomotopyPoint {
     double ghost_weight = 1.0;    // Faktor auf μ aller Strafen der Geisterplatten
     double ghost_smoothing = 1.0; // Faktor auf ε der Strafen der Geisterplatten
     double penalty_scale = 1.0;   // Faktor auf die Gewichte der einseitigen Nebenbedingungen
+    double extrema_beta = 0.0;    // β der geglätteten Strahl-Extrema (M11-T1b); 0 = hart
 
     friend bool operator==(const HomotopyPoint&, const HomotopyPoint&) = default;
 };
@@ -184,16 +185,17 @@ public:
 // ---------------------------------------------------------------------------------------------
 
 enum class HomotopyStepKind {
-    Start,          // Optimierung am Startpunkt
-    Penalty,        // Stufe der Penalty-Fortsetzung (einseitige Bedingungen)
-    Aperture,       // Schritt der numerischen Apertur
-    Field,          // Schritt des Feldanteils
-    Spectrum,       // Spektrumstufe
-    Insertion,      // Einfüge-Operator angewandt (ohne Optimierung)
-    InsertionStage, // Stufe der inneren Homotopie eines Zweigs
-    Smoothing,      // Stufe der ε-Fortsetzung
-    GhostWeight,    // Stufe der μ-Fortsetzung
-    Goal,           // Prüfung des Ziels am realen System (ohne Optimierung)
+    Start,            // Optimierung am Startpunkt
+    Penalty,          // Stufe der Penalty-Fortsetzung (einseitige Bedingungen)
+    Aperture,         // Schritt der numerischen Apertur
+    Field,            // Schritt des Feldanteils
+    Spectrum,         // Spektrumstufe
+    Insertion,        // Einfüge-Operator angewandt (ohne Optimierung)
+    InsertionStage,   // Stufe der inneren Homotopie eines Zweigs
+    Smoothing,        // Stufe der ε-Fortsetzung
+    ExtremaSmoothing, // Stufe der β-Fortsetzung der Strahl-Extrema (M11-T1b)
+    GhostWeight,      // Stufe der μ-Fortsetzung
+    Goal,             // Prüfung des Ziels am realen System (ohne Optimierung)
 };
 
 // "start", "penalty", "aperture", "field", "spectrum", "insertion", "insertion_stage",
@@ -276,6 +278,12 @@ struct HomotopyOptions {
     // ε-Fortsetzung am Ende: smoothing_stages Stufen mit Faktor smoothing_factor auf ε.
     int smoothing_stages = 1;
     double smoothing_factor = 0.1;
+    // β-Fortsetzung der Strahl-Extrema (M11-T1b, ADR-0013): extrema_beta > 0 startet mit
+    // geglätteten Extrema (β [1/mm] für die Höhe, dasselbe β für cos I); am Endpunkt
+    // extrema_stages Stufen mit Faktor extrema_factor, danach hart. 0 = aus (Standard).
+    double extrema_beta = 0.0;
+    int extrema_stages = 2;
+    double extrema_factor = 10.0;
     // μ-Fortsetzung am Ende, solange das Ziel verfehlt ist: höchstens ghost_weight_stages
     // Stufen mit Faktor ghost_weight_factor auf μ.
     int ghost_weight_stages = 2;

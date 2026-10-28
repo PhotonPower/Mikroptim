@@ -1137,6 +1137,7 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--start-field F`, `--target-field F` | Feldanteil (Faktor auf die Feldwinkel der Datei) am Start (Standard 1) bzw. am Ende (Standard: wie am Start) |
 | `--rms-target W` | Beugungsziel [Wellen] pro Feld und Wellenlänge (Standard 1/14) |
 | `--merit-factor K` | Schwelle F_max = (K · Ziel)² für die Bewertungsmerit F_B = Wellenfront + L1-Strafe (Standard 1) |
+| `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |
 | `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |
 | `--max-elements N` | höchstens N Glaselemente (Standard 6) |
 | `--max-steps N` | höchstens N Optimierungen (Standard 400) |

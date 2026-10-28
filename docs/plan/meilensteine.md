@@ -392,10 +392,15 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abnahme:** Formel gegen direkte Rechnung, Schranken max ≤ smax ≤ max + ln N/β, Grenzwert β → ∞, Dateiformat, mechanische Bedingungen; Befund am Zweilinser dokumentiert.
 - **Stand:** umgesetzt.
 
-### M11-T1b – Glattes Maximum: Kernel und β-Fortsetzung
+### M11-T1b – Glattes Maximum: β-Fortsetzung (Kernel zurückgestellt)
 - **Abhängig von:** M11-T1a
-- **Inhalt:** Akkumulator (m, Σ) pro Fläche in Beobachter, Warp-/Block-Reduktion (`wavefront_block.hpp`) und Zusammenführen der Tranchen; β als Homotopie-Parameter im Controller ([ADR-0013](../adr/0013-glattes-maximum-und-mehrere-gpus.md), Variante A).
-- **Abnahme:** CPU gegen GPU innerhalb `kSmoothMaxCpuGpuRelative`; Abnahmesystem von M6-T3 mit β-Fortsetzung gegen den harten Lauf (Zyklen, Status) auf herkules3.
+- **Inhalt:** β als Homotopie-Parameter in Controller und Strahlsuche (`HomotopyPoint::extrema_beta`, `synth --extrema-beta`), optisches Modell setzt `constraints.extrema_smoothing`.
+- **Stand:** β-Fortsetzung umgesetzt. Messung am System von M6-T3: keine Verbesserung; Ursache von F10 sind die Randdicken-Bedingungen selbst, nicht das Maximum über Strahlen ([optimierung-erweiterungen.md, Abschnitt 1](../optimierung-erweiterungen.md#1-glattes-maximum-über-strahlen-m11-t1)). Der Kernel (Akkumulator in `wavefront_block.hpp`) ist deshalb zurückgestellt, bis ein System zeigt, dass er nützt.
+
+### M11-T1c – Knick der einseitigen Strafe (neu)
+- **Abhängig von:** M11-T1b
+- **Inhalt:** Ursache der `max_iterations`-Läufe bei Randdicken eingrenzen (aktive Menge, Gewichte) und eine Glättung von max(0, g) (z. B. Softplus mit Fortsetzung) gegen M11-T2 vergleichen.
+- **Abnahme:** System von M6-T3: deutlich weniger Läufe mit `max_iterations` und LM-Zyklen bei gleichem Ziel und gleicher Einhaltung der Randdicken.
 
 ### M11-T2 – Augmented Lagrangian für einseitige Bedingungen
 - **Abhängig von:** M6-T3
