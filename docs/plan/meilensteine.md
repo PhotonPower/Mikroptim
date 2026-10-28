@@ -317,6 +317,11 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Inhalt:** Python-Modul `mikroptim.glass_import` und `python -m mikroptim.glass_import`: AGF-Dateien der Hersteller und YAML-Dateien der Datenbank refractiveindex.info nach `mikroptim.glass/1`; 3-Term-Sellmeier exakt oder als geprüfter Fit, Kontrolle gegen n_d, Reintransmission, Bericht. Glasdateien werden nie committet (data/glass/README.md); die GUI bietet später den Upload und ruft dieses Modul auf.
 - **Abnahme:** Tests mit synthetischen Daten (exakte Übernahme, Fit innerhalb der Toleranz, Einschränkung des Bereichs, Kontrolle n_d, Kodierungen, Status, Namen, Luftumrechnung, Transmission, Kommandozeile); der erzeugte Katalog wird vom Leser von Mikroptim angenommen und liefert bei gleichen Koeffizienten bitgleiche Paraxialdaten. Lokaler Plausibilitätslauf über die Herstellergläser der Datenbank refractiveindex.info (Ergebnis im PR).
 
+### M9-T4 – Glasmodelle Sellmeier mit mehr Termen und Polynom
+- **Abhängig von:** M9-T3
+- **Inhalt:** ADR-0014: Modell `sellmeier` mit 1 … 8 Termen und Konstante, neues Modell `polynomial`; Leser, `Glass::index`, Formeln in `dispersion.hpp`; Glasimport gibt sie exakt aus (`--legacy` für 3-Term-Sellmeier).
+- **Abnahme:** 3-Term-Sellmeier bitgleich zur bisherigen Formel; neue Modelle gegen Formeln von Hand; Fehlermeldungen; Glasimport exakt für AGF 1, 2, 4, 6, 9–13 und refractiveindex.info 1–3 (Abweichung < 10⁻¹³); Plausibilitätslauf: Kataloge vom C++-Leser geladen, C++ gegen Python und gegen n_d.
+
 ### M9-T2 – Adapter Raytatouille
 - **Inhalt:** Konvertierung `*.rtt.json` ↔ `mikroptim.system/1` für den unterstützten Teilumfang (sequenziell, koaxial, sphärisch).
 - **Abnahme:** Roundtrip für Testsysteme; nicht abbildbare Elemente werden klar gemeldet.

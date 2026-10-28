@@ -60,6 +60,19 @@ public:
         return x;
     }
 
+    std::vector<double> number_vector(const json& v, const std::string& path, std::size_t min_n,
+                                      std::size_t max_n) const {
+        if (!v.is_array() || v.size() < min_n || v.size() > max_n) {
+            fail(path, "Feld mit " + std::to_string(min_n) + " bis " + std::to_string(max_n) +
+                           " Zahlen erwartet");
+        }
+        std::vector<double> out(v.size());
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            out[i] = number_value(v[i], path + "[" + std::to_string(i) + "]");
+        }
+        return out;
+    }
+
     template <std::size_t N>
     std::array<double, N> number_array(const json& v, const std::string& path) const {
         if (!v.is_array() || v.size() != N) {
@@ -120,31 +133,56 @@ Glass read_glass(const Reader& rd, const json& g, const std::string& path,
     }
 
     const std::string model = rd.string_value(rd.member(g, path, "model"), path + ".model");
-    if (model != "sellmeier") {
-        rd.fail(path + ".model", "unbekanntes Modell '" + model + "' (unterstützt: sellmeier)");
-    }
-    out.B = rd.number_array<3>(rd.member(g, path, "B"), path + ".B");
-    out.C = rd.number_array<3>(rd.member(g, path, "C"), path + ".C");
     out.range_nm = rd.number_array<2>(rd.member(g, path, "range_nm"), path + ".range_nm");
     if (!(out.range_nm[0] > 0.0 && out.range_nm[0] < out.range_nm[1])) {
         rd.fail(path + ".range_nm", "0 < min < max verletzt");
     }
-
-    // Kein Sellmeier-Pol (lambda^2 = C_i) im Gültigkeitsbereich.
-    for (std::size_t i = 0; i < 3; ++i) {
-        if (out.C[i] > 0.0) {
-            const double pole_nm = std::sqrt(out.C[i]) * 1000.0;
-            if (pole_nm >= out.range_nm[0] && pole_nm <= out.range_nm[1]) {
-                rd.fail(path + ".C[" + std::to_string(i) + "]",
-                        "Sellmeier-Pol bei " + detail::format_number(pole_nm) +
-                            " nm liegt im Gültigkeitsbereich");
+    if (model == "sellmeier") {
+        out.model = GlassModel::Sellmeier;
+        out.B = rd.number_vector(rd.member(g, path, "B"), path + ".B", 1, kMaxSellmeierTerms);
+        out.C = rd.number_vector(rd.member(g, path, "C"), path + ".C", 1, kMaxSellmeierTerms);
+        if (out.B.size() != out.C.size()) {
+            rd.fail(path + ".C", "B und C müssen gleich viele Zahlen haben");
+        }
+        if (const auto it = g.find("A"); it != g.end()) {
+            out.A = rd.number_value(*it, path + ".A");
+        }
+        // Kein Sellmeier-Pol (lambda^2 = C_i) im Gültigkeitsbereich.
+        for (std::size_t i = 0; i < out.C.size(); ++i) {
+            if (out.C[i] > 0.0) {
+                const double pole_nm = std::sqrt(out.C[i]) * 1000.0;
+                if (pole_nm >= out.range_nm[0] && pole_nm <= out.range_nm[1]) {
+                    rd.fail(path + ".C[" + std::to_string(i) + "]",
+                            "Sellmeier-Pol bei " + detail::format_number(pole_nm) +
+                                " nm liegt im Gültigkeitsbereich");
+                }
             }
         }
+    } else if (model == "polynomial") {
+        out.model = GlassModel::Polynomial;
+        const std::string tpath = path + ".terms";
+        const json& terms = rd.member(g, path, "terms");
+        if (!terms.is_array() || terms.empty() || terms.size() > kMaxPolynomialTerms) {
+            rd.fail(tpath, "Feld mit 1 bis " + std::to_string(kMaxPolynomialTerms) +
+                               " Termen [Koeffizient, Exponent] erwartet");
+        }
+        for (std::size_t j = 0; j < terms.size(); ++j) {
+            const auto t = rd.number_array<2>(terms[j], tpath + "[" + std::to_string(j) + "]");
+            out.coefficients.push_back(t[0]);
+            out.exponents.push_back(t[1]);
+        }
+    } else {
+        rd.fail(path + ".model",
+                "unbekanntes Modell '" + model + "' (unterstützt: sellmeier, polynomial)");
     }
-    for (const double lambda_nm : out.range_nm) {
-        const double n = sellmeier_index(out.B.data(), out.C.data(), nm_to_um(lambda_nm));
+    // Gültige Brechzahl im ganzen Bereich (n^2 > 0 und endlich), geprüft auf 201 Punkten.
+    for (int k = 0; k <= 200; ++k) {
+        const double lambda_nm =
+            k == 200 ? out.range_nm[1]
+                     : out.range_nm[0] + (out.range_nm[1] - out.range_nm[0]) * (k / 200.0);
+        const double n = out.index(lambda_nm);
         if (!(std::isfinite(n) && n > 0.0)) {
-            rd.fail(path, "Sellmeier-Formel liefert bei " + detail::format_number(lambda_nm) +
+            rd.fail(path, "Dispersionsformel liefert bei " + detail::format_number(lambda_nm) +
                               " nm keine gültige Brechzahl");
         }
     }
@@ -163,10 +201,10 @@ Glass read_glass(const Reader& rd, const json& g, const std::string& path,
         out.source = rd.string_value(*it, path + ".source");
     }
     // `transmission` und `comment` sind bekannt, werden aber (noch) nicht ausgewertet.
-    rd.warn_unknown(
-        g, path,
-        {"name", "model", "B", "C", "range_nm", "reference", "transmission", "source", "comment"},
-        warnings);
+    rd.warn_unknown(g, path,
+                    {"name", "model", "A", "B", "C", "terms", "range_nm", "reference",
+                     "transmission", "source", "comment"},
+                    warnings);
     return out;
 }
 
@@ -188,7 +226,12 @@ double Glass::index(double lambda_nm) const {
                          detail::format_number(range_nm[0]) + ", " +
                          detail::format_number(range_nm[1]) + "] nm");
     }
-    return sellmeier_index(B.data(), C.data(), nm_to_um(lambda_nm));
+    const double l = nm_to_um(lambda_nm);
+    if (model == GlassModel::Polynomial) {
+        return polynomial_index(coefficients.data(), exponents.data(),
+                                static_cast<int>(coefficients.size()), l);
+    }
+    return sellmeier_index_n(A, B.data(), C.data(), static_cast<int>(B.size()), l);
 }
 
 GlassCatalog GlassCatalog::from_string(std::string_view json_text, std::string_view origin) {

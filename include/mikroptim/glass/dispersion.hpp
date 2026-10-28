@@ -33,6 +33,48 @@ MKO_HD inline R sellmeier_index(const R B[3], const R C[3], R lambda_um) {
     return msqrt(n2);
 }
 
+// Sellmeier mit Konstante und beliebig vielen Termen (ADR-0014):
+// n^2 = 1 + A + sum_{i<terms} B_i lambda^2 / (lambda^2 - C_i). Keine Bereichsprüfung.
+template <class R>
+MKO_HD inline R sellmeier_index_n(R A, const R* B, const R* C, int terms, R lambda_um) {
+    const R l2 = lambda_um * lambda_um;
+    R n2 = R(1) + A;
+    for (int i = 0; i < terms; ++i) {
+        n2 += B[i] * l2 / (l2 - C[i]);
+    }
+    return msqrt(n2);
+}
+
+// Polynom in lambda (Schott-, Laurent- und erweiterte Formeln, ADR-0014):
+// n^2 = sum_{j<terms} a_j lambda^{p_j}. Ganzzahlige Exponenten werden durch wiederholte
+// Multiplikation gebildet (bitgleich auf CPU und GPU), andere mit pow.
+template <class R>
+MKO_HD inline R int_power(R x, int p) {
+    R base = p < 0 ? R(1) / x : x;
+    int e = p < 0 ? -p : p;
+    R out = R(1);
+    while (e > 0) {
+        if (e & 1) {
+            out *= base;
+        }
+        base *= base;
+        e >>= 1;
+    }
+    return out;
+}
+
+template <class R>
+MKO_HD inline R polynomial_index(const R* a, const R* p, int terms, R lambda_um) {
+    R n2 = R(0);
+    for (int j = 0; j < terms; ++j) {
+        const R e = p[j];
+        const int ie = static_cast<int>(e);
+        const R term = (R(ie) == e) ? int_power(lambda_um, ie) : mpow(lambda_um, e);
+        n2 += a[j] * term;
+    }
+    return msqrt(n2);
+}
+
 // Nenner der Buchdahl-Koordinate, 1 + alpha (lambda - lambda0). Die Koordinate ist nur für
 // positive Werte definiert, also für lambda > lambda0 - 1/alpha = 0,146074 µm.
 template <class R>

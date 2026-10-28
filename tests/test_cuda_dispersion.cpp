@@ -25,6 +25,10 @@ TEST(CudaDispersion, GpuMatchesCpu) {
     double max_dev = 0.0;
 
     for (const mko::Glass& g : cat.glasses()) {
+        // Die Basisgläser sind 3-Term-Sellmeier (Prüfung des Kerns sellmeier_index).
+        ASSERT_EQ(g.B.size(), 3u) << g.name;
+        const std::array<double, 3> B{g.B[0], g.B[1], g.B[2]};
+        const std::array<double, 3> C{g.C[0], g.C[1], g.C[2]};
         std::vector<double> lambda_um;
         for (int i = 0; i <= 1000; ++i) {
             const double nm = g.range_nm[0] + (g.range_nm[1] - g.range_nm[0]) * i / 1000.0;
@@ -32,7 +36,7 @@ TEST(CudaDispersion, GpuMatchesCpu) {
         }
         std::vector<double> ns_gpu;
         std::vector<double> nb_gpu;
-        ASSERT_TRUE(mko::cuda::evaluate_dispersion(g.B, g.C, n0, nu, lambda_um, ns_gpu, nb_gpu));
+        ASSERT_TRUE(mko::cuda::evaluate_dispersion(B, C, n0, nu, lambda_um, ns_gpu, nb_gpu));
         ASSERT_EQ(ns_gpu.size(), lambda_um.size());
         for (std::size_t i = 0; i < lambda_um.size(); ++i) {
             const double l = lambda_um[i];

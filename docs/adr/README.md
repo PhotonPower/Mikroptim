@@ -17,3 +17,4 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0011](0011-dezentrierung-verkippung.md) | Dezentrierung und Verkippung einzelner Flächen | angenommen |
 | [0012](0012-entwurfswerkzeuge-und-entscheider.md) | Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider | angenommen |
 | [0013](0013-glattes-maximum-und-mehrere-gpus.md) | Glattes Maximum im Kernel; keine Bitgleichheit bei Verteilung auf mehrere GPUs | angenommen |
+| [0014](0014-glasmodelle-sellmeier-polynom.md) | Glasmodelle Sellmeier mit mehr Termen und Polynom | angenommen |

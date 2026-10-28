@@ -287,8 +287,10 @@ Beispiel: [data/glass/basis.json](../data/glass/basis.json).
 | Feld | Typ | Bedeutung |
 |---|---|---|
 | `glasses[].name` | string | eindeutiger Name (Großschreibung) |
-| `glasses[].model` | string | `"sellmeier"` (weitere Modelle bei Bedarf per ADR) |
-| `glasses[].B`, `glasses[].C` | number[3] | Sellmeier-Koeffizienten, λ in µm, C in µm² |
+| `glasses[].model` | string | `"sellmeier"` oder `"polynomial"` (ab M9-T4, ADR-0014; weitere Modelle per ADR) |
+| `glasses[].B`, `glasses[].C` | number[k] | `sellmeier`: n² = 1 + A + Σ B_i λ²/(λ² − C_i), λ in µm, C in µm², 1 ≤ k ≤ 8, B und C gleich lang (bis M9-T3 genau 3) |
+| `glasses[].A` | number | `sellmeier`, optional: Konstante A, Standard 0 |
+| `glasses[].terms` | [number, number][] | `polynomial`: n² = Σ a_j λ^{p_j} mit Paaren [a_j, p_j], λ in µm, 1 bis 12 Terme |
 | `glasses[].range_nm` | number[2] | Gültigkeitsbereich |
 | `glasses[].reference.n_d` | number | Kontrollwert bei 587,56 nm (Test) |
 | `glasses[].transmission` | object | optional: Reintransmission, z. B. `{"thickness_mm": 10, "nm": [...], "tau": [...]}` |
@@ -305,12 +307,14 @@ const mko::Glass& g = cat.at("N-BK7");   // find() liefert nullptr statt Ausnahm
 double n = g.index(587.56);              // nm; Ausnahme außerhalb von range_nm
 ```
 
-Regeln des Lesers (Fehler als `mko::GlassError`, Meldung mit Datei und JSON-Pfad, z. B. `basis.json: glasses[2].B: Feld mit genau 3 Zahlen erwartet`):
+Regeln des Lesers (Fehler als `mko::GlassError`, Meldung mit Datei und JSON-Pfad, z. B. `basis.json: glasses[2].B: Feld mit 1 bis 8 Zahlen erwartet`):
 
 - `format` muss genau `"mikroptim.glass/1"` sein; `mikroptim.glass/<n>` mit n ≠ 1 wird als unbekannte Hauptversion abgelehnt.
-- Pflichtfelder je Glas: `name`, `model` (nur `"sellmeier"`), `B`, `C` (je 3 endliche Zahlen), `range_nm` (2 Zahlen, 0 < min < max).
+- Pflichtfelder je Glas: `name`, `model`, `range_nm` (2 Zahlen, 0 < min < max); bei `sellmeier` `B` und `C` (je 1 … 8 endliche Zahlen, gleich viele), bei `polynomial` `terms` (1 … 12 Paare).
+- Die Formel liefert im ganzen Bereich eine gültige Brechzahl (endlich, n² > 0; geprüft auf 201 gleichabständigen Punkten einschließlich der Grenzen).
 - Namen sind eindeutig, nicht leer und nicht `AIR` (Schlüsselwort der Systemdatei). Der Vergleich beachtet Groß-/Kleinschreibung. Doppelte Namen werden in einer Datei und beim Zusammenführen (`merge`) abgelehnt.
 - Ein Sellmeier-Pol (λ² = C_i) innerhalb von `range_nm` wird abgelehnt.
+- Beispiele (ab M9-T4): `{"name": "X", "model": "sellmeier", "A": 0.05, "B": [0.9, 0.2, 0.05, 0.8], "C": [0.005, 0.02, 0.04, 90.0], "range_nm": [300, 2500]}`; Schott-Formel als `{"name": "Y", "model": "polynomial", "terms": [[2.27, 0], [-0.0094, 2], [0.011, -2], [0.00015, -4], [-1.1e-5, -6], [8e-7, -8]], "range_nm": [365, 1100]}`.
 - Optional: `reference.n_d` (wird gespeichert), `source` (wird gespeichert), `transmission` und `comment` (werden ignoriert). Unbekannte Felder werden ignoriert und in `GlassCatalog::warnings()` gemeldet.
 
 Die Brechzahltabelle für ein System beschreibt [architektur.md](architektur.md#brechzahltabelle).

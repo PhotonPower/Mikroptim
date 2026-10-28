@@ -5,9 +5,11 @@ Quellen:
 - Zemax-AGF-Dateien der Glashersteller (Schott, Ohara, Hoya, CDGM, Sumita, Hikari, ...),
 - YAML-Dateien der Datenbank refractiveindex.info (CC0; braucht PyYAML).
 
-Mikroptim kennt nur das Modell ``sellmeier`` mit drei Termen (docs/dateiformat.md, Glasdaten).
-Gläser, deren Formel genau diese Form hat, werden exakt übernommen; alle übrigen werden über
-ihren Gültigkeitsbereich mit drei Sellmeier-Termen angenähert und nur übernommen, wenn die
+Mikroptim kennt seit M9-T4 die Modelle ``sellmeier`` (bis 8 Terme mit Konstante) und
+``polynomial`` (n² = Σ a λ^p; ADR-0014). Formeln, die sich darin darstellen lassen (alle
+Sellmeier- und Polynomformeln der Kataloge), werden exakt übernommen und gegen die
+Originalformel nachgerechnet; alle übrigen (Herzberger, Conrady, Handbook, Tabellen,
+Umrechnung auf Luft) werden mit drei Sellmeier-Termen angenähert und nur übernommen, wenn die
 größte Abweichung der Brechzahl unter der Toleranz bleibt (Standard 5e-6). Jedes Glas mit
 Katalogwert n_d wird zusätzlich gegen diesen geprüft; eine große Abweichung deutet auf eine
 falsch gelesene Formel und führt zum Verwerfen.
@@ -93,7 +95,10 @@ class SourceGlass:
     formula: str  # lesbarer Name der Formel
     index: Callable[[np.ndarray], np.ndarray]  # n(λ_µm), relativ zu Luft
     range_um: tuple[float, float]
-    exact: tuple[list[float], list[float]] | None = None  # (B, C) wenn exakt 3-Term-Sellmeier
+    #: exakte Darstellung als Teil eines Katalogeintrags (Modell sellmeier oder polynomial)
+    exact: dict | None = None
+    #: exakte Darstellung mit höchstens drei Sellmeier-Termen ohne Konstante (ältere Versionen)
+    exact3: dict | None = None
     nd: float | None = None
     vd: float | None = None
     status: str | None = None
@@ -198,15 +203,93 @@ def agf_index_function(formula: int, cd: Sequence[float]) -> Callable[[np.ndarra
     return f
 
 
-def _exact_sellmeier(pairs: Sequence[tuple[float, float]], constant: float = 0.0):
-    """(B, C) bei höchstens drei Termen ungleich 0 und ohne Konstante, sonst None."""
+MAX_SELLMEIER_TERMS = 8  # kMaxSellmeierTerms (include/mikroptim/glass/catalog.hpp)
+MAX_POLYNOMIAL_TERMS = 12  # kMaxPolynomialTerms
+
+
+def _sellmeier_model(pairs: Sequence[tuple[float, float]], constant: float = 0.0):
+    """Modell ``sellmeier`` (n² = 1 + A + Σ B λ²/(λ² − C)); None bei zu vielen Termen."""
+    used = [(float(k), float(l)) for k, l in pairs if k != 0.0]
+    if not used:
+        used = [(0.0, 0.0)]
+    if len(used) > MAX_SELLMEIER_TERMS:
+        return None
+    model = {"model": "sellmeier"}
     if constant != 0.0:
+        model["A"] = float(constant)
+    model["B"] = [k for k, _ in used]
+    model["C"] = [l for _, l in used]
+    return model
+
+
+def _sellmeier3_model(model: dict | None):
+    """Dasselbe Modell mit genau drei Termen ohne Konstante, sonst None (ältere Versionen)."""
+    if model is None or model["model"] != "sellmeier" or model.get("A", 0.0) != 0.0:
         return None
-    used = [(k, l) for k, l in pairs if k != 0.0]
-    if len(used) > 3:
+    if len(model["B"]) > 3:
         return None
-    used += [(0.0, 0.0)] * (3 - len(used))
-    return [float(k) for k, _ in used], [float(l) for _, l in used]
+    pad = 3 - len(model["B"])
+    return {"model": "sellmeier", "B": model["B"] + [0.0] * pad, "C": model["C"] + [0.0] * pad}
+
+
+def _polynomial_model(terms: Sequence[tuple[float, float]]):
+    """Modell ``polynomial`` (n² = Σ a λ^p); None bei zu vielen Termen."""
+    used = [[float(a), float(p)] for a, p in terms if a != 0.0]
+    if not used:
+        return None
+    if len(used) > MAX_POLYNOMIAL_TERMS:
+        return None
+    return {"model": "polynomial", "terms": used}
+
+
+def model_index(model: dict, lam_um) -> np.ndarray:
+    """Brechzahl eines Katalogeintrags (Modelle ``sellmeier`` und ``polynomial``), λ in µm."""
+    lam = np.asarray(lam_um, float)
+    if model["model"] == "polynomial":
+        n2 = np.zeros_like(lam)
+        for a, p in model["terms"]:
+            n2 = n2 + a * lam**p
+        return _sqrt_n2(n2)
+    l2 = lam * lam
+    n2 = 1.0 + model.get("A", 0.0) + sum(b * l2 / (l2 - c) for b, c in zip(model["B"], model["C"]))
+    return _sqrt_n2(n2)
+
+
+def _model_valid(model: dict, a: float, b: float) -> bool:
+    """Wie der Leser von Mikroptim: kein Pol im Bereich, gültige Brechzahl auf 201 Punkten."""
+    if model["model"] == "sellmeier" and not _poles_ok(model["C"], a, b):
+        return False
+    n = model_index(model, np.linspace(a, b, 201))
+    return bool(np.all(np.isfinite(n)) and np.all(n > 0.0))
+
+
+# Exponenten der Polynomformeln des AGF-Formats
+_AGF_POLY_EXPONENTS = {
+    1: [0, 2, -2, -4, -6, -8],
+    10: [0, 2, -2, -4, -6, -8, -10, -12],
+    12: [0, 2, -2, -4, -6, -8, 4, 6],
+    13: [0, 2, 4, -2, -4, -6, -8, -10, -12],
+}
+
+
+def agf_exact_model(formula: int, cd: Sequence[float]) -> dict | None:
+    """Exakte Darstellung einer AGF-Formel in den Modellen von Mikroptim, sonst None."""
+    c = list(cd) + [0.0] * 12
+    if formula in _AGF_POLY_EXPONENTS:
+        exps = _AGF_POLY_EXPONENTS[formula]
+        return _polynomial_model(list(zip(c[: len(exps)], exps)))
+    if formula in (2, 6, 11):
+        terms = {2: 3, 6: 4, 11: 5}[formula]
+        return _sellmeier_model([(c[2 * i], c[2 * i + 1]) for i in range(terms)])
+    if formula == 4:  # n² − 1 = A + B1 λ²/(λ² − λ1²) + B2/(λ² − λ2²)
+        # B2/(λ² − c) = (B2/c)·λ²/(λ² − c) − B2/c
+        c2 = c[4] ** 2
+        if c2 == 0.0:
+            return None
+        return _sellmeier_model([(c[1], c[2] ** 2), (c[3] / c2, c2)], c[0] - c[3] / c2)
+    if formula == 9:  # n² = A + B λ²/(λ² − C) + D λ²/(λ² − E)
+        return _sellmeier_model([(c[1], c[2]), (c[3], c[4])], c[0] - 1.0)
+    return None
 
 
 def air_index(lam_um: np.ndarray) -> np.ndarray:
@@ -325,16 +408,7 @@ def _agf_glass(rec: dict, label: str) -> SourceGlass:
     lo, hi = rec["ld"]
     if not (0 < lo < hi):
         raise GlassImportError(f"ungültiger Gültigkeitsbereich {lo}–{hi} µm")
-    cd = rec["cd"] + [0.0] * 12
-    exact = None
-    if formula == 2:
-        exact = _exact_sellmeier([(cd[0], cd[1]), (cd[2], cd[3]), (cd[4], cd[5])])
-    elif formula == 6:
-        exact = _exact_sellmeier([(cd[0], cd[1]), (cd[2], cd[3]), (cd[4], cd[5]), (cd[6], cd[7])])
-    elif formula == 11:
-        exact = _exact_sellmeier(
-            [(cd[0], cd[1]), (cd[2], cd[3]), (cd[4], cd[5]), (cd[6], cd[7]), (cd[8], cd[9])]
-        )
+    exact = agf_exact_model(formula, rec["cd"])
     status = rec["status"]
     return SourceGlass(
         name=rec["name"],
@@ -343,6 +417,7 @@ def _agf_glass(rec: dict, label: str) -> SourceGlass:
         index=agf_index_function(formula, rec["cd"]),
         range_um=(lo, hi),
         exact=exact,
+        exact3=_sellmeier3_model(exact),
         nd=rec["nd"],
         vd=rec["vd"],
         status=AGF_STATUS.get(status, str(status)) if status is not None else None,
@@ -369,8 +444,10 @@ def _rii_formula(kind: int, c: list[float]) -> tuple[Callable[[np.ndarray], np.n
     if kind in (1, 2):
         pr = pairs(1, kind == 1)
         f = lambda lam: _sqrt_n2(1.0 + c[0] + _sellmeier_terms(np.asarray(lam, float) ** 2, pr))
-        return f, _exact_sellmeier(pr, c[0])
+        return f, _sellmeier_model(pr, c[0])
     if kind == 3:  # Polynom n² = C1 + Σ C_{2i} λ^{C_{2i+1}}
+        poly = [(c[0], 0.0)] + [(c[i], c[i + 1]) for i in range(1, len(c) - 1, 2) if c[i] != 0.0]
+
         def f(lam):
             lam = np.asarray(lam, float)
             n2 = np.full_like(lam, c[0])
@@ -378,7 +455,7 @@ def _rii_formula(kind: int, c: list[float]) -> tuple[Callable[[np.ndarray], np.n
                 if c[i] != 0.0:
                     n2 = n2 + c[i] * lam ** c[i + 1]
             return _sqrt_n2(n2)
-        return f, None
+        return f, _polynomial_model(poly)
     if kind == 5:  # Cauchy n = C1 + Σ C_{2i} λ^{C_{2i+1}}
         def f(lam):
             lam = np.asarray(lam, float)
@@ -485,7 +562,7 @@ def read_rii_yaml(path: str | os.PathLike, name: str | None = None,
         vacuum = bool(specs.get("wavelength_vacuum", False))
     base = n_func
     if absolute or vacuum:
-        exact = None
+        exact = None  # Umrechnung auf Luft: nur als Fit darstellbar
 
         def n_func(lam, base=base):
             lam = np.asarray(lam, float)
@@ -522,6 +599,7 @@ def read_rii_yaml(path: str | os.PathLike, name: str | None = None,
         index=n_func,
         range_um=rng,
         exact=exact,
+        exact3=_sellmeier3_model(exact),
         nd=float(nd) if nd is not None else None,
         vd=float(vd) if vd is not None else None,
         transmission=transmission,
@@ -658,18 +736,32 @@ def _dispersion_summary(func) -> str:
     return f"n_d {nd:.6f}, ν_d {vd:.2f}, P_g,F {pgf:.4f}"
 
 
-def convert_glass(glass: SourceGlass, tolerance: float = DEFAULT_TOLERANCE) -> ConvertedGlass:
-    """Wandelt ein Quellglas in einen Eintrag von ``mikroptim.glass/1`` um (oder verwirft es)."""
+def convert_glass(glass: SourceGlass, tolerance: float = DEFAULT_TOLERANCE,
+                  legacy: bool = False) -> ConvertedGlass:
+    """Wandelt ein Quellglas in einen Eintrag von ``mikroptim.glass/1`` um (oder verwirft es).
+
+    Exakt darstellbare Formeln werden in den Modellen ``sellmeier`` (bis 8 Terme, Konstante)
+    bzw. ``polynomial`` übernommen (ab M9-T4, ADR-0014); ``legacy`` beschränkt auf drei
+    Sellmeier-Terme ohne Konstante (Mikroptim vor M9-T4), alles andere wird gefittet.
+    """
     lo, hi = glass.range_um
     warnings: list[str] = []
     method = "exakt"
     max_dn = 0.0
-    if glass.exact is not None and _poles_ok(glass.exact[1], lo, hi):
-        B, C = glass.exact
-        range_um = (lo, hi)
-    else:
-        if glass.exact is not None:
-            warnings.append("Pol der Originalformel im Gültigkeitsbereich, deshalb Fit")
+    exact = glass.exact3 if legacy else glass.exact
+    model_part = None
+    range_um = (lo, hi)
+    if exact is not None:
+        if not _model_valid(exact, lo, hi):
+            warnings.append("exakte Darstellung im Gültigkeitsbereich ungültig (Pol), deshalb Fit")
+        else:
+            check = np.linspace(lo, hi, 2001)
+            max_dn = float(np.max(np.abs(model_index(exact, check) - glass.index(check))))
+            if max_dn > 1e-9:  # Selbstkontrolle der Umrechnung
+                warnings.append(f"exakte Darstellung weicht um {max_dn:.1e} ab, deshalb Fit")
+            else:
+                model_part = exact
+    if model_part is None:
         method = "Fit"
         result = None
         last_error = None
@@ -689,8 +781,10 @@ def convert_glass(glass: SourceGlass, tolerance: float = DEFAULT_TOLERANCE) -> C
                 break
             last_error = f"Fit über {a*1000:.0f}–{b*1000:.0f} nm: max |Δn| = {max_dn:.2e}"
         if result is None:
-            return ConvertedGlass(glass, None, "verworfen", reason=last_error or "kein Fitbereich")
+            return ConvertedGlass(glass, None, "verworfen", reason=last_error or "kein Fitbereich",
+                                  warnings=warnings)
         B, C, max_dn, range_um = result
+        model_part = {"model": "sellmeier", "B": B, "C": C}
         if range_um != (lo, hi):
             warnings.append(
                 f"Gültigkeitsbereich auf {range_um[0]*1000:.0f}–{range_um[1]*1000:.0f} nm "
@@ -698,7 +792,7 @@ def convert_glass(glass: SourceGlass, tolerance: float = DEFAULT_TOLERANCE) -> C
             )
 
     def model(lam):
-        return sellmeier_index(lam, B, C)
+        return model_index(model_part, lam)
 
     nd_error = None
     if glass.nd is not None and range_um[0] <= LAMBDA_D <= range_um[1]:
@@ -714,19 +808,17 @@ def convert_glass(glass: SourceGlass, tolerance: float = DEFAULT_TOLERANCE) -> C
     comment = [glass.formula]
     if method == "Fit":
         comment.append(f"3-Term-Fit, max |Δn| {max_dn:.1e}")
+    elif model_part["model"] == "polynomial" or len(model_part.get("B", [])) > 3 or "A" in model_part:
+        comment.append("exakt, Modell ab Mikroptim M9-T4")
     if glass.status:
         comment.append(f"Status {glass.status}")
     if range_um[0] <= LAMBDA_G and range_um[1] >= LAMBDA_C:
         comment.append(_dispersion_summary(model))
     comment += glass.notes
 
-    entry = {
-        "name": glass.name,
-        "model": "sellmeier",
-        "B": [float(x) for x in B],
-        "C": [float(x) for x in C],
-        "range_nm": [round(range_um[0] * 1000.0, 6), round(range_um[1] * 1000.0, 6)],
-    }
+    entry = {"name": glass.name}
+    entry.update(model_part)
+    entry["range_nm"] = [round(range_um[0] * 1000.0, 6), round(range_um[1] * 1000.0, 6)]
     if glass.nd is not None:
         entry["reference"] = {"n_d": glass.nd}
     if glass.transmission:
@@ -763,7 +855,7 @@ def convert_files(paths: Iterable[str | os.PathLike], *, tolerance: float = DEFA
                   include_obsolete: bool = False, prefix: str = "",
                   exclude_names_from: Iterable[str | os.PathLike] = (),
                   name: str | None = None, absolute: bool | None = None,
-                  vacuum: bool | None = None) -> ImportResult:
+                  vacuum: bool | None = None, legacy: bool = False) -> ImportResult:
     """Liest und wandelt alle Quelldateien um.
 
     - ``include_obsolete``: AGF-Gläser mit Status „obsolete“ übernehmen (Standard: nein).
@@ -771,6 +863,8 @@ def convert_files(paths: Iterable[str | os.PathLike], *, tolerance: float = DEFA
     - ``exclude_names_from``: Kataloge ``mikroptim.glass/1``, deren Namen übersprungen werden
       (z. B. ``data/glass/basis.json``; doppelte Namen lehnt der Leser beim Zusammenführen ab).
     - ``name``: Glasname für eine einzelne YAML-Datei (sonst der Dateiname).
+    - ``legacy``: nur drei Sellmeier-Terme ohne Konstante ausgeben (für Mikroptim vor M9-T4);
+      sonst werden Polynom- und Mehrterm-Formeln exakt übernommen.
     - ``absolute``, ``vacuum``: YAML-Daten (z. B. Kristalle aus der Literatur) als absolute
       Brechzahl bzw. über der Vakuumwellenlänge behandeln und auf Luft umrechnen.
     """
@@ -802,7 +896,7 @@ def convert_files(paths: Iterable[str | os.PathLike], *, tolerance: float = DEFA
                 out.append(ConvertedGlass(g, None, "verworfen",
                                           reason=f"Name doppelt (zuerst in {seen[g.name]})"))
                 continue
-            converted = convert_glass(g, tolerance)
+            converted = convert_glass(g, tolerance, legacy=legacy)
             if converted.entry is not None:
                 seen[g.name] = g.origin
             out.append(converted)
@@ -895,6 +989,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="YAML: absolute Brechzahl (Vakuum), auf Luft umrechnen")
     parser.add_argument("--vacuum", action="store_true", default=None,
                         help="YAML: Wellenlängen im Vakuum, auf Luft umrechnen")
+    parser.add_argument("--legacy", action="store_true",
+                        help="nur 3-Term-Sellmeier ausgeben (Mikroptim vor M9-T4), sonst exakt")
     parser.add_argument("--description", help="Beschreibung im Katalog")
     parser.add_argument("--report", help="Bericht als JSON schreiben")
     args = parser.parse_args(argv)
@@ -902,7 +998,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = convert_files(
             args.inputs, tolerance=args.tolerance, include_obsolete=args.include_obsolete,
             prefix=args.prefix, exclude_names_from=args.exclude_names_from, name=args.name,
-            absolute=args.absolute, vacuum=args.vacuum,
+            absolute=args.absolute, vacuum=args.vacuum, legacy=args.legacy,
         )
     except (GlassImportError, OSError, ValueError) as e:
         print(f"Fehler: {e}", file=sys.stderr)
