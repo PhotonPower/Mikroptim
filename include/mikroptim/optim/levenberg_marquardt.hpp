@@ -34,6 +34,8 @@ enum class LmStatus {
     ConvergedStep,     // max_k |Δx_k|/s_k ≤ xtol für Δx_GN oder nach einer Ablehnung für den
                        // gedämpften Schritt
     ConvergedGradient, // projizierter skalierter Gradient max_k |g_k|/√(A_kk·F) ≤ gtol
+    ConvergedStall,    // F sank in den letzten stall_window Zyklen um höchstens
+                       // stall_tolerance · F (M11-T1c; nur mit stall_window > 0)
     MaxIterations,     // max_iterations Zyklen ohne Konvergenz
     DampingLimit,      // μ > max_damping: kein Abstieg mehr gefunden
     NumericalError,    // F am Startpunkt oder A, g nicht endlich
@@ -81,10 +83,16 @@ std::optional<JacobianMethod> jacobian_method_from_string(std::string_view name)
 
 // Einstellungen. Die Standardwerte sind die des Plans (docs/optimierung.md, Abschnitt 4).
 struct LmOptions {
-    int max_iterations = 100;      // Zyklen pro Lauf (Versuchsschritte inkl. verworfener)
-    double ftol = 1e-10;           // relative Abnahme von F, die das Modell noch vorhersagt
-    double xtol = 1e-10;           // skalierte Schrittnorm, s_k = max(|x_k|, x_typ,k)
-    double gtol = 1e-10;           // projizierter skalierter Gradient (Kosinus zwischen r und J_k)
+    int max_iterations = 100; // Zyklen pro Lauf (Versuchsschritte inkl. verworfener)
+    double ftol = 1e-10;      // relative Abnahme von F, die das Modell noch vorhersagt
+    double xtol = 1e-10;      // skalierte Schrittnorm, s_k = max(|x_k|, x_typ,k)
+    double gtol = 1e-10;      // projizierter skalierter Gradient (Kosinus zwischen r und J_k)
+    // Stagnation (M11-T1c): Abbruch ConvergedStall, wenn F in den letzten stall_window Zyklen
+    // (Versuchsschritte) um höchstens stall_tolerance · F_alt gesunken ist. 0 = aus (Standard).
+    // Gegen das Kriechen an aktiven einseitigen Strafen, wo die Modellkriterien (ftol, xtol)
+    // wegen des Knicks von max(0, g) nicht greifen (docs/optimierung-erweiterungen.md, Abschn. 1).
+    int stall_window = 0;
+    double stall_tolerance = 1e-3;
     double initial_damping = 1e-3; // μ₀, relativ zu D = diag(JᵀJ) (dimensionslos)
     double max_damping = 1e16;     // μ darüber: Abbruch DampingLimit
     // Untergrenze der Marquardt-Skalierung: D_kk = max(A_kk, diag_floor·max_j(A_jj s_j²)/s_k²),

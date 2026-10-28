@@ -464,3 +464,54 @@ TEST(LmCpu, RunWithFailedRays) {
 
 } // namespace
 } // namespace mko::test
+
+// ---- Stagnation (M11-T1c) ------------------------------------------------------------------
+
+namespace mko::test {
+
+// Ohne Modellkriterien (ftol = xtol = gtol = 0) läuft der LM am Optimum eines widersprüchlichen
+// linearen Problems weiter, bis ein verworfener Schritt verschwindet (converged_step); mit
+// Stagnationsfenster W endet er W Zyklen nach dem Optimum mit ConvergedStall (F unverändert).
+// Abbild des Kriechens an aktiven einseitigen Strafen, wo die Modellkriterien wegen des Knicks
+// nicht greifen.
+TEST(LevenbergMarquardtStall, StopsWhenMeritNoLongerDecreases) {
+    // r = M x − b mit drei Zeilen, zwei Variablen, F* > 0
+    const DenseProblem problem = linear_problem({1.0, 1.0, 1.0, 0.0, 1.0, 2.0}, {1.0, 2.0, 4.0}, 2);
+    const DenseBounds bounds = open_bounds(2);
+    const std::vector<double> x0{0.0, 0.0};
+    LmOptions o;
+    o.ftol = 0.0;
+    o.xtol = 0.0;
+    o.gtol = 0.0;
+    o.max_iterations = 500;
+    const LmRunResult plain = run_dense(problem, bounds, x0, o).runs[0];
+    EXPECT_NE(plain.status, LmStatus::ConvergedStall); // gemessen: converged_step nach 14 Zyklen
+    o.stall_window = 5;
+    o.stall_tolerance = 1e-12;
+    const LmRunResult stalled = run_dense(problem, bounds, x0, o).runs[0];
+    EXPECT_EQ(stalled.status, LmStatus::ConvergedStall);
+    EXPECT_LT(stalled.iterations, plain.iterations);
+    EXPECT_LE(stalled.iterations, 5 + 5); // Optimum nach wenigen Schritten, dann das Fenster
+    EXPECT_NEAR(stalled.merit, plain.merit, 1e-12 * plain.merit);
+}
+
+TEST(LevenbergMarquardtStall, OffByDefaultBitIdenticalAndChecked) {
+    const DenseProblem problem = rosenbrock_problem();
+    LmOptions o;
+    const DenseBounds bounds = open_bounds(2);
+    const std::vector<double> x0{-1.2, 1.0};
+    const LmResult a = run_dense(problem, bounds, x0, o);
+    o.stall_window = 0;
+    o.stall_tolerance = 0.5; // ohne Fenster ohne Wirkung
+    const LmResult b = run_dense(problem, bounds, x0, o);
+    EXPECT_TRUE(same_run(a.runs[0], b.runs[0]));
+    EXPECT_STREQ(to_string(LmStatus::ConvergedStall), "converged_stall");
+    EXPECT_TRUE(lm_converged(LmStatus::ConvergedStall));
+    o.stall_window = -1;
+    EXPECT_THROW(run_dense(problem, bounds, x0, o), std::invalid_argument);
+    o.stall_window = 5;
+    o.stall_tolerance = std::nan("");
+    EXPECT_THROW(run_dense(problem, bounds, x0, o), std::invalid_argument);
+}
+
+} // namespace mko::test

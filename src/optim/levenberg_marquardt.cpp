@@ -224,6 +224,9 @@ void check_options(const LmOptions& o) {
     if (o.max_iterations < 0) {
         invalid("max_iterations < 0");
     }
+    if (o.stall_window < 0 || !ok(o.stall_tolerance)) {
+        invalid("Stagnation: stall_window >= 0, stall_tolerance endlich und >= 0");
+    }
     if (!ok(o.ftol) || !ok(o.xtol) || !ok(o.gtol) || !ok(o.diag_floor)) {
         invalid("Toleranzen und diag_floor müssen endlich und >= 0 sein");
     }
@@ -288,6 +291,8 @@ const char* to_string(LmStatus status) {
         return "converged_step";
     case LmStatus::ConvergedGradient:
         return "converged_gradient";
+    case LmStatus::ConvergedStall:
+        return "converged_stall";
     case LmStatus::MaxIterations:
         return "max_iterations";
     case LmStatus::DampingLimit:
@@ -320,7 +325,7 @@ std::optional<JacobianMethod> jacobian_method_from_string(std::string_view name)
 
 bool lm_converged(LmStatus status) {
     return status == LmStatus::ConvergedMerit || status == LmStatus::ConvergedStep ||
-           status == LmStatus::ConvergedGradient;
+           status == LmStatus::ConvergedGradient || status == LmStatus::ConvergedStall;
 }
 
 LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& bounds,
@@ -539,6 +544,16 @@ LmResult levenberg_marquardt(LmBackend& backend, int variables, const LmBounds& 
             }
             info.accepted = accept;
             s.history.push_back(s.merit);
+            // Stagnation (M11-T1c): Abnahme über die letzten stall_window Zyklen
+            if (options.stall_window > 0 && s.status == LmStatus::Running) {
+                const std::size_t w = static_cast<std::size_t>(options.stall_window);
+                if (s.history.size() > w) {
+                    const double old = s.history[s.history.size() - 1 - w];
+                    if (old - s.merit <= options.stall_tolerance * old) {
+                        s.status = LmStatus::ConvergedStall;
+                    }
+                }
+            }
             if (options.on_iteration) {
                 info.iteration = s.iterations;
                 info.merit = s.merit;

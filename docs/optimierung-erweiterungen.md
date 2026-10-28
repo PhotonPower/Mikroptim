@@ -54,6 +54,17 @@ mit $\max_i h_i \le \widetilde{\max}_\beta \le \max_i h_i + \ln N/\beta$. Die Ü
 
 Weitere Eingrenzung (hart): nur der Glasrand 4 von 40 Läufen mit `max_iterations` (5.547 Zyklen), nur der Luftrand 7 von 63 (7.834), beide 36 von 63 (21.216); beide mit Gewicht 10³ statt 10⁴ 28 von 63 (18.484), mit 10² 21 von 63 (14.950). Das Kriechen entsteht vor allem, wenn Glas- und Luftrand **gleichzeitig** aktiv sind (sie hängen über dieselben Pfeilhöhen zusammen), und nimmt mit dem Gewicht ab.
 
+**M11-T1c: Ursache gefunden, Stagnationskriterium.** Die Läufe mit `max_iterations` liegen bei sehr kleinen Merits (F ≈ 10⁻⁵ … 10⁻³ Wellen²) mit aktiven Randdicken: Die Modellkriterien des LM (`ftol = xtol = 10⁻¹⁰` auf das Gauß-Newton-Modell) greifen am Knick von max(0, g) nicht, F sinkt nur noch unmerklich. Mit `--max-iterations 50` statt 500 erreicht derselbe Lauf das Ziel mit derselben Topologie in 2,1 s statt 14,7 s (RMS 0,033 statt 0,015 Wellen). Das neue Stagnationskriterium (`LmOptions::stall_window`, `stall_tolerance`, Status `converged_stall`; CLI `--stall W[,T]` in `optimize` und `synth`) bricht ab, wenn F in W Zyklen um höchstens T·F gesunken ist:
+
+| `--stall` | Ziel | RMS [Wellen] | Elemente | LM-Zyklen | Zeit | Status |
+|---|---|---|---|---|---|---|
+| aus | erreicht | 0,0154 | 4 | 21.216 | 14,6 s | 36 × `max_iterations` |
+| 20, 10⁻³ | erreicht | 0,0166 | 4 | 6.436 | 4,8 s | 56 × `converged_stall`, 8 × `max_iterations` |
+| 20, 10⁻² | erreicht | 0,0323 | 4 | 3.021 | 2,0 s | 66 × `converged_stall` |
+| 10, 10⁻³ | erreicht | 0,0610 | 4 | 2.051 | 1,4 s | zu knapp am Ziel 0,0714 |
+
+Empfehlung `--stall 20,1e-3`: dreifach schneller bei praktisch gleicher Güte. Am Zweilinser mit mechanischen Bedingungen (`optimize --max-iterations 1000`) endet der Lauf ohne Fenster nach 6.053 Zyklen bei F = 31.914, mit `--stall 20,1e-3` nach 159 Zyklen bei F = 18,53 (wie mit dem Standardlimit 100). Standard bleibt aus, bis der Wechsel entschieden ist.
+
 Die Glättung ändert am Kriechen nichts. Die Ursache von F10 sind die **Randdicken-Bedingungen selbst**, auch ganz ohne Maximum über Strahlen (Variante mit Halbdurchmesser). Naheliegend sind das Ein- und Ausschalten der einseitigen Strafe max(0, g) (wechselnde aktive Menge, Knick der Jacobi-Zeile bei g = 0) und die steife Strafe bei großen Gewichten. Deshalb: **Kernel für das glatte Maximum zurückgestellt**; als Nächstes M11-T2 (Augmented Lagrangian, kleine feste Gewichte) und eine Glättung des Knicks max(0, g) selbst (z. B. Softplus mit Fortsetzung) am selben System messen.
 
 **Abnahme.**
