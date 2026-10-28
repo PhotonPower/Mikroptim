@@ -337,7 +337,9 @@ class Runner:
         if os.path.exists(out):
             print(f'{name}: vorhanden, übersprungen')
             return out
-        args = ['synth', start, '-o', out, '--log', self.path(name + '_log.json')] + options
+        # --stall 0: Verhalten wie im dokumentierten Lauf (vor M11-T1c, ohne Stagnationsabbruch)
+        args = ['synth', start, '-o', out, '--log', self.path(name + '_log.json'),
+                '--stall', '0'] + options
         if self.gpu:
             args.append('--gpu')
         self.run(name, args)

@@ -216,3 +216,35 @@ TEST(CliSynth, BeamTextOutput) {
 
 } // namespace
 } // namespace mko::test
+
+namespace mko::test {
+namespace {
+
+// M11-T1c: Stagnation des LM ist in synth Standard (20 Zyklen, 1e-3), --stall 0 schaltet ab.
+TEST(CliSynth, StallDefaultAndSwitch) {
+    const std::vector<std::string> base{kStart, "--max-elements", "1",  "--max-iterations",
+                                        "40",   "--merit-factor", "10", "--json"};
+    const SynthCliResult d = synth(base);
+    ASSERT_EQ(d.code, cli::kExitOk) << d.err;
+    const nlohmann::json jd = nlohmann::json::parse(d.out);
+    EXPECT_EQ(jd["options"]["stall"]["window"], 20);
+    EXPECT_EQ(jd["options"]["stall"]["tolerance"], 1e-3);
+    std::vector<std::string> off = base;
+    off.push_back("--stall");
+    off.push_back("0");
+    const SynthCliResult o = synth(off);
+    ASSERT_EQ(o.code, cli::kExitOk) << o.err;
+    EXPECT_EQ(nlohmann::json::parse(o.out)["options"]["stall"]["window"], 0);
+    std::vector<std::string> custom = base;
+    custom.push_back("--stall");
+    custom.push_back("30,1e-4");
+    const nlohmann::json jc = nlohmann::json::parse(synth(custom).out);
+    EXPECT_EQ(jc["options"]["stall"]["window"], 30);
+    EXPECT_EQ(jc["options"]["stall"]["tolerance"], 1e-4);
+    EXPECT_EQ(synth({kStart, "--stall", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--stall", "x"}).code, cli::kExitUsage);
+    EXPECT_NE(synth({"--help"}).out.find("Standard 20,1e-3"), std::string::npos);
+}
+
+} // namespace
+} // namespace mko::test
