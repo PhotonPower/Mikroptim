@@ -146,8 +146,11 @@ class Session:
             if name in MODIFY_ACTIONS:
                 outs = modify_action(a, self.system_path(current), self.dir / "tmp")
                 new = [self._new_candidate(path, current, a) for path, _ in outs]
-                return {"action": name, "status": "ok", "new_candidates": new,
-                        "reports": [rep for _, rep in outs]}
+                res = {"action": name, "status": "ok", "new_candidates": new,
+                       "reports": [rep for _, rep in outs]}
+                if not outs:
+                    res["note"] = "keine Änderung"
+                return res
             if name in CONTROL_ACTIONS:
                 return self._control(current, a)
             raise ActionError("not_implemented", f"{name} ist noch nicht umgesetzt")
@@ -183,8 +186,41 @@ class Session:
                 new_all.append(cur)
         return {"action": "branch", "status": "ok", "new_candidates": new_all, "results": sub}
 
-    def step(self, decider, candidate: int, last_errors=None) -> dict:
-        """Zustand bilden, Entscheider fragen, Antwort ausführen und protokollieren."""
+    def step(self, decider, candidate: int, last_errors=None, fallback=None) -> dict:
+        """Zustand bilden, Entscheider fragen, Antwort ausführen und protokollieren.
+
+        Liefert der Entscheider keine gültige Antwort (``DecisionError``), entscheidet
+        ``fallback`` (z. B. RuleDecider oder HumanDecider); ohne Rückfall wird der Fehler
+        weitergegeben.
+        """
+        from .deciders import DecisionError
+
         state = self.state(candidate, last_errors=last_errors)
-        response = decider.decide(state, self)
-        return self.apply(candidate, response, decider=decider.describe(), state=state)
+        try:
+            response = decider.decide(state, self)
+            used = decider
+        except DecisionError as e:
+            if fallback is None:
+                raise
+            response = fallback.decide(state, self)
+            used = fallback
+            state = {**state, "last_errors": state.get("last_errors", []) + [str(e)]}
+        return self.apply(candidate, response, decider=used.describe(), state=state)
+
+    def run(self, decider, candidate: int, *, max_steps: int = 10, fallback=None) -> int:
+        """Folge von Entscheidungen: Weiter jeweils mit dem zuletzt erzeugten Kandidaten, Fehler
+        einer Entscheidung gehen als last_errors in den nächsten Zustand. Ende bei finish,
+        abandon, leerem Budget oder max_steps. Rückgabe: letzter Kandidat."""
+        errors = []
+        for _ in range(max_steps):
+            if self.meta["decisions"] >= self.meta["budget"]["actions"]:
+                break
+            entry = self.step(decider, candidate, last_errors=errors, fallback=fallback)
+            errors = [f"{r.get('action')}: {r.get('message')}" for r in entry["results"]
+                      if r["status"] != "ok"]
+            new = [c for r in entry["results"] for c in r.get("new_candidates", [])]
+            if self.meta["candidates"][str(candidate)]["status"] != "open":
+                break
+            if new:
+                candidate = new[-1]
+        return candidate

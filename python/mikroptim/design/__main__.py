@@ -7,6 +7,8 @@ Befehle::
     act <dir> <antwort.json|-> [-c N]            Antwort (mikroptim.design.action/1) ausführen
     tree <dir>                                   Kandidatenbaum
     replay <dir> <neues_dir>                     Protokoll in einer neuen Sitzung abspielen
+    run <dir> --decider rule|ollama|human [--confirm] [--model M] [--host URL] [--think|--no-think]
+        [--steps N] [-c N] [--fallback rule|human|none]   Folge von Entscheidungen
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ import argparse
 import json
 import sys
 
-from .deciders import replay
+from .deciders import ConfirmDecider, HumanDecider, RuleDecider, replay
+from .ollama import OllamaDecider
 from .session import Session
 from .state import format_state
 
@@ -40,6 +43,18 @@ def main(argv=None) -> int:
     rp = sub.add_parser("replay")
     rp.add_argument("dir")
     rp.add_argument("new_dir")
+    ru = sub.add_parser("run")
+    ru.add_argument("dir")
+    ru.add_argument("--decider", choices=["rule", "ollama", "human"], required=True)
+    ru.add_argument("--confirm", action="store_true", help="Mensch bestätigt jeden Vorschlag")
+    ru.add_argument("--model", help="Ollama-Modell, z. B. qwen3:30b")
+    ru.add_argument("--host", default="http://localhost:11434")
+    th = ru.add_mutually_exclusive_group()
+    th.add_argument("--think", dest="think", action="store_true", default=None)
+    th.add_argument("--no-think", dest="think", action="store_false")
+    ru.add_argument("--steps", type=int, default=10)
+    ru.add_argument("-c", "--candidate", type=int, default=None)
+    ru.add_argument("--fallback", choices=["rule", "human", "none"], default="none")
     a = p.parse_args(argv)
     try:
         if a.cmd == "new":
@@ -61,6 +76,22 @@ def main(argv=None) -> int:
         elif a.cmd == "tree":
             for cid, c in sorted(s.candidates().items()):
                 print(f"{cid:>4}  Eltern {c['parent']!s:>4}  {c['status']:<10} {c['action'] or ''}")
+        elif a.cmd == "run":
+            if a.decider == "ollama":
+                if not a.model:
+                    print("Fehler: --model fehlt", file=sys.stderr)
+                    return 2
+                decider = OllamaDecider(a.model, host=a.host, think=a.think)
+            elif a.decider == "rule":
+                decider = RuleDecider()
+            else:
+                decider = HumanDecider()
+            if a.confirm and a.decider != "human":
+                decider = ConfirmDecider(decider)
+            fallback = {"rule": RuleDecider(), "human": HumanDecider(), "none": None}[a.fallback]
+            c = a.candidate if a.candidate is not None else max(s.open_candidates() or [0])
+            last = s.run(decider, c, max_steps=a.steps, fallback=fallback)
+            print(f"letzter Kandidat {last}; {len(s.candidates())} Kandidaten")
         elif a.cmd == "replay":
             r = replay(s.log(), s.meta["start"], a.new_dir, spec=s.meta["spec"],
                        budget=s.meta["budget"])

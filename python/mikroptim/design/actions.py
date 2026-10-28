@@ -153,7 +153,8 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
         rep = cli_json(args)
         return [(out, {k: rep.get(k) for k in ("best", "result") if k in rep})]
     if name == "free_gaps":
-        return [(_free_gaps(a, system_path, workdir), {})]
+        out = _free_gaps(a, system_path, workdir)
+        return [] if out is None else [(out, {})]
     if name == "insert_null_meniscus":
         return _insert_meniscus(a, system_path, workdir)
     if name == "split_lens":
@@ -262,7 +263,7 @@ def _free_gaps(a, system_path, workdir):
         items.append({"type": "thickness", "surface": s, "min": lo, "max": hi})
         added.append(s)
     if not added:
-        raise ActionError("no_effect", "keine neuen Dicken freigegeben")
+        return None  # nichts Neues: kein neuer Kandidat, die Folgeaktion läuft auf demselben
     out = _tmp_out(pathlib.Path(workdir))
     write_system(data, out)
     return out
