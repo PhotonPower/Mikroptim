@@ -191,7 +191,9 @@ Die Kittkrümmung aus der Vorauswahl hilft leicht; der Start beim Zielglas schad
 | Einzellinse NA 0,5 mit Geisterplatten, 486/588/656 nm, höchstens 5 Elemente | `start_rejected` nach drei Menisken (A, A, A), 4 Elemente | **`goal_reached`**: B, B (CaF₂), A, RMS 0,025 Wellen, 4 Elemente |
 | `einzellinse_homotopie_start.json` (monochromatisch) | Ziel, 4 Elemente | unverändert (Regel braucht ≥ 2 Wellenlängen) |
 
-Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace, Lauf auf der Zielspezifikation (Farbstufen von M6-T6) mit `--color-rule`.
+**Lauf auf der Zielspezifikation (29.10.2026, herkules3):** Die Farbstufen liefen mit #74 ohne Absturz, die Farbregel griff aber nicht: Alle Linsen der Zielspezifikation haben Glasvariablen (Buchdahl), die Regel berücksichtigte nur Katalogglas. Seitdem nimmt die Vorauswahl die Dispersion einer Glasvariablen direkt (gleiche Buchdahl-Koordinate wie der Katalog-Fit). Erneuter Lauf steht aus.
+
+Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace, Elementbudget und schrittweises Öffnen des Spektrums in den Farbstufen der Zielspezifikation.
 
 **Abnahme.**
 - Orakel: Für zwei Gläser entspricht das Ergebnis dem dünnen Achromat (`achromat_split_curvature`).

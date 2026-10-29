@@ -211,7 +211,8 @@ struct SplitInitOptions {
     // Algebraische Glasvorauswahl (M11-T5): Zielglas = bester Partner des Linsenglases aus dem
     // Katalog (preselect_glasses, Paare, kleinstes sekundäres Spektrum, Σ|φ|/φ ≤
     // preselect_max_power_sum) statt des Glases der Geisterplatte; c_s aus den Anteilen des
-    // dünnen Achromats in η. Nur bei Katalogglas der Linse; sonst wie ohne.
+    // dünnen Achromats in η. Bei Katalogglas oder Glasvariable (Buchdahl, gleiche Koordinate wie
+    // der Katalog-Fit) der Linse; sonst wie ohne.
     bool preselect = false;
     double preselect_max_power_sum = 6.0;
     // Das freigegebene Glas startet beim Zielglas statt beim Linsenglas (Merit ändert sich; der
