@@ -63,13 +63,14 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
-    double extrema_beta = 0.0;       // M11-T1b
-    bool predictor = false;          // M11-T3
-    bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
-    bool split_start_target = false; // und das freigegebene Glas dort starten
-    bool split_achromat = false;     // M11-T5e: Achromat-Start des geteilten Glieds
-    bool color_rule = false;         // M11-T5c
-    int spectrum_stages = 0;         // M11-T5d: Spektrum-Homotopie (0: aus)
+    double extrema_beta = 0.0;        // M11-T1b
+    bool predictor = false;           // M11-T3
+    bool split_preselect = false;     // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
+    bool split_start_target = false;  // und das freigegebene Glas dort starten
+    bool split_achromat = false;      // M11-T5e: Achromat-Start des geteilten Glieds
+    bool color_rule = false;          // M11-T5c
+    int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
+    bool spectrum_continuous = false; // M11-T5f: stetige Spektrumbreite
     double color_ratio = 2.0;
     int extrema_stages = HomotopyOptions{}.extrema_stages;
     double extrema_factor = HomotopyOptions{}.extrema_factor;
@@ -154,6 +155,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--spectrum-continuous") {
+            a.spectrum_continuous = true;
         } else if (arg == "--spectrum-stages") {
             a.spectrum_stages = parse_int(arg, next_value(args, i, arg));
             if (a.spectrum_stages < 1) {
@@ -291,6 +294,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.have_device && !a.gpu) {
         throw UsageError("--device verlangt --gpu");
     }
+    if (a.spectrum_continuous && a.spectrum_stages > 0) {
+        throw UsageError("--spectrum-continuous und --spectrum-stages schließen sich aus");
+    }
     if (a.beam && a.predictor) {
         throw UsageError("--predictor gibt es nur ohne --beam");
     }
@@ -329,6 +335,9 @@ void print_synth_usage(std::ostream& out) {
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
            "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
            "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
+           "bis 1\n"
+           "                            mit adaptiver Schrittweite (M11-T5f)\n"
            "  --spectrum-stages N       Spektrum-Homotopie: von monochromatisch bei λ_ref in N\n"
            "                            Stufen zum Spektrum der Datei (M11-T5d)\n"
            "  --color-rule              Farbregel: Operator B (Glas aus der Vorauswahl), wenn der\n"
@@ -433,6 +442,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.spectrum_stages > 0) {
             o.spectra = spectrum_stages(start.system.spectrum, a.spectrum_stages);
         }
+        o.spectrum_continuous = a.spectrum_continuous;
         o.color_ratio = a.color_ratio;
         o.split.start_at_target = a.split_start_target;
         o.split.achromat_start = a.split_achromat;
@@ -476,6 +486,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.target_rms = a.rms_target;
         if (a.spectrum_stages > 0) {
             h.target_spectrum = a.spectrum_stages;
+        }
+        if (a.spectrum_continuous) {
+            h.target_spectrum_width = 1.0;
         }
         h.merit_factor = a.merit_factor;
         h.extrema_beta = a.extrema_beta;
@@ -573,6 +586,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
                      {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
                      {"spectrum_stages", a.spectrum_stages},
+                     {"spectrum_continuous", a.spectrum_continuous},
                      {"split", Json{{"preselect", a.split_preselect},
                                     {"start_at_target", a.split_start_target},
                                     {"achromat_start", a.split_achromat}}},

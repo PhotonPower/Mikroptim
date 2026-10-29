@@ -263,6 +263,8 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     ASSERT_EQ(st.code, cli::kExitOk) << st.err;
     EXPECT_EQ(nlohmann::json::parse(st.out)["options"]["spectrum_stages"], 3);
     EXPECT_EQ(synth({kStart, "--spectrum-stages", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--spectrum-stages", "2", "--spectrum-continuous"}).code,
+              cli::kExitUsage);
     // Prädiktor (M11-T3) nur ohne Strahlsuche
     EXPECT_EQ(synth({kStart, "--predictor", "--beam", "2"}).code, cli::kExitUsage);
 }

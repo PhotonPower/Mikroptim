@@ -278,10 +278,14 @@ OpticalHomotopyModel::OpticalHomotopyModel(const LoadedSystem& start,
 }
 
 HomotopyPoint OpticalHomotopyModel::start_point() const {
+    if (options_.spectrum_continuous && !options_.spectra.empty()) {
+        invalid("Spektrumstufen und stetige Spektrumbreite schließen sich aus");
+    }
     HomotopyPoint p;
     p.aperture = start_.source.type == SourceType::Collimated
                      ? start_.surfaces.front().semi_diameter / focal_
                      : start_.source.numerical_aperture;
+    p.spectrum_width = options_.spectrum_continuous ? 0.0 : 1.0;
     return p;
 }
 
@@ -289,7 +293,8 @@ SystemDescription OpticalHomotopyModel::realize(const SystemDescription& system,
                                                 const HomotopyPoint& p, bool margins) const {
     if (!(p.aperture > 0.0) || !std::isfinite(p.aperture) || !(p.field >= 0.0) ||
         !std::isfinite(p.field) || !(p.ghost_weight > 0.0) || !(p.ghost_smoothing > 0.0) ||
-        !(p.penalty_scale > 0.0) || !(p.extrema_beta >= 0.0) || !std::isfinite(p.extrema_beta)) {
+        !(p.penalty_scale > 0.0) || !(p.extrema_beta >= 0.0) || !std::isfinite(p.extrema_beta) ||
+        !(p.spectrum_width >= 0.0 && p.spectrum_width <= 1.0)) {
         invalid("ungültiger Homotopie-Punkt");
     }
     SystemDescription d = system;
@@ -317,6 +322,17 @@ SystemDescription OpticalHomotopyModel::realize(const SystemDescription& system,
             invalid("Spektrumstufe " + std::to_string(p.spectrum) + " außerhalb der Liste");
         }
         d.spectrum = options_.spectra[static_cast<std::size_t>(p.spectrum)];
+    }
+    if (options_.spectrum_continuous && p.spectrum_width < 1.0) {
+        // stetige Spektrumbreite (M11-T5f): λ_ref + w·(λ_i − λ_ref); w = 0 monochromatisch
+        if (p.spectrum_width == 0.0) {
+            d.spectrum.wavelengths_nm = {d.spectrum.reference_nm};
+            d.spectrum.weights = {1.0};
+        } else {
+            for (double& l : d.spectrum.wavelengths_nm) {
+                l = d.spectrum.reference_nm + p.spectrum_width * (l - d.spectrum.reference_nm);
+            }
+        }
     }
     if (d.constraints && p.extrema_beta > 0.0) {
         // β-Fortsetzung der Strahl-Extrema (M11-T1b); bei β = 0 gilt die Angabe der Datei
@@ -505,7 +521,8 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     const bool by_seidel =
         std::abs(w.dW020) >= options_.color_seidel && std::abs(w.dW020) >= std::abs(w.W040);
     // (c) Schritt der Spektrum-Homotopie (Stufe > 0): die Farbe ist per Konstruktion der Grund
-    const bool by_stage = p.spectrum > 0 && !options_.spectra.empty();
+    const bool by_stage = (p.spectrum > 0 && !options_.spectra.empty()) ||
+                          (options_.spectrum_continuous && p.spectrum_width > 0.0);
     if (!by_ratio && !by_seidel && !by_stage) {
         return std::nullopt;
     }
