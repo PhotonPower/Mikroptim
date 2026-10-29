@@ -10,6 +10,7 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
+                                           [--farbe-frueh]
                                            [--farb-achromat]
                                            [--synth-arg ARG]...
 
@@ -884,6 +885,8 @@ def main():
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
     ap.add_argument('--farb-achromat', action='store_true',
                     help='Operator B mit Achromat-Start (synth --split-achromat); setzt --farbregel')
+    ap.add_argument('--farbe-frueh', action='store_true',
+                    help='Farbstufen vor der Aperturstufe 3 (bei NA 0,5), dann polychromatisch weiter')
     ap.add_argument('--farb-stetig', action='store_true',
                     help='stetige Spektrum-Homotopie in den Farbstufen (synth --spectrum-continuous)')
     ap.add_argument('--farb-stufen', type=int, default=0,
@@ -947,30 +950,38 @@ def main():
     field = pt['field']
 
     # Stufe 3: Apertur -> 0,95 beim erreichten Feld
-    p3, r3 = synth_loop(r, 'p3', p2,
+    def color_stages(cur, na):
+        # Stufen 4 und 5: zwei Wellenlängen, dann 436–656 nm am Punkt (na, field)
+        for key, spec in [('p4', 'zwei'), ('p5', 'voll')]:
+            s = load(cur)
+            wl, w = SPECTRA[spec]
+            set_spectrum(s, wl, w)
+            inp = r.path(f'{key}_in.json')
+            save(s, inp)
+            stufen = (['--spectrum-continuous'] if args.farb_stetig else
+                      ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
+            cur, rr = synth_loop(r, key, inp,
+                                 ['--target-na', repr(na), '--start-field', repr(field),
+                                  '--target-field', repr(field)] + stufen + common, relax,
+                                 lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
+                                 forced_kind='split', stage_budget=args.farb_budget)
+            stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec, 'aperture': na})
+        return cur
+
+    p3_in = p2
+    if args.farbe_frueh:
+        # Farbe vor der Aperturstufe (bei NA und Feld des Endes von Stufe 2): Bei NA 0,605 hat
+        # das monochromatische System keinen Abstand zur Schwelle mehr (Lauf v8: F_B 0,0051 schon
+        # bei Spektrumbreite 1/1024), bei NA 0,5 schon
+        p3_in = color_stages(p2, last_point(r, r2)['aperture'])
+    p3, r3 = synth_loop(r, 'p3', p3_in,
                         ['--target-na', '0.95', '--start-field', repr(field), '--target-field',
                          repr(field)] + common, relax, lambda p: p['aperture'], 0.95,
                         restart=full_field, max_rounds=16, forced=3, element_budget=3)
     stage('p3', {'result': p3, 'rounds': r3})
     pt = last_point(r, r3)
     na = pt['aperture']
-
-    # Stufen 4 und 5: zwei Wellenlängen, dann 436–656 nm am erreichten Punkt
-    cur = p3
-    for key, spec in [('p4', 'zwei'), ('p5', 'voll')]:
-        s = load(cur)
-        wl, w = SPECTRA[spec]
-        set_spectrum(s, wl, w)
-        inp = r.path(f'{key}_in.json')
-        save(s, inp)
-        stufen = (['--spectrum-continuous'] if args.farb_stetig else
-                  ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
-        cur, rr = synth_loop(r, key, inp,
-                             ['--target-na', repr(na), '--start-field', repr(field),
-                              '--target-field', repr(field)] + stufen + common, relax,
-                             lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
-                             forced_kind='split', stage_budget=args.farb_budget)
-        stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec})
+    cur = p3 if args.farbe_frueh else color_stages(p3, na)
 
     # Stufe 6: Feinoptimierung ohne Geisterplatten, 405/700 nm schwach dazu, am erreichten Punkt
     s = load(cur)
