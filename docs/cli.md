@@ -1139,6 +1139,8 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--rms-target W` | Beugungsziel [Wellen] pro Feld und Wellenlänge (Standard 1/14) |
 | `--merit-factor K` | Schwelle F_max = (K · Ziel)² für die Bewertungsmerit F_B = Wellenfront + L1-Strafe (Standard 1) |
 | `--stall W[,T]` | LM-Abbruch bei Stagnation (`converged_stall`): F sank in W Zyklen um höchstens T·F (M11-T1c). **Standard `20,1e-3`**; `--stall 0` schaltet ab (Verhalten vor M11-T1c, z. B. zum Nachrechnen dokumentierter Läufe). Steht im JSON unter `options.stall` |
+| `--split-preselect` | Operator B: Zielglas aus der Glasvorauswahl (bester Partner des Linsenglases), c_s aus dem dünnen Achromat in η (M11-T5b) |
+| `--split-start-target` | wie `--split-preselect`, und das freigegebene Glas startet beim Zielglas |
 | `--predictor` | Start jedes Apertur-/Feldschritts aus der Sekante der beiden letzten angenommenen Zustände (M11-T3; nicht mit `--beam`, Standard aus) |
 | `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |
 | `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |

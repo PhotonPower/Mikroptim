@@ -141,3 +141,24 @@ def test_glass_preselect_action(session):
     bad = session.apply(0, response({"action": "glass_preselect", "element": 1}), decider={})
     assert bad["results"][0]["code"] == "precondition"  # Buchdahl-Modell, kein Katalogglas
 
+
+
+def test_split_lens_achromat_with_preselection(tmp_path):
+    s = design.Session.create(SYSTEMS / "einzellinse_achromat_start.json", tmp_path / "a")
+    r = response({"action": "split_lens", "element": 0, "cement_curvature": "achromat",
+                  "free_part": 1})
+    validate(r, "design_action.schema.json")
+    entry = s.apply(0, r, decider={})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    rep = res["reports"][0]
+    assert rep["partner"] and rep["secondary_spectrum"] >= 0
+    data = json.loads(s.system_path(1).read_text(encoding="utf-8"))
+    assert any(v["type"] == "glass" for v in data["variables"]["items"])
+    # mit Zielglas: das freigegebene Glas startet dort (Buchdahl-Fit des Partners)
+    r2 = response({"action": "split_lens", "element": 0, "cement_curvature": "achromat",
+                   "free_part": 1, "target_glass": {"name": rep["partner"]}})
+    e2 = s.apply(0, r2, decider={})
+    assert e2["results"][0]["status"] == "ok", e2["results"][0]
+    d2 = json.loads(s.system_path(2).read_text(encoding="utf-8"))
+    assert d2["surfaces"][2]["material"] != data["surfaces"][2]["material"]

@@ -62,8 +62,10 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
-    double extrema_beta = 0.0; // M11-T1b
-    bool predictor = false;    // M11-T3
+    double extrema_beta = 0.0;       // M11-T1b
+    bool predictor = false;          // M11-T3
+    bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
+    bool split_start_target = false; // und das freigegebene Glas dort starten
     int extrema_stages = HomotopyOptions{}.extrema_stages;
     double extrema_factor = HomotopyOptions{}.extrema_factor;
     int max_elements = HomotopyOptions{}.max_elements;
@@ -147,6 +149,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--split-preselect") {
+            a.split_preselect = true;
+        } else if (arg == "--split-start-target") {
+            a.split_preselect = true;
+            a.split_start_target = true;
         } else if (arg == "--predictor") {
             a.predictor = true;
         } else if (arg == "--extrema-beta") {
@@ -302,6 +309,10 @@ void print_synth_usage(std::ostream& out) {
            "  --target-field F          Feldanteil am Ende (Standard: wie der Start)\n"
            "  --rms-target W            Beugungsziel [Wellen] pro Feld und Wellenlänge (1/14)\n"
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
+           "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
+           "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --split-preselect         Operator B: Zielglas aus der Glasvorauswahl (M11-T5)\n"
+           "  --split-start-target      ebenso, und das freigegebene Glas startet beim Zielglas\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
            "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
@@ -390,6 +401,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
+        o.split.preselect = a.split_preselect;
+        o.split.start_at_target = a.split_start_target;
         o.lm.stall_window = a.stall_window;
         o.lm.stall_tolerance = a.stall_tolerance;
         o.lm.jacobian.quadrature.rings = a.rings;
@@ -522,6 +535,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"max_elements", a.max_elements},
                      {"max_iterations", a.max_iterations},
                      {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
+                     {"split", Json{{"preselect", a.split_preselect},
+                                    {"start_at_target", a.split_start_target}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
                      {"jacobian", to_string(a.jacobian)},
                      {"element_thickness", o.element_thickness},

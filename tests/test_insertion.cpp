@@ -3,6 +3,7 @@
 // Geisterplatte, Hilfsfunktionen der Initialisierung (docs/optimierung.md, Abschnitt 6).
 
 #include "insertion_test_systems.hpp"
+#include "mikroptim/glass/glass_preselection.hpp"
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "tolerances.hpp"
@@ -584,6 +585,42 @@ TEST(InsertionInit, SplitFromDiagnosis) {
     validate_system(r.system);
     EXPECT_LE(relative_change(system_merit(d), system_merit(split_lens(d, plan.split).system)),
               kInsertionMeritRelative);
+}
+
+// Glasvorauswahl in Operator B (M11-T5): Zielglas aus dem Katalog statt der Platte, c_s aus den
+// Anteilen des dünnen Achromats in η; ohne Katalogglas der Linse wie bisher.
+TEST(InsertionInit, SplitFromDiagnosisWithPreselection) {
+    const LoadedSystem l = load_residual_system("einzellinse_na05_geisterplatten.json");
+    const SystemDescription& d = l.system;
+    const GhostDiagnosis g = hand_diagnosis(d, GhostOperator::B);
+    SplitInitOptions o;
+    o.preselect = true;
+    o.preselect_max_power_sum = 50.0;
+    const SplitPlan plan = split_from_diagnosis(d, l.catalog, g, o);
+    ASSERT_TRUE(plan.preselected) << plan.reason;
+    EXPECT_EQ(plan.target_glass.kind, MaterialKind::Catalog);
+    EXPECT_NE(plan.target_glass.name, "N-BK7");
+    EXPECT_NE(plan.reason.find("Glasvorauswahl"), std::string::npos) << plan.reason;
+    // c_s des dünnen Achromats aus den Anteilen der Vorauswahl (Linse vorn, φ = 1)
+    const std::vector<GlassDispersion> disp = catalog_dispersions(l.catalog);
+    GlassPreselectionOptions po;
+    po.max_power_sum = 50.0;
+    for (std::size_t i = 0; i < disp.size(); ++i) {
+        if (disp[i].name == "N-BK7") {
+            po.fixed = {static_cast<int>(i)};
+        }
+    }
+    po.max_results = 1;
+    const std::vector<PreselectedGlasses> best = preselect_glasses(disp, po);
+    ASSERT_EQ(best.size(), 1U);
+    EXPECT_EQ(disp[static_cast<std::size_t>(best[0].glasses[1])].name, plan.target_glass.name);
+    EXPECT_DOUBLE_EQ(plan.achromat_curvature, 0.82 - best[0].powers[0] * (0.82 + 0.145));
+    EXPECT_DOUBLE_EQ(plan.secondary_spectrum, best[0].residual);
+    // Linse ohne Katalogglas: Vorauswahl entfällt, Zielglas der Platte
+    SystemDescription other = d;
+    other.surfaces[1].material = MaterialSpec{MaterialKind::Constant, "", 1.6, 1.0, {}};
+    const SplitPlan fallback = split_from_diagnosis(other, l.catalog, g, o);
+    EXPECT_FALSE(fallback.preselected);
 }
 
 // Rundungsboden: Ein Luftspalt wird durch zwei Flächen mit n = 1 dazwischen geteilt (optisch

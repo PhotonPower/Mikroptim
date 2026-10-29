@@ -208,6 +208,15 @@ struct SplitInitOptions {
     // einhalten (Bisektion, 60 Schritte; im ungünstigsten Fall bis zum Mittel).
     double min_edge_thickness = 0.0;
     NewCurvatureVariables curvature_variable{};
+    // Algebraische Glasvorauswahl (M11-T5): Zielglas = bester Partner des Linsenglases aus dem
+    // Katalog (preselect_glasses, Paare, kleinstes sekundäres Spektrum, Σ|φ|/φ ≤
+    // preselect_max_power_sum) statt des Glases der Geisterplatte; c_s aus den Anteilen des
+    // dünnen Achromats in η. Nur bei Katalogglas der Linse; sonst wie ohne.
+    bool preselect = false;
+    double preselect_max_power_sum = 6.0;
+    // Das freigegebene Glas startet beim Zielglas statt beim Linsenglas (Merit ändert sich; der
+    // Start liegt dann in der Nähe eines Achromats).
+    bool start_at_target = false;
 };
 
 struct SplitPlan {
@@ -220,6 +229,8 @@ struct SplitPlan {
     double abbe_lens = 0.0;
     double abbe_target = 0.0;
     double achromat_curvature = 0.0; // c_s des dünnen Achromats vor der Rücknahme (NaN ohne)
+    bool preselected = false;        // Zielglas aus der Glasvorauswahl (M11-T5)
+    double secondary_spectrum = 0.0; // Rest der Vorauswahl |Σ φ η₂|/|φ| (NaN ohne)
     std::string reason;
 };
 
