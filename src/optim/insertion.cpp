@@ -602,6 +602,27 @@ MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
 
 namespace {
 
+// Größte untere Schranke einer Dickenvariablen, die die Dicke nach Fläche `surface` betrifft
+// (0, wenn keine); beide Teile einer geteilten Linse erben sie (renumber_surfaces).
+double thickness_lower_bound(const SystemDescription& system, int surface) {
+    double m = 0.0;
+    if (!system.variables) {
+        return m;
+    }
+    for (const VariableSpec& v : system.variables->items) {
+        if (v.type != VariableType::Thickness || !v.min) {
+            continue;
+        }
+        const bool covers =
+            v.selection == SurfaceSelection::All ||
+            std::find(v.surfaces.begin(), v.surfaces.end(), surface) != v.surfaces.end();
+        if (covers) {
+            m = std::max(m, *v.min);
+        }
+    }
+    return m;
+}
+
 // Gemeinsamer Teil von Operator B (M6-T2, M11-T5): Zielglas (ggf. aus der Glasvorauswahl),
 // Kittkrümmung (dünnes Achromat mit Rücknahme bei zu kleiner Randdicke), Begründung. `plan`
 // bringt Platte und Zielglas der Diagnose mit (bei der Farbregel: Platte −1).
@@ -638,6 +659,22 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
     plan.abbe_target = abbe_number(plan.target_glass, catalog);
 
     const Surface& front = system.surfaces[sz(lens)];
+    // Dickenaufteilung: beide Teile mindestens so dick wie die untere Schranke der Dickenvariablen
+    // der Linse (sonst ist das neue System ungültig, Absturz in M6-T6 p4_r3); zu dünne Linsen
+    // werden nicht geteilt.
+    double fraction = options.fraction;
+    {
+        const double t = front.thickness;
+        const double m = thickness_lower_bound(system, lens);
+        if (m > 0.0) {
+            if (t < 2.0 * m) {
+                invalid("Operator B: Linse an Fläche " + std::to_string(lens) + " (Dicke " +
+                        num(t) + " mm) ist zu dünn für zwei Teile mit je mindestens " + num(m) +
+                        " mm (untere Schranke der Dickenvariablen)");
+            }
+            fraction = std::clamp(fraction, m / t, 1.0 - m / t);
+        }
+    }
     const Surface& back = system.surfaces[sz(lens + 1)];
     const double c1 = front.curvature;
     const double c2 = back.curvature;
@@ -656,7 +693,7 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
             plan.achromat_curvature = c1 - preselect_front_fraction * (c1 - c2);
         }
         // Randdicken der Teile bei der Höhe h (Pfeilhöhe c h²/(1 + √(1 − c²h²)))
-        const double t1 = options.fraction * front.thickness;
+        const double t1 = fraction * front.thickness;
         const double t2 = front.thickness - t1;
         const auto sag = [](double ci, double h) {
             return ci * h * h / (1.0 + std::sqrt(1.0 - ci * ci * h * h));
@@ -707,7 +744,7 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
     }
     plan.split.lens_surface = lens;
     plan.split.curvature = cs;
-    plan.split.fraction = options.fraction;
+    plan.split.fraction = fraction;
     plan.split.curvature_variable = options.curvature_variable;
     plan.free_surface = lens + options.free_part;
     std::ostringstream os;

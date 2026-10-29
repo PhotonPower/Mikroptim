@@ -635,6 +635,25 @@ TEST(InsertionInit, SplitForColor) {
     EXPECT_EQ(plan.target_glass.kind, MaterialKind::Catalog);
     EXPECT_NE(plan.reason.find("Farbregel"), std::string::npos) << plan.reason;
     EXPECT_THROW((void)split_for_color(l.system, l.catalog, 0), std::invalid_argument);
+    // Untere Schranke der Dickenvariablen: Anteil so begrenzt, dass beide Teile sie einhalten
+    // (Linse 4 mm); zu dünne Linse wird nicht geteilt (M6-T6 p4_r3)
+    SystemDescription thick = l.system;
+    VariableSpec v;
+    v.type = VariableType::Thickness;
+    v.selection = SurfaceSelection::One;
+    v.surfaces = {1};
+    v.min = 1.8;
+    if (!thick.variables) {
+        thick.variables = Variables{};
+    }
+    thick.variables->items.push_back(v);
+    SplitInitOptions o;
+    o.fraction = 0.2;
+    EXPECT_DOUBLE_EQ(split_for_color(thick, l.catalog, 1, o).split.fraction, 1.8 / 4.0);
+    o.fraction = 0.5;
+    EXPECT_DOUBLE_EQ(split_for_color(thick, l.catalog, 1, o).split.fraction, 0.5);
+    thick.variables->items.back().min = 2.1;
+    EXPECT_THROW((void)split_for_color(thick, l.catalog, 1, o), std::invalid_argument);
     EXPECT_THROW((void)split_for_color(l.system, l.catalog, 2), std::invalid_argument);
 }
 

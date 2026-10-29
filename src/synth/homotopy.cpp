@@ -354,7 +354,16 @@ private:
                            " erreicht"};
         }
         const auto t0 = Clock::now();
-        HomotopyInsertion ins = model_.insert(s.system, s.point, need);
+        HomotopyInsertion ins;
+        try {
+            ins = model_.insert(s.system, s.point, need);
+        } catch (const std::invalid_argument& e) {
+            // Einfügen nicht möglich (z. B. Linse zu dünn zum Teilen, Flächentabelle voll):
+            // geordnet beenden wie ohne Bedarf, mit Grund (vorher Absturz von synth, M6-T6)
+            throw Stop{no_need_status, no_need_message + "; Einfügen (Operator " +
+                                           std::string(to_string(need.recommendation)) +
+                                           ") nicht möglich: " + e.what()};
+        }
         if (ins.branches.empty()) {
             invalid("das Modell lieferte keinen Zweig");
         }
