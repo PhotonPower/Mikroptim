@@ -163,7 +163,19 @@ Grundlage sind die Arbeiten zur Glaswahl mit Buchdahl-Koeffizienten (Robb, Merca
 - Filter: Regeln aus entwurfssteuerung.md, Abschnitt 5.3 (Autofluoreszenz, Transmission, Merte-Paar).
 - Ergebnis: Rangliste mit Startbrechkräften. Sie fließt in `split_from_diagnosis` (Zielglas und c_s statt nur nach Abbezahl), in Operator B und in `glass_query` (M10).
 
-**Stand M11-T5:** Kern, Kommandozeile `mikroptim glasses` und Aktion `glass_preselect` in `mikroptim.design` umgesetzt ([numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)). Paraxiale Probe mit Katalog-Gläsern: Spanne der Schnittweiten über g … C bei f = 100 mm für die Einzellinse 2,36 mm, für das beste Paar 0,016 mm, für das beste Tripel 0,004 mm. Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Anbindung an `split_from_diagnosis` und Operator B (`split_lens` mit Zielglas), Abnahme gegen Bruteforce-Raytrace.
+**Stand M11-T5:** Kern, Kommandozeile `mikroptim glasses` und Aktion `glass_preselect` in `mikroptim.design` umgesetzt ([numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)). Paraxiale Probe mit Katalog-Gläsern: Spanne der Schnittweiten über g … C bei f = 100 mm für die Einzellinse 2,36 mm, für das beste Paar 0,016 mm, für das beste Tripel 0,004 mm. Anbindung an Operator B (M11-T5b): `SplitInitOptions::preselect` (Zielglas = bester Partner des Linsenglases, c_s aus den Anteilen in η) und `start_at_target` (freigegebenes Glas startet beim Zielglas), CLI `synth --split-preselect` bzw. `--split-start-target`, `insert --start-glass GLAS`, in `mikroptim.design` `split_lens` mit `cement_curvature: "achromat"` und `target_glass`.
+
+**Befund M11-T5b.** (1) In der Synthese greift die Vorauswahl bisher nicht: An der polychromatischen Einzellinse mit Geisterplatten (NA 0,5, 486/588/656 nm) empfiehlt die Diagnose nur Operator A, Operator B kommt nicht vor (das ist F9). Ohne eine Entscheidung für B, durch Mensch oder Sprachmodell in `mikroptim.design` oder eine künftige Regel im Controller, bleibt `--split-preselect` wirkungslos. (2) Direkt angewandt am Achromat aus `einzellinse_achromat_start.json` (N-BK7, 480/644 nm, Katalog Basis + synthetisch, danach 300 LM-Zyklen):
+
+| Operator B | Partner | RMS max [Wellen] | Farbklasse |
+|---|---|---|---|
+| c_s = Mittel, Start beim Linsenglas | – | 0,0771 | b |
+| c_s = dünnes Achromat aus der Vorauswahl, Start beim Linsenglas | SYN-04 | 0,0753 | b |
+| ebenso, Start beim Zielglas | SYN-04 | 0,1021 | b |
+
+Die Kittkrümmung aus der Vorauswahl hilft leicht; der Start beim Zielglas schadet, weil die Außenradien noch zur Einzellinse gehören (Startmerit 2,5·10⁶ statt 3,6·10³). Sinnvoll wäre er erst zusammen mit Startbrechkräften für alle Flächen des Glieds; deshalb Standard aus.
+
+Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace.
 
 **Abnahme.**
 - Orakel: Für zwei Gläser entspricht das Ergebnis dem dünnen Achromat (`achromat_split_curvature`).

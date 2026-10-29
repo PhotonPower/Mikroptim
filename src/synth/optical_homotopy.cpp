@@ -570,7 +570,11 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
         const SplitPlan plan =
             split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
         InsertionResult r = split_lens(system, plan.split);
-        free_glass(r.system, plan.free_surface);
+        if (options_.split.start_at_target && plan.preselected) {
+            free_glass(r.system, plan.free_surface, plan.target_glass);
+        } else {
+            free_glass(r.system, plan.free_surface);
+        }
         if (!has_constraint(r.system, ConstraintType::GlassHull)) {
             ConstraintSpec c;
             c.type = ConstraintType::GlassHull;
@@ -588,8 +592,12 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
         ins.text = "Operator " + std::string(to_string(need.recommendation)) +
                    ": Linse an Fläche " + std::to_string(plan.split.lens_surface) +
                    " geteilt, c_s = " + number(plan.split.curvature) + "/mm, Glas nach Fläche " +
-                   std::to_string(plan.free_surface) + " frei (Platte " +
-                   std::to_string(plan.plate) + ", mu x" + number(options_.penalty_raise) + ")";
+                   std::to_string(plan.free_surface) + " frei" +
+                   (plan.preselected ? ", Zielglas " + plan.target_glass.name +
+                                           (options_.split.start_at_target ? " (Start)" : "")
+                                     : std::string()) +
+                   " (Platte " + std::to_string(plan.plate) + ", mu x" +
+                   number(options_.penalty_raise) + ")";
         return ins;
     }
     invalid("kein Operator empfohlen");

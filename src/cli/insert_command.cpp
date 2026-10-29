@@ -38,6 +38,7 @@ struct InsertArgs {
     std::optional<MeniscusInsertion> meniscus;
     std::optional<LensSplit> split;
     bool free_glass = false;
+    std::optional<MaterialSpec> start_glass; // --start-glass (M11-T5)
     bool variables = true;
     double thickness = 0.0;
 };
@@ -115,6 +116,8 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
             a.thickness = parse_double(arg, next_value(args, i, arg));
         } else if (arg == "--free-glass") {
             a.free_glass = true;
+        } else if (arg == "--start-glass") {
+            a.start_glass = parse_glass(arg, next_value(args, i, arg));
         } else if (arg == "--no-variables") {
             a.variables = false;
         } else if (!arg.empty() && arg.front() == '-') {
@@ -140,6 +143,9 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
     }
     if (a.free_glass && !a.split) {
         throw UsageError("--free-glass nur mit --split");
+    }
+    if (a.start_glass && !a.free_glass) {
+        throw UsageError("--start-glass nur mit --free-glass");
     }
     if (a.thickness != 0.0 && !a.meniscus) {
         throw UsageError("--thickness nur mit --meniscus");
@@ -171,7 +177,8 @@ double cpu_merit(const LoadedSystem& l) {
 void print_insert_usage(std::ostream& out) {
     out << "Aufruf: mikroptim insert <system.json> -o <neu.json>\n"
            "                         (--meniscus I,POS,C0,GLAS [--thickness T] |\n"
-           "                          --split I,C_S[,ANTEIL] [--free-glass]) [--no-variables]\n"
+           "                          --split I,C_S[,ANTEIL] [--free-glass [--start-glass GLAS]]) "
+           "[--no-variables]\n"
            "Einfüge-Operatoren der Systemsynthese (docs/optimierung.md, Abschnitt 6).\n"
            "  --meniscus I,POS,C0,GLAS  Operator A: zwei Flächen der Krümmung C0 [1/mm] im\n"
            "                            Luftspalt nach Fläche I, Abstand POS [mm] vom Scheitel\n"
@@ -182,6 +189,8 @@ void print_insert_usage(std::ostream& out) {
            "                            Kittfläche der Krümmung C_S teilen; ANTEIL der\n"
            "                            Mittendicke vor der Kittfläche (Standard 0,5)\n"
            "  --free-glass              Glas des hinteren Teils als Variable freigeben\n"
+           "  --start-glass GLAS        das freigegebene Glas startet bei GLAS statt beim Glas\n"
+           "                            der Linse (Katalogname oder n=<Brechzahl>; M11-T5)\n"
            "  --no-variables            keine Krümmungsvariablen für die neuen Flächen\n"
            "  -o, --output <datei>      neues System (Pflicht)\n";
 }
@@ -216,7 +225,7 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
         } else {
             r = split_lens(before.system, *a.split);
             if (a.free_glass) {
-                free_glass(r.system, r.first_new_surface);
+                free_glass(r.system, r.first_new_surface, a.start_glass);
             }
         }
         const fs::path input_dir = fs::path(a.file).parent_path();

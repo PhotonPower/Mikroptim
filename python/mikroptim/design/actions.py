@@ -218,6 +218,9 @@ def _insert_meniscus(a, system_path, workdir):
 
 
 def _split_lens(a, system_path, workdir):
+    """Operator B. cement_curvature: Zahl, "mean" oder "achromat" (dünnes Achromat in η aus der
+    Glasvorauswahl, M11-T5; Partner = target_glass oder der beste der Vorauswahl).
+    target_glass: das freigegebene (hintere) Glas startet dort (insert --start-glass)."""
     _require(a, "element")
     data = read_system(system_path)
     elems = elements(data)
@@ -227,22 +230,42 @@ def _split_lens(a, system_path, workdir):
     e = elems[k]
     c_front = data["surfaces"][e["front"]].get("curvature", 0.0)
     c_back = data["surfaces"][e["back"]].get("curvature", 0.0)
+    free_part = a.get("free_part")
+    target = a.get("target_glass")
+    if (free_part == 0) and target is not None:
+        raise ActionError("not_implemented", "target_glass nur mit free_part 1 (hinterer Teil)")
+    target_name = _glass_arg(target) if target is not None else None
     cs = a.get("cement_curvature", "mean")
+    report = {"element": k, "surface": e["front"]}
     if cs == "mean":
         cs = 0.5 * (c_front + c_back)
     elif cs == "achromat":
-        raise ActionError("not_implemented", "cement_curvature achromat folgt mit M11-T5")
+        pre = read_action({"action": "glass_preselect", "order": 1, "element": k, "top": 50},
+                          system_path)["results"]
+        if target_name is not None:
+            pre = [r for r in pre if r["glasses"][1] == target_name]
+        if not pre:
+            raise ActionError("precondition", "kein passender Partner in der Glasvorauswahl"
+                              + (f" für {target_name}" if target_name else ""))
+        best = pre[0]
+        front_fraction = best["powers"][0] if free_part in (None, 1) else best["powers"][1]
+        cs = c_front - front_fraction * (c_front - c_back)
+        report.update({"partner": best["glasses"][1], "secondary_spectrum": best["residual"],
+                       "power_sum": best["power_sum"]})
     spec = f"{e['front']},{float(cs)!r}"
     if "fraction" in a:
         spec += f",{float(a['fraction'])!r}"
-    target = _tmp_out(workdir)
-    args = ["insert", system_path, "-o", target, "--split", spec]
-    if a.get("free_part") is not None or a.get("target_glass") is not None:
+    target_file = _tmp_out(workdir)
+    args = ["insert", system_path, "-o", target_file, "--split", spec]
+    if free_part is not None or target_name is not None:
+        if free_part == 0:
+            raise ActionError("not_implemented", "free_part 0 (vorderer Teil) über die CLI noch nicht")
         args.append("--free-glass")
-    if a.get("target_glass") is not None:
-        raise ActionError("not_implemented", "target_glass folgt mit M10-T5/M11-T5")
+        if target_name is not None:
+            args += ["--start-glass", target_name]
     cli_text(args)
-    return target, {"element": k, "surface": e["front"], "cement_curvature": cs}
+    report["cement_curvature"] = cs
+    return target_file, report
 
 
 def _free_gaps(a, system_path, workdir):

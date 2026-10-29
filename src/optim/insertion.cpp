@@ -4,6 +4,8 @@
 
 #include "mikroptim/optim/insertion.hpp"
 
+#include "mikroptim/glass/glass_preselection.hpp"
+
 #include "mikroptim/glass/catalog.hpp"
 #include "mikroptim/glass/index_table.hpp"
 #include "mikroptim/model/constraints.hpp"
@@ -649,6 +651,32 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
         plan.plate = pr.active_plates.front();
     }
     plan.target_glass = system.ghost_plates[sz(plan.plate)].glass;
+    plan.secondary_spectrum = std::numeric_limits<double>::quiet_NaN();
+    // Glasvorauswahl (M11-T5): Partner des Linsenglases aus dem Katalog
+    double preselect_front_fraction = std::numeric_limits<double>::quiet_NaN();
+    if (options.preselect && lens_glass.kind == MaterialKind::Catalog) {
+        const std::vector<GlassDispersion> g = catalog_dispersions(catalog);
+        const auto it = std::find_if(g.begin(), g.end(), [&](const GlassDispersion& d) {
+            return d.name == lens_glass.name;
+        });
+        if (it != g.end()) {
+            GlassPreselectionOptions po;
+            po.fixed = {static_cast<int>(it - g.begin())};
+            po.max_power_sum = options.preselect_max_power_sum;
+            po.max_results = 1;
+            const std::vector<PreselectedGlasses> best = preselect_glasses(g, po);
+            if (!best.empty()) {
+                plan.preselected = true;
+                plan.target_glass = MaterialSpec{};
+                plan.target_glass.kind = MaterialKind::Catalog;
+                plan.target_glass.name = g[sz(best[0].glasses[1])].name;
+                plan.secondary_spectrum = best[0].residual;
+                // Anteil des vorderen Teils an der Brechkraft (φ = 1): hinten frei → vorn Linse
+                preselect_front_fraction =
+                    options.free_part == 1 ? best[0].powers[0] : best[0].powers[1];
+            }
+        }
+    }
     plan.abbe_target = abbe_number(plan.target_glass, catalog);
 
     const Surface& front = system.surfaces[sz(lens)];
@@ -664,6 +692,11 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
         const double front_abbe = options.free_part == 1 ? plan.abbe_lens : plan.abbe_target;
         const double back_abbe = options.free_part == 1 ? plan.abbe_target : plan.abbe_lens;
         plan.achromat_curvature = achromat_split_curvature(c1, c2, front_abbe, back_abbe);
+        if (plan.preselected) {
+            // dünnes Achromat in η (Glasvorauswahl): φ_vorn = Anteil · φ, c_s = c₁ − Anteil (c₁ −
+            // c₂)
+            plan.achromat_curvature = c1 - preselect_front_fraction * (c1 - c2);
+        }
         // Randdicken der Teile bei der Höhe h (Pfeilhöhe c h²/(1 + √(1 − c²h²)))
         const double t1 = options.fraction * front.thickness;
         const double t2 = front.thickness - t1;
@@ -721,7 +754,10 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
     plan.free_surface = lens + options.free_part;
     std::ostringstream os;
     os << "Operator " << (anomalous ? "B (anomal)" : "B") << ": Linse " << lens << "/" << lens + 1
-       << " (nu_d = " << num(plan.abbe_lens) << "), Zielglas der Platte " << plan.plate
+       << " (nu_d = " << num(plan.abbe_lens) << "), Zielglas "
+       << (plan.preselected ? "aus der Glasvorauswahl " + plan.target_glass.name +
+                                  " (sekundäres Spektrum " + num(plan.secondary_spectrum) + ")"
+                            : "der Platte " + std::to_string(plan.plate))
        << " (nu_d = " << num(plan.abbe_target) << "), c_s = " << num(cs) << " (" << cs_from
        << "), freigegeben: Teil " << options.free_part << " (Fläche " << plan.free_surface << ")";
     plan.reason = os.str();
