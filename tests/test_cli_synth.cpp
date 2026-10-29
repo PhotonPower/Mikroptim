@@ -220,14 +220,14 @@ TEST(CliSynth, BeamTextOutput) {
 namespace mko::test {
 namespace {
 
-// M11-T1c: Stagnation des LM ist in synth Standard (20 Zyklen, 1e-3), --stall 0 schaltet ab.
+// M11-T1c: Stagnation des LM in synth: Standard aus, --stall W[,T] schaltet ein.
 TEST(CliSynth, StallDefaultAndSwitch) {
     const std::vector<std::string> base{kStart, "--max-elements", "1",  "--max-iterations",
                                         "40",   "--merit-factor", "10", "--json"};
     const SynthCliResult d = synth(base);
     ASSERT_EQ(d.code, cli::kExitOk) << d.err;
     const nlohmann::json jd = nlohmann::json::parse(d.out);
-    EXPECT_EQ(jd["options"]["stall"]["window"], 20);
+    EXPECT_EQ(jd["options"]["stall"]["window"], 0); // Standard aus (seit dem Lauf auf M6-T6)
     EXPECT_EQ(jd["options"]["stall"]["tolerance"], 1e-3);
     std::vector<std::string> off = base;
     off.push_back("--stall");
@@ -243,7 +243,7 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     EXPECT_EQ(jc["options"]["stall"]["tolerance"], 1e-4);
     EXPECT_EQ(synth({kStart, "--stall", "-1"}).code, cli::kExitUsage);
     EXPECT_EQ(synth({kStart, "--stall", "x"}).code, cli::kExitUsage);
-    EXPECT_NE(synth({"--help"}).out.find("Standard 20,1e-3"), std::string::npos);
+    EXPECT_NE(synth({"--help"}).out.find("Standard aus"), std::string::npos);
     EXPECT_NE(synth({"--help"}).out.find("--predictor"), std::string::npos);
     EXPECT_NE(synth({"--help"}).out.find("--split-preselect"), std::string::npos);
     EXPECT_EQ(jd["options"]["split"]["preselect"], false);

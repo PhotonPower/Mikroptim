@@ -210,7 +210,7 @@ if [[ $DO_PYTHON -eq 1 ]]; then
 fi
 
 # ---- 6. Messläufe ----------------------------------------------------------------------------
-# Läufe aus den letzten Änderungen (M11-T1c Stagnation, M11-T3 Prädiktor, M11-T5c Farbregel),
+# Läufe aus den letzten Änderungen (M11-T1c Stagnation als Option, M11-T3 Prädiktor, M11-T5c Farbregel),
 # auf der CPU und – falls vorhanden – auf der GPU.
 if [[ $DO_BENCH -eq 1 ]]; then
     step "Messläufe"
@@ -229,7 +229,7 @@ if [[ $DO_BENCH -eq 1 ]]; then
     H=data/systems/einzellinse_homotopie_start.json
     A=data/systems/einzellinse_achromat_start.json
     run "homotopie_standard"     synth "$H" --target-na 0.6
-    run "homotopie_stall0"       synth "$H" --target-na 0.6 --stall 0
+    run "homotopie_stall20"      synth "$H" --target-na 0.6 --stall 20,1e-3
     run "homotopie_praediktor"   synth "$H" --target-na 0.6 --predictor
     run "achromat_ohne_regel"    synth "$A" --max-elements 3
     run "achromat_farbregel"     synth "$A" --max-elements 3 --color-rule
