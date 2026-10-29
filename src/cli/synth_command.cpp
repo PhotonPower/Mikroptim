@@ -66,6 +66,8 @@ struct SynthArgs {
     bool predictor = false;          // M11-T3
     bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
     bool split_start_target = false; // und das freigegebene Glas dort starten
+    bool color_rule = false;         // M11-T5c
+    double color_ratio = 2.0;
     int extrema_stages = HomotopyOptions{}.extrema_stages;
     double extrema_factor = HomotopyOptions{}.extrema_factor;
     int max_elements = HomotopyOptions{}.max_elements;
@@ -149,6 +151,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--color-rule") {
+            a.color_rule = true;
+        } else if (arg == "--color-ratio") {
+            a.color_rule = true;
+            a.color_ratio = positive(arg, next_value(args, i, arg));
         } else if (arg == "--split-preselect") {
             a.split_preselect = true;
         } else if (arg == "--split-start-target") {
@@ -311,6 +318,9 @@ void print_synth_usage(std::ostream& out) {
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
            "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
            "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --color-rule              Farbregel: Operator B (Glas aus der Vorauswahl), wenn der\n"
+           "                            RMS einer Wellenlänge >= Faktor x RMS bei λ_ref (M11-T5c)\n"
+           "  --color-ratio F           Faktor der Farbregel (Standard 2; setzt --color-rule)\n"
            "  --split-preselect         Operator B: Zielglas aus der Glasvorauswahl (M11-T5)\n"
            "  --split-start-target      ebenso, und das freigegebene Glas startet beim Zielglas\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
@@ -402,6 +412,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
         o.split.preselect = a.split_preselect;
+        o.color_rule = a.color_rule;
+        o.color_ratio = a.color_ratio;
         o.split.start_at_target = a.split_start_target;
         o.lm.stall_window = a.stall_window;
         o.lm.stall_tolerance = a.stall_tolerance;
@@ -535,6 +547,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"max_elements", a.max_elements},
                      {"max_iterations", a.max_iterations},
                      {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
+                     {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
                      {"split", Json{{"preselect", a.split_preselect},
                                     {"start_at_target", a.split_start_target}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},

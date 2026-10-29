@@ -623,6 +623,21 @@ TEST(InsertionInit, SplitFromDiagnosisWithPreselection) {
     EXPECT_FALSE(fallback.preselected);
 }
 
+// Operator B ohne Geisterdiagnose (Farbregel, M11-T5c): Partner und Kittkrümmung aus der
+// Glasvorauswahl, keine Platte; Fehler ohne Linse.
+TEST(InsertionInit, SplitForColor) {
+    const LoadedSystem l = load_residual_system("einzellinse_achromat_start.json");
+    const SplitPlan plan = split_for_color(l.system, l.catalog, 1);
+    EXPECT_TRUE(plan.preselected);
+    EXPECT_EQ(plan.plate, -1);
+    EXPECT_EQ(plan.split.lens_surface, 1);
+    EXPECT_EQ(plan.free_surface, 2);
+    EXPECT_EQ(plan.target_glass.kind, MaterialKind::Catalog);
+    EXPECT_NE(plan.reason.find("Farbregel"), std::string::npos) << plan.reason;
+    EXPECT_THROW((void)split_for_color(l.system, l.catalog, 0), std::invalid_argument);
+    EXPECT_THROW((void)split_for_color(l.system, l.catalog, 2), std::invalid_argument);
+}
+
 // Rundungsboden: Ein Luftspalt wird durch zwei Flächen mit n = 1 dazwischen geteilt (optisch
 // nichts, nur Transfer in Teilstücken und Brechung mit μ = 1). Die Merit ändert sich in derselben
 // Größenordnung wie beim Operator A – die Abweichungen sind Rundung des Traces, nicht des

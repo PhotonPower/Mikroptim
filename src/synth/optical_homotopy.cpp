@@ -3,6 +3,9 @@
 
 #include "mikroptim/synth/optical_homotopy.hpp"
 
+#include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/paraxial/aberrations.hpp"
+
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/glass/glass_hull.hpp"
@@ -433,8 +436,101 @@ OpticalHomotopyModel::solve_all(std::span<SystemDescription* const> systems, con
     return out;
 }
 
+// Farbregel (M11-T5c): Operator B, wenn der Farblängsfehler dominiert; leer sonst.
+std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescription& system,
+                                                             const HomotopyPoint& p) const {
+    const SystemDescription realized = realize(system, p);
+    if (realized.spectrum.wavelengths_nm.size() < 2 ||
+        realized.source.type != SourceType::Collimated) {
+        return std::nullopt;
+    }
+    // Farbe dominiert? RMS pro Feld und Wellenlänge der getracten Wellenfront
+    double worst_ratio = 0.0;
+    double worst_rms = 0.0;
+    try {
+        const LoadedSystem l = load(realized);
+        const WavefrontResult wf = evaluate_wavefront(l);
+        int lref = 0;
+        for (int k = 1; k < wf.wavelengths; ++k) {
+            if (std::abs(wf.at(0, k).wavelength_nm - realized.spectrum.reference_nm) <
+                std::abs(wf.at(0, lref).wavelength_nm - realized.spectrum.reference_nm)) {
+                lref = k;
+            }
+        }
+        for (int f = 0; f < wf.fields; ++f) {
+            const double ref = wf.at(f, lref).rms_waves;
+            for (int k = 0; k < wf.wavelengths; ++k) {
+                const double r = wf.at(f, k).rms_waves;
+                if (!std::isfinite(r) || !std::isfinite(ref)) {
+                    continue;
+                }
+                worst_rms = std::max(worst_rms, r);
+                worst_ratio = std::max(worst_ratio, ref > 0.0 ? r / ref : 0.0);
+            }
+        }
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    if (!(worst_rms >= options_.color_min_rms)) {
+        return std::nullopt;
+    }
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    AberrationReport rep;
+    try {
+        rep = compute_aberrations(realized, like_.catalog, ao);
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    const SeidelWaves w = rep.waves();
+    const bool by_ratio = worst_ratio >= options_.color_ratio;
+    const bool by_seidel =
+        std::abs(w.dW020) >= options_.color_seidel && std::abs(w.dW020) >= std::abs(w.W040);
+    if (!by_ratio && !by_seidel) {
+        return std::nullopt;
+    }
+    // Linse mit dem größten Beitrag gleichen Vorzeichens zum Gesamtwert
+    const double sign = w.dW020 >= 0.0 ? 1.0 : -1.0;
+    int best = -1;
+    double best_value = 0.0;
+    const auto& surf = realized.surfaces;
+    for (std::size_t s = 1; s + 1 < surf.size(); ++s) {
+        if (surf[s].material.kind != MaterialKind::Catalog) {
+            continue;
+        }
+        const double v =
+            sign * (rep.waves(rep.surfaces[s]).dW020 + rep.waves(rep.surfaces[s + 1]).dW020);
+        if (v > best_value) {
+            best_value = v;
+            best = static_cast<int>(s);
+        }
+    }
+    if (best < 0) {
+        return std::nullopt;
+    }
+    try {
+        (void)split_for_color(realized, like_.catalog, best, options_.split);
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    HomotopyNeed n;
+    n.recommendation = GhostOperator::B;
+    n.split_lens = best;
+    n.text = std::string("Farbregel (") + (by_ratio ? "RMS-Verhältnis " : "Seidel ") +
+             number(worst_ratio) + ", größter RMS " + number(worst_rms) +
+             " Wellen, ΔW020 = " + number(w.dW020) + ", W040 = " + number(w.W040) +
+             "): Operator B an der Linse ab Fläche " + std::to_string(best);
+    return n;
+}
+
 HomotopyNeed OpticalHomotopyModel::diagnose(const SystemDescription& system,
                                             const HomotopyPoint& p) {
+    if (options_.color_rule) {
+        if (std::optional<HomotopyNeed> c = color_need(system, p)) {
+            return *c;
+        }
+    }
     HomotopyNeed n;
     if (system.ghost_plates.empty()) {
         n.text = "keine Geisterplatten";
@@ -568,7 +664,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
     if (need.recommendation == GhostOperator::B ||
         need.recommendation == GhostOperator::BAnomalous) {
         const SplitPlan plan =
-            split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
+            need.split_lens >= 0
+                ? split_for_color(realized, like_.catalog, need.split_lens, options_.split)
+                : split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
         InsertionResult r = split_lens(system, plan.split);
         if (options_.split.start_at_target && plan.preselected) {
             free_glass(r.system, plan.free_surface, plan.target_glass);
@@ -584,7 +682,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
             r.system.constraints->items.push_back(c);
         }
         (void)convert_glass_variables(r.system, like_.catalog);
-        scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
+        if (plan.plate >= 0) {
+            scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
+        }
         ins.first_surface = r.first_new_surface;
         ins.new_surfaces = r.new_surfaces;
         ins.plate = plan.plate;
@@ -596,8 +696,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                    (plan.preselected ? ", Zielglas " + plan.target_glass.name +
                                            (options_.split.start_at_target ? " (Start)" : "")
                                      : std::string()) +
-                   " (Platte " + std::to_string(plan.plate) + ", mu x" +
-                   number(options_.penalty_raise) + ")";
+                   (plan.plate >= 0 ? " (Platte " + std::to_string(plan.plate) + ", mu x" +
+                                          number(options_.penalty_raise) + ")"
+                                    : std::string(" (Farbregel)"));
         return ins;
     }
     invalid("kein Operator empfohlen");

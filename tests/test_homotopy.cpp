@@ -504,6 +504,28 @@ TEST(OpticalHomotopy, PredictExtrapolatesVariables) {
     EXPECT_FALSE(m.predict(other, cur, p, 1.0).has_value());
 }
 
+// Farbregel (M11-T5c): polychromatische Einzellinse ohne Geisterplatten – ohne Regel kein
+// Bedarf, mit Regel Operator B an der Linse (Fläche 1); das Einfügen teilt die Linse ohne
+// Strafgewicht einer Platte.
+TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
+    const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
+    OpticalHomotopyModel plain(start, OpticalHomotopyOptions{});
+    EXPECT_EQ(plain.diagnose(plain.start_system(), plain.start_point()).recommendation,
+              GhostOperator::None);
+    OpticalHomotopyOptions o;
+    o.color_rule = true;
+    OpticalHomotopyModel m(start, o);
+    const HomotopyNeed need = m.diagnose(m.start_system(), m.start_point());
+    ASSERT_EQ(need.recommendation, GhostOperator::B) << need.text;
+    EXPECT_EQ(need.split_lens, 1);
+    EXPECT_NE(need.text.find("Farbregel"), std::string::npos);
+    const HomotopyInsertion ins = m.insert(m.start_system(), m.start_point(), need);
+    ASSERT_EQ(ins.branches.size(), 1U);
+    EXPECT_EQ(ins.plate, -1);
+    EXPECT_EQ(ins.branches[0].surfaces.size(), m.start_system().surfaces.size() + 1);
+    EXPECT_NE(ins.text.find("Farbregel"), std::string::npos) << ins.text;
+}
+
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {
     const LoadedSystem start = homotopy_start();
     OpticalHomotopyModel m(start, {});

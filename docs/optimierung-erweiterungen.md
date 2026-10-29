@@ -175,7 +175,15 @@ Grundlage sind die Arbeiten zur Glaswahl mit Buchdahl-Koeffizienten (Robb, Merca
 
 Die Kittkrümmung aus der Vorauswahl hilft leicht; der Start beim Zielglas schadet, weil die Außenradien noch zur Einzellinse gehören (Startmerit 2,5·10⁶ statt 3,6·10³). Sinnvoll wäre er erst zusammen mit Startbrechkräften für alle Flächen des Glieds; deshalb Standard aus.
 
-Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace.
+**M11-T5c: Farbregel.** Weil die Geisterdiagnose B nicht empfiehlt, entscheidet eine Regel im optischen Modell vor der Diagnose (`OpticalHomotopyOptions::color_rule`, CLI `synth --color-rule [--color-ratio F]`): Ist der größte RMS (getracte Wellenfront am Punkt) mindestens 0,05 Wellen und dominiert die Farbe – (a) der RMS einer Wellenlänge ist mindestens F-mal (Standard 2) der RMS bei λ_ref desselben Feldes, oder (b) Seidel |ΔW020| ≥ 0,25 Wellen und ≥ |W040| –, dann Operator B an der Linse mit dem größten Beitrag zu ΔW020 (Katalogglas), Partner und Kittkrümmung aus der Vorauswahl (`split_for_color`), ohne Platte. Kriterium (b) allein versagt bei hoher NA (Seidel-Sphärik groß, im System durch höhere Ordnungen ausgeglichen), (a) allein bei kleiner NA (Farbe und Sphärik gleich groß); deshalb beide.
+
+| System (CLI `synth`, CPU) | ohne Regel | mit `--color-rule` |
+|---|---|---|
+| `einzellinse_achromat_start.json` (N-BK7, 480/644 nm) | `start_rejected` (keine Platte, kein Bedarf), 1 Element | **`goal_reached`**: B mit CaF₂, RMS 0,0155 Wellen, 2 Elemente, 8 Optimierungen |
+| Einzellinse NA 0,5 mit Geisterplatten, 486/588/656 nm, höchstens 5 Elemente | `start_rejected` nach drei Menisken (A, A, A), 4 Elemente | **`goal_reached`**: B, B (CaF₂), A, RMS 0,025 Wellen, 4 Elemente |
+| `einzellinse_homotopie_start.json` (monochromatisch) | Ziel, 4 Elemente | unverändert (Regel braucht ≥ 2 Wellenlängen) |
+
+Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace, Lauf auf der Zielspezifikation (Farbstufen von M6-T6) mit `--color-rule`.
 
 **Abnahme.**
 - Orakel: Für zwei Gläser entspricht das Ergebnis dem dünnen Achromat (`achromat_split_curvature`).

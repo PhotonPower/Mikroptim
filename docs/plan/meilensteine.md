@@ -423,7 +423,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M6-T2
 - **Inhalt:** Bewertung von Glaspaaren und -tripeln über Buchdahl-Koeffizienten und Randstrahlhöhen, Anbindung an Operator B.
 - **Abnahme:** Zwei Gläser entsprechen dem dünnen Achromat; konstruiertes Tripel gefunden; bester Vorschlag unter den besten fünf nach Raytrace.
-- **Stand:** Kern, `mikroptim glasses` und Aktion `glass_preselect` umgesetzt; Orakel (dünner Achromat, konstruiertes Tripel, paraxiale Probe) bestanden. Anbindung an Operator B (M11-T5b) umgesetzt; in der Synthese wirkungslos, solange die Diagnose kein B empfiehlt (F9); direkt angewandt leicht besser. Offen: Filter, Startradien des ganzen Glieds, Bruteforce-Abnahme.
+- **Stand:** Kern, `mikroptim glasses` und Aktion `glass_preselect` umgesetzt; Orakel (dünner Achromat, konstruiertes Tripel, paraxiale Probe) bestanden. Anbindung an Operator B (M11-T5b) umgesetzt; Farbregel (M11-T5c, `synth --color-rule`) entscheidet B, wenn die Farbe dominiert: Achromat aus der Einzellinse und Einzellinse NA 0,5 polychromatisch erreichen damit das Ziel (vorher `start_rejected`). Offen: Filter, Startradien des ganzen Glieds, Bruteforce-Abnahme.
 
 ### M11-T6 – Toleranzbewusste Optimierung
 - **Abhängig von:** M8-T3

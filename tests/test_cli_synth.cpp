@@ -247,6 +247,14 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     EXPECT_NE(synth({"--help"}).out.find("--predictor"), std::string::npos);
     EXPECT_NE(synth({"--help"}).out.find("--split-preselect"), std::string::npos);
     EXPECT_EQ(jd["options"]["split"]["preselect"], false);
+    // Farbregel (M11-T5c): Achromat aus der Einzellinse erreicht das Ziel
+    const SynthCliResult color =
+        synth({std::string(MKO_SOURCE_DIR "/data/systems/einzellinse_achromat_start.json"),
+               "--color-rule", "--max-elements", "3", "--json"});
+    ASSERT_EQ(color.code, cli::kExitOk) << color.err;
+    const nlohmann::json jcol = nlohmann::json::parse(color.out);
+    EXPECT_EQ(jcol["result"]["status"], "goal_reached");
+    EXPECT_EQ(jcol["options"]["color_rule"], 2.0);
     // Prädiktor (M11-T3) nur ohne Strahlsuche
     EXPECT_EQ(synth({kStart, "--predictor", "--beam", "2"}).code, cli::kExitUsage);
 }
