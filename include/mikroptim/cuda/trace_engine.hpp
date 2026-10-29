@@ -142,7 +142,7 @@ class TraceEngine {
 public:
     // Engine für Gerät `device` (0 … device_count() − 1). Wirft CudaError, wenn kein
     // CUDA-Gerät vorhanden ist, std::invalid_argument bei ungültigem Index oder einem Gerät
-    // unter sm_60 (keine passende Kernel-Version im Programm).
+    // unter sm_86 (keine passende Kernel-Version im Programm, ADR-0015).
     explicit TraceEngine(int device, const EngineOptions& options = {});
     ~TraceEngine();
 

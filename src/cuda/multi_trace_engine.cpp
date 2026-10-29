@@ -175,7 +175,7 @@ MultiTraceEngine::MultiTraceEngine(const MultiEngineOptions& options) : options_
     if (options_.devices.empty()) {
         options_.devices = usable_devices();
         if (options_.devices.empty()) {
-            throw CudaError("MultiTraceEngine: kein CUDA-Gerät ab sm_60 gefunden");
+            throw CudaError("MultiTraceEngine: kein CUDA-Gerät ab sm_86 gefunden");
         }
     }
     const auto slots = options_.devices.size();

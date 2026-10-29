@@ -56,6 +56,14 @@
 
 namespace {
 
+// FP32:FP64-Verhältnis (cudaDeviceProp::singleToDoublePrecisionPerfRatio gibt es seit CUDA 13
+// nicht mehr)
+int fp32_fp64_ratio(int device) {
+    int ratio = 0;
+    (void)cudaDeviceGetAttribute(&ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device);
+    return ratio;
+}
+
 using mko::cuda::Precision;
 
 constexpr int kExitOk = 0;
@@ -587,7 +595,7 @@ int run(const Options& o) {
         std::printf("jacobian_throughput (Mikroptim %s, %s): GPU %d %s, sm_%d%d, %d SMs, "
                     "FP32:FP64 = %d:1, CUDA %d.%d\n",
                     mko::kVersion, kBuildType, o.device, gpu.c_str(), p.major, p.minor,
-                    p.multiProcessorCount, p.singleToDoublePrecisionPerfRatio, runtime / 1000,
+                    p.multiProcessorCount, fp32_fp64_ratio(o.device), runtime / 1000,
                     (runtime % 1000) / 10);
         std::printf("Quadratur %d x %d, %d Felder, %d Wellenlängen, Strahlversagen %s, Median aus "
                     "%d Läufen; Zeiten in ms, x = FD/adjungiert\n",
