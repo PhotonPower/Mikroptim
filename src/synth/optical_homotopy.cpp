@@ -504,7 +504,9 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     const bool by_ratio = worst_ratio >= options_.color_ratio;
     const bool by_seidel =
         std::abs(w.dW020) >= options_.color_seidel && std::abs(w.dW020) >= std::abs(w.W040);
-    if (!by_ratio && !by_seidel) {
+    // (c) Schritt der Spektrum-Homotopie (Stufe > 0): die Farbe ist per Konstruktion der Grund
+    const bool by_stage = p.spectrum > 0 && !options_.spectra.empty();
+    if (!by_ratio && !by_seidel && !by_stage) {
         return std::nullopt;
     }
     // Linsen nach ihrem Beitrag gleichen Vorzeichens zum Gesamtwert; die erste, die sich teilen
@@ -523,15 +525,30 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
             lenses.emplace_back(v, static_cast<int>(s));
         }
     }
-    std::stable_sort(lenses.begin(), lenses.end(),
-                     [](const auto& a, const auto& b) { return a.first > b.first; });
+    // Einzellinsen (Luft vor und nach dem Glas) vor Teilen von Kittgliedern: sonst teilt die Regel
+    // dasselbe Glied immer weiter (Zielspezifikation, M6-T6 v4: 14 → 15 → 16)
+    const auto singlet = [&](int s) {
+        return (s == 0 ||
+                surf[static_cast<std::size_t>(s - 1)].material.kind == MaterialKind::Air) &&
+               surf[static_cast<std::size_t>(s + 1)].material.kind == MaterialKind::Air;
+    };
+    std::stable_sort(lenses.begin(), lenses.end(), [&](const auto& a, const auto& b) {
+        if (singlet(a.second) != singlet(b.second)) {
+            return singlet(a.second);
+        }
+        return a.first > b.first;
+    });
     int best = -1;
+    std::vector<int> candidates;
     for (const auto& [value, lens] : lenses) {
         try {
             (void)split_for_color(realized, like_.catalog, lens, options_.split);
-            best = lens;
-            break;
+            if (best < 0) {
+                best = lens;
+            }
+            candidates.push_back(lens);
         } catch (const std::exception&) {
+            candidates.push_back(lens); // am guten Zustand vielleicht teilbar (andere Dicken)
         }
     }
     if (best < 0) {
@@ -540,7 +557,11 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     HomotopyNeed n;
     n.recommendation = GhostOperator::B;
     n.split_lens = best;
-    n.text = std::string("Farbregel (") + (by_ratio ? "RMS-Verhältnis " : "Seidel ") +
+    n.split_candidates = candidates;
+    n.text = std::string("Farbregel (") +
+             (by_stage   ? "Spektrumstufe "
+              : by_ratio ? "RMS-Verhältnis "
+                         : "Seidel ") +
              number(worst_ratio) + ", größter RMS " + number(worst_rms) +
              " Wellen, ΔW020 = " + number(w.dW020) + ", W040 = " + number(w.W040) +
              "): Operator B an der Linse ab Fläche " + std::to_string(best);
@@ -693,10 +714,36 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
     }
     if (need.recommendation == GhostOperator::B ||
         need.recommendation == GhostOperator::BAnomalous) {
-        const SplitPlan plan =
-            need.split_lens >= 0
-                ? split_for_color(realized, like_.catalog, need.split_lens, options_.split)
-                : split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
+        SplitPlan plan;
+        if (need.split_lens >= 0) {
+            // Farbregel: empfohlene Linse, sonst die nächste Kandidatin, die sich an diesem
+            // Zustand teilen lässt (die Empfehlung kann am verworfenen Versuch entstanden sein,
+            // dessen Dicken sich unterscheiden)
+            std::vector<int> order{need.split_lens};
+            for (int c : need.split_candidates) {
+                if (c != need.split_lens) {
+                    order.push_back(c);
+                }
+            }
+            std::string why;
+            bool found = false;
+            for (int lens : order) {
+                try {
+                    plan = split_for_color(realized, like_.catalog, lens, options_.split);
+                    found = true;
+                    break;
+                } catch (const std::invalid_argument& e) {
+                    if (why.empty()) {
+                        why = e.what();
+                    }
+                }
+            }
+            if (!found) {
+                invalid(why);
+            }
+        } else {
+            plan = split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
+        }
         InsertionResult r = split_lens(system, plan.split);
         if (options_.split.start_at_target && plan.preselected) {
             free_glass(r.system, plan.free_surface, plan.target_glass);
@@ -1047,6 +1094,27 @@ std::vector<bool> OpticalHomotopyModel::prefilter(std::span<const SystemDescript
         }
     }
     return keep;
+}
+
+std::vector<Spectrum> spectrum_stages(const Spectrum& target, int n) {
+    if (n < 1) {
+        invalid("spectrum_stages: mindestens eine Stufe");
+    }
+    std::vector<Spectrum> out;
+    Spectrum mono;
+    mono.wavelengths_nm = {target.reference_nm};
+    mono.weights = {1.0};
+    mono.reference_nm = target.reference_nm;
+    out.push_back(mono);
+    for (int k = 1; k <= n; ++k) {
+        Spectrum st = target;
+        const double t = static_cast<double>(k) / n;
+        for (double& l : st.wavelengths_nm) {
+            l = target.reference_nm + t * (l - target.reference_nm);
+        }
+        out.push_back(st);
+    }
+    return out;
 }
 
 } // namespace mko

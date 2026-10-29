@@ -536,6 +536,24 @@ TEST(OpticalHomotopy, InsertRefusedWhenTableFull) {
     EXPECT_THROW((void)m.insert(big, m.start_point(), need), std::invalid_argument);
 }
 
+// Spektrum-Homotopie (M11-T5d): Stufe 0 monochromatisch bei λ_ref, Stufe k skaliert die Abstände
+// zu λ_ref mit k/n, letzte Stufe = Ziel.
+TEST(OpticalHomotopy, SpectrumStages) {
+    Spectrum target;
+    target.wavelengths_nm = {480.0, 644.0};
+    target.weights = {1.0, 2.0};
+    target.reference_nm = 546.0;
+    const std::vector<Spectrum> st = spectrum_stages(target, 4);
+    ASSERT_EQ(st.size(), 5U);
+    EXPECT_EQ(st[0].wavelengths_nm, std::vector<double>{546.0});
+    EXPECT_EQ(st[0].weights, std::vector<double>{1.0});
+    EXPECT_DOUBLE_EQ(st[1].wavelengths_nm[0], 546.0 - 66.0 / 4.0);
+    EXPECT_DOUBLE_EQ(st[2].wavelengths_nm[1], 546.0 + 98.0 / 2.0);
+    EXPECT_EQ(st[1].weights, target.weights);
+    EXPECT_EQ(st[4], target);
+    EXPECT_THROW((void)spectrum_stages(target, 0), std::invalid_argument);
+}
+
 TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
     const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
     OpticalHomotopyModel plain(start, OpticalHomotopyOptions{});

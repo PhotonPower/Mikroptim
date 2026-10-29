@@ -68,6 +68,7 @@ struct SynthArgs {
     bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
     bool split_start_target = false; // und das freigegebene Glas dort starten
     bool color_rule = false;         // M11-T5c
+    int spectrum_stages = 0;         // M11-T5d: Spektrum-Homotopie (0: aus)
     double color_ratio = 2.0;
     int extrema_stages = HomotopyOptions{}.extrema_stages;
     double extrema_factor = HomotopyOptions{}.extrema_factor;
@@ -152,6 +153,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.rms_target = positive(arg, next_value(args, i, arg));
         } else if (arg == "--merit-factor") {
             a.merit_factor = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--spectrum-stages") {
+            a.spectrum_stages = parse_int(arg, next_value(args, i, arg));
+            if (a.spectrum_stages < 1) {
+                throw UsageError("--spectrum-stages muss >= 1 sein");
+            }
         } else if (arg == "--color-rule") {
             a.color_rule = true;
         } else if (arg == "--color-ratio") {
@@ -319,6 +325,8 @@ void print_synth_usage(std::ostream& out) {
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
            "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
            "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --spectrum-stages N       Spektrum-Homotopie: von monochromatisch bei λ_ref in N\n"
+           "                            Stufen zum Spektrum der Datei (M11-T5d)\n"
            "  --color-rule              Farbregel: Operator B (Glas aus der Vorauswahl), wenn der\n"
            "                            RMS einer Wellenlänge >= Faktor x RMS bei λ_ref (M11-T5c)\n"
            "  --color-ratio F           Faktor der Farbregel (Standard 2; setzt --color-rule)\n"
@@ -415,6 +423,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         o.lm.max_iterations = a.max_iterations;
         o.split.preselect = a.split_preselect;
         o.color_rule = a.color_rule;
+        if (a.spectrum_stages > 0) {
+            o.spectra = spectrum_stages(start.system.spectrum, a.spectrum_stages);
+        }
         o.color_ratio = a.color_ratio;
         o.split.start_at_target = a.split_start_target;
         o.lm.stall_window = a.stall_window;
@@ -455,6 +466,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.target_aperture = a.target_na.value_or(0.0);
         h.target_field = a.target_field.value_or(-1.0);
         h.target_rms = a.rms_target;
+        if (a.spectrum_stages > 0) {
+            h.target_spectrum = a.spectrum_stages;
+        }
         h.merit_factor = a.merit_factor;
         h.extrema_beta = a.extrema_beta;
         h.predictor = a.predictor;
@@ -550,6 +564,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"max_iterations", a.max_iterations},
                      {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
                      {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
+                     {"spectrum_stages", a.spectrum_stages},
                      {"split", Json{{"preselect", a.split_preselect},
                                     {"start_at_target", a.split_start_target}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},

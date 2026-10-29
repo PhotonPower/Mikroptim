@@ -255,6 +255,14 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     const nlohmann::json jcol = nlohmann::json::parse(color.out);
     EXPECT_EQ(jcol["result"]["status"], "goal_reached");
     EXPECT_EQ(jcol["options"]["color_rule"], 2.0);
+    // Spektrum-Homotopie (M11-T5d): Option im JSON, Fehler bei N < 1
+    std::vector<std::string> stages = base;
+    stages.push_back("--spectrum-stages");
+    stages.push_back("3");
+    const SynthCliResult st = synth(stages);
+    ASSERT_EQ(st.code, cli::kExitOk) << st.err;
+    EXPECT_EQ(nlohmann::json::parse(st.out)["options"]["spectrum_stages"], 3);
+    EXPECT_EQ(synth({kStart, "--spectrum-stages", "0"}).code, cli::kExitUsage);
     // Prädiktor (M11-T3) nur ohne Strahlsuche
     EXPECT_EQ(synth({kStart, "--predictor", "--beam", "2"}).code, cli::kExitUsage);
 }

@@ -87,6 +87,9 @@ struct HomotopyNeed {
     // Farbregel (M11-T5c): Operator B an der Linse ab dieser Dateifläche, ohne Geisterdiagnose
     // (−1: Empfehlung aus der Diagnose)
     int split_lens = -1;
+    // Weitere Linsen der Farbregel in absteigender Eignung (falls split_lens am Zustand des
+    // Einfügens nicht teilbar ist)
+    std::vector<int> split_candidates{};
 };
 
 // Ein angewandter Einfüge-Operator: Startsysteme der Zweige (Operator mit Dicke 0 eingefügt, die
