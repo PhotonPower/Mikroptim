@@ -9,6 +9,11 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
+                                           [--aktuell] [--farbregel] [--synth-arg ARG]...
+
+Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
+--aktuell gelten die aktuellen Standards von `synth` (Stagnationsabbruch), mit --farbregel
+zusätzlich die Farbregel (M11-T5c, `--color-rule`); --synth-arg reicht weitere Optionen durch.
 
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
@@ -306,11 +311,23 @@ def prepare_field(system, petzval_weight=1e4, parfocal_weight=1.0, diameter_weig
 # Programmaufrufe
 # ---------------------------------------------------------------------------------------------
 
+def synth_options(args):
+    """Zusatzoptionen der synth-Aufrufe aus --aktuell, --farbregel und --synth-arg."""
+    opts = [] if (args.aktuell or args.farbregel) else ['--stall', '0']
+    if args.farbregel:
+        opts.append('--color-rule')
+    for a in args.synth_arg:
+        opts.extend(a.split())
+    return opts
+
+
 class Runner:
-    def __init__(self, exe, out, gpu=False):
+    def __init__(self, exe, out, gpu=False, synth_options=None):
         self.exe = exe
         self.out = out
         self.gpu = gpu
+        # Zusatzoptionen für jeden synth-Aufruf; Standard wie im dokumentierten Lauf
+        self.synth_options = ['--stall', '0'] if synth_options is None else list(synth_options)
         os.makedirs(out, exist_ok=True)
         # Laufzeiten aller Programmaufrufe, auch über Fortsetzungen hinweg
         self.times_file = os.path.join(out, 'm6t6_zeiten.json')
@@ -337,9 +354,8 @@ class Runner:
         if os.path.exists(out):
             print(f'{name}: vorhanden, übersprungen')
             return out
-        # --stall 0: Verhalten wie im dokumentierten Lauf (vor M11-T1c, ohne Stagnationsabbruch)
-        args = ['synth', start, '-o', out, '--log', self.path(name + '_log.json'),
-                '--stall', '0'] + options
+        args = (['synth', start, '-o', out, '--log', self.path(name + '_log.json')] +
+                self.synth_options + options)
         if self.gpu:
             args.append('--gpu')
         self.run(name, args)
@@ -754,7 +770,8 @@ def tables(out_dir):
 
 def aperture_branch(args):
     """Vergleichszweig: Apertur zuerst (Standardfolge von optimierung.md §7) bei 10 % Feld."""
-    r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu)
+    r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu,
+               synth_options=synth_options(args))
     rings = ['--rings', '16']
     relax = ['--max-iterations', '1000', '-q'] + rings
     s = load(args.start)
@@ -843,8 +860,16 @@ def main():
         return 0
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--out', default=os.path.join(ROOT, 'docs', 'ergebnisse', 'm6-t6'))
-    ap.add_argument('--exe', default=os.path.join(ROOT, 'build', 'release-cuda', 'Release',
-                                                  'mikroptim.exe'))
+    default_exe = os.path.join(ROOT, 'build', 'release-cuda', 'mikroptim')
+    if not os.path.exists(default_exe):  # Visual Studio (Windows)
+        default_exe = os.path.join(ROOT, 'build', 'release-cuda', 'Release', 'mikroptim.exe')
+    ap.add_argument('--exe', default=default_exe)
+    ap.add_argument('--aktuell', action='store_true',
+                    help='aktuelle Standards von synth (Stagnationsabbruch) statt --stall 0')
+    ap.add_argument('--farbregel', action='store_true',
+                    help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
+    ap.add_argument('--synth-arg', action='append', default=[],
+                    help='weitere Option für jeden synth-Aufruf (mehrfach möglich)')
     ap.add_argument('--start', default=os.path.join(ROOT, 'data', 'systems',
                                                     'zielspezifikation_start.json'))
     ap.add_argument('--gpu', action='store_true')
@@ -856,7 +881,8 @@ def main():
     args = ap.parse_args()
     if args.apertur_zweig:
         return aperture_branch(args)
-    r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu)
+    r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu,
+               synth_options=synth_options(args))
     rings = ['--rings', '16']
     relax = ['--max-iterations', '1000', '-q'] + rings
     common = ['--curvature-bound', '1.2', '--max-steps', '3000', '--max-iterations', '500',
