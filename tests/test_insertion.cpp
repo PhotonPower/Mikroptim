@@ -3,6 +3,7 @@
 // Geisterplatte, Hilfsfunktionen der Initialisierung (docs/optimierung.md, Abschnitt 6).
 
 #include "insertion_test_systems.hpp"
+#include "mikroptim/glass/buchdahl_fit.hpp"
 #include "mikroptim/glass/glass_preselection.hpp"
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
@@ -654,6 +655,14 @@ TEST(InsertionInit, SplitForColor) {
     EXPECT_DOUBLE_EQ(split_for_color(thick, l.catalog, 1, o).split.fraction, 0.5);
     thick.variables->items.back().min = 2.1;
     EXPECT_THROW((void)split_for_color(thick, l.catalog, 1, o), std::invalid_argument);
+    // Glasvariable (Buchdahl) statt Katalogglas: Dispersion direkt aus n0, nu; gleicher Partner
+    // wie für das Katalogglas, dessen Fit sie ist (Zielspezifikation, M6-T6 p4_r0)
+    SystemDescription bd = l.system;
+    const BuchdahlFit fit = fit_buchdahl(l.catalog.at("N-BK7"), 3);
+    bd.surfaces[1].material = MaterialSpec{MaterialKind::Buchdahl, "", 1.0, fit.n0, fit.nu};
+    const SplitPlan from_var = split_for_color(bd, l.catalog, 1);
+    EXPECT_TRUE(from_var.preselected);
+    EXPECT_EQ(from_var.target_glass.name, plan.target_glass.name);
     EXPECT_THROW((void)split_for_color(l.system, l.catalog, 2), std::invalid_argument);
 }
 

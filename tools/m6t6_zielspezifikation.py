@@ -104,11 +104,13 @@ def add_gap_variables(system, air=(0.1, 10.0), glass=(0.4, 6.0), skip=()):
     add = []
     if new_air:
         lo = min(air[0], min(s[i]['thickness'] for i in new_air))
-        add.append({'type': 'thickness', 'surfaces': new_air, 'min': lo, 'max': air[1],
+        hi = max(air[1], max(s[i]['thickness'] for i in new_air))  # Startwert im Bereich
+        add.append({'type': 'thickness', 'surfaces': new_air, 'min': lo, 'max': hi,
                     'comment': 'Luftspalte (M6-T6: zwischen den Stufen freigegeben)'})
     if new_glass:
         lo = min(glass[0], min(s[i]['thickness'] for i in new_glass))
-        add.append({'type': 'thickness', 'surfaces': new_glass, 'min': lo, 'max': glass[1],
+        hi = max(glass[1], max(s[i]['thickness'] for i in new_glass))
+        add.append({'type': 'thickness', 'surfaces': new_glass, 'min': lo, 'max': hi,
                     'comment': 'Glasdicken (M6-T6: zwischen den Stufen freigegeben)'})
     items[pos:pos] = add
     return new_air + new_glass

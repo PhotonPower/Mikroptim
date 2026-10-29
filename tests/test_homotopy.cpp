@@ -4,6 +4,7 @@
 
 #include "homotopy_mock.hpp"
 #include "insertion_test_systems.hpp"
+#include "mikroptim/glass/buchdahl_fit.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 #include "residual_test_systems.hpp"
@@ -551,6 +552,14 @@ TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
     EXPECT_EQ(ins.plate, -1);
     EXPECT_EQ(ins.branches[0].surfaces.size(), m.start_system().surfaces.size() + 1);
     EXPECT_NE(ins.text.find("Farbregel"), std::string::npos) << ins.text;
+    // auch mit Glasvariable (Buchdahl) statt Katalogglas (Zielspezifikation, M6-T6 p4_r0)
+    LoadedSystem bd = start;
+    const BuchdahlFit fit = fit_buchdahl(start.catalog.at("N-BK7"), 3);
+    bd.system.surfaces[1].material = MaterialSpec{MaterialKind::Buchdahl, "", 1.0, fit.n0, fit.nu};
+    OpticalHomotopyModel mb(bd, o);
+    const HomotopyNeed nb = mb.diagnose(mb.start_system(), mb.start_point());
+    EXPECT_EQ(nb.recommendation, GhostOperator::B) << nb.text;
+    EXPECT_EQ(nb.split_lens, 1);
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

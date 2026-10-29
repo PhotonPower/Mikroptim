@@ -497,8 +497,9 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     std::vector<std::pair<double, int>> lenses;
     const auto& surf = realized.surfaces;
     for (std::size_t s = 1; s + 1 < surf.size(); ++s) {
-        if (surf[s].material.kind != MaterialKind::Catalog) {
-            continue;
+        if (surf[s].material.kind != MaterialKind::Catalog &&
+            surf[s].material.kind != MaterialKind::Buchdahl) {
+            continue; // Katalogglas oder Glasvariable (Vorauswahl braucht die Dispersion)
         }
         const double v =
             sign * (rep.waves(rep.surfaces[s]).dW020 + rep.waves(rep.surfaces[s + 1]).dW020);

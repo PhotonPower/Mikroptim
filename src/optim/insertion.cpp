@@ -633,11 +633,23 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
     plan.secondary_spectrum = std::numeric_limits<double>::quiet_NaN();
     // Glasvorauswahl (M11-T5): Partner des Linsenglases aus dem Katalog
     double preselect_front_fraction = std::numeric_limits<double>::quiet_NaN();
-    if (options.preselect && lens_glass.kind == MaterialKind::Catalog) {
-        const std::vector<GlassDispersion> g = catalog_dispersions(catalog);
-        const auto it = std::find_if(g.begin(), g.end(), [&](const GlassDispersion& d) {
-            return d.name == lens_glass.name;
-        });
+    if (options.preselect &&
+        (lens_glass.kind == MaterialKind::Catalog || lens_glass.kind == MaterialKind::Buchdahl)) {
+        std::vector<GlassDispersion> g = catalog_dispersions(catalog);
+        auto it = g.end();
+        if (lens_glass.kind == MaterialKind::Catalog) {
+            it = std::find_if(g.begin(), g.end(),
+                              [&](const GlassDispersion& d) { return d.name == lens_glass.name; });
+        } else if (lens_glass.n0 > 1.0) {
+            // Glasvariable (Buchdahl): gleiche Koordinate wie der Fit der Katalog-Gläser
+            // (lambda0 = 546,074 nm, alpha = 2,5), Dispersion also direkt aus n0, nu
+            BuchdahlFit fit;
+            fit.dispersion_terms = 3;
+            fit.n0 = lens_glass.n0;
+            fit.nu = lens_glass.nu;
+            g.push_back(glass_dispersion("(Glasvariable)", fit));
+            it = g.end() - 1;
+        }
         if (it != g.end()) {
             GlassPreselectionOptions po;
             po.fixed = {static_cast<int>(it - g.begin())};
