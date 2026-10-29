@@ -93,6 +93,7 @@ struct OpticalHomotopyOptions {
     double color_ratio = 2.0;
     double color_seidel = 0.25;
     double color_min_rms = 0.05;
+    //   (c) der Punkt eine Spektrumstufe > 0 der Spektrum-Homotopie ist (spectra nicht leer).
     // Strafgewicht μ der Quellplatte nach dem Einfügen mal penalty_raise.
     double penalty_raise = 10.0;
     // Mechanische Bedingungen mit Standardauswahl (bzw. "all") gelten nach dem Einfügen auch für
@@ -184,5 +185,11 @@ bool is_one_sided(const ConstraintSpec& spec);
 // Zahl der Glaselemente: Dateiflächen vor der letzten, nach denen kein Luftmedium folgt (ein
 // Kittglied zählt zwei).
 int glass_elements(const SystemDescription& system);
+
+// Spektrum-Homotopie (M11-T5d): n + 1 Spektrumstufen zum Zielspektrum `target`. Stufe 0 ist
+// monochromatisch bei target.reference_nm; Stufe k (1 … n) hat die Wellenlängen
+// λ_ref + (k/n)·(λ_i − λ_ref) mit den Gewichten des Ziels, Stufe n ist das Ziel. Das Spektrum
+// öffnet sich so stetig um λ_ref, statt in einem Schritt. Wirft std::invalid_argument bei n < 1.
+std::vector<Spectrum> spectrum_stages(const Spectrum& target, int n);
 
 } // namespace mko

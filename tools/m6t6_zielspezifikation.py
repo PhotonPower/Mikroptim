@@ -9,7 +9,7 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
-                                           [--aktuell] [--farbregel] [--farb-budget N]
+                                           [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N]
                                            [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
@@ -871,6 +871,8 @@ def main():
                     help='aktuelle Standards von synth (Stagnationsabbruch) statt --stall 0')
     ap.add_argument('--farbregel', action='store_true',
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
+    ap.add_argument('--farb-stufen', type=int, default=0,
+                    help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
     ap.add_argument('--farb-budget', type=int, default=1,
                     help='zusätzliche Elemente je Farbstufe (Standard 1 wie im dokumentierten Lauf)')
     ap.add_argument('--synth-arg', action='append', default=[],
@@ -946,9 +948,10 @@ def main():
         set_spectrum(s, wl, w)
         inp = r.path(f'{key}_in.json')
         save(s, inp)
+        stufen = (['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
         cur, rr = synth_loop(r, key, inp,
                              ['--target-na', repr(na), '--start-field', repr(field),
-                              '--target-field', repr(field)] + common, relax,
+                              '--target-field', repr(field)] + stufen + common, relax,
                              lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
                              forced_kind='split', element_budget=args.farb_budget)
         stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec})
