@@ -665,6 +665,7 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
                 // Anteil des vorderen Teils an der Brechkraft (φ = 1): hinten frei → vorn Linse
                 preselect_front_fraction =
                     options.free_part == 1 ? best[0].powers[0] : best[0].powers[1];
+                plan.front_power_fraction = preselect_front_fraction;
             }
         }
     }
@@ -849,6 +850,62 @@ SplitPlan split_for_color(const SystemDescription& system, const GlassCatalog& c
                 std::to_string(lens) + " in der Glasvorauswahl");
     }
     return plan;
+}
+
+bool apply_achromat_start(SystemDescription& system, const SplitPlan& plan,
+                          const GlassCatalog& catalog, double lambda_nm) {
+    if (!plan.preselected || !std::isfinite(plan.front_power_fraction)) {
+        return false;
+    }
+    const int L = plan.split.lens_surface;
+    if (L < 1 || L + 2 >= static_cast<int>(system.surfaces.size())) {
+        return false;
+    }
+    Surface& front = system.surfaces[sz(L)];
+    Surface& cement = system.surfaces[sz(L + 1)];
+    Surface& back = system.surfaces[sz(L + 2)];
+    const MaterialSpec lens_glass =
+        front.material.kind == MaterialKind::Catalog ||
+                front.material.kind == MaterialKind::Buchdahl
+            ? (plan.free_surface == L + 1 ? front.material : cement.material)
+            : front.material;
+    const MaterialSpec& front_glass = plan.free_surface == L ? plan.target_glass : lens_glass;
+    const MaterialSpec& back_glass = plan.free_surface == L + 1 ? plan.target_glass : lens_glass;
+    const double n_lens = material_index(lens_glass, lambda_nm, catalog);
+    const double n_front = material_index(front_glass, lambda_nm, catalog);
+    const double n_back = material_index(back_glass, lambda_nm, catalog);
+    if (!(n_lens > 1.0) || !(n_front > 1.0) || !(n_back > 1.0)) {
+        return false;
+    }
+    const double c1 = front.curvature;
+    const double c2 = back.curvature;
+    const double phi = (n_lens - 1.0) * (c1 - c2);
+    const double phi1 = plan.front_power_fraction * phi;
+    const double phi2 = phi - phi1;
+    const double cs = c1 - phi1 / (n_front - 1.0);
+    const double c2n = cs - phi2 / (n_back - 1.0);
+    if (!std::isfinite(cs) || !std::isfinite(c2n)) {
+        return false;
+    }
+    // Schranken der Krümmungsvariablen
+    if (system.variables) {
+        for (const VariableSpec& v : system.variables->items) {
+            if (v.type != VariableType::Curvature) {
+                continue;
+            }
+            for (const auto& [surf, value] : {std::pair{L + 1, cs}, std::pair{L + 2, c2n}}) {
+                const bool covers =
+                    v.selection == SurfaceSelection::All ||
+                    std::find(v.surfaces.begin(), v.surfaces.end(), surf) != v.surfaces.end();
+                if (covers && ((v.min && value < *v.min) || (v.max && value > *v.max))) {
+                    return false;
+                }
+            }
+        }
+    }
+    cement.curvature = cs;
+    back.curvature = c2n;
+    return true;
 }
 
 } // namespace mko

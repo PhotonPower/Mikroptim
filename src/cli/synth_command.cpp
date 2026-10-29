@@ -67,6 +67,7 @@ struct SynthArgs {
     bool predictor = false;          // M11-T3
     bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
     bool split_start_target = false; // und das freigegebene Glas dort starten
+    bool split_achromat = false;     // M11-T5e: Achromat-Start des geteilten Glieds
     bool color_rule = false;         // M11-T5c
     int spectrum_stages = 0;         // M11-T5d: Spektrum-Homotopie (0: aus)
     double color_ratio = 2.0;
@@ -165,6 +166,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.color_ratio = positive(arg, next_value(args, i, arg));
         } else if (arg == "--split-preselect") {
             a.split_preselect = true;
+        } else if (arg == "--split-achromat") {
+            a.split_preselect = true;
+            a.split_achromat = true;
         } else if (arg == "--split-start-target") {
             a.split_preselect = true;
             a.split_start_target = true;
@@ -331,6 +335,9 @@ void print_synth_usage(std::ostream& out) {
            "                            RMS einer Wellenlänge >= Faktor x RMS bei λ_ref (M11-T5c)\n"
            "  --color-ratio F           Faktor der Farbregel (Standard 2; setzt --color-rule)\n"
            "  --split-preselect         Operator B: Zielglas aus der Glasvorauswahl (M11-T5)\n"
+           "  --split-achromat          Operator B mit Vorauswahl und Achromat-Start: Kitt- und "
+           "hintere\n"
+           "                            Außenkrümmung aus dem dünnen Achromat, Zielglas als Start\n"
            "  --split-start-target      ebenso, und das freigegebene Glas startet beim Zielglas\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
@@ -428,6 +435,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         o.color_ratio = a.color_ratio;
         o.split.start_at_target = a.split_start_target;
+        o.split.achromat_start = a.split_achromat;
         o.lm.stall_window = a.stall_window;
         o.lm.stall_tolerance = a.stall_tolerance;
         o.lm.jacobian.quadrature.rings = a.rings;
@@ -566,7 +574,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
                      {"spectrum_stages", a.spectrum_stages},
                      {"split", Json{{"preselect", a.split_preselect},
-                                    {"start_at_target", a.split_start_target}}},
+                                    {"start_at_target", a.split_start_target},
+                                    {"achromat_start", a.split_achromat}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
                      {"jacobian", to_string(a.jacobian)},
                      {"element_thickness", o.element_thickness},

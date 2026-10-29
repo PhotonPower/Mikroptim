@@ -10,6 +10,7 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N]
+                                           [--farb-achromat]
                                            [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
@@ -316,9 +317,11 @@ def prepare_field(system, petzval_weight=1e4, parfocal_weight=1.0, diameter_weig
 
 def synth_options(args):
     """Zusatzoptionen der synth-Aufrufe aus --aktuell, --farbregel und --synth-arg."""
-    opts = [] if (args.aktuell or args.farbregel) else ['--stall', '0']
-    if args.farbregel:
+    opts = [] if (args.aktuell or args.farbregel or args.farb_achromat) else ['--stall', '0']
+    if args.farbregel or args.farb_achromat:
         opts.append('--color-rule')
+    if args.farb_achromat:
+        opts.append('--split-achromat')
     for a in args.synth_arg:
         opts.extend(a.split())
     return opts
@@ -871,6 +874,8 @@ def main():
                     help='aktuelle Standards von synth (Stagnationsabbruch) statt --stall 0')
     ap.add_argument('--farbregel', action='store_true',
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
+    ap.add_argument('--farb-achromat', action='store_true',
+                    help='Operator B mit Achromat-Start (synth --split-achromat); setzt --farbregel')
     ap.add_argument('--farb-stufen', type=int, default=0,
                     help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
     ap.add_argument('--farb-budget', type=int, default=1,

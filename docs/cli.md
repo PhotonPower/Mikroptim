@@ -1142,6 +1142,8 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--color-rule` | Farbregel (M11-T5c): Operator B mit Glas aus der Vorauswahl, wenn die Farbe dominiert (RMS einer Wellenlänge ≥ Faktor × RMS bei λ_ref, oder Seidel \|ΔW020\| ≥ 0,25 und ≥ \|W040\|); Standard aus |
 | `--color-ratio F` | Faktor der Farbregel (Standard 2; setzt `--color-rule`) |
 | `--split-preselect` | Operator B: Zielglas aus der Glasvorauswahl (bester Partner des Linsenglases), c_s aus dem dünnen Achromat in η (M11-T5b) |
+| `--split-achromat` | Operator B mit Vorauswahl und Achromat-Start: Kitt- und hintere Außenkrümmung aus den Brechkraftanteilen des dünnen Achromats, freigegebenes Glas startet beim Partnerglas (M11-T5e) |
+| `--spectrum-stages N` | Spektrum-Homotopie: von monochromatisch bei λ_ref in N Stufen zum Spektrum der Datei (M11-T5d) |
 | `--split-start-target` | wie `--split-preselect`, und das freigegebene Glas startet beim Zielglas |
 | `--predictor` | Start jedes Apertur-/Feldschritts aus der Sekante der beiden letzten angenommenen Zustände (M11-T3; nicht mit `--beam`, Standard aus) |
 | `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |

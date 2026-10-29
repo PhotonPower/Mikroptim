@@ -218,6 +218,11 @@ struct SplitInitOptions {
     // Das freigegebene Glas startet beim Zielglas statt beim Linsenglas (Merit ändert sich; der
     // Start liegt dann in der Nähe eines Achromats).
     bool start_at_target = false;
+    // Achromat-Start (M11-T5e, nur mit Vorauswahl): nach dem Teilen Kittkrümmung und hintere
+    // Außenkrümmung aus den Brechkraftanteilen des dünnen Achromats (vordere Außenkrümmung bleibt,
+    // Gesamtbrechkraft dünn gleich) und das freigegebene Glas startet beim Zielglas
+    // (apply_achromat_start). Liegen die neuen Krümmungen außerhalb ihrer Schranken, wie ohne.
+    bool achromat_start = false;
 };
 
 struct SplitPlan {
@@ -229,9 +234,10 @@ struct SplitPlan {
     int position = -1;
     double abbe_lens = 0.0;
     double abbe_target = 0.0;
-    double achromat_curvature = 0.0; // c_s des dünnen Achromats vor der Rücknahme (NaN ohne)
-    bool preselected = false;        // Zielglas aus der Glasvorauswahl (M11-T5)
-    double secondary_spectrum = 0.0; // Rest der Vorauswahl |Σ φ η₂|/|φ| (NaN ohne)
+    double achromat_curvature = 0.0;   // c_s des dünnen Achromats vor der Rücknahme (NaN ohne)
+    bool preselected = false;          // Zielglas aus der Glasvorauswahl (M11-T5)
+    double secondary_spectrum = 0.0;   // Rest der Vorauswahl |Σ φ η₂|/|φ| (NaN ohne)
+    double front_power_fraction = 0.0; // Anteil des vorderen Teils an der Brechkraft (Vorauswahl)
     std::string reason;
 };
 
@@ -251,5 +257,14 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
 // findet (Linsenglas kein Katalogglas, alle Paare über preselect_max_power_sum).
 SplitPlan split_for_color(const SystemDescription& system, const GlassCatalog& catalog, int lens,
                           const SplitInitOptions& options = {});
+
+// Achromat-Start für ein mit `plan` geteiltes System (M11-T5e): vordere Außenkrümmung c₁ bleibt;
+// mit der dünnen Brechkraft der ursprünglichen Linse φ = (n_L − 1)(c₁ − c₂) bei `lambda_nm`
+// werden c_s = c₁ − φ₁/(n_vorn − 1) und c₂′ = c_s − φ₂/(n_hinten − 1) gesetzt (φ₁ = Anteil · φ aus
+// der Vorauswahl, φ₂ = φ − φ₁), das Glas des freigegebenen Teils ist das Zielglas. Liefert false
+// und lässt `system` unverändert, wenn plan nicht aus der Vorauswahl stammt oder eine neue
+// Krümmung außerhalb der Schranken einer Krümmungsvariablen läge.
+bool apply_achromat_start(SystemDescription& system, const SplitPlan& plan,
+                          const GlassCatalog& catalog, double lambda_nm);
 
 } // namespace mko
