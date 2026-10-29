@@ -1444,3 +1444,36 @@ Beiträge in Wellen bei λ_ref (Welford, W = −OPD):
    Σ               1.907e+00  -2.805e+00   9.189e-01   6.879e-01   6.297e-01   1.145e-01   2.819e-01  -6.797e-02
 ```
 
+## `mikroptim glasses`
+
+Algebraische Glasvorauswahl (M11-T5, [numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)): Paare (Achromat) bzw. Tripel (Apochromat) dünner Elemente aus den Gläsern der Kataloge, deren gewichtete Brechkraft in den Buchdahl-Termen bis zur Ordnung k farbfrei ist, mit Brechkraftanteilen.
+
+```
+mikroptim glasses <katalog.json>... [--system <system.json>] [--order 1|2] [--fixed GLAS]...
+                  [--weights w1,w2[,w3]] [--power P] [--max-power-sum S] [--top N] [--json]
+```
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `--system DATEI` | Kataloge aus `glass_catalogs` der Systemdatei (zusätzlich zu den Katalogen auf der Kommandozeile) | – |
+| `--order K` | 1 Achromat (Paare), 2 Apochromat (Tripel) | 1 |
+| `--fixed GLAS` | Glas, das jede Kombination enthält, an erster Stelle (mehrfach möglich) | – |
+| `--weights W` | Gewichte w_i = h_i² (Randstrahlhöhen, normiert), k + 1 Werte | alle 1 |
+| `--power P` | Gesamtbrechkraft φ [1/mm]; 1 liefert Anteile | 1 |
+| `--max-power-sum S` | verwerfen bei Σ\|wφ\|/\|φ\| > S | 10 |
+| `--top N` | höchstens N Ergebnisse | 20 |
+| `--json` | Format `mikroptim.glasses/1`: `order`, `power`, `glasses` (Zahl mit Fit), `skipped`, `results[]` mit `glasses`, `powers`, `power_sum`, `residual`, `dispersion` (n₀, η) | – |
+
+Beispiel (synthetischer Katalog und Basis, Paare):
+
+```
+$ mikroptim glasses data/glass/synthetisch.json data/glass/basis.json --top 3
+Glasvorauswahl Achromat (Paare): 39 Gläser, 2 ohne Buchdahl-Fit übersprungen
+ Rang  Gläser                                      Rest  Σ|wφ|/|φ|  Brechkräfte
+    1  SYN-04 + SYN-07                        2.992e-05      6.669  3.835e+00, -2.835e+00
+    2  SYN-04 + SYN-12                        2.228e-04      5.709  3.354e+00, -2.354e+00
+    3  SYN-04 + N-BK7                         3.179e-03      6.300  3.650e+00, -2.650e+00
+```
+
+Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile.
+

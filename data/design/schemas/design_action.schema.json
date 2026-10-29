@@ -143,6 +143,9 @@
           "$ref": "#/$defs/evaluate"
         },
         {
+          "$ref": "#/$defs/glass_preselect"
+        },
+        {
           "$ref": "#/$defs/sensitivity"
         },
         {
@@ -1074,6 +1077,37 @@
       "properties": {
         "action": {
           "const": "finish"
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        }
+      }
+    },
+    "glass_preselect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "description": "Algebraische Glasvorauswahl (M11-T5): Paare (order 1) oder Tripel (order 2) dünner Elemente für Farbkorrektur; mit element ist das Glas dieses Elements fest (Aufspalten einer Linse).",
+      "properties": {
+        "action": {
+          "const": "glass_preselect"
+        },
+        "order": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "element": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
         },
         "reason": {
           "$ref": "#/$defs/reason"

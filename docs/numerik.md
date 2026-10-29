@@ -996,3 +996,26 @@ $$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f}\cdot\frac{l' - l'_P}{L' - l'_P} - 1
 
 **Bildfeldwölbung für die Feldklassen** (M10-T2): Der ρ²-Koeffizient der Wellenfront am Feldrand minus der auf der Achse ist (S_III + S_IV)/4 (Welford; in `waves` ist `W220` nur der Petzval-Anteil S_IV/4). Die beste (mediale) Bildschale liegt um Δz = (2S_III + S_IV)/(2n′u′²) neben dem Achsfokus. Prüfung gegen die getracte Wellenfront im Test `Aberrations.SeidelSumsMatchTracedWavefront` (gemessen 5·10⁻⁴ relativ).
 
+## 15. Algebraische Glasvorauswahl (M11-T5)
+
+Implementiert in `include/mikroptim/glass/glass_preselection.hpp` (`catalog_dispersions`, `preselect_glasses` → `PreselectedGlasses`, Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses` ([cli.md](cli.md#mikroptim-glasses)), Aktion `glass_preselect` in `mikroptim.design`.
+
+**Dispersionskoeffizienten.** Aus dem 3-Term-Buchdahl-Fit (Abschnitt 10, 400–700 nm) n(ω) = n₀ + ν₁ω + ν₂ω² + ν₃ω³. Ein dünnes Element hat φ(ω) = (n(ω) − 1)·K, also φ(ω) = φ₀(1 + η₁ω + η₂ω² + η₃ω³) mit **η_j = ν_j/(n₀ − 1)** (Robb und Mercado). Gläser, deren Bereich den Fitbereich nicht abdeckt, werden übersprungen und gemeldet.
+
+**Bedingungen.** m = k + 1 dünne Elemente mit Gewichten w_i = h_i² (Randstrahlhöhen, normiert):
+
+$$\sum_i w_i\varphi_i = \varphi,\qquad \sum_i w_i\varphi_i\,\eta_{ij} = 0\quad (j = 1,\dots,k).$$
+
+k = 1: Achromat (Paare), k = 2: Apochromat (Tripel). Gauß mit Pivotsuche; verworfen wird bei |det| ≤ 10⁻⁹·Π‖Zeile‖ und bei Σ|w_iφ_i|/|φ| > `max_power_sum` (Standard 10). Rang: Rest der nächsten Ordnung |Σ w_iφ_iη_{i,k+1}|/|φ| (sekundäres bzw. tertiäres Spektrum, in Einheiten von ω^{k+1}), bei Gleichheit kleinere Σ|w_iφ_i|/|φ| (flachere Radien), dann Indizes (deterministisch). Feste Gläser (z. B. das Glas der aufzuspaltenden Linse) stehen an erster Stelle jeder Kombination. Aufwand: Paare N²/2, Tripel N³/6 kleine Systeme (bei 39 Gläsern unter 10 ms; mit einem festen Glas N²/2 Tripel).
+
+**Prüfungen** (Tests `GlassPreselection.*`, `CliGlasses.*`, Toleranzen `kGlassPreselection…`):
+
+| Prüfung | Ergebnis |
+|---|---|
+| Bedingungen Σwφ = φ, Σwφη_j = 0 für alle Ergebnisse, auch mit Gewichten und festem Glas | ≤ 10⁻¹² relativ |
+| Paar gegen den dünnen Achromat `achromat_split_curvature` mit ν = 1/η | ≤ 10⁻¹² |
+| konstruiertes Tripel (φ = 1,5; −1; 0,5, tertiäres Spektrum 0) unter Störgläsern | Rang 1, exakt |
+| paraxiale Probe: dünne gekittete Glieder aus Katalog-Gläsern (synthetisch + Basis), Spanne der Schnittweiten über g, F, e, d, C bei f = 100 mm | Einzellinse N-BK7 2,36 mm, bestes Paar 0,0162 mm, bestes Tripel 0,0040 mm |
+
+**Grenzen.** Dünne Elemente in Kontakt (Gewichte für getrennte Elemente aus den Randstrahlhöhen), nur Farblängsfehler; Farbquerfehler, Sphärochromasie und Monochromatfehler gehen erst im Trace ein. Die Rangliste ist ein Startpunkt für Operator B und die Glasvariablen, keine Entscheidung.
+

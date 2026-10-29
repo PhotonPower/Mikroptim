@@ -435,4 +435,12 @@ inline constexpr double kOscThirdOrder = 1e-2;
 // (1 + |Wert|) (Rundung von exp/log und der Fortschreibung).
 inline constexpr double kSmoothMaxFormula = 1e-13;
 
+// M11-T5 Glasvorauswahl: Bedingungen Σ w φ = φ, Σ w φ η_j = 0 und Vergleich mit dem dünnen
+// Achromat bzw. dem konstruierten Tripel (Gauß mit Pivotsuche an 2×2- bzw. 3×3-Systemen),
+// relativ zu Σ|w φ|.
+inline constexpr double kGlassPreselectionAlgebra = 1e-12;
+// Paraxiale Probe: Spanne der Schnittweiten g … C des besten Paars höchstens dieser Anteil der
+// Einzellinse gleicher Brechkraft (gemessen 1,62e-2 / 2,359 = 6,9e-3).
+inline constexpr double kGlassPreselectionAchromatRatio = 0.05;
+
 } // namespace mko::test

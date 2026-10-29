@@ -34,7 +34,9 @@ Regeln (Zhang 2019, gekürzt):
   ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon).
 
 Werkzeuge: Vor der Antwort darfst du Lese-Werkzeuge aufrufen (get_surface_table,
-get_ghost_diagnosis, evaluate). Danach antwortest du nur mit JSON im Format
+get_ghost_diagnosis, evaluate, glass_preselect). glass_preselect nennt Glaspaare bzw. -tripel,
+deren dünne Elemente farbfrei sind (Rest = sekundäres bzw. tertiäres Spektrum, kleiner ist
+besser; power_sum klein = flache Radien); mit element bleibt dessen Glas fest. Danach antwortest du nur mit JSON im Format
 mikroptim.design.action/1: {"format": "mikroptim.design.action/1", "candidate": <Nummer>,
 "assessment": "<kurze Einschätzung>", "actions": [1 bis 4 Aktionen]}.
 Umgesetzte Aktionen: optimize, synth_segment, snap_glasses, free_gaps, insert_null_meniscus,

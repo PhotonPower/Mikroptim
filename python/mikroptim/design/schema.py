@@ -30,6 +30,12 @@ ACTION_DEFS = {
         "properties": {"action": {"const": "evaluate"}, "grid": {"enum": [64, 128, 256]},
                        "psf": {"type": "boolean"}, "reference": {"enum": ["exit_pupil", "vertex"]},
                        "reason": _REASON}},
+    "glass_preselect": {
+        "type": "object", "additionalProperties": False, "required": ["action"],
+        "properties": {"action": {"const": "glass_preselect"}, "order": {"enum": [1, 2]},
+                       "element": {"type": "integer", "minimum": 0},
+                       "top": {"type": "integer", "minimum": 1, "maximum": 50},
+                       "reason": _REASON}},
     "optimize": {
         "type": "object", "additionalProperties": False, "required": ["action"],
         "properties": {"action": {"const": "optimize"},
@@ -89,7 +95,7 @@ ACTION_DEFS = {
 }
 
 #: Lese-Werkzeuge, die das Modell vor seiner Antwort aufrufen darf (Tool-Calls)
-TOOL_ACTIONS = ("get_surface_table", "get_ghost_diagnosis", "evaluate")
+TOOL_ACTIONS = ("get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect")
 
 
 def response_schema() -> dict:
@@ -115,6 +121,8 @@ def tool_specs() -> list[dict]:
                              "Farbfehler, Sphärochromasie; Wellen nach Welford)",
         "get_ghost_diagnosis": "Diagnose der Geisterplatten (aktive Platten, Ordnungen, Gewinn)",
         "evaluate": "Auswertung auf dem dichten Pupillenraster (RMS, Strehl, optional PSF)",
+        "glass_preselect": "Glaspaare (order 1, Achromat) bzw. -tripel (order 2, Apochromat) aus "
+                           "den Katalogen mit Brechkraftanteilen; element hält dessen Glas fest",
     }
     out = []
     for name in TOOL_ACTIONS:

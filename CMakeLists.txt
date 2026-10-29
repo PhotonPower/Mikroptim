@@ -100,6 +100,7 @@ add_library(mikroptim_glass STATIC
     src/glass/catalog.cpp
     src/glass/convex_hull.cpp
     src/glass/glass_hull.cpp
+    src/glass/glass_preselection.cpp
     src/glass/index_table.cpp)
 add_library(Mikroptim::glass ALIAS mikroptim_glass)
 target_link_libraries(mikroptim_glass
@@ -258,6 +259,7 @@ endif()
 add_library(mikroptim_cli STATIC
     src/cli/aberrations_command.cpp
     src/cli/cli_util.cpp
+    src/cli/glasses_command.cpp
     src/cli/eval_command.cpp
     src/cli/insert_command.cpp
     src/cli/optimize_command.cpp

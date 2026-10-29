@@ -423,6 +423,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M6-T2
 - **Inhalt:** Bewertung von Glaspaaren und -tripeln über Buchdahl-Koeffizienten und Randstrahlhöhen, Anbindung an Operator B.
 - **Abnahme:** Zwei Gläser entsprechen dem dünnen Achromat; konstruiertes Tripel gefunden; bester Vorschlag unter den besten fünf nach Raytrace.
+- **Stand:** Kern, `mikroptim glasses` und Aktion `glass_preselect` umgesetzt; Orakel (dünner Achromat, konstruiertes Tripel, paraxiale Probe) bestanden. Offen: Filter (Transmission, Autofluoreszenz), Anbindung an Operator B und `split_from_diagnosis`, Bruteforce-Abnahme am Kittglied.
 
 ### M11-T6 – Toleranzbewusste Optimierung
 - **Abhängig von:** M8-T3

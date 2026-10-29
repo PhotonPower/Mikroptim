@@ -54,6 +54,7 @@ add_executable(mikroptim_tests
     test_mechanical_constraints.cpp
     test_mechanical_optimization.cpp
     test_multi_gpu_split.cpp
+    test_glass_preselection.cpp
     test_paraxial.cpp
     test_smooth_extrema.cpp
     test_paraxial_residuals.cpp

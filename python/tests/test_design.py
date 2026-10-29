@@ -126,3 +126,18 @@ def test_command_line(tmp_path, capsys):
     assert main(["act", str(d), str(f), "-c", "0"]) == 0
     assert main(["tree", str(d)]) == 0
     assert "free_gaps" in capsys.readouterr().out
+
+
+def test_glass_preselect_action(session):
+    r = response({"action": "glass_preselect", "order": 1, "element": 2, "top": 3})
+    validate(r, "design_action.schema.json")
+    entry = session.apply(0, r, decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    out = res["result"]
+    assert out["order"] == 1 and 1 <= len(out["results"]) <= 3
+    assert all(x["glasses"][0] == "N-BK7" for x in out["results"])  # Element 2: N-BK7 fest
+    assert list(session.candidates()) == [0]
+    bad = session.apply(0, response({"action": "glass_preselect", "element": 1}), decider={})
+    assert bad["results"][0]["code"] == "precondition"  # Buchdahl-Modell, kein Katalogglas
+
