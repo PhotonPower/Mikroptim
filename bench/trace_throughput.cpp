@@ -783,7 +783,9 @@ DeviceReport device_report(int device) {
     d.major = p.major;
     d.minor = p.minor;
     d.sms = p.multiProcessorCount;
-    d.fp32_fp64_ratio = p.singleToDoublePrecisionPerfRatio;
+    // cudaDeviceProp::singleToDoublePrecisionPerfRatio gibt es seit CUDA 13 nicht mehr
+    (void)cudaDeviceGetAttribute(&d.fp32_fp64_ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio,
+                                 device);
     d.memory_gib = static_cast<double>(p.totalGlobalMem) / (1024.0 * 1024.0 * 1024.0);
     d.driver = cuda_version_string(driver);
     d.runtime = cuda_version_string(runtime);

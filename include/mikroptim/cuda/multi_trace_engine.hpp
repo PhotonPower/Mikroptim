@@ -163,7 +163,7 @@ inline bool update_shares(std::vector<double>& shares, std::span<const DeviceRan
 
 // Einstellungen der Mehrgeräte-Engine (fest für ihre Lebensdauer).
 struct MultiEngineOptions {
-    // Geräteindizes, ein Slot pro Eintrag. Leer: alle sichtbaren Geräte ab sm_60
+    // Geräteindizes, ein Slot pro Eintrag. Leer: alle sichtbaren Geräte ab sm_86
     // (usable_devices). Ein Gerät darf mehrfach vorkommen ("logische Geräte", Tests mit einer
     // GPU): Jeder Eintrag bekommt eine eigene Engine; ohne memory_limit_bytes begrenzt die
     // Engine jeden der k Slots eines Geräts auf 1/k des beim Erzeugen freien Speichers.

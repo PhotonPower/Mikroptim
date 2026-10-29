@@ -11,7 +11,7 @@ Meilenstein und Aufgaben-ID (z. B. `M1-T3`), Link zum Abschnitt in `docs/plan/me
 ## Checkliste
 
 - [ ] Tests ergänzt; `ctest` grün (CPU)
-- [ ] Bei CUDA-Änderungen: lokal auf RTX 3090 **und** Tesla P100 getestet (Ausgabe von `mikroptim --devices` beilegen)
+- [ ] Bei CUDA-Änderungen: lokal auf RTX 3090 **oder** RTX 6000 Ada (herkules3) getestet (Ausgabe von `mikroptim --devices` beilegen)
 - [ ] Keine FP32-Arithmetik im OPD-Pfad, keine fast-math-Optionen
 - [ ] Doku aktualisiert (`docs/…`), `CHANGELOG.md` ergänzt
 - [ ] Abweichung von Konventionen oder Plan? Dann ADR in `docs/adr/` angelegt

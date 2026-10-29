@@ -150,11 +150,11 @@ TraceEngine::TraceEngine(int device, const EngineOptions& options) : options_(op
     (void)usable_bytes(0, options_.reserve);
     cudaDeviceProp prop{};
     MKO_CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
-    if (prop.major < 6) {
+    if (!supported_architecture(prop.major, prop.minor)) {
         throw std::invalid_argument("TraceEngine: Gerät " + std::to_string(device) + " (" +
                                     prop.name + ", sm_" + std::to_string(prop.major) +
                                     std::to_string(prop.minor) +
-                                    ") wird nicht unterstützt (mindestens sm_60)");
+                                    ") wird nicht unterstützt (mindestens sm_86, ADR-0015)");
     }
     device_ = device;
     device_name_ = prop.name;

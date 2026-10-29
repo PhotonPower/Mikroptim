@@ -195,7 +195,7 @@ std::uint64_t fnv1a(const std::vector<T>& v, std::uint64_t h = 14695981039346656
 } // namespace
 
 // Gerätewahl und Optionen: ohne GPU CudaError (läuft auch in der CI), sonst Prüfung von
-// Index, Gewichten und Einstellungen; Standardliste = alle Geräte ab sm_60.
+// Index, Gewichten und Einstellungen; Standardliste = alle Geräte ab sm_86.
 TEST(MultiTraceEngine, DeviceSelectionAndOptions) {
     const int n = mko::cuda::device_count();
     if (n == 0) {

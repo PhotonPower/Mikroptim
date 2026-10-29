@@ -35,11 +35,19 @@ jobs:
         run: ctest --preset release-cpu
 
   cuda-compile:
-    # GitHub-Runner haben keine GPU: hier wird nur kompiliert (sm_60, sm_86, sm_89).
-    # GPU-Tests laufen lokal auf RTX 3090 und Tesla P100 (siehe AGENTS.md).
-    name: CUDA 12.9 kompilieren
+    # GitHub-Runner haben keine GPU: hier wird nur kompiliert (sm_86, sm_89; ADR-0015).
+    # GPU-Tests laufen lokal auf RTX 3090 und RTX 6000 Ada (siehe AGENTS.md).
+    name: CUDA ${{ matrix.cuda }} kompilieren
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cuda: "12.9"
+            image: nvidia/cuda:12.9.1-devel-ubuntu24.04
+          - cuda: "13.0"
+            image: nvidia/cuda:13.0.0-devel-ubuntu24.04
     runs-on: ubuntu-24.04
-    container: nvidia/cuda:12.9.1-devel-ubuntu24.04
+    container: ${{ matrix.image }}
     steps:
       - name: Werkzeuge installieren
         run: apt-get update && apt-get install -y --no-install-recommends cmake g++ make git ca-certificates

@@ -7,11 +7,17 @@
 
 namespace mko::cuda {
 
+// Kleinste unterstützte Rechenfähigkeit (major·10 + minor): sm_86 (ADR-0015).
+inline constexpr int kMinComputeCapability = 86;
+
+// true, wenn die Kernel des Programms auf sm_<major><minor> laufen.
+bool supported_architecture(int major, int minor);
+
 // Anzahl verfügbarer CUDA-Geräte, 0 bei Fehlern oder ohne Treiber.
 int device_count();
 
-// Alle sichtbaren Geräte ab sm_60 (für die die Kernel übersetzt sind), Indizes aufsteigend;
-// leer ohne Gerät (Standardliste der Mehrgeräte-Engine, M7-T3).
+// Alle sichtbaren Geräte ab sm_86 (für die die Kernel übersetzt sind, ADR-0015), Indizes
+// aufsteigend; leer ohne Gerät (Standardliste der Mehrgeräte-Engine, M7-T3).
 std::vector<int> usable_devices();
 
 // Gibt Name, Architektur, Speicher und FP32/FP64-Verhältnis aller Geräte aus.

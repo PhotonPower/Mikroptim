@@ -154,5 +154,5 @@ Entscheider (M10-T6b): `--decider rule` (feste Vergleichsstrategie), `--decider 
 python -m mikroptim.design run sitzung --decider ollama --model qwen3:30b --think --steps 10 --fallback rule
 ```
 
-Ollama läuft am besten auf der RTX 3090 (`CUDA_VISIBLE_DEVICES` beim Start von `ollama serve`), der FP64-Trace auf der P100. Läufe mit Modell sind über das Protokoll ohne Ollama wiederholbar (`replay`).
+Ollama und Trace teilen sich auf herkules3 die RTX 6000 Ada (48 GB; Speicher für das Modell bei der Batchgröße berücksichtigen, `EngineOptions::memory_limit_bytes`). Läufe mit Modell sind über das Protokoll ohne Ollama wiederholbar (`replay`).
 

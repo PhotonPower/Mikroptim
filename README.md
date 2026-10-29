@@ -6,7 +6,7 @@ Mikroptim optimiert sequenzielle Linsensysteme aus sphärischen Flächen auf CUD
 
 ## Status
 
-M0 und M1 abgeschlossen: Systeme und Glaskataloge aus JSON laden, sequenzieller CPU-Referenztracer, Paraxialoptik, Pupillenquadratur, OPD und RMS-Wellenfront, Kommandozeile `mikroptim trace` ([docs/cli.md](docs/cli.md)). M2 (CUDA-Vorwärtskernel) umgesetzt: SystemBatch, Kernel `RESIDUALS` und `MERIT` mit deterministischer Reduktion, `TraceEngine` mit Tranchen, `mikroptim trace --gpu`, Benchmark ([docs/benchmarks.md](docs/benchmarks.md)); die Abnahme auf der Tesla P100 steht noch aus. M3 (gebündelter Levenberg-Marquardt, `mikroptim optimize`) und M4 (Merit in Wellen, weiches Strahlversagen, mechanische, Petzval- und paraxiale Nebenbedingungen, Geisterplatten mit L1-Strafe und Diagnosebericht) abgeschlossen. Aus M6 umgesetzt: Glas als Variable mit konvexer Hülle, Einfüge-Operatoren, Homotopie-Controller und Strahlsuche über die Kandidaten (`mikroptim synth --beam`), Glas-Einrasten (`mikroptim snap`); aus M7: df64, FP32-Vorfilter, mehrere GPUs; aus M8: Modus EVAL, skalare und vektorielle PSF (`mikroptim eval`), Dezentrierung und Verkippung einzelner Flächen (ADR-0011). In Arbeit: M5 (adjungierte Ableitungen) und M6 (Synthese). Offene Maintainer-Entscheidungen stehen in den PRs. Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
+M0 und M1 abgeschlossen: Systeme und Glaskataloge aus JSON laden, sequenzieller CPU-Referenztracer, Paraxialoptik, Pupillenquadratur, OPD und RMS-Wellenfront, Kommandozeile `mikroptim trace` ([docs/cli.md](docs/cli.md)). M2 (CUDA-Vorwärtskernel) umgesetzt: SystemBatch, Kernel `RESIDUALS` und `MERIT` mit deterministischer Reduktion, `TraceEngine` mit Tranchen, `mikroptim trace --gpu`, Benchmark ([docs/benchmarks.md](docs/benchmarks.md)). M3 (gebündelter Levenberg-Marquardt, `mikroptim optimize`) und M4 (Merit in Wellen, weiches Strahlversagen, mechanische, Petzval- und paraxiale Nebenbedingungen, Geisterplatten mit L1-Strafe und Diagnosebericht) abgeschlossen. Aus M6 umgesetzt: Glas als Variable mit konvexer Hülle, Einfüge-Operatoren, Homotopie-Controller und Strahlsuche über die Kandidaten (`mikroptim synth --beam`), Glas-Einrasten (`mikroptim snap`); aus M7: df64, FP32-Vorfilter, mehrere GPUs; aus M8: Modus EVAL, skalare und vektorielle PSF (`mikroptim eval`), Dezentrierung und Verkippung einzelner Flächen (ADR-0011). In Arbeit: M5 (adjungierte Ableitungen) und M6 (Synthese). Offene Maintainer-Entscheidungen stehen in den PRs. Die Implementierung erfolgt nach dem [Meilensteinplan](docs/plan/meilensteine.md) durch Programmieragenten. Regeln für Agenten stehen in [AGENTS.md](AGENTS.md).
 
 ## Erstes Zielsystem
 
@@ -39,7 +39,7 @@ cmake --preset release-cpu
 cmake --build --preset release-cpu
 ctest --preset release-cpu
 
-# mit CUDA (RTX 3090 = sm_86, Tesla P100 = sm_60)
+# mit CUDA 12 oder 13 (RTX 3090 = sm_86, RTX 6000 Ada = sm_89; ADR-0015)
 cmake --preset release-cuda
 cmake --build --preset release-cuda
 ctest --preset release-cuda
@@ -49,7 +49,7 @@ ctest --preset release-cuda
 ./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json
 ```
 
-Mit Visual Studio liegen die Programme unter `build/<preset>/Release/` bzw. `Debug/`. Sind unter Windows mehrere CUDA-Toolkits installiert, wählt `-T "cuda=<Pfad zu CUDA 12.x>"` beim Konfigurieren das richtige (siehe [docs/hardware.md](docs/hardware.md)).
+Mit Visual Studio liegen die Programme unter `build/<preset>/Release/` bzw. `Debug/`. Sind unter Windows mehrere CUDA-Toolkits installiert, wählt `-T "cuda=<Pfad zum CUDA-Toolkit>"` beim Konfigurieren das richtige (siehe [docs/hardware.md](docs/hardware.md)).
 
 Ein System auswerten (Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge, versagte Strahlen; mit `--json` maschinenlesbar, siehe [docs/cli.md](docs/cli.md)):
 
