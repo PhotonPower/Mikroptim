@@ -34,7 +34,7 @@ Die Spezifikation lässt Punkte offen (spezifikation.md, „Offene Punkte“). F
 
 **Startsystem** [`data/systems/zielspezifikation_start.json`](../../data/systems/zielspezifikation_start.json) (frei erfunden): Einzellinse aus einem hochbrechenden Glas (Buchdahl-Fit des Testglases SYN-36, n = 1,807, ν_d = 48,6), f = 3,29 mm, NA 0,3, 546,07 nm, Blendenspalt variabel (Start telezentrisch). Zwei Hilfsebenen tragen das Geisterplatten-Wörterbuch (je drei Gläser: hochbrechend wie SYN-36, Fluorit CAF2, Schwerflint wie SYN-30; K = 10, μ = 47,2 Wellen²/mm, Ordnungsfaktor 1 wie in M6-T3): Fläche 1 im kollimierten Bündel vor der Linse (blendennah), Fläche 4 im konvergenten Bündel vor dem Objekt (bildnah, Hauptstrahlhöhe relativ groß). Die Spalte mit Geisterplatten haben keine Dickenvariable, weil der Operator A genau sie teilt (Befund F2). Nebenbedingungen wie in Abschnitt 1, alle von Anfang an.
 
-**Hinweis (ab M11-T1c):** `mikroptim synth` bricht seitdem standardmäßig bei Stagnation ab (`--stall 20,1e-3`); das Skript übergibt `--stall 0`, damit der dokumentierte Lauf nachrechenbar bleibt.
+**Hinweis (ab M11-T1c):** `mikroptim synth` bricht seitdem standardmäßig bei Stagnation ab (`--stall 20,1e-3`); das Skript übergibt `--stall 0`, damit der dokumentierte Lauf nachrechenbar bleibt. Mit `--aktuell` rechnet es mit den aktuellen Standards, mit `--farbregel` zusätzlich mit der Farbregel (M11-T5c), z. B. `python tools/m6t6_zielspezifikation.py --gpu --aktuell --farbregel --out ergebnisse_lokal/m6t6`.
 
 **Reproduzierbarer Lauf:** [`tools/m6t6_zielspezifikation.py`](../../tools/m6t6_zielspezifikation.py) (Python 3, nur Standardbibliothek) verkettet `mikroptim synth`, `optimize`, `insert`, `snap` und `eval` und ändert zwischen den Stufen die Systemdateien:
 
