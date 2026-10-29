@@ -75,6 +75,27 @@ TEST(HomotopyControl, RefusedInsertionStopsCleanly) {
     EXPECT_NE(r.message.find("nicht möglich: Linse zu dünn"), std::string::npos) << r.message;
 }
 
+// Stetige Spektrumbreite (M11-T5f): eigene Phase mit Schrittweitensteuerung von 0 bis 1.
+TEST(HomotopyControl, SpectrumWidthPhase) {
+    MockModel m{MockSpec{}};
+    HomotopyOptions o = mock_options(0.3);
+    o.target_spectrum_width = 1.0;
+    HomotopyPoint start = mock_point(0.3);
+    start.spectrum_width = 0.0;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), start, o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.point.spectrum_width, 1.0);
+    const auto w = steps_of(r, HomotopyStepKind::SpectrumWidth);
+    ASSERT_FALSE(w.empty());
+    EXPECT_DOUBLE_EQ(w.front()->point.spectrum_width, o.spectrum_step.initial);
+    for (std::size_t i = 1; i < w.size(); ++i) {
+        EXPECT_GT(w[i]->point.spectrum_width, w[i - 1]->point.spectrum_width);
+    }
+    HomotopyOptions bad = mock_options(0.3);
+    bad.target_spectrum_width = 1.5;
+    EXPECT_THROW((void)homotopy_target(start, bad), std::invalid_argument);
+}
+
 // Prädiktor (M11-T3): ab dem zweiten Aperturschritt Start aus der Sekante, Verhältnis der
 // Schrittweiten (0,04/0,02, 0,08/0,04, 0,08/0,08, 0,08/0,08); ohne Option kein Aufruf.
 TEST(HomotopyControl, PredictorUsesSecantRatios) {
@@ -558,6 +579,31 @@ TEST(OpticalHomotopy, InsertRefusedWhenTableFull) {
 
 // Spektrum-Homotopie (M11-T5d): Stufe 0 monochromatisch bei λ_ref, Stufe k skaliert die Abstände
 // zu λ_ref mit k/n, letzte Stufe = Ziel.
+// Stetige Spektrumbreite im optischen Modell: Start monochromatisch bei λ_ref, Wellenlängen um
+// λ_ref skaliert, Breite 1 = Datei; nicht zusammen mit Spektrumstufen.
+TEST(OpticalHomotopy, ContinuousSpectrumWidth) {
+    const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
+    OpticalHomotopyOptions o;
+    o.spectrum_continuous = true;
+    OpticalHomotopyModel m(start, o);
+    HomotopyPoint p = m.start_point();
+    EXPECT_EQ(p.spectrum_width, 0.0);
+    EXPECT_EQ(m.realize(m.start_system(), p).spectrum.wavelengths_nm, std::vector<double>{546.07});
+    p.spectrum_width = 0.5;
+    const Spectrum half = m.realize(m.start_system(), p).spectrum;
+    ASSERT_EQ(half.wavelengths_nm.size(), 2U);
+    EXPECT_DOUBLE_EQ(half.wavelengths_nm[0], 546.07 + 0.5 * (480.0 - 546.07));
+    EXPECT_DOUBLE_EQ(half.wavelengths_nm[1], 546.07 + 0.5 * (644.0 - 546.07));
+    p.spectrum_width = 1.0;
+    EXPECT_EQ(m.realize(m.start_system(), p).spectrum, start.system.spectrum);
+    p.spectrum_width = 1.2;
+    EXPECT_THROW((void)m.realize(m.start_system(), p), std::invalid_argument);
+    OpticalHomotopyOptions both = o;
+    both.spectra = spectrum_stages(start.system.spectrum, 2);
+    OpticalHomotopyModel mb(start, both);
+    EXPECT_THROW((void)mb.start_point(), std::invalid_argument);
+}
+
 TEST(OpticalHomotopy, SpectrumStages) {
     Spectrum target;
     target.wavelengths_nm = {480.0, 644.0};

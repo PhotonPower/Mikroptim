@@ -43,6 +43,9 @@ struct HomotopyPoint {
     double ghost_smoothing = 1.0; // Faktor auf ε der Strafen der Geisterplatten
     double penalty_scale = 1.0;   // Faktor auf die Gewichte der einseitigen Nebenbedingungen
     double extrema_beta = 0.0;    // β der geglätteten Strahl-Extrema (M11-T1b); 0 = hart
+    // Spektrumbreite der stetigen Spektrum-Homotopie (M11-T5f), 0 … 1: Wellenlängen
+    // λ_ref + w·(λ_i − λ_ref); 1 = Spektrum der Datei (ohne stetige Homotopie immer 1)
+    double spectrum_width = 1.0;
 
     friend bool operator==(const HomotopyPoint&, const HomotopyPoint&) = default;
 };
@@ -207,6 +210,7 @@ enum class HomotopyStepKind {
     Insertion,        // Einfüge-Operator angewandt (ohne Optimierung)
     InsertionStage,   // Stufe der inneren Homotopie eines Zweigs
     Smoothing,        // Stufe der ε-Fortsetzung
+    SpectrumWidth,    // Schritt der stetigen Spektrumbreite (M11-T5f)
     ExtremaSmoothing, // Stufe der β-Fortsetzung der Strahl-Extrema (M11-T1b)
     GhostWeight,      // Stufe der μ-Fortsetzung
     Goal,             // Prüfung des Ziels am realen System (ohne Optimierung)
@@ -268,9 +272,10 @@ const char* to_string(HomotopyStatus status);
 
 struct HomotopyOptions {
     // Ziel der Homotopie (Endpunkt); die übrigen Parameter des Startpunkts bleiben.
-    double target_aperture = 0.0;   // ≤ 0: Apertur des Startpunkts
-    double target_field = -1.0;     // < 0: Feldanteil des Startpunkts
-    int target_spectrum = -1;       // < 0: Spektrumstufe des Startpunkts
+    double target_aperture = 0.0;        // ≤ 0: Apertur des Startpunkts
+    double target_field = -1.0;          // < 0: Feldanteil des Startpunkts
+    double target_spectrum_width = -1.0; // < 0: Spektrumbreite des Startpunkts (M11-T5f)
+    int target_spectrum = -1;            // < 0: Spektrumstufe des Startpunkts
     double target_rms = 1.0 / 14.0; // Beugungsziel [Wellen] pro Feld und Wellenlänge (Maréchal)
 
     // Bewertung: Ein Schritt ist annehmbar, wenn F endlich ist, kein Strahl versagt, der Status
@@ -284,6 +289,9 @@ struct HomotopyOptions {
     int fast_iterations = 50;
     HomotopyStepControl aperture_step{};
     HomotopyStepControl field_step{0.125, 1.0 / 64.0, 0.5, 2.0, 0.5};
+    // Stetige Spektrumbreite (M11-T5f): kleiner Anfangsschritt, weil die Merit etwa quadratisch
+    // mit der Breite wächst (Zielspezifikation: F_B 1,8 schon bei einem Viertel der Breite)
+    HomotopyStepControl spectrum_step{1.0 / 32.0, 1.0 / 1024.0, 0.25, 2.0, 0.5};
 
     // Penalty-Fortsetzung der einseitigen Bedingungen am Start und nach jedem Einfügen:
     // Faktoren penalty_factor^{−(K−1)}, …, 1/penalty_factor, 1 (K = penalty_stages).

@@ -53,6 +53,10 @@ struct OpticalHomotopyOptions {
     // Spektrumstufen (leer: nur das Spektrum der Startdatei, Stufe 0). Stufe k ersetzt das
     // Spektrum der Beschreibung.
     std::vector<Spectrum> spectra;
+    // Stetige Spektrum-Homotopie (M11-T5f): Startpunkt mit spectrum_width = 0 (monochromatisch
+    // bei λ_ref), realize skaliert die Wellenlängen um λ_ref mit spectrum_width (mit spectra
+    // nicht kombinierbar).
+    bool spectrum_continuous = false;
 
     // Vorhalt der einseitigen Bedingungen (die Strafe erreicht die Grenze nur asymptotisch,
     // docs/optimierung.md, Abschnitte 2.3–2.5): Mindestdicken um mechanical_margin größer,

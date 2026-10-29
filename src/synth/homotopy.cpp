@@ -36,6 +36,8 @@ const char* to_string(HomotopyStepKind kind) {
         return "insertion_stage";
     case HomotopyStepKind::Smoothing:
         return "smoothing";
+    case HomotopyStepKind::SpectrumWidth:
+        return "spectrum_width";
     case HomotopyStepKind::ExtremaSmoothing:
         return "extrema_smoothing";
     case HomotopyStepKind::GhostWeight:
@@ -133,6 +135,7 @@ void check_options_impl(const HomotopyOptions& o) {
     }
     check_control(o.aperture_step, "Apertur");
     check_control(o.field_step, "Feld");
+    check_control(o.spectrum_step, "Spektrumbreite");
 }
 
 } // namespace
@@ -151,6 +154,12 @@ HomotopyPoint homotopy_target(const HomotopyPoint& start, const HomotopyOptions&
     }
     if (options.target_spectrum >= 0) {
         t.spectrum = options.target_spectrum;
+    }
+    if (options.target_spectrum_width >= 0.0) {
+        if (options.target_spectrum_width > 1.0) {
+            invalid("Spektrumbreite des Ziels über 1");
+        }
+        t.spectrum_width = options.target_spectrum_width;
     }
     if (t.spectrum < start.spectrum) {
         invalid("Spektrumstufe des Ziels liegt vor der des Starts");
@@ -246,6 +255,10 @@ public:
         }
         if (r_.target.field != s.point.field) {
             continuous_phase(s, HomotopyStepKind::Field, r_.target.field, o_.field_step);
+        }
+        if (r_.target.spectrum_width != s.point.spectrum_width) {
+            continuous_phase(s, HomotopyStepKind::SpectrumWidth, r_.target.spectrum_width,
+                             o_.spectrum_step);
         }
         spectrum_phase(s);
         finish_phase(s);
@@ -455,14 +468,18 @@ private:
     }
 
     static double& parameter(HomotopyPoint& p, HomotopyStepKind kind) {
-        return kind == HomotopyStepKind::Aperture ? p.aperture : p.field;
+        return kind == HomotopyStepKind::Aperture ? p.aperture
+               : kind == HomotopyStepKind::Field  ? p.field
+                                                  : p.spectrum_width;
     }
 
     // Stetiger Parameter (Apertur, Feld) mit Schrittweitensteuerung.
     void continuous_phase(State& s, HomotopyStepKind kind, double target,
                           const HomotopyStepControl& c) {
         double delta = c.initial;
-        const char* name = kind == HomotopyStepKind::Aperture ? "Apertur" : "Feldanteil";
+        const char* name = kind == HomotopyStepKind::Aperture ? "Apertur"
+                           : kind == HomotopyStepKind::Field  ? "Feldanteil"
+                                                              : "Spektrumbreite";
         // Prädiktor (M11-T3): letzter angenommener Zustand vor s und sein Parameterwert
         std::optional<State> prev;
         double prev_value = 0.0;
@@ -523,7 +540,9 @@ private:
             insert(s, need, HomotopyStatus::StepTooSmall,
                    std::string(name) + " " + number(from) + ": Schrittweite unter Δ_min = " +
                        number(c.min) + " (letzter Versuch F_B = " +
-                       number(step.solve.wavefront + step.solve.ghost_penalty) + ")");
+                       number(step.solve.wavefront + step.solve.ghost_penalty) + ")",
+                   // Spektrumbreite: Zweige am verworfenen, farbigeren Punkt wählen
+                   kind == HomotopyStepKind::SpectrumWidth ? &trial.point : nullptr);
             delta = c.initial;
         }
     }
@@ -673,7 +692,8 @@ Json point_json(const HomotopyPoint& p) {
                 {"ghost_weight", num(p.ghost_weight)},
                 {"ghost_smoothing", num(p.ghost_smoothing)},
                 {"penalty_scale", num(p.penalty_scale)},
-                {"extrema_beta", num(p.extrema_beta)}};
+                {"extrema_beta", num(p.extrema_beta)},
+                {"spectrum_width", num(p.spectrum_width)}};
 }
 
 Json goal_json(const HomotopyGoal& g) {

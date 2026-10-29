@@ -9,7 +9,7 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
-                                           [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N]
+                                           [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
                                            [--farb-achromat]
                                            [--synth-arg ARG]...
 
@@ -884,6 +884,8 @@ def main():
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
     ap.add_argument('--farb-achromat', action='store_true',
                     help='Operator B mit Achromat-Start (synth --split-achromat); setzt --farbregel')
+    ap.add_argument('--farb-stetig', action='store_true',
+                    help='stetige Spektrum-Homotopie in den Farbstufen (synth --spectrum-continuous)')
     ap.add_argument('--farb-stufen', type=int, default=0,
                     help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
     ap.add_argument('--farb-budget', type=int, default=1,
@@ -961,7 +963,8 @@ def main():
         set_spectrum(s, wl, w)
         inp = r.path(f'{key}_in.json')
         save(s, inp)
-        stufen = (['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
+        stufen = (['--spectrum-continuous'] if args.farb_stetig else
+                  ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
         cur, rr = synth_loop(r, key, inp,
                              ['--target-na', repr(na), '--start-field', repr(field),
                               '--target-field', repr(field)] + stufen + common, relax,

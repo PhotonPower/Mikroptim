@@ -948,6 +948,7 @@ Json point_json(const HomotopyPoint& p) {
                 {"ghost_weight", num(p.ghost_weight)},
                 {"ghost_smoothing", num(p.ghost_smoothing)},
                 {"extrema_beta", num(p.extrema_beta)},
+                {"spectrum_width", num(p.spectrum_width)},
                 {"penalty_scale", num(p.penalty_scale)}};
 }
 
