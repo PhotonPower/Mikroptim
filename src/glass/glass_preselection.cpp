@@ -1,6 +1,7 @@
 #include "mikroptim/glass/glass_preselection.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
@@ -42,7 +43,8 @@ namespace {
 bool solve_powers(std::span<const GlassDispersion* const> g, std::span<const double> w, int k,
                   double phi, double tol, std::vector<double>& out) {
     const int m = k + 1;
-    double a[3][4] = {};
+    std::array<std::array<double, 4>, 3> a{}; // std::array: GCC 13 mit -march=x86-64-v3 meldete
+                                              // beim C-Feld fälschlich maybe-uninitialized
     for (int i = 0; i < m; ++i) {
         a[0][i] = w[static_cast<std::size_t>(i)];
         for (int j = 1; j <= k; ++j) {
