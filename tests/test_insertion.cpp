@@ -666,6 +666,34 @@ TEST(InsertionInit, SplitForColor) {
     EXPECT_THROW((void)split_for_color(l.system, l.catalog, 2), std::invalid_argument);
 }
 
+// Achromat-Start (M11-T5e): nach dem Teilen der N-BK7-Linse Kitt- und hintere Krümmung aus dem
+// dünnen Achromat mit dem Partner der Vorauswahl. Brechkraft ungefähr erhalten, Farblängsfehler
+// (Schnittweitendifferenz F–C) stark verringert gegenüber der Einzellinse.
+TEST(InsertionInit, AchromatStart) {
+    const LoadedSystem l = load_residual_system("einzellinse_achromat_start.json");
+    const SplitPlan plan = split_for_color(l.system, l.catalog, 1);
+    ASSERT_TRUE(plan.preselected);
+    InsertionResult r = split_lens(l.system, plan.split);
+    ASSERT_TRUE(apply_achromat_start(r.system, plan, l.catalog, l.system.spectrum.reference_nm));
+    r.system.surfaces[static_cast<std::size_t>(plan.free_surface)].material = plan.target_glass;
+    const auto shift = [&](const SystemDescription& s) {
+        return compute_paraxial(s, l.catalog, 486.13).back_focal_distance -
+               compute_paraxial(s, l.catalog, 656.27).back_focal_distance;
+    };
+    const double f0 = compute_paraxial(l.system, l.catalog).focal_length;
+    const double f1 = compute_paraxial(r.system, l.catalog).focal_length;
+    EXPECT_NEAR(f1, f0, 0.05 * std::abs(f0)); // dünne Näherung bei 4 mm Mittendicke
+    EXPECT_LT(std::abs(shift(r.system)), 0.1 * std::abs(shift(l.system)))
+        << "F–C: " << shift(r.system) << " gegen " << shift(l.system);
+    // ohne Vorauswahl: nichts geändert
+    SplitPlan plain = plan;
+    plain.preselected = false;
+    SystemDescription unchanged = split_lens(l.system, plan.split).system;
+    const SystemDescription copy = unchanged;
+    EXPECT_FALSE(apply_achromat_start(unchanged, plain, l.catalog, 546.07));
+    EXPECT_EQ(unchanged, copy);
+}
+
 // Rundungsboden: Ein Luftspalt wird durch zwei Flächen mit n = 1 dazwischen geteilt (optisch
 // nichts, nur Transfer in Teilstücken und Brechung mit μ = 1). Die Merit ändert sich in derselben
 // Größenordnung wie beim Operator A – die Abweichungen sind Rundung des Traces, nicht des

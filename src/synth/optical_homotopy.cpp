@@ -745,7 +745,15 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
             plan = split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
         }
         InsertionResult r = split_lens(system, plan.split);
-        if (options_.split.start_at_target && plan.preselected) {
+        bool achromat = false;
+        if (options_.split.achromat_start && plan.preselected) {
+            SystemDescription trial = r.system;
+            if (apply_achromat_start(trial, plan, like_.catalog, realized.spectrum.reference_nm)) {
+                r.system = std::move(trial);
+                achromat = true;
+            }
+        }
+        if ((options_.split.start_at_target || achromat) && plan.preselected) {
             free_glass(r.system, plan.free_surface, plan.target_glass);
         } else {
             free_glass(r.system, plan.free_surface);
@@ -771,7 +779,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                    " geteilt, c_s = " + number(plan.split.curvature) + "/mm, Glas nach Fläche " +
                    std::to_string(plan.free_surface) + " frei" +
                    (plan.preselected ? ", Zielglas " + plan.target_glass.name +
-                                           (options_.split.start_at_target ? " (Start)" : "")
+                                           (achromat                         ? " (Achromat-Start)"
+                                            : options_.split.start_at_target ? " (Start)"
+                                                                             : "")
                                      : std::string()) +
                    (plan.plate >= 0 ? " (Platte " + std::to_string(plan.plate) + ", mu x" +
                                           number(options_.penalty_raise) + ")"
