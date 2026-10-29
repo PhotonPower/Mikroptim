@@ -522,6 +522,26 @@ TEST(OpticalHomotopy, PredictExtrapolatesVariables) {
 // Farbregel (M11-T5c): polychromatische Einzellinse ohne Geisterplatten – ohne Regel kein
 // Bedarf, mit Regel Operator B an der Linse (Fläche 1); das Einfügen teilt die Linse ohne
 // Strafgewicht einer Platte.
+// Achromat-Start als zweiter Zweig (M11-T5e): wie bisher und mit Achromat-Start, der Controller
+// wählt (allein brach der Achromat-Start bei dicken Linsen und NA 0,6 die Strahlen).
+TEST(OpticalHomotopy, AchromatStartIsSecondBranch) {
+    const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
+    OpticalHomotopyOptions o;
+    o.color_rule = true;
+    o.split.achromat_start = true;
+    OpticalHomotopyModel m(start, o);
+    const HomotopyNeed need = m.diagnose(m.start_system(), m.start_point());
+    ASSERT_EQ(need.recommendation, GhostOperator::B) << need.text;
+    const HomotopyInsertion ins = m.insert(m.start_system(), m.start_point(), need);
+    ASSERT_EQ(ins.branches.size(), 2U);
+    EXPECT_NE(ins.branches[0], ins.branches[1]);
+    EXPECT_NE(ins.text.find("2 Zweige"), std::string::npos) << ins.text;
+    OpticalHomotopyOptions plain = o;
+    plain.split.achromat_start = false;
+    OpticalHomotopyModel mp(start, plain);
+    EXPECT_EQ(mp.insert(mp.start_system(), mp.start_point(), need).branches.size(), 1U);
+}
+
 // Volle Flächentabelle: insert lehnt ab (vorher Absturz von synth mit 59 Flächen + 6 Platten).
 TEST(OpticalHomotopy, InsertRefusedWhenTableFull) {
     const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");

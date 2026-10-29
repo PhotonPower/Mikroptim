@@ -501,7 +501,7 @@ def forced_split(runner, tag, src, relax_options, min_thickness=1.0, log=print):
 
 def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_value,
                max_rounds=8, min_mu_scale=0.5, log=print, restart=None, forced=0,
-               forced_kind='meniscus', element_budget=None):
+               forced_kind='meniscus', element_budget=None, stage_budget=None):
     """synth → (Spalte freigeben und optimieren → synth)* bis zum Ziel.
 
     Der Homotopie-Controller hält Luftspalte ohne Dickenvariable fest; neue Spalte hinter
@@ -529,6 +529,9 @@ def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_
     cur = start
     rounds = []
     mu_scale = 1.0
+    # stage_budget: höchstens so viele Elemente mehr als zu Beginn der Stufe, über alle Runden
+    # (element_budget gilt pro synth-Lauf; in den Farbstufen wuchs das System so auf 30 Elemente)
+    stage_limit = glass_elements(load(start)) + stage_budget if stage_budget else None
     last = None
     prev_point = None
     for r in range(max_rounds):
@@ -537,6 +540,8 @@ def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_
         if element_budget:
             # höchstens element_budget Einfügungen pro synth-Lauf (die letzte Angabe gilt)
             opts = list(opts) + ['--max-elements', str(glass_elements(load(cur)) + element_budget)]
+        if stage_limit is not None:
+            opts = list(opts) + ['--max-elements', str(stage_limit)]
         out = runner.synth(name, cur, opts)
         res = load(runner.path(name + '_log.json'))['result']
         point = res['point']
@@ -558,6 +563,9 @@ def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_
             if mu_scale < min_mu_scale:
                 if forced <= 0:
                     log('  kein Fortschritt, Abbruch')
+                    return finish(out, point), rounds
+                if stage_limit is not None and glass_elements(load(out)) >= stage_limit:
+                    log('  Elementbudget der Stufe erschöpft, Abbruch')
                     return finish(out, point), rounds
                 force = True
                 forced -= 1
@@ -879,7 +887,7 @@ def main():
     ap.add_argument('--farb-stufen', type=int, default=0,
                     help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
     ap.add_argument('--farb-budget', type=int, default=1,
-                    help='zusätzliche Elemente je Farbstufe (Standard 1 wie im dokumentierten Lauf)')
+                    help='zusätzliche Elemente je Farbstufe über alle Runden (Standard 1)')
     ap.add_argument('--synth-arg', action='append', default=[],
                     help='weitere Option für jeden synth-Aufruf (mehrfach möglich)')
     ap.add_argument('--start', default=os.path.join(ROOT, 'data', 'systems',
@@ -958,7 +966,7 @@ def main():
                              ['--target-na', repr(na), '--start-field', repr(field),
                               '--target-field', repr(field)] + stufen + common, relax,
                              lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
-                             forced_kind='split', element_budget=args.farb_budget)
+                             forced_kind='split', stage_budget=args.farb_budget)
         stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec})
 
     # Stufe 6: Feinoptimierung ohne Geisterplatten, 405/700 nm schwach dazu, am erreichten Punkt
