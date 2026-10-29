@@ -745,41 +745,50 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
             plan = split_from_diagnosis(realized, like_.catalog, need.diagnosis, options_.split);
         }
         InsertionResult r = split_lens(system, plan.split);
-        bool achromat = false;
+        // Zweig „wie bisher“ und, mit achromat_start, ein zweiter Zweig mit Achromat-Start; der
+        // Controller wählt den besseren (am Zielspezifikationslauf v5 brach der Achromat-Start
+        // allein bei dicken Linsen und NA 0,6 die Strahlen, F bis 1e121)
+        std::vector<std::pair<SystemDescription, bool>> variants;
+        variants.emplace_back(r.system, false);
         if (options_.split.achromat_start && plan.preselected) {
-            SystemDescription trial = r.system;
-            if (apply_achromat_start(trial, plan, like_.catalog, realized.spectrum.reference_nm)) {
-                r.system = std::move(trial);
-                achromat = true;
+            SystemDescription a = r.system;
+            if (apply_achromat_start(a, plan, like_.catalog, realized.spectrum.reference_nm)) {
+                variants.emplace_back(std::move(a), true);
             }
         }
-        if ((options_.split.start_at_target || achromat) && plan.preselected) {
-            free_glass(r.system, plan.free_surface, plan.target_glass);
-        } else {
-            free_glass(r.system, plan.free_surface);
-        }
-        if (!has_constraint(r.system, ConstraintType::GlassHull)) {
-            ConstraintSpec c;
-            c.type = ConstraintType::GlassHull;
-            if (!r.system.constraints) {
-                r.system.constraints = Constraints{};
+        bool achromat = false;
+        for (auto& [sys, with_achromat] : variants) {
+            if ((options_.split.start_at_target || with_achromat) && plan.preselected) {
+                free_glass(sys, plan.free_surface, plan.target_glass);
+            } else {
+                free_glass(sys, plan.free_surface);
             }
-            r.system.constraints->items.push_back(c);
-        }
-        (void)convert_glass_variables(r.system, like_.catalog);
-        if (plan.plate >= 0) {
-            scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
+            if (!has_constraint(sys, ConstraintType::GlassHull)) {
+                ConstraintSpec c;
+                c.type = ConstraintType::GlassHull;
+                if (!sys.constraints) {
+                    sys.constraints = Constraints{};
+                }
+                sys.constraints->items.push_back(c);
+            }
+            (void)convert_glass_variables(sys, like_.catalog);
+            if (plan.plate >= 0) {
+                scale_ghost_penalty(sys, plan.plate, options_.penalty_raise);
+            }
+            achromat = achromat || with_achromat;
         }
         ins.first_surface = r.first_new_surface;
         ins.new_surfaces = r.new_surfaces;
         ins.plate = plan.plate;
-        ins.branches.push_back(std::move(r.system));
+        for (auto& v : variants) {
+            ins.branches.push_back(std::move(v.first));
+        }
         ins.text = "Operator " + std::string(to_string(need.recommendation)) +
                    ": Linse an Fläche " + std::to_string(plan.split.lens_surface) +
                    " geteilt, c_s = " + number(plan.split.curvature) + "/mm, Glas nach Fläche " +
                    std::to_string(plan.free_surface) + " frei" +
                    (plan.preselected ? ", Zielglas " + plan.target_glass.name +
-                                           (achromat                         ? " (Achromat-Start)"
+                                           (achromat ? " (2 Zweige: wie bisher, Achromat-Start)"
                                             : options_.split.start_at_target ? " (Start)"
                                                                              : "")
                                      : std::string()) +

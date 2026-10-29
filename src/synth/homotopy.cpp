@@ -340,8 +340,10 @@ private:
     // Einfügen am guten Zustand `s` (sein Punkt bleibt): Operator, innere Homotopie pro Zweig,
     // bester Zweig, Abschluss und Penalty-Fortsetzung. Wirft Stop ohne Bedarf bzw. bei der
     // höchsten Elementzahl.
+    // choose_at: Zweige zusätzlich an diesem Punkt bewerten (Spektrumphase: an der verworfenen
+    // Stufe, sonst wählt die monochromatische Merit immer den Zweig ohne Farbkorrektur)
     void insert(State& s, const HomotopyNeed& need, HomotopyStatus no_need_status,
-                const std::string& no_need_message) {
+                const std::string& no_need_message, const HomotopyPoint* choose_at = nullptr) {
         if (need.recommendation == GhostOperator::None) {
             throw Stop{no_need_status,
                        no_need_message + "; keine Geisterplatte aktiv (kein Bedarf)"};
@@ -399,6 +401,17 @@ private:
                 step.branch = static_cast<int>(b);
                 step.stage = v;
                 step.accepted = true;
+                last = step.solve;
+                emit(step);
+            }
+            if (choose_at != nullptr) {
+                // am Bewertungspunkt weiteroptimieren und diesen Stand behalten: der nächste
+                // Versuch der Stufe startet dann vom farbig optimierten System
+                SystemDescription& probe = sys;
+                HomotopyStep step = solve(probe, *choose_at, HomotopyStepKind::InsertionStage);
+                step.branch = static_cast<int>(b);
+                step.accepted = true;
+                step.operation = "Bewertung des Zweigs an der verworfenen Spektrumstufe";
                 last = step.solve;
                 emit(step);
             }
@@ -538,7 +551,8 @@ private:
             insert(s, need, HomotopyStatus::StepTooSmall,
                    "Spektrumstufe " + std::to_string(trial.point.spectrum) +
                        " nicht annehmbar (F_B = " +
-                       number(step.solve.wavefront + step.solve.ghost_penalty) + ")");
+                       number(step.solve.wavefront + step.solve.ghost_penalty) + ")",
+                   &trial.point);
         }
     }
 
