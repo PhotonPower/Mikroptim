@@ -42,9 +42,10 @@ using Json = nlohmann::ordered_json;
 
 constexpr int kDefaultMaxIterations = 500;
 
-// Standard der Stagnation in der Synthese (M11-T1c, docs/optimierung-erweiterungen.md, Abschnitt
-// 1).
-constexpr int kDefaultStallWindow = 20;
+// Stagnationsabbruch der Synthese (M11-T1c): Standard aus. Als Standard 20,1e-3 (#65) brach er
+// auf der Zielspezifikation die Aperturstufe bei NA 0,37 ab, mit 20,1e-5 fügte der Controller
+// unkontrolliert Elemente ein (docs/optimierung-erweiterungen.md, Abschnitt 1).
+constexpr int kDefaultStallWindow = 0;
 constexpr double kDefaultStallTolerance = 1e-3;
 
 struct SynthArgs {
@@ -332,7 +333,8 @@ void print_synth_usage(std::ostream& out) {
            "  --max-steps N             höchstens N Optimierungen (Standard 400)\n"
            "  --max-iterations N        LM-Zyklen pro Schritt (Standard 500)\n"
            "  --stall W[,T]             LM-Abbruch bei Stagnation: F sank in W Zyklen um <= T·F\n"
-           "                            (Standard 20,1e-3; --stall 0: aus, wie vor M11-T1c)\n"
+           "                            (T Standard 1e-3; Standard aus; empfohlen nur für\n"
+           "                            schnelle Erkundungen, z. B. 20,1e-3)\n"
            "  --rings N, --spokes M     Pupillenquadratur (Standard 10 x 8)\n"
            "  --element-thickness T     Mittendicke eines eingefügten Meniskus [mm] (0.5)\n"
            "  --element-max-thickness T danach Variable bis T [mm] (5; <= Dicke: fest)\n"

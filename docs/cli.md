@@ -1138,7 +1138,7 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--start-field F`, `--target-field F` | Feldanteil (Faktor auf die Feldwinkel der Datei) am Start (Standard 1) bzw. am Ende (Standard: wie am Start) |
 | `--rms-target W` | Beugungsziel [Wellen] pro Feld und Wellenlänge (Standard 1/14) |
 | `--merit-factor K` | Schwelle F_max = (K · Ziel)² für die Bewertungsmerit F_B = Wellenfront + L1-Strafe (Standard 1) |
-| `--stall W[,T]` | LM-Abbruch bei Stagnation (`converged_stall`): F sank in W Zyklen um höchstens T·F (M11-T1c). **Standard `20,1e-3`**; `--stall 0` schaltet ab (Verhalten vor M11-T1c, z. B. zum Nachrechnen dokumentierter Läufe). Steht im JSON unter `options.stall` |
+| `--stall W[,T]` | LM-Abbruch bei Stagnation (`converged_stall`): F sank in W Zyklen um höchstens T·F (M11-T1c; T Standard 10⁻³). **Standard aus** – auf der Zielspezifikation verschlechterte der Abbruch die Synthese (`20,1e-3`: Aperturstufe bei NA 0,37 abgebrochen; `20,1e-5`: unkontrolliertes Einfügen bis 24 Elemente). Nur für schnelle Erkundungen an kleinen Systemen. Steht im JSON unter `options.stall` |
 | `--color-rule` | Farbregel (M11-T5c): Operator B mit Glas aus der Vorauswahl, wenn die Farbe dominiert (RMS einer Wellenlänge ≥ Faktor × RMS bei λ_ref, oder Seidel \|ΔW020\| ≥ 0,25 und ≥ \|W040\|); Standard aus |
 | `--color-ratio F` | Faktor der Farbregel (Standard 2; setzt `--color-rule`) |
 | `--split-preselect` | Operator B: Zielglas aus der Glasvorauswahl (bester Partner des Linsenglases), c_s aus dem dünnen Achromat in η (M11-T5b) |
