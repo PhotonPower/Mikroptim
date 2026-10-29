@@ -17,6 +17,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Gleitkomma im Host-Code: keine Zusammenfassung von a·b + c zu FMA. GCC fasst in C++ (auch im
+# ISO-Modus) standardmäßig zusammen, sobald das Ziel FMA hat – etwa beim System-GCC von RHEL 10
+# (Standardziel x86-64-v3, herkules3) oder mit -march=native. Dann runden mathematisch gleiche
+# Rechenwege verschieden, und die bitgleichen Vergleiche der CPU-Referenz (z. B.
+# MeritCpu.EqualsSumOfCpuResiduals) schlagen fehl. Die Gerätseite verwendet dafür --fmad=false
+# (siehe unten). docs/numerik.md, Abschnitt 12.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-ffp-contract=off>)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fp-model=precise>)
+elseif(MSVC)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fp:precise>)
+endif()
 if(MIKROPTIM_BUILD_PYTHON)
     # Die statischen Bibliotheken werden in das Python-Erweiterungsmodul (gemeinsame Bibliothek)
     # gelinkt und brauchen dafür positionsunabhängigen Code.
@@ -28,8 +42,9 @@ endif()
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-        # Tesla P100 = sm_60, RTX 3090 = sm_86, PTX für 86 als Rückfall
-        set(CMAKE_CUDA_ARCHITECTURES "60-real;86-real;86-virtual")
+        # Tesla P100 = sm_60, RTX 3090 = sm_86, RTX 6000 Ada (herkules3) = sm_89, PTX für 89 als
+        # Rückfall für neuere Karten
+        set(CMAKE_CUDA_ARCHITECTURES "60-real;86-real;89-real;89-virtual")
     endif()
     enable_language(CUDA)
     find_package(CUDAToolkit 12.0 REQUIRED)
@@ -37,6 +52,10 @@ if(MIKROPTIM_ENABLE_CUDA)
         message(FATAL_ERROR
             "CUDA ${CUDAToolkit_VERSION} unterstützt die Tesla P100 (sm_60) nicht mehr. "
             "Bitte CUDA 12.x verwenden (siehe docs/adr/0002-cuda-12.md).")
+    endif()
+    # Host-Teil der .cu-Dateien wie oben ohne FMA-Zusammenfassung
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffp-contract=off>)
     endif()
     set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)

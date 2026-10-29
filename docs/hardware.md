@@ -15,7 +15,11 @@
 
 CUDA **12.x**, empfohlen 12.9. CUDA 13 hat die Unterstützung für Maxwell, Pascal und Volta entfernt (ADR-0002). Nach dem Kenntnisstand bei Projektstart ist die Treiberserie R580 die letzte mit Pascal-Unterstützung; vor Treiber-Updates auf dem P100-Rechner prüfen.
 
-Architekturen: `CMAKE_CUDA_ARCHITECTURES = 60-real;86-real;86-virtual`.
+Architekturen: `CMAKE_CUDA_ARCHITECTURES = 60-real;86-real;89-real;89-virtual` (P100, RTX 3090, RTX 6000 Ada; PTX für neuere Karten).
+
+**herkules3 (Stand Oktober 2026):** RHEL 10, GCC 14.3, CUDA 12.9, Treiber 590.48, sichtbar eine **NVIDIA RTX 6000 Ada Generation** (sm_89, 48 GB; FP64 wie bei der RTX 3090 nur ein kleiner Bruchteil der FP32-Leistung, also df64 für Produktionsläufe prüfen). Ob die P100 dort noch eingebaut ist, ist offen. Prüfsummen (`MultiTraceEngine.ResultFingerprint`, Commit 53a9015, damals noch über JIT aus sm_86-PTX): FP64 RESIDUALS `f24dc992300ef8f0`, MERIT `ced499c6e65b1575`; DF64 RESIDUALS `059ce5159bcd4bac`, MERIT `ea4df8557d988b90`; PREFILTER `198fcadd375e938f`.
+
+**Host-Compiler und FMA:** Der System-GCC von RHEL 10 baut standardmäßig für x86-64-v3 (mit FMA) und fasst in C++ dann a·b + c zu FMA zusammen. Das brach auf herkules3 zwölf bitgleiche CPU-Vergleiche (z. B. `MeritCpu.EqualsSumOfCpuResiduals`). Seitdem setzt CMake `-ffp-contract=off` (GCC, Clang; Intel `-fp-model=precise`, MSVC `/fp:precise`), auch für den Host-Teil der `.cu`-Dateien; die CI baut zusätzlich mit `-march=x86-64-v3`.
 
 **Mehrere Toolkits unter Windows:** Liegt ein CUDA 13 im `PATH`, bricht CMake (richtigerweise) ab. Mit dem Visual-Studio-Generator wählt die Toolset-Option das Toolkit, z. B.
 
