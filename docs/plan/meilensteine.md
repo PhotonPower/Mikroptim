@@ -22,7 +22,7 @@ flowchart LR
     M11 --> M10
 ```
 
-M7 kann ab M2 parallel laufen, wird aber erst gebraucht, wenn die Laufzeiten der Synthese stören. Die P100 deckt FP64 bis dahin ab.
+M7 kann ab M2 parallel laufen, wird aber erst gebraucht, wenn die Laufzeiten der Synthese stören. (Bis Oktober 2026 deckte die P100 FP64 ab; seit ADR-0015 rechnen beide Karten FP64 langsam, df64 ist der Produktionsweg.)
 
 ---
 
@@ -96,9 +96,9 @@ Ziel: Ein System aus JSON laden und auf der CPU exakt tracen, mit Paraxialdaten 
 
 ---
 
-## M2 – CUDA-Vorwärtskernel FP64 ✅ (P100 ausstehend)
+## M2 – CUDA-Vorwärtskernel FP64 ✅
 
-Umgesetzt mit den PRs #9, #12, #14, #16, #17, #19 (Oktober 2026), getestet auf der RTX 3090. Offen: GPU-Tests und Benchmark auf der Tesla P100 (Befehl in docs/benchmarks.md).
+Umgesetzt mit den PRs #9, #12, #14, #16, #17, #19 (Oktober 2026), getestet auf der RTX 3090. Die Tests auf der Tesla P100 entfallen (ADR-0015); auf der RTX 6000 Ada (herkules3) ist ctest grün (Oktober 2026).
 
 Ziel: Dieselben Ergebnisse wie die CPU, für viele Varianten gleichzeitig.
 

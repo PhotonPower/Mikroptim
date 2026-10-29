@@ -38,21 +38,17 @@ if(MIKROPTIM_BUILD_PYTHON)
 endif()
 
 # --------------------------------------------------------------------------
-# CUDA (siehe docs/adr/0002-cuda-12.md und docs/hardware.md)
+# CUDA (siehe docs/adr/0015-cuda13-ohne-p100.md und docs/hardware.md)
 # --------------------------------------------------------------------------
 if(MIKROPTIM_ENABLE_CUDA)
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-        # Tesla P100 = sm_60, RTX 3090 = sm_86, RTX 6000 Ada (herkules3) = sm_89, PTX für 89 als
-        # Rückfall für neuere Karten
-        set(CMAKE_CUDA_ARCHITECTURES "60-real;86-real;89-real;89-virtual")
+        # RTX 3090 = sm_86, RTX 6000 Ada (herkules3) = sm_89, PTX für 89 als Rückfall für neuere
+        # Karten (ADR-0015: P100/sm_60 entfällt)
+        set(CMAKE_CUDA_ARCHITECTURES "86-real;89-real;89-virtual")
     endif()
     enable_language(CUDA)
     find_package(CUDAToolkit 12.0 REQUIRED)
-    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13.0)
-        message(FATAL_ERROR
-            "CUDA ${CUDAToolkit_VERSION} unterstützt die Tesla P100 (sm_60) nicht mehr. "
-            "Bitte CUDA 12.x verwenden (siehe docs/adr/0002-cuda-12.md).")
-    endif()
+    # CUDA 12.x und 13.x sind erlaubt (ADR-0015)
     # Host-Teil der .cu-Dateien wie oben ohne FMA-Zusammenfassung
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffp-contract=off>)

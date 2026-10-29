@@ -5,7 +5,7 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | Nr. | Titel | Status |
 |---|---|---|
 | [0001](0001-sprache-und-build.md) | C++20, CMake, Linux und Windows | angenommen |
-| [0002](0002-cuda-12.md) | CUDA 12.x statt 13 wegen Tesla P100 | angenommen |
+| [0002](0002-cuda-12.md) | CUDA 12.x statt 13 wegen Tesla P100 | ersetzt durch ADR-0015 |
 | [0003](0003-gleitkomma.md) | FP64 als Standard, templatisierter Zahlentyp | angenommen |
 | [0004](0004-batch-ueber-varianten.md) | Parallelisierung über Systemvarianten | angenommen |
 | [0005](0005-gemeinsamer-mathe-kern.md) | Gemeinsamer Mathe-Kern für CPU und GPU | angenommen |
@@ -18,3 +18,4 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0012](0012-entwurfswerkzeuge-und-entscheider.md) | Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider | angenommen |
 | [0013](0013-glattes-maximum-und-mehrere-gpus.md) | Glattes Maximum im Kernel; keine Bitgleichheit bei Verteilung auf mehrere GPUs | angenommen |
 | [0014](0014-glasmodelle-sellmeier-polynom.md) | Glasmodelle Sellmeier mit mehr Termen und Polynom | angenommen |
+| [0015](0015-cuda13-ohne-p100.md) | CUDA 13 erlaubt, Tesla P100 entfällt | angenommen |

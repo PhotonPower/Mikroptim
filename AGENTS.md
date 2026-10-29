@@ -34,7 +34,7 @@ cmake --preset release-cuda && cmake --build --preset release-cuda && ctest --pr
 ./build/release-cuda/mikroptim --devices
 ```
 
-Die CI kompiliert CUDA, hat aber **keine GPU**. GPU-Tests müssen lokal laufen: auf der RTX 3090 (sm_86) und der Tesla P100 (sm_60). Tests, die eine GPU brauchen, prüfen `mko::cuda::device_count()` und rufen sonst `GTEST_SKIP()` auf.
+Die CI kompiliert CUDA, hat aber **keine GPU**. GPU-Tests müssen lokal laufen: auf der RTX 3090 (sm_86, Arbeitsplatz-PC) und der RTX 6000 Ada (sm_89, herkules3). Tests, die eine GPU brauchen, prüfen `mko::cuda::device_count()` und rufen sonst `GTEST_SKIP()` auf.
 
 ## 5. Code-Konventionen
 
@@ -56,12 +56,12 @@ Die CI kompiliert CUDA, hat aber **keine GPU**. GPU-Tests müssen lokal laufen: 
 
 ## 7. CUDA-Regeln
 
-- Toolkit **CUDA 12.x** (Empfehlung 12.9). **Nicht CUDA 13**: Es unterstützt die Tesla P100 nicht (ADR-0002). CMake bricht bei 13 ab; das nicht umgehen.
-- Architekturen `60-real;86-real;86-virtual`. Nicht ändern ohne ADR.
+- Toolkit **CUDA 12.x oder 13.x** (ADR-0015; die Tesla P100 ist ausgeschieden). Die CI kompiliert mit beiden.
+- Architekturen `86-real;89-real;89-virtual`. Nicht ändern ohne ADR.
 - Warp-Operationen nur mit `_sync`-Varianten (`__shfl_down_sync`, `__syncwarp`, `__ballot_sync`). Keine Annahmen über implizit synchrone Warps.
-- Shared Memory pro Block ≤ 48 KB (kein Opt-in nötig, läuft auf beiden Karten).
-- Keine Tensor Cores, keine Features oberhalb sm_60 ohne Fallback.
-- Batchgrößen zur Laufzeit an `cudaMemGetInfo` ausrichten, nie fest verdrahten (P100: 16 GB, RTX 3090: 24 GB).
+- Shared Memory pro Block ≤ 48 KB ohne Opt-in (mehr nur mit `cudaFuncSetAttribute` und Begründung).
+- Keine Tensor Cores, keine Features oberhalb sm_86 ohne Fallback.
+- Batchgrößen zur Laufzeit an `cudaMemGetInfo` ausrichten, nie fest verdrahten (RTX 3090: 24 GB, RTX 6000 Ada: 48 GB).
 - Parallelisierung: ein Block pro (Variante, Feld, Wellenlänge), Threads über Pupillenstrahlen (ADR-0004, `docs/architektur.md`). Strahlen, die versagen, laufen maskiert weiter statt früh auszusteigen.
 
 ## 8. Daten und Sicherheit

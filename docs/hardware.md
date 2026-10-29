@@ -2,22 +2,27 @@
 
 ## Zielhardware
 
-| | RTX 3090 | Tesla P100 |
+Seit [ADR-0015](adr/0015-cuda13-ohne-p100.md) (Oktober 2026); die Tesla P100 (sm_60, Server herkules) ist ausgeschieden.
+
+| | RTX 3090 | RTX 6000 Ada |
 |---|---|---|
-| Architektur | Ampere, sm_86 | Pascal, sm_60 |
-| Speicher | 24 GB GDDR6X | 16 GB HBM2 |
-| FP32 : FP64 | 64 : 1 (ca. 0,55 TFLOPS FP64) | 2 : 1 (ca. 4,7–5,3 TFLOPS FP64) |
-| Rolle | Entwicklung, Debugging, FP32-Vorfilterung, Produktionsläufe mit df64 (M7-T1) | FP64-Referenz und Produktionsläufe |
+| Rechner | Arbeitsplatz-PC (Windows) | herkules3 (RHEL 10, 1 TB RAM) |
+| Architektur | Ampere, sm_86 | Ada, sm_89 |
+| Speicher | 24 GB GDDR6X | 48 GB GDDR6 |
+| FP32 : FP64 | 64 : 1 (ca. 0,55 TFLOPS FP64) | 64 : 1 (ca. 1,4 TFLOPS FP64) |
+| Rolle | Entwicklung, Debugging, FP32-Vorfilterung, Produktionsläufe mit df64 | Produktionsläufe (df64), große Batches, Ollama |
+
+Beide Karten rechnen FP64 nur mit einem Bruchteil der FP32-Rate; Produktionsläufe deshalb mit df64 (M7-T1), FP64 bleibt Referenz. Die Abschnitte unten, die die P100 nennen, beschreiben den Stand bis Oktober 2026.
 
 **df64 auf der RTX 3090 (M7-T1).** Mit `TraceSettings::precision = Precision::Df64` rechnen die Kernel mit Paaren aus zwei float ([numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)): ca. 48 Bit Genauigkeit bei FP32-Rate, OPD und Residuen weichen von FP64 typisch um einige 10⁻¹¹ mm ab (höchstens 10⁻⁹ mm, Abnahme M7-T1). Der Kernel ist damit auf der RTX 3090 etwa 4-mal so schnell wie in FP64 (S = 30: 3,5·10⁸ statt 8,3·10⁷ Strahlen/s, [benchmarks.md](benchmarks.md#df64-m7-t1); seit den Tupelpaketen von M7-T4 4,9·10⁸ statt 1,1·10⁸, [benchmarks.md](benchmarks.md#profiling-und-tuning-m7-t4)). Die Tesla P100 rechnet FP64 mit halber FP32-Rate; dort bringt df64 (ca. 10–20 FP32-Befehle pro Operation) nichts, sie bleibt FP64-Referenz. Ergebnisse aus df64 und FP64 sind nicht bitgleich; Läufe, die bitgleich reproduzierbar sein müssen (ADR-0007, Multi-GPU M7-T3), verwenden auf allen Geräten denselben Zahlentyp.
 
 ## CUDA-Version
 
-CUDA **12.x**, empfohlen 12.9. CUDA 13 hat die Unterstützung für Maxwell, Pascal und Volta entfernt (ADR-0002). Nach dem Kenntnisstand bei Projektstart ist die Treiberserie R580 die letzte mit Pascal-Unterstützung; vor Treiber-Updates auf dem P100-Rechner prüfen.
+CUDA **12.x oder 13.x** (ADR-0015; vorher nur 12.x wegen der P100, ADR-0002). Die CI kompiliert mit 12.9 und 13.0. Treiber ohne Einschränkung (die Grenze R580 für Pascal entfällt).
 
-Architekturen: `CMAKE_CUDA_ARCHITECTURES = 60-real;86-real;89-real;89-virtual` (P100, RTX 3090, RTX 6000 Ada; PTX für neuere Karten).
+Architekturen: `CMAKE_CUDA_ARCHITECTURES = 86-real;89-real;89-virtual` (RTX 3090, RTX 6000 Ada; PTX für neuere Karten).
 
-**herkules3 (Stand Oktober 2026):** RHEL 10, GCC 14.3, CUDA 12.9, Treiber 590.48, 1 TB RAM, eine **NVIDIA RTX 6000 Ada Generation** (sm_89, 48 GB; FP64 wie bei der RTX 3090 nur ein kleiner Bruchteil der FP32-Leistung, also df64 für Produktionsläufe prüfen). Die **Tesla P100** (sm_60, 16 GB) steckt im älteren Server **herkules** (etwa 15 Jahre alt, 128 GB RAM); die beiden Karten sind also nicht im selben Rechner, Mehr-GPU-Läufe (M7-T3) mit Ada und P100 gibt es dort nicht. Prüfsummen (`MultiTraceEngine.ResultFingerprint`, Commit 53a9015, damals noch über JIT aus sm_86-PTX): FP64 RESIDUALS `f24dc992300ef8f0`, MERIT `ced499c6e65b1575`; DF64 RESIDUALS `059ce5159bcd4bac`, MERIT `ea4df8557d988b90`; PREFILTER `198fcadd375e938f`.
+**herkules3 (Stand Oktober 2026):** RHEL 10, GCC 14.3, CUDA 12.9, Treiber 590.48, 1 TB RAM, eine **NVIDIA RTX 6000 Ada Generation** (sm_89, 48 GB; FP64 wie bei der RTX 3090 nur ein kleiner Bruchteil der FP32-Leistung, also df64 für Produktionsläufe prüfen). Prüfsummen (`MultiTraceEngine.ResultFingerprint`): nativer sm_89-Code, Commit 6b0c0fa: FP64 RESIDUALS `9ac978dfd6b7f4d9`, MERIT `faadd36d370d1b61`; DF64 RESIDUALS `bdee239a360f2eb3`, MERIT `e41cd0be1aa9b6b1`; PREFILTER `198fcadd375e938f` (vorher über JIT aus sm_86-PTX, Commit 53a9015: FP64 RESIDUALS `f24dc992300ef8f0`, MERIT `ced499c6e65b1575` – zwischen Architekturen nicht bitgleich, seit ADR-0013 keine Anforderung). Die **Tesla P100** im älteren Server herkules ist ausgeschieden (nur offener Treiber 590 installiert, der Pascal nicht unterstützt; ADR-0015).
 
 **Host-Compiler und FMA:** Der System-GCC von RHEL 10 baut standardmäßig für x86-64-v3 (mit FMA) und fasst in C++ dann a·b + c zu FMA zusammen. Das brach auf herkules3 zwölf bitgleiche CPU-Vergleiche (z. B. `MeritCpu.EqualsSumOfCpuResiduals`). Seitdem setzt CMake `-ffp-contract=off` (GCC, Clang; Intel `-fp-model=precise`, MSVC `/fp:precise`), auch für den Host-Teil der `.cu`-Dateien; die CI baut zusätzlich mit `-march=x86-64-v3`.
 
