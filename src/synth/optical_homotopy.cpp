@@ -451,15 +451,31 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     try {
         const LoadedSystem l = load(realized);
         const WavefrontResult wf = evaluate_wavefront(l);
-        int lref = 0;
-        for (int k = 1; k < wf.wavelengths; ++k) {
-            if (std::abs(wf.at(0, k).wavelength_nm - realized.spectrum.reference_nm) <
-                std::abs(wf.at(0, lref).wavelength_nm - realized.spectrum.reference_nm)) {
+        // Bezug: RMS bei λ_ref pro Feld. Liegt λ_ref nicht im Spektrum (z. B. Farbstufe der
+        // Zielspezifikation mit 480/644 nm, λ_ref = 546 nm), wird monochromatisch bei λ_ref
+        // nachgerechnet; der Vergleich mit der nächstgelegenen Wellenlänge sähe sonst keine Farbe.
+        std::vector<double> ref_rms(static_cast<std::size_t>(wf.fields), 0.0);
+        int lref = -1;
+        for (int k = 0; k < wf.wavelengths; ++k) {
+            if (std::abs(wf.at(0, k).wavelength_nm - realized.spectrum.reference_nm) < 1e-9) {
                 lref = k;
             }
         }
+        if (lref >= 0) {
+            for (int f = 0; f < wf.fields; ++f) {
+                ref_rms[static_cast<std::size_t>(f)] = wf.at(f, lref).rms_waves;
+            }
+        } else {
+            SystemDescription mono = realized;
+            mono.spectrum.wavelengths_nm = {realized.spectrum.reference_nm};
+            mono.spectrum.weights = {1.0};
+            const WavefrontResult wm = evaluate_wavefront(load(mono));
+            for (int f = 0; f < wf.fields && f < wm.fields; ++f) {
+                ref_rms[static_cast<std::size_t>(f)] = wm.at(f, 0).rms_waves;
+            }
+        }
         for (int f = 0; f < wf.fields; ++f) {
-            const double ref = wf.at(f, lref).rms_waves;
+            const double ref = ref_rms[static_cast<std::size_t>(f)];
             for (int k = 0; k < wf.wavelengths; ++k) {
                 const double r = wf.at(f, k).rms_waves;
                 if (!std::isfinite(r) || !std::isfinite(ref)) {

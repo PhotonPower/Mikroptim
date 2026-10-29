@@ -5,6 +5,7 @@
 #include "homotopy_mock.hpp"
 #include "insertion_test_systems.hpp"
 #include "mikroptim/glass/buchdahl_fit.hpp"
+#include "mikroptim/paraxial/paraxial.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 #include "residual_test_systems.hpp"
@@ -560,6 +561,19 @@ TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
     const HomotopyNeed nb = mb.diagnose(mb.start_system(), mb.start_point());
     EXPECT_EQ(nb.recommendation, GhostOperator::B) << nb.text;
     EXPECT_EQ(nb.split_lens, 1);
+    // Nur das RMS-Verhältnis (Seidel-Kriterium aus): λ_ref = 546 nm liegt nicht im Spektrum
+    // 480/644 nm, Bezug ist dann eine monochromatische Rechnung bei λ_ref (M6-T6 p4_r0). Bild im
+    // paraxialen Fokus bei λ_ref wie nach einer monochromatischen Stufe: RMS 0,32/0,19 Wellen bei
+    // 480/644 nm gegen 0,064 monochromatisch
+    LoadedSystem focused = start;
+    focused.system.surfaces.back().thickness =
+        compute_paraxial(focused.system, focused.catalog).back_focal_distance;
+    OpticalHomotopyOptions ratio_only = o;
+    ratio_only.color_seidel = 1e9;
+    OpticalHomotopyModel mr(focused, ratio_only);
+    const HomotopyNeed nr = mr.diagnose(mr.start_system(), mr.start_point());
+    EXPECT_EQ(nr.recommendation, GhostOperator::B) << nr.text;
+    EXPECT_NE(nr.text.find("RMS-Verhältnis"), std::string::npos) << nr.text;
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

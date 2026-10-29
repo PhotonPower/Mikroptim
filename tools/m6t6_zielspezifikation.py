@@ -9,7 +9,8 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
-                                           [--aktuell] [--farbregel] [--synth-arg ARG]...
+                                           [--aktuell] [--farbregel] [--farb-budget N]
+                                           [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
 --aktuell gelten die aktuellen Standards von `synth` (Stagnationsabbruch), mit --farbregel
@@ -870,6 +871,8 @@ def main():
                     help='aktuelle Standards von synth (Stagnationsabbruch) statt --stall 0')
     ap.add_argument('--farbregel', action='store_true',
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
+    ap.add_argument('--farb-budget', type=int, default=1,
+                    help='zusätzliche Elemente je Farbstufe (Standard 1 wie im dokumentierten Lauf)')
     ap.add_argument('--synth-arg', action='append', default=[],
                     help='weitere Option für jeden synth-Aufruf (mehrfach möglich)')
     ap.add_argument('--start', default=os.path.join(ROOT, 'data', 'systems',
@@ -947,7 +950,7 @@ def main():
                              ['--target-na', repr(na), '--start-field', repr(field),
                               '--target-field', repr(field)] + common, relax,
                              lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
-                             forced_kind='split', element_budget=1)
+                             forced_kind='split', element_budget=args.farb_budget)
         stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec})
 
     # Stufe 6: Feinoptimierung ohne Geisterplatten, 405/700 nm schwach dazu, am erreichten Punkt

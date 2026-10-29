@@ -85,9 +85,9 @@ struct OpticalHomotopyOptions {
     // und Kittkrümmung aus der Glasvorauswahl (split_for_color). Vor der Geisterdiagnose;
     // Standard aus. Farbe dominiert, wenn der größte RMS über Felder und Wellenlängen (getracte
     // Wellenfront am Punkt) mindestens color_min_rms Wellen ist und
-    //   (a) der RMS einer Wellenlänge mindestens color_ratio-mal der RMS bei der Wellenlänge
-    //       nächst λ_ref desselben Feldes ist (gut bei hoher NA, wo Seidel-Sphärik durch höhere
-    //       Ordnungen ausgeglichen ist), oder
+    //   (a) der RMS einer Wellenlänge mindestens color_ratio-mal der RMS bei λ_ref desselben
+    //       Feldes ist (liegt λ_ref nicht im Spektrum, monochromatisch bei λ_ref nachgerechnet)
+    //       (gut bei hoher NA, wo Seidel-Sphärik durch höhere Ordnungen ausgeglichen ist), oder
     //   (b) |ΔW020| ≥ color_seidel und |ΔW020| ≥ |W040| (Seidel-Summen, gut bei kleiner NA).
     bool color_rule = false;
     double color_ratio = 2.0;
