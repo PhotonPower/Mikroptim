@@ -84,6 +84,9 @@ struct HomotopyNeed {
     GhostOperator recommendation = GhostOperator::None;
     std::string text;         // Empfehlung in einem Satz
     GhostDiagnosis diagnosis; // vollständiger Bericht (optisches Modell)
+    // Farbregel (M11-T5c): Operator B an der Linse ab dieser Dateifläche, ohne Geisterdiagnose
+    // (−1: Empfehlung aus der Diagnose)
+    int split_lens = -1;
 };
 
 // Ein angewandter Einfüge-Operator: Startsysteme der Zweige (Operator mit Dicke 0 eingefügt, die

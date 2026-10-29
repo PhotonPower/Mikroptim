@@ -600,57 +600,15 @@ MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
     return plan;
 }
 
-SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatalog& catalog,
-                               const GhostDiagnosis& diagnosis, const SplitInitOptions& options) {
-    if (options.free_part != 0 && options.free_part != 1) {
-        invalid("split_from_diagnosis: free_part muss 0 oder 1 sein");
-    }
-    SplitPlan plan;
-    const GhostPositionReport& pr = position_of(system, diagnosis, options.position, plan.position);
-    const int S = static_cast<int>(system.surfaces.size());
-    const int i = pr.after_surface;
-    const auto is_lens = [&](int front) {
-        return front >= 1 && front + 1 <= S - 1 &&
-               system.surfaces[sz(front)].material.kind != MaterialKind::Air;
-    };
-    const double T = system.surfaces[sz(i)].thickness;
-    int lens = -1;
-    const bool before = is_lens(i - 1);
-    const bool after = is_lens(i + 1);
-    if (before && after) {
-        lens = pr.distance <= T - pr.distance ? i - 1 : i + 1;
-    } else if (before) {
-        lens = i - 1;
-    } else if (after) {
-        lens = i + 1;
-    } else {
-        invalid("split_from_diagnosis: am Luftspalt nach Fläche " + std::to_string(i) +
-                " liegt keine Linse");
-    }
-    const MaterialSpec& lens_glass = system.surfaces[sz(lens)].material;
-    plan.abbe_lens = abbe_number(lens_glass, catalog);
+namespace {
 
-    // Zielglas unter den aktiven Platten
-    const bool anomalous = pr.recommendation == GhostOperator::BAnomalous;
-    double best_score = -std::numeric_limits<double>::infinity();
-    for (const int g : pr.active_plates) {
-        const GhostGlassData& gd = diagnosis.plates[sz(g)].glass;
-        double score = 0.0;
-        if (anomalous) {
-            score = gd.delta_partial;
-        } else {
-            const double abbe = abbe_number(system.ghost_plates[sz(g)].glass, catalog);
-            score = std::abs(1.0 / abbe - 1.0 / plan.abbe_lens);
-        }
-        if (std::isfinite(score) && score > best_score) {
-            best_score = score;
-            plan.plate = g;
-        }
-    }
-    if (plan.plate < 0) {
-        plan.plate = pr.active_plates.front();
-    }
-    plan.target_glass = system.ghost_plates[sz(plan.plate)].glass;
+// Gemeinsamer Teil von Operator B (M6-T2, M11-T5): Zielglas (ggf. aus der Glasvorauswahl),
+// Kittkrümmung (dünnes Achromat mit Rücknahme bei zu kleiner Randdicke), Begründung. `plan`
+// bringt Platte und Zielglas der Diagnose mit (bei der Farbregel: Platte −1).
+SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& catalog, int lens,
+                       SplitPlan plan, const SplitInitOptions& options, bool anomalous,
+                       const std::string& source) {
+    const MaterialSpec& lens_glass = system.surfaces[sz(lens)].material;
     plan.secondary_spectrum = std::numeric_limits<double>::quiet_NaN();
     // Glasvorauswahl (M11-T5): Partner des Linsenglases aus dem Katalog
     double preselect_front_fraction = std::numeric_limits<double>::quiet_NaN();
@@ -758,9 +716,89 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
        << (plan.preselected ? "aus der Glasvorauswahl " + plan.target_glass.name +
                                   " (sekundäres Spektrum " + num(plan.secondary_spectrum) + ")"
                             : "der Platte " + std::to_string(plan.plate))
+       << (source.empty() ? std::string() : " [" + source + "]")
        << " (nu_d = " << num(plan.abbe_target) << "), c_s = " << num(cs) << " (" << cs_from
        << "), freigegeben: Teil " << options.free_part << " (Fläche " << plan.free_surface << ")";
     plan.reason = os.str();
+    return plan;
+}
+
+} // namespace
+
+SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatalog& catalog,
+                               const GhostDiagnosis& diagnosis, const SplitInitOptions& options) {
+    if (options.free_part != 0 && options.free_part != 1) {
+        invalid("split_from_diagnosis: free_part muss 0 oder 1 sein");
+    }
+    SplitPlan plan;
+    const GhostPositionReport& pr = position_of(system, diagnosis, options.position, plan.position);
+    const int S = static_cast<int>(system.surfaces.size());
+    const int i = pr.after_surface;
+    const auto is_lens = [&](int front) {
+        return front >= 1 && front + 1 <= S - 1 &&
+               system.surfaces[sz(front)].material.kind != MaterialKind::Air;
+    };
+    const double T = system.surfaces[sz(i)].thickness;
+    int lens = -1;
+    const bool before = is_lens(i - 1);
+    const bool after = is_lens(i + 1);
+    if (before && after) {
+        lens = pr.distance <= T - pr.distance ? i - 1 : i + 1;
+    } else if (before) {
+        lens = i - 1;
+    } else if (after) {
+        lens = i + 1;
+    } else {
+        invalid("split_from_diagnosis: am Luftspalt nach Fläche " + std::to_string(i) +
+                " liegt keine Linse");
+    }
+    const MaterialSpec& lens_glass = system.surfaces[sz(lens)].material;
+    plan.abbe_lens = abbe_number(lens_glass, catalog);
+
+    // Zielglas unter den aktiven Platten
+    const bool anomalous = pr.recommendation == GhostOperator::BAnomalous;
+    double best_score = -std::numeric_limits<double>::infinity();
+    for (const int g : pr.active_plates) {
+        const GhostGlassData& gd = diagnosis.plates[sz(g)].glass;
+        double score = 0.0;
+        if (anomalous) {
+            score = gd.delta_partial;
+        } else {
+            const double abbe = abbe_number(system.ghost_plates[sz(g)].glass, catalog);
+            score = std::abs(1.0 / abbe - 1.0 / plan.abbe_lens);
+        }
+        if (std::isfinite(score) && score > best_score) {
+            best_score = score;
+            plan.plate = g;
+        }
+    }
+    if (plan.plate < 0) {
+        plan.plate = pr.active_plates.front();
+    }
+    plan.target_glass = system.ghost_plates[sz(plan.plate)].glass;
+    return finish_split(system, catalog, lens, plan, options, anomalous, "");
+}
+
+SplitPlan split_for_color(const SystemDescription& system, const GlassCatalog& catalog, int lens,
+                          const SplitInitOptions& options) {
+    const int S = static_cast<int>(system.surfaces.size());
+    if (lens < 1 || lens + 1 > S - 1 ||
+        system.surfaces[sz(lens)].material.kind == MaterialKind::Air) {
+        invalid("split_for_color: an Fläche " + std::to_string(lens) + " beginnt keine Linse");
+    }
+    if (options.free_part != 0 && options.free_part != 1) {
+        invalid("split_for_color: free_part muss 0 oder 1 sein");
+    }
+    SplitInitOptions o = options;
+    o.preselect = true;
+    SplitPlan plan;
+    plan.abbe_lens = abbe_number(system.surfaces[sz(lens)].material, catalog);
+    plan.target_glass = system.surfaces[sz(lens)].material; // ersetzt die Vorauswahl
+    plan = finish_split(system, catalog, lens, plan, o, false, "Farbregel");
+    if (!plan.preselected) {
+        invalid("split_for_color: kein Partner für das Glas der Linse an Fläche " +
+                std::to_string(lens) + " in der Glasvorauswahl");
+    }
     return plan;
 }
 

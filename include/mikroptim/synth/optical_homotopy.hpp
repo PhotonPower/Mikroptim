@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -79,6 +80,19 @@ struct OpticalHomotopyOptions {
     MeniscusInitOptions meniscus{}; // Krümmungsbetrag, Schranken der neuen Krümmungsvariablen
     // Operator B
     SplitInitOptions split{};
+    // Farbregel (M11-T5c): Dominiert die Farbe, empfiehlt diagnose Operator B an der Linse mit
+    // dem größten Beitrag zum Farblängsfehler ΔW020 (Aberrationsbericht, Katalogglas); Zielglas
+    // und Kittkrümmung aus der Glasvorauswahl (split_for_color). Vor der Geisterdiagnose;
+    // Standard aus. Farbe dominiert, wenn der größte RMS über Felder und Wellenlängen (getracte
+    // Wellenfront am Punkt) mindestens color_min_rms Wellen ist und
+    //   (a) der RMS einer Wellenlänge mindestens color_ratio-mal der RMS bei der Wellenlänge
+    //       nächst λ_ref desselben Feldes ist (gut bei hoher NA, wo Seidel-Sphärik durch höhere
+    //       Ordnungen ausgeglichen ist), oder
+    //   (b) |ΔW020| ≥ color_seidel und |ΔW020| ≥ |W040| (Seidel-Summen, gut bei kleiner NA).
+    bool color_rule = false;
+    double color_ratio = 2.0;
+    double color_seidel = 0.25;
+    double color_min_rms = 0.05;
     // Strafgewicht μ der Quellplatte nach dem Einfügen mal penalty_raise.
     double penalty_raise = 10.0;
     // Mechanische Bedingungen mit Standardauswahl (bzw. "all") gelten nach dem Einfügen auch für
@@ -155,6 +169,8 @@ public:
                                 const HomotopyPoint& point) override;
 
 private:
+    std::optional<HomotopyNeed> color_need(const SystemDescription& system,
+                                           const HomotopyPoint& point) const;
     LoadedSystem like_; // Kataloge
     SystemDescription start_;
     OpticalHomotopyOptions options_;

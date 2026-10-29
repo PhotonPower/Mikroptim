@@ -244,4 +244,11 @@ SplitPlan split_from_diagnosis(const SystemDescription& system, const GlassCatal
                                const GhostDiagnosis& diagnosis,
                                const SplitInitOptions& options = {});
 
+// Operator B ohne Geisterdiagnose (Farbregel, M11-T5c): Linse ab Fläche `lens`, Zielglas und
+// Kittkrümmung aus der Glasvorauswahl (options.preselect wird erzwungen), Platte −1. Wirft
+// std::invalid_argument, wenn an `lens` keine Linse beginnt oder die Vorauswahl keinen Partner
+// findet (Linsenglas kein Katalogglas, alle Paare über preselect_max_power_sum).
+SplitPlan split_for_color(const SystemDescription& system, const GlassCatalog& catalog, int lens,
+                          const SplitInitOptions& options = {});
+
 } // namespace mko
