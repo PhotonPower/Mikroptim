@@ -60,6 +60,19 @@ TEST(HomotopyControl, StepGrowsAfterFastConvergence) {
     EXPECT_EQ(r.insertions, 0);
 }
 
+// Lehnt das Modell ein Einfügen ab (std::invalid_argument), endet der Lauf geordnet mit dem
+// Status ohne Bedarf und dem Grund, statt abzustürzen (M6-T6: p4_r3, p3_r0).
+TEST(HomotopyControl, RefusedInsertionStopsCleanly) {
+    MockSpec spec;
+    spec.capacity0 = 0.32;
+    spec.insert_throws = true;
+    MockModel m(spec);
+    const HomotopyResult r =
+        run_homotopy(m, MockModel::start(0.3), mock_point(0.3), mock_options(0.6));
+    EXPECT_EQ(r.status, HomotopyStatus::StepTooSmall);
+    EXPECT_NE(r.message.find("nicht möglich: Linse zu dünn"), std::string::npos) << r.message;
+}
+
 // Prädiktor (M11-T3): ab dem zweiten Aperturschritt Start aus der Sekante, Verhältnis der
 // Schrittweiten (0,04/0,02, 0,08/0,04, 0,08/0,08, 0,08/0,08); ohne Option kein Aufruf.
 TEST(HomotopyControl, PredictorUsesSecantRatios) {
@@ -507,6 +520,20 @@ TEST(OpticalHomotopy, PredictExtrapolatesVariables) {
 // Farbregel (M11-T5c): polychromatische Einzellinse ohne Geisterplatten – ohne Regel kein
 // Bedarf, mit Regel Operator B an der Linse (Fläche 1); das Einfügen teilt die Linse ohne
 // Strafgewicht einer Platte.
+// Volle Flächentabelle: insert lehnt ab (vorher Absturz von synth mit 59 Flächen + 6 Platten).
+TEST(OpticalHomotopy, InsertRefusedWhenTableFull) {
+    const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
+    OpticalHomotopyModel m(start, OpticalHomotopyOptions{});
+    SystemDescription big = m.start_system();
+    while (static_cast<int>(big.surfaces.size()) + 2 <= kMaxSurfaces) {
+        big.surfaces.insert(big.surfaces.begin() + 1, big.surfaces[1]);
+    }
+    HomotopyNeed need;
+    need.recommendation = GhostOperator::B;
+    need.split_lens = 1;
+    EXPECT_THROW((void)m.insert(big, m.start_point(), need), std::invalid_argument);
+}
+
 TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
     const LoadedSystem start = load_residual_system("einzellinse_achromat_start.json");
     OpticalHomotopyModel plain(start, OpticalHomotopyOptions{});

@@ -5,6 +5,7 @@
 
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/paraxial/aberrations.hpp"
+#include "mikroptim/trace/surface_table.hpp"
 
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
@@ -490,10 +491,10 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     if (!by_ratio && !by_seidel) {
         return std::nullopt;
     }
-    // Linse mit dem größten Beitrag gleichen Vorzeichens zum Gesamtwert
+    // Linsen nach ihrem Beitrag gleichen Vorzeichens zum Gesamtwert; die erste, die sich teilen
+    // lässt (Katalogglas, Partner in der Vorauswahl, dick genug für zwei Teile)
     const double sign = w.dW020 >= 0.0 ? 1.0 : -1.0;
-    int best = -1;
-    double best_value = 0.0;
+    std::vector<std::pair<double, int>> lenses;
     const auto& surf = realized.surfaces;
     for (std::size_t s = 1; s + 1 < surf.size(); ++s) {
         if (surf[s].material.kind != MaterialKind::Catalog) {
@@ -501,17 +502,22 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
         }
         const double v =
             sign * (rep.waves(rep.surfaces[s]).dW020 + rep.waves(rep.surfaces[s + 1]).dW020);
-        if (v > best_value) {
-            best_value = v;
-            best = static_cast<int>(s);
+        if (v > 0.0) {
+            lenses.emplace_back(v, static_cast<int>(s));
+        }
+    }
+    std::stable_sort(lenses.begin(), lenses.end(),
+                     [](const auto& a, const auto& b) { return a.first > b.first; });
+    int best = -1;
+    for (const auto& [value, lens] : lenses) {
+        try {
+            (void)split_for_color(realized, like_.catalog, lens, options_.split);
+            best = lens;
+            break;
+        } catch (const std::exception&) {
         }
     }
     if (best < 0) {
-        return std::nullopt;
-    }
-    try {
-        (void)split_for_color(realized, like_.catalog, best, options_.split);
-    } catch (const std::exception&) {
         return std::nullopt;
     }
     HomotopyNeed n;
@@ -558,6 +564,13 @@ HomotopyNeed OpticalHomotopyModel::diagnose(const SystemDescription& system,
 
 HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                                                const HomotopyPoint& p, const HomotopyNeed& need) {
+    // Platz in der Flächentabelle (Dateiflächen + Geisterplatten ≤ kMaxSurfaces): Operator A und B
+    // fügen je zwei Flächen hinzu (vorher Absturz von synth bei 59 Flächen + 6 Platten, M6-T6)
+    if (static_cast<int>(system.surfaces.size() + system.ghost_plates.size()) + 2 > kMaxSurfaces) {
+        invalid("Flächentabelle voll (" + std::to_string(system.surfaces.size()) + " Flächen und " +
+                std::to_string(system.ghost_plates.size()) + " Geisterplatten, höchstens " +
+                std::to_string(kMaxSurfaces) + " Tabellenflächen)");
+    }
     const SystemDescription realized = realize(system, p);
     HomotopyInsertion ins;
     ins.op = need.recommendation;

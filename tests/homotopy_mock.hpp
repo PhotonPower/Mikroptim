@@ -15,6 +15,7 @@
 #include <optional>
 #include <random>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace mko::test {
@@ -29,7 +30,8 @@ struct MockSpec {
     bool one_sided = false;
     double goal_ghost_weight = 1.0; // Ziel erst ab diesem μ-Faktor
     bool goal_never = false;
-    double start_merit = -1.0; // ≥ 0: F_B am Startpunkt (vor dem ersten Schritt)
+    double start_merit = -1.0;  // ≥ 0: F_B am Startpunkt (vor dem ersten Schritt)
+    bool insert_throws = false; // insert wirft std::invalid_argument (Einfügen nicht möglich)
 
     // Strahlsuche
     double branch_spread = 1.0;    // Krümmung (Marke) von Zweig b: b · branch_spread
@@ -177,6 +179,9 @@ public:
 
     HomotopyInsertion insert(const SystemDescription& system, const HomotopyPoint&,
                              const HomotopyNeed& need) override {
+        if (spec_.insert_throws) {
+            throw std::invalid_argument("Linse zu dünn");
+        }
         HomotopyInsertion ins;
         ins.op = need.recommendation;
         const int option = std::max(0, need.diagnosis.recommended_position);
