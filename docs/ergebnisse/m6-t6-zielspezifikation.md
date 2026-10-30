@@ -38,6 +38,8 @@ Die Spezifikation lässt Punkte offen (spezifikation.md, „Offene Punkte“). F
 
 **Neuer Lauf mit heutigem Code** (herkules3, RTX 6000 Ada, `--gpu --farbregel --synth-arg "--stall 0"`): Aperturstufe NA 0,5 mit 4 Elementen (wie dokumentiert), Feldstufe Ziel bei NA 0,5 und vollem Feld mit **5 statt 9 Elementen**, Aperturstufe bis **NA 0,605 mit 7 statt 0,57 mit 12 Elementen**. Die erste Farbstufe endet am Elementbudget (9 Elemente) und bricht danach in `p4_r3` mit einem Fehler von `mikroptim synth` ab (Ursache offen). Die Verbesserungen der monochromatischen Stufen stammen aus den Änderungen seit dem dokumentierten Lauf, nicht aus der Farbregel.
 
+**Läufe mit Farbregel (29.10.2026, herkules3):** Die monochromatischen Stufen enden bei NA 0,605 mit 7 Elementen, **genau an der Annahmeschwelle** (F_B ≈ F_max = 0,0051). Mit stetiger Spektrum-Homotopie (`--farb-stetig`, v8) wird deshalb schon die Spektrumbreite 1/1024 verworfen (F_B 0,0051); Teilungen mit Operator B ändern daran nichts, weil der Engpass das monochromatische System ohne Abstand zur Schwelle ist, nicht die Farbe. Mit 48 festen Stufen (v7) läuft das Skript bis zum Ende durch; die erste Farbstufe erreicht die volle Breite mit RMS 0,092 Wellen (Ziel 0,071). Folgerung: Die Farbe muss eingeführt werden, solange das System noch Abstand zur Schwelle hat – Option `--farbe-frueh` (Farbstufen bei NA 0,5 nach der Feldstufe, danach polychromatisch zur NA 0,95).
+
 **Reproduzierbarer Lauf:** [`tools/m6t6_zielspezifikation.py`](../../tools/m6t6_zielspezifikation.py) (Python 3, nur Standardbibliothek) verkettet `mikroptim synth`, `optimize`, `insert`, `snap` und `eval` und ändert zwischen den Stufen die Systemdateien:
 
 ```
