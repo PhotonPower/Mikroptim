@@ -434,10 +434,16 @@ def forced_insertion(runner, tag, src, relax_options, glass='SYN-36', thickness=
         name = f'{tag}_ins{i}'
         ins = runner.path(name + '_raw.json')
         if not os.path.exists(ins):
-            runner.run(name + '_insert',
-                       ['insert', src, '--meniscus',
-                        f'{i},{(t - thickness) / 2!r},0,{glass}', '--thickness', repr(thickness),
-                        '-o', ins])
+            try:
+                runner.run(name + '_insert',
+                           ['insert', src, '--meniscus',
+                            f'{i},{(t - thickness) / 2!r},0,{glass}', '--thickness',
+                            repr(thickness), '-o', ins])
+            except RuntimeError as e:
+                # Spalt nicht nutzbar (z. B. Flächentabelle voll): nächsten Kandidaten versuchen
+                # statt den ganzen Lauf abzubrechen (v9: p3_r9_ins17_insert)
+                log(f'  Spalt {i} übersprungen: {e}')
+                continue
         x = load(ins)
         restore_default_selections(s, x)
         items = x['variables']['items']
@@ -450,7 +456,11 @@ def forced_insertion(runner, tag, src, relax_options, glass='SYN-36', thickness=
         add_gap_variables(x)
         prep = runner.path(name + '_in.json')
         save(x, prep)
-        out = runner.optimize(name, prep, relax_options)
+        try:
+            out = runner.optimize(name, prep, relax_options)
+        except RuntimeError as e:
+            log(f'  Spalt {i} übersprungen: {e}')
+            continue
         f = merit_after(runner.path(name + '.txt'))
         results.append({'gap': i, 'file': out, 'merit': f})
         log(f'  erzwungen: Spalt {i}, F = {f:.4e}')
@@ -476,8 +486,12 @@ def forced_split(runner, tag, src, relax_options, min_thickness=1.0, log=print):
         name = f'{tag}_split{i}'
         raw = runner.path(name + '_raw.json')
         if not os.path.exists(raw):
-            runner.run(name + '_insert', ['insert', src, '--split', f'{i},{cs!r},0.5',
-                                          '--free-glass', '-o', raw])
+            try:
+                runner.run(name + '_insert', ['insert', src, '--split', f'{i},{cs!r},0.5',
+                                              '--free-glass', '-o', raw])
+            except RuntimeError as e:
+                log(f'  Linse {i} übersprungen: {e}')
+                continue
         x = load(raw)
         restore_default_selections(s, x)
         items = x['variables']['items']
@@ -490,7 +504,11 @@ def forced_split(runner, tag, src, relax_options, min_thickness=1.0, log=print):
         add_gap_variables(x)
         prep = runner.path(name + '_in.json')
         save(x, prep)
-        out = runner.optimize(name, prep, relax_options)
+        try:
+            out = runner.optimize(name, prep, relax_options)
+        except RuntimeError as e:
+            log(f'  Linse {i} übersprungen: {e}')
+            continue
         f = merit_after(runner.path(name + '.txt'))
         results.append({'lens': i, 'file': out, 'merit': f})
         log(f'  erzwungen (B): Linse {i}, F = {f:.4e}')
