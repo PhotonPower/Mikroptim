@@ -10,7 +10,7 @@ landen im Ausgabeverzeichnis; eine Stufe, deren Ergebnisdatei schon existiert, w
 Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
     python tools/m6t6_zielspezifikation.py [--out DIR] [--exe PFAD] [--gpu] [--bis STUFE]
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
-                                           [--farbe-frueh]
+                                           [--farbe-frueh] [--farbe-von-anfang zwei|voll]
                                            [--farb-achromat]
                                            [--synth-arg ARG]...
 
@@ -903,6 +903,8 @@ def main():
                     help='Farbregel (synth --color-rule, M11-T5c); setzt --aktuell')
     ap.add_argument('--farb-achromat', action='store_true',
                     help='Operator B mit Achromat-Start (synth --split-achromat); setzt --farbregel')
+    ap.add_argument('--farbe-von-anfang', choices=['zwei', 'voll'], default=None,
+                    help='Spektrum ab dem Start (ohne eigene Farbstufen); mit --farbregel')
     ap.add_argument('--farbe-frueh', action='store_true',
                     help='Farbstufen vor der Aperturstufe 3 (bei NA 0,5), dann polychromatisch weiter')
     ap.add_argument('--farb-stetig', action='store_true',
@@ -945,6 +947,12 @@ def main():
     # Stufe 1: monochromatisch, Apertur 0,3 -> na_feld bei 10 % Feld (Petzval aktiv)
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    if args.farbe_von_anfang:
+        # polychromatisch ab dem Start (Zhang: Farbe früh im Entwurf); die Gläser werden so nicht
+        # erst monochromatisch gewählt (Lauf v9: F_B ≈ 0,0017 + 48·w² über der Spektrumbreite w,
+        # also mehrere Wellen Farbe am Ende der monochromatischen Stufen)
+        wl, w = SPECTRA[args.farbe_von_anfang]
+        set_spectrum(s, wl, w)
     start = r.path('p0_start.json')
     save(s, start)
     na1 = repr(args.na_feld)
@@ -987,7 +995,7 @@ def main():
         return cur
 
     p3_in = p2
-    if args.farbe_frueh:
+    if args.farbe_frueh and not args.farbe_von_anfang:
         # Farbe vor der Aperturstufe (bei NA und Feld des Endes von Stufe 2): Bei NA 0,605 hat
         # das monochromatische System keinen Abstand zur Schwelle mehr (Lauf v8: F_B 0,0051 schon
         # bei Spektrumbreite 1/1024), bei NA 0,5 schon
@@ -999,7 +1007,7 @@ def main():
     stage('p3', {'result': p3, 'rounds': r3})
     pt = last_point(r, r3)
     na = pt['aperture']
-    cur = p3 if args.farbe_frueh else color_stages(p3, na)
+    cur = p3 if (args.farbe_frueh or args.farbe_von_anfang) else color_stages(p3, na)
 
     # Stufe 6: Feinoptimierung ohne Geisterplatten, 405/700 nm schwach dazu, am erreichten Punkt
     s = load(cur)
