@@ -148,6 +148,14 @@ python -m mikroptim.design replay sitzung sitzung_neu                           
  "actions": [{"action": "free_gaps"}, {"action": "optimize", "cycles": 50}]}
 ```
 
+Strukturelle Aktionen (M10-T4, `mikroptim/design/operators.py`; Geometrie über `mikroptim insert`, Verfahren in [docs/optimierung.md, Abschnitt 13](../docs/optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4)): `place_ghost_dictionary` (Geisterplatten mit Koeffizienten 0, Merit unverändert), `insert_module` mit den Modulen aus `mikroptim/design/modules.py` (aplanatische Schale `front.shell_ca`, Null-Meniskus, Null-Kittglied `middle.merte_doublet`, Gauss-Paar `rear.gauss_pair`; mit `thickness` Dicken-Homotopie), `remove_element` (Rückbau-Homotopie in `stages` Stufen mit `cycles` LM-Zyklen, Null-Elemente sofort), `replace_glass` (Name oder Filter `partner_of_element`), `replace_group` und `start_from_skeleton` (neuer Wurzelkandidat aus einer Brechkraftverteilung), z. B.:
+
+```json
+{"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "Apertur der Frontgruppe erhöhen",
+ "actions": [{"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
+              "position": 1.0, "thickness": 1.5, "glasses": [{"name": "N-BK7"}]}]}
+```
+
 Entscheider (M10-T6b): `--decider rule` (feste Vergleichsstrategie), `--decider ollama --model <modell>` (lokales Sprachmodell über Ollama auf `--host`, Standard `http://localhost:11434`; `--think`/`--no-think` für Thinking-Modelle), `--confirm` (Mensch bestätigt jeden Vorschlag), `--fallback rule|human` bei ungültigen Modellantworten:
 
 ```bash

@@ -719,10 +719,17 @@
           "minimum": 2,
           "maximum": 12
         },
+        "weight": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000.0,
+          "description": "eigenes Strafgewicht μ der neuen Platten (M10-T4); fehlt: vorhandene Strafe"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
-      }
+      },
+      "description": "Geisterplatten mit Koeffizienten 0 (eine pro Glas) einfügen, Merit unverändert (M10-T4); glasses fehlt: Katalogglas der vorhandenen Platten"
     },
     "scale_ghost_penalty": {
       "type": "object",
@@ -862,7 +869,7 @@
         },
         "module": {
           "type": "string",
-          "description": "ID aus modules.json, z. B. front.shell_ca"
+          "description": "Modul-ID, z. B. front.shell_ca oder generic.null_meniscus (mikroptim/design/modules.py, Wissensbasis M10-T5)"
         },
         "after_surface": {
           "$ref": "#/$defs/surface"
@@ -880,6 +887,24 @@
         },
         "group": {
           "$ref": "#/$defs/group"
+        },
+        "thickness": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50,
+          "description": "Schale: Mittendicke; Vorlagen mit Dicke 0: Ziel der Dicken-Homotopie (M10-T4)"
+        },
+        "stages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Stufen der Homotopie (M10-T4, Standard 4)"
+        },
+        "cycles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "LM-Zyklen der Nachoptimierung pro Stufe (M10-T4)"
         },
         "reason": {
           "$ref": "#/$defs/reason"
@@ -900,10 +925,23 @@
         "element": {
           "$ref": "#/$defs/element"
         },
+        "stages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Stufen der Homotopie (M10-T4, Standard 4)"
+        },
+        "cycles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "LM-Zyklen der Nachoptimierung pro Stufe (M10-T4)"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
-      }
+      },
+      "description": "Element (bei Kittgliedern der Block) über eine Rückbau-Homotopie entfernen; ein Null-Element sofort (M10-T4)"
     },
     "replace_glass": {
       "type": "object",
@@ -923,10 +961,17 @@
         "glass": {
           "$ref": "#/$defs/glass_choice"
         },
+        "cycles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "LM-Zyklen der Nachoptimierung pro Stufe (M10-T4)"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
-      }
+      },
+      "description": "Glas tauschen; mit Filter (partner_of_element) mehrere Kandidaten, nachoptimiert (M10-T4)"
     },
     "replace_group": {
       "type": "object",
@@ -950,6 +995,26 @@
           "items": {
             "type": "string"
           }
+        },
+        "glasses": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/glass_choice"
+          },
+          "description": "Gläser der Module (Standard: Glas des ersten entfernten Elements)"
+        },
+        "stages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Stufen der Homotopie (M10-T4, Standard 4)"
+        },
+        "cycles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "LM-Zyklen der Nachoptimierung pro Stufe (M10-T4)"
         },
         "reason": {
           "$ref": "#/$defs/reason"
@@ -990,7 +1055,8 @@
           "maxItems": 4,
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Module von der Objektseite aus; ebenso middle und rear"
         },
         "middle": {
           "type": "array",
@@ -1012,6 +1078,14 @@
           "type": "number",
           "minimum": 0.1,
           "maximum": 0.9
+        },
+        "glasses": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/glass_choice"
+          },
+          "description": "Glas der Linsen und Partner der Kittglieder (M10-T4)"
         },
         "reason": {
           "$ref": "#/$defs/reason"

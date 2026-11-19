@@ -182,6 +182,7 @@ find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abh√
 add_library(mikroptim_optim STATIC
     src/optim/adjoint_jacobian.cpp
     src/optim/augmented_lagrangian.cpp
+    src/optim/design_operators.cpp
     src/optim/fd_jacobian.cpp
     src/optim/ghost_diagnosis.cpp
     src/optim/ghost_penalty.cpp

@@ -77,7 +77,7 @@ def test_split_lens_and_errors(session):
     assert session.state(1)["elements"] == 5
     bad = session.apply(0, response({"action": "split_lens", "element": 9}), decider={})
     assert bad["results"][0]["code"] == "precondition"
-    todo = session.apply(0, response({"action": "remove_element", "element": 0}), decider={})
+    todo = session.apply(0, response({"action": "freeze"}), decider={})
     assert todo["results"][0]["code"] == "not_implemented"
     fmt = session.apply(0, {"actions": []}, decider={})
     assert fmt["results"][0]["code"] == "format"

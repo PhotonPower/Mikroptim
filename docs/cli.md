@@ -10,7 +10,10 @@ mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex]
 mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--max-combinations N]
                [--max-iterations N] [--rings N] [--spokes M] [--gpu [--device N]]
 mikroptim insert <system.json> -o <neu.json> (--meniscus I,POS,C0,GLAS [--thickness T] |
-                 --split I,C_S[,ANTEIL] [--free-glass]) [--no-variables]
+                 --split I,C_S[,ANTEIL] [--free-glass] | --remove I | --collapse I,F |
+                 --replace-glass I,GLAS | --ghost-dictionary I,DIST --ghost-glass GLAS ... |
+                 --aplanatic-shell I,POS,T,GLAS | --null-doublet I,POS,C0,G1,G2)
+                 [--no-variables] [--json]
 mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log <protokoll.json>]
                 [--quiet] [--max-elements N] [--max-iterations N] [--gpu [--device N]] ...
 mikroptim tolerance <system.json> [--samples N] [--seed n] [--compensator wd|none] [--threshold S]
@@ -33,7 +36,7 @@ mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--
 | `mikroptim optimize …` | Variablen eines Systems optimieren, Ergebnis als neue Systemdatei (M3-T5; [Abschnitt `optimize`](#mikroptim-optimize)) |
 | `mikroptim eval …` | Auswertung auf dem dichten Pupillenraster (Modus EVAL, M8-T1; Abschnitt [`mikroptim eval`](#mikroptim-eval)) |
 | `mikroptim snap …` | Glasvariablen auf Katalog-Gläser einrasten, übrige Variablen reoptimieren (M6-T5; Abschnitt [`mikroptim snap`](#mikroptim-snap)) |
-| `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
+| `mikroptim insert …` | Einfüge-Operator A oder B oder einen Operator der Entwurfssteuerung (M10-T4) anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
 | `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
 | `mikroptim tolerance …` | Monte-Carlo-Tolerierung mit dem Toleranzsatz der Systemdatei: Verteilung von RMS-Wellenfront und Strehl, Kompensator Arbeitsabstand (M8-T4; Abschnitt [`mikroptim tolerance`](#mikroptim-tolerance)) |
 | `mikroptim sensitivity …` | Empfindlichkeit der Bildgüte für jede einzelne Toleranz (direkt bei ±δ und aus der Jacobi-Matrix) und einfache Herstellbarkeitsprüfungen (M10-T3; Abschnitt [`mikroptim sensitivity`](#mikroptim-sensitivity)) |
@@ -1115,7 +1118,7 @@ Zahlen verlustfrei, nicht endliche Werte `null` (wie `mikroptim.optimize/1`).
 
 ## `mikroptim insert`
 
-Wendet einen Einfüge-Operator der Systemsynthese auf eine Systemdatei an und schreibt das neue System ([optimierung.md, Abschnitt 6](optimierung.md#6-einfüge-operatoren)). Gibt die Merit vorher und nachher aus (CPU, Pupillenquadratur 10 × 8; Strahl- und Strafresiduen, paraxiale Nebenbedingungen und L1-Strafe der Geisterplatten, ohne Glas-Hülle) sowie die paraxiale Brennweite bei λ_ref; beide bleiben bis auf Rundung gleich.
+Wendet einen Einfüge-Operator der Systemsynthese ([optimierung.md, Abschnitt 6](optimierung.md#6-einfüge-operatoren)) oder einen Operator der Entwurfssteuerung (M10-T4, [Abschnitt 13](optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4)) auf eine Systemdatei an und schreibt das neue System. Gibt die Merit vorher und nachher aus (CPU, Pupillenquadratur 10 × 8; Strahl- und Strafresiduen, paraxiale Nebenbedingungen und L1-Strafe der Geisterplatten, ohne Glas-Hülle) sowie die paraxiale Brennweite bei λ_ref; beide bleiben bis auf Rundung gleich.
 
 | Option | Bedeutung |
 |---|---|
@@ -1123,10 +1126,19 @@ Wendet einen Einfüge-Operator der Systemsynthese auf eine Systemdatei an und sc
 | `--thickness T` | Mittendicke des Meniskus [mm] (nur mit `--meniscus`; Standard 0, dann ändert sich die Merit nicht) |
 | `--split I,C_S[,ANTEIL]` | Operator B (`split_lens`): Linse aus Fläche I und I + 1 an einer Kittfläche der Krümmung C_S teilen, ANTEIL der Mittendicke vor der Kittfläche (Standard 0,5) |
 | `--free-glass` | nur mit `--split`: Glas des hinteren Teils als Variable `glass` freigeben (`free_glass`; `mikroptim optimize` wandelt es beim Laden in Buchdahl um) |
+| `--remove I` | Glasblock (Linse oder Kittglied) ab Fläche I entfernen, Spalte vereinigen (`remove_element`, M10-T4; Merit gleich, wenn der Block ein Null-Element ist) |
+| `--collapse I,ANTEIL` | Stufe der Rückbau-Homotopie (`collapse_element`): Glasdicken und Krümmungsunterschiede des Blocks ab I um ANTEIL (0 < ANTEIL ≤ 1) des verbleibenden Wegs gegen 0, seine Variablen werden festgesetzt |
+| `--replace-glass I,GLAS` | Glas nach Fläche I tauschen, eine Glasvariable dort festsetzen (`replace_glass`) |
+| `--ghost-dictionary I,DIST` | Geisterplatten mit Koeffizienten 0 im Luftspalt nach I im Abstand DIST (`place_ghost_dictionary`, Merit unverändert); dazu `--ghost-glass GLAS` (mehrfach, mindestens einmal), `--ghost-order K` (Standard 6), `--ghost-weight MU` (eigener Eintrag `ghost_penalty`), `--norm-radius R` |
+| `--aplanatic-shell I,POS,T,GLAS` | aplanatisch-konzentrische Schale der Dicke T im Luftspalt nach I (auch im Arbeitsabstand) aus dem realen Randstrahl (`insert_aplanatic_shell`); `--no-refocus`: Arbeitsabstand nicht nachfokussieren |
+| `--null-doublet I,POS,C0,GLAS1,GLAS2` | Kittglied ohne Wirkung: drei Flächen der Krümmung C0, Dicke 0 (`insert_null_doublet`, Merit unverändert) |
 | `--no-variables` | keine Krümmungsvariablen für die neuen Flächen (Standard: eigener Eintrag `curvature` ohne Schranken) |
+| `--json` | Bericht als JSON (Format `mikroptim.insert/1`, unten) |
 | `-o DATEI`, `--output DATEI` | neues System (Pflicht); Glaskataloge wie bei `optimize` relativ zum Verzeichnis der Ergebnisdatei; die Eingabedatei wird nie überschrieben (Exit-Code 2) |
 
-Genau einer von `--meniscus` und `--split` ist nötig. Exit-Codes wie bei `trace`: 0 Ergebnis geschrieben, 1 Datei- oder Formatfehler (z. B. Luftspalt ohne Luft, Glas unbekannt, Teilstück unter der Schranke einer Dickenvariable), 2 ungültige Kommandozeile.
+Genau ein Operator (`--meniscus`, `--split`, `--remove`, `--collapse`, `--replace-glass`, `--ghost-dictionary`, `--aplanatic-shell`, `--null-doublet`) ist nötig; die Operatoren der Entwurfssteuerung (M10-T4) beschreibt [optimierung.md, Abschnitt 13](optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4), `mikroptim.design` ruft sie auf.
+
+**JSON** (`--json`, `mikroptim.insert/1`): `operator` (`meniscus`, `split`, `remove`, `collapse`, `replace_glass`, `ghost_dictionary`, `aplanatic_shell`, `null_doublet`), `input`, `output`, `surfaces_before`/`surfaces_after`, `first_new_surface` (oder `null`), `new_surfaces`, `ghost_plates_before`/`ghost_plates_after`, `merit_before`/`merit_after`, `relative_change`, `focal_length_before`/`focal_length_after` und `details` je Operator: `remove` mit `removed_first`, `removed_surfaces`, `merged_gap`, `null_element`; `collapse` mit `first`, `last`, `fraction`, `null_element` (danach); `replace_glass` mit `surface`; `ghost_dictionary` mit `new_plates`, `plate_new_of_old`; `aplanatic_shell` mit `n_glass`, `intercept` (Q), `image_intercept` (Q′), `c_aplanatic`, `c_concentric`, `working_distance`. Exit-Codes wie bei `trace`: 0 Ergebnis geschrieben, 1 Datei- oder Formatfehler (z. B. Luftspalt ohne Luft, Glas unbekannt, Teilstück unter der Schranke einer Dickenvariable), 2 ungültige Kommandozeile.
 
 Beispiel (Operator B auf die frei erfundene Einzellinse, c_s für ein dünnes Achromat mit SYN-30):
 
@@ -1142,7 +1154,7 @@ mikroptim insert: Operator B (Kittglied)
 Ergebnis geschrieben: kitt.json
 ```
 
-**Tests:** `tests/test_cli_insert.cpp` (Ergebnisdatei gleich der Bibliothek, Merit unverändert, Kataloge aus einem anderen Verzeichnis auffindbar, konstantes Glas und Dicke, Fehlerfälle). Implementierung: `src/cli/insert_command.cpp`.
+**Tests:** `tests/test_cli_insert.cpp` (Ergebnisdatei gleich der Bibliothek, Merit unverändert, Kataloge aus einem anderen Verzeichnis auffindbar, konstantes Glas und Dicke, Fehlerfälle; `CliInsert.DesignOperatorsMatchLibrary`: Operatoren der Entwurfssteuerung gleich der Bibliothek, JSON-Bericht, Rückbau des Null-Kittglieds ergibt das Ausgangssystem). Implementierung: `src/cli/insert_command.cpp`.
 
 ## `mikroptim synth`
 

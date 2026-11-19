@@ -8,12 +8,20 @@ die Dateien des Repositorys nicht mitbringt.
 
 from __future__ import annotations
 
+from .modules import MODULES
+
 _REASON = {"type": "string", "maxLength": 300}
 _SURFACE = {"type": "integer", "minimum": 0, "maximum": 63}
 _RANGE = {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}],
           "minItems": 2, "maxItems": 2}
 _GLASS = {"type": "object", "additionalProperties": False, "required": ["name"],
           "properties": {"name": {"type": "string"}}}
+_GROUP = {"enum": ["front", "middle", "rear"]}
+#: Module für insert_module und replace_group (ohne die Einzellinse des Gerüsts)
+MODULE_IDS = sorted(k for k, m in MODULES.items() if m["template"] != "lens")
+SKELETON_MODULE_IDS = sorted(MODULES)
+_STAGES = {"type": "integer", "minimum": 0, "maximum": 16}
+_CYCLES = {"type": "integer", "minimum": 0, "maximum": 2000}
 
 ACTION_DEFS = {
     "get_surface_table": {
@@ -93,6 +101,68 @@ ACTION_DEFS = {
                        "cement_curvature": {"oneOf": [{"enum": ["achromat", "mean"]},
                                                       {"type": "number"}]},
                        "free_part": {"enum": [0, 1]}, "target_glass": _GLASS, "reason": _REASON}},
+    # M10-T4: strukturelle Operatoren (operators.py)
+    "place_ghost_dictionary": {
+        "type": "object", "additionalProperties": False,
+        "required": ["action", "after_surface", "distance"],
+        "properties": {"action": {"const": "place_ghost_dictionary"}, "after_surface": _SURFACE,
+                       "distance": {"type": "number", "minimum": 0},
+                       "glasses": {"type": "array", "maxItems": 4, "items": {"type": "string"}},
+                       "max_order": {"type": "integer", "minimum": 2, "maximum": 12},
+                       "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1e6},
+                       "reason": _REASON}},
+    "insert_module": {
+        "type": "object", "additionalProperties": False,
+        "required": ["action", "module", "after_surface"],
+        "properties": {"action": {"const": "insert_module"},
+                       "module": {"enum": MODULE_IDS}, "after_surface": _SURFACE,
+                       "position": {"type": "number", "minimum": 0},
+                       "glasses": {"type": "array", "maxItems": 3, "items": _GLASS},
+                       "group": _GROUP,
+                       "thickness": {"type": "number", "exclusiveMinimum": 0, "maximum": 50},
+                       "stages": _STAGES, "cycles": _CYCLES, "reason": _REASON}},
+    "remove_element": {
+        "type": "object", "additionalProperties": False, "required": ["action", "element"],
+        "properties": {"action": {"const": "remove_element"},
+                       "element": {"type": "integer", "minimum": 0},
+                       "stages": _STAGES, "cycles": _CYCLES, "reason": _REASON}},
+    "replace_glass": {
+        "type": "object", "additionalProperties": False, "required": ["action", "element", "glass"],
+        "properties": {"action": {"const": "replace_glass"},
+                       "element": {"type": "integer", "minimum": 0},
+                       "glass": {"oneOf": [_GLASS, {
+                           "type": "object", "additionalProperties": False, "required": ["filter"],
+                           "properties": {"filter": {
+                               "type": "object", "additionalProperties": False,
+                               "required": ["partner_of_element"],
+                               "properties": {
+                                   "partner_of_element": {"type": "integer", "minimum": 0},
+                                   "max_results": {"type": "integer", "minimum": 1,
+                                                   "maximum": 8}}}}}]},
+                       "cycles": _CYCLES, "reason": _REASON}},
+    "replace_group": {
+        "type": "object", "additionalProperties": False, "required": ["action", "group", "modules"],
+        "properties": {"action": {"const": "replace_group"}, "group": _GROUP,
+                       "modules": {"type": "array", "minItems": 1, "maxItems": 4,
+                                   "items": {"enum": MODULE_IDS}},
+                       "glasses": {"type": "array", "maxItems": 3, "items": _GLASS},
+                       "stages": _STAGES, "cycles": _CYCLES, "reason": _REASON}},
+    "start_from_skeleton": {
+        "type": "object", "additionalProperties": False,
+        "required": ["action", "power_distribution", "front", "middle", "rear"],
+        "properties": {"action": {"const": "start_from_skeleton"},
+                       "power_distribution": {"enum": [
+                           "PPN", "PPN_strong_retrofocus", "PP(NP)", "P(PN)0", "P(P0)N",
+                           "(P0)PN", "P(P0P)N", "PNP"]},
+                       "front": {"type": "array", "minItems": 1, "maxItems": 4,
+                                 "items": {"enum": SKELETON_MODULE_IDS}},
+                       "middle": {"type": "array", "minItems": 1, "maxItems": 5,
+                                  "items": {"enum": SKELETON_MODULE_IDS}},
+                       "rear": {"type": "array", "minItems": 1, "maxItems": 3,
+                                "items": {"enum": SKELETON_MODULE_IDS}},
+                       "start_aperture": {"type": "number", "minimum": 0.1, "maximum": 0.9},
+                       "glasses": {"type": "array", "maxItems": 2, "items": _GLASS},
+                       "reason": _REASON}},
     "abandon": {
         "type": "object", "additionalProperties": False, "required": ["action", "reason"],
         "properties": {"action": {"const": "abandon"}, "reason": _REASON}},
