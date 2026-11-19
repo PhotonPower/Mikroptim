@@ -64,8 +64,9 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
-    double extrema_beta = 0.0; // M11-T1b
-    bool predictor = false;    // M11-T3
+    double extrema_beta = 0.0;            // M11-T1b
+    bool predictor = false;               // M11-T3
+    std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     // Augmented Lagrangian (M11-T2): Läufe K, Toleranz T, Faktor S auf die Gewichte (K = 0: aus)
     int al_rounds = 0;
     double al_tolerance = kDefaultShiftTolerance;
@@ -182,6 +183,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.split_start_target = true;
         } else if (arg == "--predictor") {
             a.predictor = true;
+        } else if (arg == "--sine-condition") {
+            a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-beta") {
             a.extrema_beta = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-stages") {
@@ -367,6 +370,8 @@ void print_synth_usage(std::ostream& out) {
            "                            (Standard 1), Abbruch bei max Wurzel(w)|dtheta| <= T\n"
            "                            (1e-6); theta nach jeder Optimierung fortgeschrieben\n"
            "                            (M11-T2; Standard aus; nicht mit --beam)\n"
+           "  --sine-condition W        Verletzung der Sinusbedingung (OSC) als Residuum mit\n"
+           "                            Gewicht W (Eintrag sine_condition setzen, M11-T4)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
            "bis 1\n"
            "                            mit adaptiver Schrittweite (M11-T5f)\n"
@@ -463,7 +468,10 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
 #endif
 
     try {
-        const LoadedSystem start = load_system(fs::path(a.file));
+        LoadedSystem start = load_system(fs::path(a.file));
+        if (a.sine_condition) {
+            apply_sine_condition_option(start.system, *a.sine_condition);
+        }
         for (const std::string& w : start.warnings) {
             err << "mikroptim synth: Warnung: " << w << '\n';
         }
@@ -624,6 +632,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                                                                      {"penalty_scale", a.al_scale}}
                                                               : Json(nullptr)},
                      {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
+                     {"sine_condition", a.sine_condition ? Json(*a.sine_condition) : Json(nullptr)},
                      {"spectrum_stages", a.spectrum_stages},
                      {"spectrum_continuous", a.spectrum_continuous},
                      {"split", Json{{"preselect", a.split_preselect},

@@ -112,6 +112,30 @@ TEST(CliSynth, ShortRunJsonLogAndResult) {
     EXPECT_EQ(l.system.surfaces.size(), 6U); // Meniskus eingefügt
 }
 
+// --sine-condition (M11-T4): Option im Protokoll, Eintrag in der Ergebnisdatei; ungültige Werte
+// sind Kommandozeilenfehler.
+TEST(CliSynth, SineConditionOption) {
+    EXPECT_EQ(synth({kStart, "--sine-condition"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--sine-condition", "-2"}).code, cli::kExitUsage);
+    SynthTempDir dir("sine");
+    const std::string result = dir.file("ergebnis.json");
+    const SynthCliResult r = synth({kStart, "--max-elements", "1", "--max-iterations", "5",
+                                    "--sine-condition", "25", "-o", result, "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_EQ(j["options"]["sine_condition"], 25.0);
+    const LoadedSystem l = load_system(result);
+    ASSERT_TRUE(l.system.constraints.has_value());
+    int found = 0;
+    for (const ConstraintSpec& c : l.system.constraints->items) {
+        if (c.type == ConstraintType::SineCondition) {
+            ++found;
+            EXPECT_EQ(c.weight, 25.0);
+        }
+    }
+    EXPECT_EQ(found, 1);
+}
+
 // Adjungierte Jacobi (M5-T3): derselbe Kurzlauf mit --jacobian adjoint endet wie mit FD
 // (Status, Einfügungen, Endpunkt der Homotopie); das Verfahren steht in den Optionen.
 TEST(CliSynth, AdjointJacobian) {

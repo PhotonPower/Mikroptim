@@ -2,8 +2,9 @@
 
 // Paraxiale Nebenbedingungen als Zusatzresiduen (M3-T3): Brennweite, Abgleichlänge,
 // Arbeitsabstand, Bildebene im paraxialen Fokus und Petzvalkrümmung (M4-T4), mit dem
-// Paraxialtrace aller Varianten eines Batches auf dem Host (parallel). Definitionen:
-// docs/optimierung.md, Abschnitte 2.2 und 2.3;
+// Paraxialtrace aller Varianten eines Batches auf dem Host (parallel); dazu die Verletzung der
+// Sinusbedingung (M11-T4), die zusätzlich je Zone einen realen meridionalen Strahl auf dem Host
+// verfolgt. Definitionen: docs/optimierung.md, Abschnitte 2.2, 2.3 und 2.7;
 // Schema der Datei: docs/dateiformat.md, „Nebenbedingungen“.
 
 #include "mikroptim/batch/system_batch.hpp"
@@ -36,6 +37,16 @@ ParaxialData batch_paraxial(const SystemBatchHost& batch, int v);
 // Variante, die eine wirft.
 std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int threads = 0);
 
+// Verletzung der Sinusbedingung (OSC, Conrady; conrady_osc in mikroptim/paraxial/
+// sine_condition.hpp) der Variante v in der Pupillenzone ρ (0 < ρ ≤ 1): realer meridionaler
+// Strahl parallel zur Achse in der Höhe ρ a (a = pupil_radius) durch die Tabellenflächen der
+// Variante bei λ_ref (Brechzahlen paraxial_index, Geisterplatten mit paraxial_ghost_index und
+// ihrem Dickenprofil, ohne Dezentrierung und Verkippung), `p` = batch_paraxial(batch, v).
+// Gleich AberrationReport::osc (ρ = 1) bzw. osc_zone (ρ = 1/√2) für eine Variante ohne
+// Geisterplatten. NaN, wenn der Strahl versagt (hart, auch TIR), die Achse nicht schneidet oder
+// das System afokal ist. Wirft std::out_of_range (v), std::invalid_argument (Punktquelle, ρ).
+double batch_sine_condition(const SystemBatchHost& batch, int v, const ParaxialData& p, double rho);
+
 // ---- Nebenbedingungen --------------------------------------------------------------------
 
 // Eine aufgelöste paraxiale Nebenbedingung. Residuum r = √w · q mit q nach Typ und Modus
@@ -45,8 +56,10 @@ std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int t
 //   ParfocalLength  q = offset + Σ_{j=reference_surface}^{S−1} t[v][j] − L_s
 //   ParaxialFocus   q = a (A + t[v][S−1] C / n'_L) (Randstrahlhöhe in der Bildebene, Soll 0)
 //   Petzval         q = |κ_P| − κ_max               (κ_P = −n'_L P mit Geisterplatten, 1/mm)
+//   SineCondition   q = OSC(ρ = zone)                (batch_sine_condition; 0, wenn NaN)
 // Modus Min: q ← min(q, 0) (aktiv nur unterhalb des Solls), Max: q ← max(q, 0). Petzval ist
-// nur mit Max definiert: r = √w · max(0, |κ_P| − κ_max), w in mm².
+// nur mit Max definiert: r = √w · max(0, |κ_P| − κ_max), w in mm². SineCondition nur als
+// Gleichung (Soll 0), w dimensionslos [Wellen²], ein Eintrag pro Zone.
 struct ParaxialConstraint {
     ConstraintType type = ConstraintType::FocalLength;
     ConstraintMode mode = ConstraintMode::Equal;
@@ -58,13 +71,15 @@ struct ParaxialConstraint {
     // Verschiebung θ ≥ 0 des Augmented Lagrangian (M11-T2, nur Modus min/max) in der Einheit
     // von q: Obergrenze √w · max(q + θ, 0), Untergrenze √w · min(q − θ, 0); 0 = reine Strafe.
     double shift = 0.0;
+    double zone = 0.0; // nur SineCondition: Pupillenzone ρ ∈ (0, 1]
 };
 
 struct ParaxialConstraints {
     std::vector<ParaxialConstraint> items;
 
     int size() const { return static_cast<int>(items.size()); }
-    // Braucht eine der Bedingungen den Paraxialtrace (FocalLength, ParaxialFocus, Petzval)?
+    // Braucht eine der Bedingungen den Paraxialtrace (FocalLength, ParaxialFocus, Petzval,
+    // SineCondition)?
     bool needs_trace() const;
 };
 
@@ -72,14 +87,16 @@ struct ParaxialConstraints {
 // `target` bzw. bei Petzval κ_max aus max_curvature (constraint_bound), Standardwerte fehlender
 // Felder (Petzval: Modus Max), Referenzfläche der Abgleichlänge von der Dateifläche auf die
 // Tabellenfläche abgebildet (make_surface_map), Verschiebung aus ConstraintSpec::shift (Länge 1,
-// sonst 0). Ohne Abschnitt leer.
+// sonst 0). Ein Eintrag sine_condition wird zu einer Bedingung pro Zone (zones_or_default, in
+// Dateireihenfolge, alle mit derselben Nummer `item`). Ohne Abschnitt leer.
 // Wirft FormatError wie check_constraints.
 ParaxialConstraints make_paraxial_constraints(const SystemDescription& system);
 
 // Prüft die Bedingungen gegen eine Batch-Topologie: Gewicht endlich und >= 0, Sollwert
-// endlich (bei FocalLength ≠ 0, bei Petzval ≥ 0), Modus erlaubt (FocalLength und ParaxialFocus
-// nur Equal, Petzval nur Max), Referenzfläche in [0, S) und keine Geisterplatte, ParaxialFocus
-// nur bei kollimierter Quelle, Verschiebung endlich und ≥ 0, bei einer Gleichung 0.
+// endlich (bei FocalLength ≠ 0, bei Petzval ≥ 0, bei SineCondition 0), Modus erlaubt
+// (FocalLength, ParaxialFocus und SineCondition nur Equal, Petzval nur Max), Referenzfläche in
+// [0, S) und keine Geisterplatte, ParaxialFocus und SineCondition nur bei kollimierter Quelle,
+// Zone der SineCondition in (0, 1], Verschiebung endlich und ≥ 0, bei einer Gleichung 0.
 // Wirft std::invalid_argument mit der Nummer der Bedingung.
 void check_paraxial_constraints(const ParaxialConstraints& constraints,
                                 const BatchTopology& topology);
@@ -94,9 +111,9 @@ double paraxial_deviation(const ParaxialConstraint& c, const SystemBatchHost& ba
 double paraxial_violation(const ParaxialConstraint& c, double q);
 
 // Residuum einer Bedingung für Variante v; `p` sind deren Paraxialdaten (batch_paraxial),
-// die nur FocalLength, ParaxialFocus und Petzval lesen. Prüft nichts außer dem Variantenindex.
-// Mit Verschiebung θ = c.shift ≠ 0 (nur einseitig) ist es √w · max(0, g + θ) mit dem Vorzeichen
-// des Modus (docs/optimierung.md, Abschnitt 2.6).
+// die nur FocalLength, ParaxialFocus, Petzval und SineCondition lesen. Prüft nichts außer dem
+// Variantenindex. Mit Verschiebung θ = c.shift ≠ 0 (nur einseitig) ist es √w · max(0, g + θ)
+// mit dem Vorzeichen des Modus (docs/optimierung.md, Abschnitt 2.6).
 double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
                          const ParaxialData& p);
 

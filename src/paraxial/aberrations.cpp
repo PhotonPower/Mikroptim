@@ -3,6 +3,7 @@
 #include "mikroptim/cpu/host_surface_table.hpp"
 #include "mikroptim/glass/index_table.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/paraxial/sine_condition.hpp"
 #include "mikroptim/trace/trace.hpp"
 
 #include <algorithm>
@@ -115,22 +116,9 @@ RealRayTerms real_ray_terms(const SystemDescription& sys, const GlassCatalog& ca
         out.full[s] = -2.0 * (qa - qb);
     }
     out.full[0] = 0.0;
-    // OSC (Conrady): (f_real / f) · (l′ − l′_P) / (L′ − l′_P) − 1, f_real = −h / sin U′
+    // OSC (Conrady) mit der bildseitigen Brennweite f′ = n′_L / φ (sine_condition.hpp)
     const ParaxialData pd = compute_paraxial(sys, catalog);
-    const Vec3<double>& p = rec->p[S - 1];
-    const Vec3<double>& d = rec->d[S - 1];
-    if (d.y != 0.0 && std::isfinite(pd.focal_length)) {
-        const double f_real = -rho * a / d.y;
-        const double L = p.z - p.y * d.z / d.y;
-        double factor = 1.0;
-        if (!pd.exit_pupil_at_infinity) {
-            factor =
-                (pd.back_focal_distance - pd.exit_pupil_position) / (L - pd.exit_pupil_position);
-        }
-        out.osc = f_real / pd.focal_length * factor - 1.0;
-    } else {
-        out.osc = std::numeric_limits<double>::quiet_NaN();
-    }
+    out.osc = conrady_osc(rho * a, rec->p[S - 1], rec->d[S - 1], pd, r.n[S - 1]);
     out.valid = true;
     return out;
 }

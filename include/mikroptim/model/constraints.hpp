@@ -14,6 +14,7 @@
 
 #include "mikroptim/model/variables.hpp"
 
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -44,6 +45,10 @@ enum class ConstraintType {
     MinEdgeThickness,   // Randdicke t − sag₁(h) + sag₂(h) ≥ thickness, h aus Halbdurchmessern
                         // oder Strahlhöhen (height) plus clearance
     MaxIncidenceAngle,  // größter Einfallswinkel ≤ angle [deg] (Extrema des Traces)
+    // Verletzung der Sinusbedingung (OSC, Conrady) aus realen meridionalen Zonenstrahlen des
+    // Achsbündels bei λ_ref (M11-T4): ein Residuum √w · OSC(ρ_k) pro Zone, Soll 0, nur
+    // Gleichung, nur kollimierte Quelle, höchstens ein Eintrag (docs/optimierung.md, 2.7)
+    SineCondition,
 };
 
 // Medium nach der Fläche, für das eine Dicken-Bedingung gilt (M4-T3): Glas (jedes Material
@@ -83,6 +88,9 @@ inline constexpr double kDefaultGlassHullWeight = 1e4;
 inline constexpr double kDefaultGlassHullMargin = 0.0;
 // Mechanische Bedingungen (M4-T3): Fassungszugabe zur Strahlhöhe bzw. zum Halbdurchmesser [mm]
 inline constexpr double kDefaultMechanicalClearance = 0.0;
+// Sinusbedingung (M11-T4): Pupillenzonen ρ_k (Anteil des Pupillenradius) ohne Angabe, wie im
+// Aberrationsbericht Zone 1/√2 und Rand.
+inline constexpr double kDefaultSineConditionZones[] = {0.70710678118654752440, 1.0};
 
 // Ein Eintrag von `constraints.items`, wie er in der Datei steht.
 struct ConstraintSpec {
@@ -132,6 +140,9 @@ struct ConstraintSpec {
     // Residuen (z. B. nach einem Einfügen), gelten alle als 0. Zustand des Optimierers, nicht
     // Teil des Dateiformats (wird weder gelesen noch geschrieben).
     std::vector<double> shift{};
+    // Nur SineCondition (M11-T4): Pupillenzonen ρ_k ∈ (0, 1], keine doppelt; leer = Standard
+    // (kDefaultSineConditionZones).
+    std::vector<double> zones{};
 
     friend bool operator==(const ConstraintSpec&, const ConstraintSpec&) = default;
 
@@ -159,6 +170,11 @@ struct ConstraintSpec {
     double smoothing_or_default() const { return smoothing.value_or(kDefaultGhostSmoothing); }
     double clearance_or_default() const { return clearance.value_or(kDefaultMechanicalClearance); }
     EdgeHeight height_or_default() const { return height.value_or(EdgeHeight::SemiDiameter); }
+    std::vector<double> zones_or_default() const {
+        return zones.empty() ? std::vector<double>(std::begin(kDefaultSineConditionZones),
+                                                   std::end(kDefaultSineConditionZones))
+                             : zones;
+    }
 };
 
 // Glättung der Max-Reduktionen über Strahlen (M11-T1, ADR-0013): β > 0 ersetzt das harte
@@ -181,7 +197,8 @@ struct Constraints {
 
 // Prüft `system.constraints` nach den Regeln aus docs/dateiformat.md (Sollwert in `target`
 // vorhanden, Modus und Felder zum Typ passend, Gewicht endlich und >= 0, Referenzfläche
-// existiert, max_curvature bei petzval vorhanden, endlich und >= 0, jeder Typ höchstens einmal
+// existiert, max_curvature bei petzval vorhanden, endlich und >= 0, sine_condition nur bei
+// kollimierter Quelle mit Zonen in (0, 1], jeder Typ höchstens einmal
 // außer ghost_penalty (dort jede Geisterplatte höchstens einmal) und den mechanischen Typen,
 // paraxial_focus nur bei kollimierter Quelle, glass_hull ohne Modus mit margin endlich und ≥ 0,
 // mechanische Typen mit Grenzen im Eintrag und gültiger Flächenauswahl). Wirft
@@ -207,8 +224,9 @@ std::optional<double> constraint_bound(const SystemDescription& system, const Co
 // FormatError wie check_constraints (ungültige oder leere Auswahl).
 std::vector<int> constraint_surfaces(const SystemDescription& system, const ConstraintSpec& spec);
 
-// Wahr für die paraxialen Typen (auch Petzval), falsch für GhostPenalty, GlassHull und die
-// mechanischen.
+// Wahr für die paraxialen Typen (auch Petzval) und die Sinusbedingung (Paraxialdaten plus ein
+// realer Zonenstrahl je Zone, ausgewertet mit den paraxialen Residuen), falsch für GhostPenalty,
+// GlassHull und die mechanischen.
 bool is_paraxial(ConstraintType type);
 // Wahr für die mechanischen Typen (M4-T3).
 bool is_mechanical(ConstraintType type);
@@ -219,8 +237,8 @@ bool supports_shift(const ConstraintSpec& spec);
 
 // Namen für Meldungen und Dateiformat: "focal_length", "parfocal_length", "working_distance",
 // "paraxial_focus", "petzval", "ghost_penalty", "glass_hull", "max_semi_diameter",
-// "min_center_thickness", "max_center_thickness", "min_edge_thickness", "max_incidence_angle"
-// bzw. "equal", "min", "max", bzw. "glass", "air" bzw. "semi_diameter", "rays".
+// "min_center_thickness", "max_center_thickness", "min_edge_thickness", "max_incidence_angle",
+// "sine_condition" bzw. "equal", "min", "max", bzw. "glass", "air" bzw. "semi_diameter", "rays".
 std::string_view to_string(ConstraintType type);
 std::string_view to_string(ConstraintMode mode);
 std::string_view to_string(ConstraintMedium medium);

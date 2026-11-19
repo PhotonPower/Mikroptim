@@ -12,6 +12,7 @@ Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
                                            [--farbe-frueh] [--farbe-von-anfang zwei|voll]
                                            [--farb-achromat]
+                                           [--osc-versuch [--osc-gewicht W]]
                                            [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
@@ -845,6 +846,100 @@ def aperture_branch(args):
     return 0
 
 
+def osc_weight_for_field(fraction, na=0.95, wavelength_nm=546.07, zones=2):
+    """Gewicht des Residuums sine_condition, bei dem √w·OSC in allen Zonen zusammen so viel kostet
+    wie die lineare Koma beim Feldanteil `fraction` (docs/optimierung.md, Abschnitt 2.7):
+    W131 = OSC · NA · h / λ (h Bildhöhe), RMS der Koma ohne Kippung W131/√72, also
+    w = (NA h / λ)² / (72 · Zonen)."""
+    h = FOCAL * math.tan(math.radians(fraction * FIELD_DEG))
+    return (na * h / (wavelength_nm * 1e-6)) ** 2 / (72.0 * zones)
+
+
+def osc_evaluate(r, name, src):
+    """Bewertung bei 0, 7 und 10 % Feld (Winkel der Feldstufe des Hauptlaufs; Referenz
+    Austrittspupille) und OSC in Zone und Rand aus `optimize --max-iterations 0
+    --sine-condition 0` (Batch, mit Geisterplatten)."""
+    s = load(src)
+    set_field(s, [a * 0.1 for a in FIELD_ANGLES], FIELD_WEIGHTS)
+    ev_in = r.path(name + '_feld_in.json')
+    save(s, ev_in)
+    ev = evaluate(r, name, ev_in)
+    rms = []
+    for t in load(ev['pupille'])['tuples']:
+        lam = t['wavelength_nm'] * 1e-6
+        rms.append({'field_deg': t['field_angle_deg'],
+                    'rms_waves': t['rms_opd_mm'] / lam if t['rms_opd_mm'] is not None else None,
+                    'rms_without_tilt_waves': t['rms_opd_tilt_waves'],
+                    'strehl_marechal': t['strehl_marechal'], 'failed_rays': t['failed_rays'],
+                    'distortion_percent': t['distortion_chief_percent']})
+    o = subprocess.run([r.exe, 'optimize', src, '--max-iterations', '0', '--sine-condition', '0',
+                        '--json', '-q', '--rings', '16'], capture_output=True, text=True,
+                       encoding='utf-8', cwd=ROOT)
+    osc = {}
+    if o.returncode == 0:
+        for c in json.loads(o.stdout)['constraints']:
+            if c['type'] == 'sine_condition':
+                osc[repr(c['zone'])] = c['value_start']
+    return {'eval': ev, 'rms': rms, 'osc': osc}
+
+
+def osc_branch(args):
+    """M11-T4: Versuch „Apertur zuerst auf der Achse“ (Befund F4) mit und ohne Residuum der
+    Sinusbedingung. NA 0,3 -> 0,95 nur auf der Achse (546 nm, Nebenbedingungen des Startsystems;
+    mit --osc-strahlsuche Strahlsuche B = 2 mit 2 Varianten wie der Vergleichszweig). Bewertet
+    bei 0, 7 und 10 % Feld: der Endpunkt der Synthese (mit Geisterplatten) und das System nach
+    Entfernen der Geisterplatten und Hilfsebenen und Nachoptimierung auf der Achse (2000
+    Zyklen, Residuum wie in der Synthese). Gewicht 0: ohne Residuum."""
+    w = args.osc_gewicht
+    tag = ('mit' if w > 0 else 'ohne') + ('_strahlsuche' if args.osc_strahlsuche else '')
+    out = os.path.join(os.path.abspath(args.out), tag)
+    r = Runner(os.path.abspath(args.exe), out, gpu=args.gpu, synth_options=synth_options(args))
+    rings = ['--rings', '16']
+    relax = ['--max-iterations', '1000', '-q'] + rings
+    s = load(args.start)
+    set_field(s, [0.0], [1.0])
+    # Gegen die Falle F12 (Fokus im Scheitel der Hilfsebene vor dem Objekt, Merit klein, reales
+    # System defokussiert): Bildebene im paraxialen Fokus, schwach (0,1 mm Randstrahlhöhe kostet
+    # eine Welle², die Falle mit 2,7 mm Defokus rund 700 Wellen²; die Fokuslage für den Ausgleich
+    # der Restsphärik, einige µm, bleibt praktisch frei)
+    set_constraint(s, {'type': 'paraxial_focus', 'weight': 100.0,
+                       'comment': 'M11-T4-Versuch: gegen F12 (Fokus in der Hilfsebene)'})
+    if w > 0:
+        set_constraint(s, {'type': 'sine_condition', 'weight': w,
+                           'comment': 'M11-T4: OSC in Zone 1/√2 und am Rand, Gewicht wie die '
+                                      'Koma bei 10 % Feld'})
+    start = r.path('o0_start.json')
+    save(s, start)
+    t0 = time.time()
+    beam = ['--beam', '2', '--alternatives', '2'] if args.osc_strahlsuche else []
+    o1, ro = synth_loop(r, 'o1', start,
+                        ['--target-na', '0.95', '--curvature-bound', '1.2', '--max-steps', '3000',
+                         '--max-iterations', '500', '--max-elements', '14'] + beam + rings,
+                        relax, lambda p: p['aperture'], 0.95, max_rounds=12, forced=2)
+    pt = last_point(r, ro)
+    endpoint = osc_evaluate(r, 'o1e', o1)
+    s = load(o1)
+    strip_ghost_plates(s)
+    remove_dummy_planes(s)
+    buchdahl_to_catalog(s)
+    add_gap_variables(s)
+    prep = r.path('o2_in.json')
+    save(s, prep)
+    o2 = r.optimize('o2', prep, ['--max-iterations', '2000', '-q'] + rings)
+    polished = osc_evaluate(r, 'o3', o2)
+    summary = {'start': args.start, 'osc_weight': w, 'beam': bool(beam), 'rounds': ro,
+               'point': pt, 'synth_result': o1, 'elements_synth': glass_elements(load(o1)),
+               'endpoint': endpoint, 'final': o2, 'elements': glass_elements(load(o2)),
+               'polished': polished, 'times': r.times, 'seconds_total': time.time() - t0}
+    with open(r.path('m11t4_osc.json'), 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=1, ensure_ascii=False)
+    for key, e in (('Endpunkt', endpoint), ('nachoptimiert', polished)):
+        print(f"{key}: NA {pt['aperture']}, RMS "
+              + ', '.join(f"{x['rms_waves']:.4f}" for x in e['rms'] if x['rms_waves'] is not None)
+              + f", OSC {e['osc']}")
+    return 0
+
+
 def archive(out_dir):
     """Ausgabeverzeichnis für das Repository verkleinern: behalten werden die Zusammenfassungen,
     die Protokolle der synth-Läufe (Text und JSON), die Ergebnisdateien jeder Stufe, die Texte
@@ -923,9 +1018,24 @@ def main():
     ap.add_argument('--apertur-zweig', action='store_true',
                     help='nur der Vergleichszweig „Apertur zuerst“: NA 0,3 -> 0,95 bei 10 %% Feld '
                          'mit Strahlsuche (B = 2, 2 Varianten), Bewertung bei 10 und 100 %% Feld')
+    ap.add_argument('--osc-versuch', action='store_true',
+                    help='M11-T4: Apertur zuerst nur auf der Achse (NA 0,3 -> 0,95), Bewertung bei '
+                         '0/7/10 %% Feld; mit --osc-gewicht W > 0 mit Residuum sine_condition, '
+                         'Ausgabe in OUT/mit bzw. OUT/ohne')
+    ap.add_argument('--osc-strahlsuche', action='store_true',
+                    help='OSC-Versuch mit Strahlsuche (synth --beam 2 --alternatives 2)')
+    ap.add_argument('--osc-gewicht', type=float, default=None,
+                    help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
+                         'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')
     args = ap.parse_args()
     if args.apertur_zweig:
         return aperture_branch(args)
+    if args.osc_versuch:
+        if args.osc_gewicht is None:
+            args.osc_gewicht = osc_weight_for_field(0.1)
+        if os.path.abspath(args.out) == os.path.join(ROOT, 'docs', 'ergebnisse', 'm6-t6'):
+            args.out = os.path.join(ROOT, 'docs', 'ergebnisse', 'm11-t4')
+        return osc_branch(args)
     r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu,
                synth_options=synth_options(args))
     rings = ['--rings', '16']

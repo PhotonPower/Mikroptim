@@ -435,6 +435,13 @@ inline constexpr double kSeidelChromaticFirstOrder = 1e-2;
 inline constexpr double kFullOrderSmallAperture = 1e-3;
 // OSC gegen −S_II/(2H) bei a = 0,02 a_Datei, relativ (Rest ∝ NA²).
 inline constexpr double kOscThirdOrder = 1e-2;
+// M11-T4 Sinusbedingung: OSC zur Blende konzentrischer Systeme (analytisch 0 in jeder Zone),
+// absolut. Rundung der Schnittweite L′ = z − y d_z/d_y und der Differenzen L′ − l′_P, l′ − l′_P
+// (Größenordnung 10 mm) relativ zu ihrem Wert: einige ε (gemessen ≤ 4,5·10⁻¹⁶).
+inline constexpr double kSineConditionExact = 1e-14;
+// OSC aus dem Batch (Tabellenflächen, paraxial_index) gegen den Aberrationsbericht
+// (Dateiflächen, material_index), relativ: gleiche Formel, Brechzahlen auf getrennten Wegen.
+inline constexpr double kSineConditionConsistency = 1e-12;
 
 // M11-T1a: Log-Sum-Exp-Akkumulator gegen die direkte Formel in long double, relativ zu
 // (1 + |Wert|) (Rundung von exp/log und der Fortschreibung).

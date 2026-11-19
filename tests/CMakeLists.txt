@@ -68,6 +68,7 @@ add_executable(mikroptim_tests
     test_raytatouille.cpp
     test_pupil_quadrature.cpp
     test_sensitivity.cpp
+    test_sine_condition.cpp
     test_soft_failure.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
