@@ -55,7 +55,7 @@ void print_usage() {
         "  tolerance   Monte-Carlo-Tolerierung (Hilfe: mikroptim tolerance --help)\n"
         "  sensitivity Empfindlichkeiten und Herstellbarkeit (Hilfe: mikroptim sensitivity "
         "--help)\n"
-        "  convert   Raytatouille (*.rtt.json) <-> mikroptim.system/1 (Hilfe: mikroptim convert\n"
+        "  convert     Raytatouille (*.rtt.json) <-> mikroptim.system/1 (Hilfe: mikroptim convert\n"
         "              --help)");
 }
 
