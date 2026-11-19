@@ -8,9 +8,11 @@
 // von dort stammen nur die veröffentlichten Zahlenwerte für den Querabgleich.
 
 #include "cli/convert_command.hpp"
+#include "mikroptim/glass/air_index.hpp"
 #include "mikroptim/glass/catalog.hpp"
 #include "mikroptim/io/raytatouille.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "temp_paths.hpp"
 #include "tolerances.hpp"
@@ -21,10 +23,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -161,6 +165,13 @@ bool has_warning(const std::vector<std::string>& w, const std::string& text) {
                        [&](const std::string& s) { return s.find(text) != std::string::npos; });
 }
 
+// Zahl für RecordProperty (wissenschaftlich, 3 Stellen).
+std::string sci(double v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.3e", v);
+    return buf;
+}
+
 std::string issues_text(const std::vector<mko::RttIssue>& issues) {
     std::string s;
     for (const auto& i : issues) {
@@ -259,7 +270,10 @@ TEST(RttRoundtrip, RttToMikroptimToRttIsIdentical) {
         std::vector<std::string> w;
         const mko::SystemDescription s = import(original, basis_import(), &w);
         EXPECT_TRUE(w.empty()) << w.front();
-        const std::string text = mko::system_to_rtt_json(s, basis_export(), &w);
+        // Umgebung der Ausgabe wie die der Eingabe (Standard: Luft)
+        mko::RttExportOptions eo = basis_export();
+        eo.environment.vacuum = original.contains("environment");
+        const std::string text = mko::system_to_rtt_json(s, eo, &w);
         EXPECT_TRUE(w.empty()) << w.front();
         EXPECT_EQ(json::parse(text), original) << text;
         // und das Mikroptim-Modell nach einem zweiten Durchgang ebenfalls gleich
@@ -349,34 +363,188 @@ TEST(RttImport, CrossCheckWithPublishedRaytatouilleValues) {
       "paths": [{"name": "main", "events": "auto"}]
     })";
     std::vector<std::string> w;
-    mko::SystemDescription s = mko::system_from_rtt_json(example1, {}, &w);
-    EXPECT_TRUE(has_warning(w, "CONST")); // Umgebung Luft, CONST relativ übernommen
+    const mko::SystemDescription s = mko::system_from_rtt_json(example1, {}, &w);
+    EXPECT_TRUE(has_warning(w, "Dispersion der Luft")); // CONST bei drei Wellenlängen
     ASSERT_EQ(s.surfaces.size(), 3u);
     EXPECT_EQ(s.surfaces[0].thickness, 5.0);
     EXPECT_EQ(s.surfaces[1].thickness, 4.0);
     EXPECT_EQ(s.surfaces[2].thickness, 106.442 - 9.0);
     EXPECT_EQ(s.surfaces[0].semi_diameter, 10.0);
-    EXPECT_EQ(s.spectrum.reference_nm, 587.6);
+    // Umrechnung (Entscheidung Maintainer 2026-11-19): λ = λ_vac/n_Luft, n_rel = n/n_Luft(λ_ref)
+    const double n_air = mko::ciddor_air_index(0.5876, 20.0, 1.0);
+    EXPECT_EQ(s.spectrum.reference_nm, 0.5876 * 1000.0 / n_air);
+    EXPECT_EQ(s.surfaces[1].material.n, 1.5168 / n_air);
 
-    // wie übernommen (relativ zu Luft): Linsenmacherformel f = R/(n − 1)
-    const mko::ParaxialData direct = mko::compute_paraxial(s, mko::GlassCatalog{});
-    EXPECT_NEAR(direct.focal_length, 51.68 / 0.5168, mko::test::kParaxialRelative * 100.0);
-
-    const double n_air = 1.5168 - 51.68 / 100.0527;
-    s.surfaces[1].material.n = 1.5168 / n_air;
+    // Raytatouille: EFL = 1/Φ absolut = EFL_rel/n_Luft; Bildfläche im paraxialen Fokus
     const mko::ParaxialData p = mko::compute_paraxial(s, mko::GlassCatalog{});
+    EXPECT_NEAR(p.focal_length / n_air, 100.0527, mko::test::kRttPublishedLength);
     EXPECT_NEAR(p.back_focal_distance, 106.442 - 9.0, mko::test::kRttPublishedLength);
     EXPECT_NEAR(p.image_defocus, 0.0, mko::test::kRttPublishedLength);
+    RecordProperty("efl_abweichung_mm", sci(p.focal_length / n_air - 100.0527));
+    RecordProperty("bfl_abweichung_mm", sci(p.back_focal_distance - 97.442));
 
     json script = json::parse(example1);
     script["root"]["children"][1]["surfaces"][0]["shape"]["base"]["radius"] = 100.0;
     script["root"]["children"][1]["surfaces"][1]["shape"] = conic(-100.0);
     script["root"]["children"][1]["surfaces"][1]["pose"]["position"][2] = 5.0;
     script["root"]["children"][2]["pose"]["position"][2] = 5.0 + 5.0 + 95.0;
-    mko::SystemDescription s2 = mko::system_from_rtt_json(script.dump(), {});
-    s2.surfaces[1].material.n = 1.5168 / n_air;
+    const mko::SystemDescription s2 = mko::system_from_rtt_json(script.dump(), {});
     const mko::ParaxialData p2 = mko::compute_paraxial(s2, mko::GlassCatalog{});
     EXPECT_NEAR(p2.focal_length / n_air, 97.631, mko::test::kRttPublishedLength);
+    RecordProperty("efl_skript_abweichung_mm", sci(p2.focal_length / n_air - 97.631));
+
+    // ohne Umrechnung (--no-air-conversion): Zahlen unverändert, f = R/(n − 1)
+    mko::RttImportOptions raw;
+    raw.air_conversion = false;
+    w.clear();
+    const mko::SystemDescription r = mko::system_from_rtt_json(example1, raw, &w);
+    EXPECT_TRUE(has_warning(w, "CONST")); // Umgebung Luft, CONST relativ übernommen
+    EXPECT_EQ(r.spectrum.reference_nm, 587.6);
+    EXPECT_EQ(r.surfaces[1].material.n, 1.5168);
+    const mko::ParaxialData direct = mko::compute_paraxial(r, mko::GlassCatalog{});
+    EXPECT_NEAR(direct.focal_length, 51.68 / 0.5168, mko::test::kParaxialRelative * 100.0);
+}
+
+// Katalogglas in Luft bei 20 °C, 1 atm: Raytatouille rechnet die Brechzahl relativ zur Umgebung
+// als n_rel(λ_vac/n_L)·n_L/n_L (Katalogformel bei der Wellenlänge in Luft); mit der umgerechneten
+// Wellenlänge ist das genau die Mikroptim-Brechzahl. Ohne Umrechnung blieb die Abweichung
+// n_rel(λ_vac) − n_rel(λ_vac/n_L) von einigen 10⁻⁶.
+TEST(RttAir, CatalogGlassMatchesRaytatouilleRelativeIndex) {
+    const mko::SystemDescription s = import(catalog_system());
+    mko::RttImportOptions raw = basis_import();
+    raw.air_conversion = false;
+    const mko::SystemDescription old = import(catalog_system(), raw);
+    const std::vector<double> um{0.4861, 0.5876, 0.6563};
+    double worst_new = 0.0;
+    double worst_old = 0.0;
+    for (const char* glass : {"N-BK7", "CAF2", "F_SILICA"}) {
+        const mko::Glass& g = basis().at(glass);
+        for (std::size_t l = 0; l < um.size(); ++l) {
+            const double n_air = mko::ciddor_air_index(um[l], 20.0, 1.0);
+            // Raytatouille (CatalogMaterial, Umgebung = Bezugsluft): n_abs/n_U
+            const double n_abs = g.index(1000.0 * um[l] / n_air) * n_air;
+            const double rtt_relative = n_abs / n_air;
+            worst_new =
+                std::max(worst_new, std::abs(g.index(s.spectrum.wavelengths_nm[l]) - rtt_relative));
+            worst_old = std::max(worst_old,
+                                 std::abs(g.index(old.spectrum.wavelengths_nm[l]) - rtt_relative));
+        }
+    }
+    EXPECT_LE(worst_new, mko::test::kRttAirConversion);
+    EXPECT_GT(worst_old, 1e-6); // bisheriger Restfehler
+    RecordProperty("abweichung_neu", sci(worst_new));
+    RecordProperty("abweichung_alt", sci(worst_old));
+}
+
+// Import: Wellenlängen und CONST über die Umgebung; Vakuum ändert nichts; Temperatur und Druck
+// gehen in die Luft ein; Katalogglas außerhalb der Bezugsluft und CONST bei mehreren
+// Wellenlängen geben eine Warnung.
+TEST(RttAir, ImportUsesEnvironment) {
+    // Vakuum: Zahlen unverändert, keine Warnung (CanonicalVacuumSystemValues)
+    const mko::SystemDescription v = import(vacuum_system());
+    EXPECT_EQ(v.spectrum.wavelengths_nm[1], 587.6);
+    EXPECT_EQ(v.surfaces[1].material.n, 1.7);
+    // dasselbe System in Luft bei 30 °C und 0,9 atm
+    json warm = vacuum_system();
+    warm["environment"] = {{"temperature_c", 30.0}, {"pressure_atm", 0.9}};
+    std::vector<std::string> w;
+    const mko::SystemDescription a = import(warm, basis_import(), &w);
+    const double n_ref = mko::ciddor_air_index(0.5876, 30.0, 0.9);
+    EXPECT_EQ(a.spectrum.wavelengths_nm[0],
+              0.4861 * 1000.0 / mko::ciddor_air_index(0.4861, 30.0, 0.9));
+    EXPECT_EQ(a.spectrum.reference_nm, 0.5876 * 1000.0 / n_ref);
+    EXPECT_EQ(a.surfaces[1].material.n, 1.7 / n_ref);
+    EXPECT_EQ(a.surfaces[3].material.n, 1.62 / n_ref);
+    EXPECT_TRUE(has_warning(w, "Dispersion der Luft"));
+    EXPECT_FALSE(has_warning(w, "Katalogglas"));
+    // Katalogglas: in der Bezugsluft keine Warnung, bei 30 °C bzw. im Vakuum eine
+    w.clear();
+    (void)import(catalog_system(), basis_import(), &w);
+    EXPECT_TRUE(w.empty()) << w.front();
+    json cat_warm = catalog_system();
+    cat_warm["environment"] = {{"temperature_c", 30.0}};
+    (void)import(cat_warm, basis_import(), &w);
+    EXPECT_TRUE(has_warning(w, "Katalogglas: Raytatouille bezieht Katalogdaten auf Luft"));
+    w.clear();
+    json cat_vac = catalog_system();
+    cat_vac["environment"] = {{"medium", "VACUUM"}};
+    (void)import(cat_vac, basis_import(), &w);
+    EXPECT_TRUE(has_warning(w, "die Umgebung ist Vakuum"));
+    // ungültige Umgebung
+    json bad = vacuum_system();
+    bad["environment"] = {{"pressure_atm", -1.0}};
+    EXPECT_TRUE(has_issue(import_issues(bad), "/environment/pressure_atm", "Druck"));
+}
+
+// Export: Umgebung Luft (Standard), Wellenlängen und CONST absolut, bitgleich zurück; Vakuum und
+// --no-air-conversion schreiben die Zahlen unverändert.
+TEST(RttAir, ExportConvertsAndRoundtrips) {
+    const mko::SystemDescription v = import(vacuum_system());
+    std::vector<std::string> w;
+    const json air = json::parse(mko::system_to_rtt_json(v, basis_export(), &w));
+    EXPECT_FALSE(air.contains("environment"));
+    const double um = air["wavelengths"][1]["um"].get<double>();
+    EXPECT_EQ(um * 1000.0 / mko::ciddor_air_index(um, 20.0, 1.0), 587.6);
+    const std::string c = air["root"]["children"][1]["material"].get<std::string>();
+    const double n_abs = std::stod(c.substr(6));
+    EXPECT_EQ(n_abs / mko::ciddor_air_index(um, 20.0, 1.0), 1.7);
+    // zurück: dieselbe Beschreibung
+    const mko::SystemDescription back = mko::system_from_rtt_json(air.dump(), basis_import());
+    EXPECT_EQ(back.spectrum, v.spectrum);
+    for (std::size_t i = 0; i < v.surfaces.size(); ++i) {
+        EXPECT_EQ(back.surfaces[i].material.n, v.surfaces[i].material.n) << i;
+    }
+    // Vakuum: unverändert
+    mko::RttExportOptions vac = basis_export();
+    vac.environment.vacuum = true;
+    const json jv = json::parse(mko::system_to_rtt_json(v, vac));
+    EXPECT_EQ(jv["environment"], (json{{"medium", "VACUUM"}}));
+    EXPECT_EQ(jv["wavelengths"][1]["um"], 0.5876);
+    // Temperatur und Druck werden geschrieben und beim Import benutzt
+    mko::RttExportOptions warm = basis_export();
+    warm.environment.temperature_c = 25.0;
+    warm.environment.pressure_atm = 0.95;
+    const std::string tw = mko::system_to_rtt_json(v, warm);
+    EXPECT_EQ(json::parse(tw)["environment"],
+              (json{{"temperature_c", 25.0}, {"pressure_atm", 0.95}}));
+    const mko::SystemDescription bw = mko::system_from_rtt_json(tw, basis_import());
+    EXPECT_EQ(bw.spectrum, v.spectrum);
+    EXPECT_EQ(bw.surfaces[1].material.n, 1.7);
+    // ohne Umrechnung: wie vor 2026-11-19 (ohne Katalogglas VACUUM, Zahlen unverändert)
+    mko::RttExportOptions raw = basis_export();
+    raw.air_conversion = false;
+    EXPECT_EQ(json::parse(mko::system_to_rtt_json(v, raw)), vacuum_system());
+}
+
+// --estimate-apertures: fehlende Aperturen aus paraxialer Rand- und Hauptstrahlhöhe (volles
+// Feld) mit Zuschlag; Orakel: planparallele Platte (Randstrahl parallel, Hauptstrahl im Glas
+// mit dem Winkel u/n).
+TEST(RttAir, EstimateAperturesFromParaxialHeights) {
+    json s = vacuum_system();
+    json& ch = s["root"]["children"];
+    ch[1]["surfaces"][0].erase("shape");
+    ch[1]["surfaces"][0].erase("aperture");
+    ch[1]["surfaces"][1].erase("aperture");
+    // ohne Option: Fehler (Standard)
+    EXPECT_TRUE(has_issue(import_issues(s), "/root/children/1/surfaces/0", "ohne Apertur"));
+    mko::RttImportOptions o = basis_import();
+    const double margin = 0.1;
+    o.aperture_estimate = [margin](const mko::SystemDescription& d) {
+        return mko::estimate_clear_semi_diameters(d, basis(), margin);
+    };
+    std::vector<std::string> w;
+    const mko::SystemDescription m = import(s, o, &w);
+    EXPECT_TRUE(has_warning(w, "geschätzt"));
+    // Platte n = 1,7 (Vakuum: unverändert), Abstand 4 mm von der Blende, Dicke 3,5 mm;
+    // größter Feldwinkel 3°, Pupillenradius 3,125 mm
+    const double a = 3.125;
+    const double u = std::tan(3.0 * std::acos(-1.0) / 180.0);
+    const double front = (a + 4.0 * u) * (1.0 + margin);
+    const double back = (a + (4.0 + 3.5 / 1.7) * u) * (1.0 + margin);
+    EXPECT_NEAR(m.surfaces[1].semi_diameter, front, mko::test::kParaxialRelative * front);
+    EXPECT_NEAR(m.surfaces[2].semi_diameter, back, mko::test::kParaxialRelative * back);
+    EXPECT_EQ(m.surfaces[3].semi_diameter, 5.5); // vorhandene Aperturen bleiben
+    EXPECT_THROW((void)mko::estimate_clear_semi_diameters(m, basis(), -0.1), std::invalid_argument);
 }
 
 // ---- Mikroptim → Raytatouille → Mikroptim -------------------------------------------------
@@ -524,8 +692,11 @@ TEST(RttExport, WarningsForDroppedData) {
                              "surfaces[2].comment:", "surfaces[1].group: Gruppe entfällt"}) {
         EXPECT_TRUE(has_warning(w, text)) << text;
     }
-    EXPECT_EQ(r["wavelengths"].back(),
-              (json{{"um", 0.54607}, {"weight", 0.0}, {"reference", true}}));
+    const json& ref = r["wavelengths"].back();
+    EXPECT_EQ(ref["weight"], 0.0);
+    EXPECT_EQ(ref["reference"], true);
+    const double ref_um = ref["um"].get<double>();
+    EXPECT_EQ(ref_um * 1000.0 / mko::ciddor_air_index(ref_um, 20.0, 1.0), 546.07);
     EXPECT_FALSE(r.contains("environment")); // Katalogglas: Umgebung Luft
     EXPECT_EQ(r["root"]["children"][1]["material"], "BASIS:N-BK7");
 }
@@ -754,6 +925,7 @@ TEST(RttImport, WarningsForDroppedData) {
     s["root"]["children"][1]["surfaces"][1].erase("aperture");
     mko::RttImportOptions o = basis_import();
     o.default_semi_diameter = 6.0;
+    o.air_conversion = false; // Temperatur entfällt nur ohne Umrechnung (sonst RttAir.*)
     std::vector<std::string> w;
     const mko::SystemDescription m = import(s, o, &w);
     for (const char* text :
@@ -770,11 +942,13 @@ TEST(RttImport, WarningsForDroppedData) {
     w.clear();
     (void)import(air, basis_import(), &w);
     EXPECT_TRUE(has_warning(w, "Ciddor"));
-    // Katalogglas in VACUUM
+    // Katalogglas in VACUUM (ohne Umrechnung; mit Umrechnung RttAir.ImportUsesEnvironment)
     json vac = catalog_system();
     vac["environment"] = {{"medium", "VACUUM"}};
     w.clear();
-    (void)import(vac, basis_import(), &w);
+    mko::RttImportOptions raw = basis_import();
+    raw.air_conversion = false;
+    (void)import(vac, raw, &w);
     EXPECT_TRUE(has_warning(w, "Katalogglas in der Umgebung VACUUM"));
     // Katalogglas aus einem anderen Katalog als dem von Mikroptim
     json other = catalog_system();
@@ -871,6 +1045,17 @@ TEST(RttCli, ErrorsAndUsage) {
         mko::cli::kExitUsage);
     EXPECT_EQ(run_convert({input, "-o", "z", "--bogus"}).code, mko::cli::kExitUsage);
     EXPECT_EQ(run_convert({"--help"}).code, mko::cli::kExitOk);
+    // Optionen der Umrechnung und der Aperturschätzung (Entscheidung Maintainer 2026-11-19)
+    const std::string y = (dir / "y.rtt.json").string();
+    EXPECT_EQ(run_convert({input, "-o", y, "--rtt-environment", "mars"}).code,
+              mko::cli::kExitUsage);
+    EXPECT_EQ(run_convert({input, "-o", y, "--estimate-apertures"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(
+        run_convert({input, "-o", y, "--rtt-environment", "vacuum", "--no-air-conversion"}).code,
+        mko::cli::kExitUsage);
+    EXPECT_EQ(run_convert({input, "-o", y, "--aperture-margin", "0.2"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run_convert({input, "-o", y, "--estimate-apertures", "--semi-diameter", "3"}).code,
+              mko::cli::kExitUsage);
 
     // Raytatouille-Datei mit Katalogglas, aber ohne --glass-catalog
     const fs::path rtt = dir / "k.rtt.json";
@@ -884,4 +1069,51 @@ TEST(RttCli, ErrorsAndUsage) {
     std::ofstream(other, std::ios::binary) << R"({"format": "mikroptim.glass/1"})";
     EXPECT_EQ(run_convert({other.string(), "-o", (dir / "o.json").string()}).code,
               mko::cli::kExitError);
+}
+
+// Kommandozeile der Umrechnung (Entscheidung Maintainer 2026-11-19): --estimate-apertures mit
+// --aperture-margin, --rtt-environment vacuum, --no-air-conversion.
+TEST(RttCli, AirConversionAndApertureOptions) {
+    const fs::path dir = mko::test::temp_dir() / "rtt_cli_air";
+    fs::create_directories(dir);
+    json s = vacuum_system();
+    s["root"]["children"][1]["surfaces"][1].erase("aperture");
+    const fs::path rtt = dir / "ohne_apertur.rtt.json";
+    std::ofstream(rtt, std::ios::binary) << s.dump();
+    const fs::path out = dir / "m.json";
+    RunResult r = run_convert({rtt.string(), "-o", out.string()});
+    EXPECT_EQ(r.code, mko::cli::kExitError);
+    EXPECT_NE(r.err.find("--estimate-apertures"), std::string::npos) << r.err;
+    r = run_convert(
+        {rtt.string(), "-o", out.string(), "--estimate-apertures", "--aperture-margin", "0.25"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_NE(r.err.find("geschätzt"), std::string::npos) << r.err;
+    const mko::SystemDescription m = mko::read_system_file(out);
+    const std::vector<double> h = mko::estimate_clear_semi_diameters(m, basis(), 0.25);
+    EXPECT_EQ(m.surfaces[2].semi_diameter, h[2]);
+    // zurück nach Raytatouille in der Umgebung VACUUM: Zahlen unverändert
+    const fs::path back = dir / "zurueck.rtt.json";
+    r = run_convert({out.string(), "-o", back.string(), "--rtt-environment", "vacuum"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json jb = json::parse(read_file(back));
+    EXPECT_EQ(jb["environment"], (json{{"medium", "VACUUM"}}));
+    EXPECT_EQ(jb["wavelengths"], s["wavelengths"]);
+    // Standard Luft: Vakuumwellenlängen; ohne Umrechnung wie früher (VACUUM ohne Katalogglas)
+    r = run_convert({out.string(), "-o", back.string()});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_FALSE(json::parse(read_file(back)).contains("environment"));
+    EXPECT_GT(json::parse(read_file(back))["wavelengths"][1]["um"].get<double>(), 0.5876);
+    r = run_convert({out.string(), "-o", back.string(), "--no-air-conversion"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_EQ(json::parse(read_file(back))["wavelengths"], s["wavelengths"]);
+    EXPECT_EQ(json::parse(read_file(back))["environment"], (json{{"medium", "VACUUM"}}));
+    // Import einer Luft-Datei ohne Umrechnung: Wellenlängen unverändert
+    json air = vacuum_system();
+    air.erase("environment");
+    std::ofstream(rtt, std::ios::binary) << air.dump();
+    r = run_convert({rtt.string(), "-o", out.string(), "--no-air-conversion"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_EQ(mko::read_system_file(out).spectrum.reference_nm, 587.6);
+    EXPECT_EQ(run_convert({rtt.string(), "-o", out.string(), "--rtt-environment", "air"}).code,
+              mko::cli::kExitUsage);
 }

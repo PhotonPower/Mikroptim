@@ -137,4 +137,12 @@ struct AberrationReport {
 AberrationReport compute_aberrations(const SystemDescription& system, const GlassCatalog& catalog,
                                      const AberrationOptions& options = {});
 
+// Geschätzte freie Halbdurchmesser aller Dateiflächen aus dem paraxialen Rand- und Hauptstrahl
+// (Raytatouille-Adapter, `mikroptim convert --estimate-apertures`; Entscheidung des Maintainers
+// 2026-11-19): h_s = (|y_s| + |ȳ_s|) · (1 + margin) mit y aus dem Pupillenradius und ȳ beim
+// größten Feldwinkel der Quelle, bei λ_ref (wie compute_aberrations, ohne reale Strahlen).
+// Wirft wie compute_aberrations und std::invalid_argument bei margin < 0 oder nicht endlich.
+std::vector<double> estimate_clear_semi_diameters(const SystemDescription& system,
+                                                  const GlassCatalog& catalog, double margin);
+
 } // namespace mko
