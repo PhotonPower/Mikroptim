@@ -451,6 +451,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M7-T2
 - **Inhalt:** CMA-ES über normierte Variablen, kurzer gebündelter LM pro Individuum, Vorfilter.
 - **Abnahme:** kleinere beste Merit als `perturbed_starts` bei gleicher Zahl von LM-Zyklen.
+- **Stand:** umgesetzt (`memetic_search`, eigenes CMA-ES ohne neue Abhängigkeit, `optimize --global cma|starts,…`, Standard aus; [optimierung.md, Abschnitt 15](../optimierung.md#15-memetische-globale-suche-m11-t7)). Lamarck mit Elitismus, FP32-Vorfilter optional, bitgleich reproduzierbar. Mehrlinser (Startwert 1, 1.760 Zyklen): CPU 1,4·10⁻⁴, GPU 7,7·10⁻⁴ gegen 4,5·10⁻² (`perturbed_starts`, gleiche Zyklen pro Lauf) bzw. 1,9·10⁻² (L = 100). Am M6-T6-Zwischenstand a2 nur im Mittel und im besten von vier Startwerten besser (2,8·10⁻³ gegen 3,5·10⁻³), nicht bei jedem Startwert: Der LM kriecht dort an den Knicken der mechanischen Bedingungen (F10).
 
 ### M11-T8 – Netz der Minima, Escape-Funktion (Forschung)
 - **Abhängig von:** M5-T3
