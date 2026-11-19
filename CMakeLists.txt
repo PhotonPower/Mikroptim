@@ -102,6 +102,7 @@ add_library(mikroptim_model STATIC
     src/model/system.cpp
     src/model/tolerances.cpp
     src/model/variables.cpp
+    src/io/raytatouille.cpp
     src/io/system_json.cpp)
 add_library(Mikroptim::model ALIAS mikroptim_model)
 target_link_libraries(mikroptim_model
@@ -292,6 +293,7 @@ endif()
 add_library(mikroptim_cli STATIC
     src/cli/aberrations_command.cpp
     src/cli/cli_util.cpp
+    src/cli/convert_command.cpp
     src/cli/glasses_command.cpp
     src/cli/eval_command.cpp
     src/cli/insert_command.cpp

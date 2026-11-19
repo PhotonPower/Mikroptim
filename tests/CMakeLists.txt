@@ -65,6 +65,7 @@ add_executable(mikroptim_tests
     test_petzval_optimization.cpp
     test_prefilter.cpp
     test_psf.cpp
+    test_raytatouille.cpp
     test_pupil_quadrature.cpp
     test_sensitivity.cpp
     test_soft_failure.cpp

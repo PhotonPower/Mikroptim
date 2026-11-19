@@ -51,6 +51,7 @@ Statische Host-Bibliothek `mikroptim_model` (Alias `Mikroptim::model`), gelinkt 
 - `include/mikroptim/model/material.hpp`: `mko::MaterialSpec` (Medium nach einer Fläche; gemeinsam mit dem Glasmodell).
 - `include/mikroptim/model/format_error.hpp`: `mko::FormatError` mit JSON-Pfad.
 - `include/mikroptim/io/system_json.hpp`: Einlesen und Schreiben von `mikroptim.system/1`, Auflösung der Glaskatalog-Pfade (Details: [dateiformat.md](dateiformat.md#einlesen-und-validierung)).
+- `include/mikroptim/io/raytatouille.hpp` (ab M9-T2): Adapter Raytatouille (`*.rtt.json`) ↔ `mikroptim.system/1` für sequenzielle, koaxiale, sphärische Systeme, Fehler mit allen nicht abbildbaren Stellen (Details: [dateiformat.md](dateiformat.md#raytatouille-adapter)).
 
 nlohmann/json (v3.12.0, FetchContent) wird nur in Quellen unter `src/` eingebunden und privat gelinkt; öffentliche Header bleiben frei von JSON-Typen.
 

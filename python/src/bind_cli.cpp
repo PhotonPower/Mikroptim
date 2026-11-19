@@ -4,6 +4,7 @@
 
 #include "bindings.hpp"
 #include "cli/aberrations_command.hpp"
+#include "cli/convert_command.hpp"
 #include "cli/eval_command.hpp"
 #include "cli/glasses_command.hpp"
 #include "cli/insert_command.hpp"
@@ -39,7 +40,7 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
         if (argv.empty()) {
             err << "Aufruf: mikroptim "
                    "<trace|optimize|eval|snap|insert|synth|aberrations|glasses|tolerance|"
-                   "sensitivity> "
+                   "sensitivity|convert> "
                    "... "
                    "(Hilfe: <befehl> --help)\n";
         } else if (argv[0] == "--version") {
@@ -68,6 +69,8 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
                 code = cli::run_tolerance_command(args, out, err);
             } else if (command == "sensitivity") {
                 code = cli::run_sensitivity_command(args, out, err);
+            } else if (command == "convert") {
+                code = cli::run_convert_command(args, out, err);
             } else {
                 err << "mikroptim: unbekannter Befehl " << command << '\n';
             }

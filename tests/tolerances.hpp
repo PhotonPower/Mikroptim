@@ -73,6 +73,11 @@ inline constexpr double kParaxialRelative = 1e-12;
 // Gerundete Zahlenwerte aus Plan und Doku (zwei Nachkommastellen, z. B. f ≈ 101,05 mm) [mm].
 // Kein Maß für die Rechengenauigkeit; die exakte Prüfung läuft gegen die Formel.
 inline constexpr double kDocumentedValue = 1e-2;
+// Raytatouille-Adapter (M9-T2): in der Raytatouille-Doku veröffentlichte Längen mit drei
+// Nachkommastellen (EFL 97,631 mm, Bildfläche bei z = 106,442 mm) gegen Mikroptim [mm]: Rundung
+// ±5e-4 plus die Unsicherheit von n_Luft, das aus der veröffentlichten EFL 100,0527 mm (vier
+// Nachkommastellen, ±5e-5) bestimmt wird (Wirkung ≤ 6e-5 mm). Kein Maß für die Rechengenauigkeit.
+inline constexpr double kRttPublishedLength = 6e-4;
 // Grenzwert realer Strahlen h -> 0 gegen die paraxiale Schnittweite [mm] (M1-T6): bei
 // h = 1e-4 mm ist die sphärische Längsaberration der Testlinse ~1.6e-10 mm.
 inline constexpr double kParaxialLimit = 1e-8;
