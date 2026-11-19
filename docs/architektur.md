@@ -1382,6 +1382,10 @@ Ablauf pro Tranche (Standard 4.096 Stichproben): `make_non_coaxial` des nominell
 
 **Empfindlichkeiten (M10-T3).** Ein Batch mit 1 + 4 D Varianten (nominal, pro Komponente ξ = ±1 und ±h über `ToleranceModel::apply`), ein Trace über dieselbe Funktion wie die Tolerierung (`tolerance_trace_cpu` bzw. `cuda::gpu_tolerance_trace`), Bewertung mit `tuple_quality` (Ausgabe `rest` für die Wellenfrontreste). `tolerance_trace_cpu` und `tolerance_tuple_weights` sind dafür aus `run_tolerance_analysis` herausgelöst (unverändertes Verhalten). Herstellbarkeit ohne Trace aus der Systembeschreibung (Pfeilhöhe `sag`, `edge_thickness` aus `mikroptim/optim/mechanical_constraints.hpp`). CLI: `src/cli/sensitivity_command.cpp` ([cli.md](cli.md#mikroptim-sensitivity)); Verfahren: [optimierung.md, Abschnitt 12](optimierung.md#12-empfindlichkeiten-und-herstellbarkeit-m10-t3).
 
+## Entwurfsoperatoren (M10-T4)
+
+Die strukturellen Aktionen der Entwurfssteuerung sind zweigeteilt (ADR-0012): Die Geometrie bauen Host-Funktionen in `Mikroptim::optim` (`include/mikroptim/optim/design_operators.hpp`, `src/optim/design_operators.cpp`; Rückbau, Glastausch, Geisterplatten-Wörterbuch, aplanatische Schale, Null-Kittglied, allgemeine Umnummerierung `remap_surfaces` mit entfernten Flächen), erreichbar über `mikroptim insert` (`src/cli/insert_command.cpp`, JSON `mikroptim.insert/1`). Vorbedingungen, Modultabelle (`python/mikroptim/design/modules.py`), Homotopien in Stufen mit Nachoptimierung, `replace_group` und `start_from_skeleton` liegen in `python/mikroptim/design/operators.py` und rufen nur die Kommandozeile auf. Verfahren und Abnahme: [optimierung.md, Abschnitt 13](optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4).
+
 ## Mehrere GPUs (M7-T3)
 
 Varianten werden nach gemessenem Durchsatz auf die Geräte verteilt (P100 und RTX 3090 im selben Rechner). Ergebnisse pro Variante sind unabhängig von der Verteilung bitgleich, solange alle Geräte denselben Code bitgleich rechnen (gemischte Architekturen: unten). Getrennte Rechner sind nicht Teil von M7-T3; dafür gibt es den Fingerabdruck-Test (unten).

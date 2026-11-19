@@ -33,6 +33,7 @@ add_executable(mikroptim_tests
     test_constraints_schema.cpp
     test_convex_hull.cpp
     test_decenter.cpp
+    test_design_operators.cpp
     test_df64.cpp
     test_dispersion.cpp
     test_eval.cpp

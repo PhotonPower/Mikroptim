@@ -145,7 +145,9 @@ class Session:
                         "result": read_action(a, self.system_path(current))}
             if name in MODIFY_ACTIONS:
                 outs = modify_action(a, self.system_path(current), self.dir / "tmp")
-                new = [self._new_candidate(path, current, a) for path, _ in outs]
+                # start_from_skeleton: neuer Wurzelkandidat (ohne Eltern)
+                new = [self._new_candidate(path, None if rep.get("root") else current, a)
+                       for path, rep in outs]
                 res = {"action": name, "status": "ok", "new_candidates": new,
                        "reports": [rep for _, rep in outs]}
                 if not outs:

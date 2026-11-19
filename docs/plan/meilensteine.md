@@ -357,6 +357,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T4 – Executor und neue Operatoren
 - **Abhängig von:** M10-T2, M6-T4
+- **Stand:** umgesetzt (`include/mikroptim/optim/design_operators.hpp`, `mikroptim insert`, `mikroptim/design/operators.py`; [optimierung.md, Abschnitt 13](../optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4)). Abnahme: `place_ghost_dictionary` 5 von 7 Fällen bitgleich, sonst ≤ 1,1·10⁻¹⁵ relativ; aplanatische Schale ändert die Gruppensumme der sphärischen Aberration aller Ordnungen um ≤ 1,5·10⁻¹³ relativ; `remove_element` nach `insert_null_meniscus` ergibt das Ausgangssystem (8 Fälle, Spaltdicke ≤ 1 ulp, Merit ≤ 10⁻¹¹).
 - **Inhalt:** Aktionsschema, Prüfung der Vorbedingungen, `insert_module`, `remove_element`, `replace_glass`, `replace_group`, `start_from_skeleton`, `place_ghost_dictionary`.
 - **Abnahme:** Merit-Invarianz von `place_ghost_dictionary`; aplanatische Vorlage ändert die Gruppensumme der sphärischen Aberration beim Einfügen um < 10⁻³; `remove_element` nach `insert_null_meniscus` ergibt das Ausgangssystem.
 

@@ -405,6 +405,15 @@ inline constexpr double kGlassSnapMeritSlack = 1e-6;
 // viele Fälle 1e-12 einhalten, geben die Tests aus.
 inline constexpr double kInsertionMeritPlan = 1e-12;
 inline constexpr double kInsertionMeritRelative = 1e-11;
+// Entwurfsoperatoren (M10-T4): remove_element nach Operator A ergibt das Ausgangssystem bis auf
+// die Dicke des vereinigten Spalts p + fl(T − p) (eine Rundung, ≤ 1 ulp) und die Lage der
+// Geisterplatten dahinter (ebenso); relativ zur Dicke.
+inline constexpr double kRemovalRoundtripRelative = 4.5e-16;
+// Aplanatische Schalenlinse (M10-T4, Plan docs/plan/meilensteine.md): relative Änderung der
+// Gruppensumme der sphärischen Aberration aller Ordnungen (S_FSPH) beim Einfügen. Mathematisch
+// 0 (konzentrische und aplanatische Fläche tragen für den realen Randstrahl nichts bei), es
+// bleibt die Rundung von Trace und Zerlegung.
+inline constexpr double kAplanaticGroupSpherical = 1e-3;
 // Abnahme Operator B: Brennweite des Kittglieds gegen die der Einzellinse [mm]; beide über die
 // gewichtete Gleichung (Gewicht 10⁴/mm²) auf f = 50 mm gehalten.
 inline constexpr double kAchromatFocalLength = 1e-3;

@@ -10,6 +10,10 @@ Umgesetzt (M10-T6a), jeweils über die Kommandozeile von Mikroptim:
 - Topologie (Merit unverändert): ``insert_null_meniscus``, ``split_lens``
 - Steuerung: ``branch``, ``abandon``, ``finish``
 
+Seit M10-T4 (``operators.py``): ``place_ghost_dictionary`` (Merit unverändert),
+``insert_module``, ``remove_element``, ``replace_glass``, ``replace_group``,
+``start_from_skeleton`` (neuer Wurzelkandidat).
+
 Die übrigen Aktionen des Schemas melden ``not_implemented`` (strukturierter Fehler).
 """
 
@@ -25,7 +29,11 @@ from .files import elements, is_air, read_system, write_system
 READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
                 "sensitivity"}
 MODIFY_ACTIONS = {"optimize", "synth_segment", "snap_glasses", "free_gaps",
-                  "insert_null_meniscus", "split_lens"}
+                  "insert_null_meniscus", "split_lens", "place_ghost_dictionary", "insert_module",
+                  "remove_element", "replace_glass", "replace_group", "start_from_skeleton"}
+#: strukturelle Aktionen aus operators.py (M10-T4)
+OPERATOR_ACTIONS = {"place_ghost_dictionary", "insert_module", "remove_element", "replace_glass",
+                    "replace_group", "start_from_skeleton"}
 CONTROL_ACTIONS = {"branch", "abandon", "finish"}
 SCHEMA_ACTIONS = {
     "get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect", "sensitivity",
@@ -198,6 +206,9 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
     als ein Eintrag bei Verzweigung (Sattelzweige von Operator A)."""
     name = a["action"]
     workdir = pathlib.Path(workdir)
+    if name in OPERATOR_ACTIONS:
+        from . import operators
+        return getattr(operators, name)(a, system_path, workdir)
     if name == "optimize":
         variables = a.get("variables", "current")
         if variables != "current":

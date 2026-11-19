@@ -1,8 +1,9 @@
 #pragma once
 
-// Unterbefehl `mikroptim insert` (docs/cli.md, M6-T2): Einfüge-Operator A (Meniskus ohne
-// Brechkraft) oder B (Aufspalten einer Linse in ein Kittglied) auf eine Systemdatei anwenden und
-// das neue System schreiben; gibt die Merit vorher und nachher aus (CPU, Strahlresiduen plus
+// Unterbefehl `mikroptim insert` (docs/cli.md, M6-T2, M10-T4): Einfüge-Operator A (Meniskus ohne
+// Brechkraft), B (Aufspalten einer Linse in ein Kittglied) oder einen Operator der
+// Entwurfssteuerung (design_operators.hpp) auf eine Systemdatei anwenden und das neue System
+// schreiben; gibt die Merit vorher und nachher aus (CPU, Strahlresiduen plus
 // paraxiale Nebenbedingungen und L1-Strafe der Geisterplatten). Interner Header der Bibliothek
 // mikroptim_cli.
 
