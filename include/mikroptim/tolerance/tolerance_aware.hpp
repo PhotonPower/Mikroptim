@@ -7,14 +7,19 @@
 // gebündelten LM (LmBackend) legt pro Lauf 1 + S Läufe eines inneren Backends (CPU oder GPU) an
 // und setzt A = JᵀJ, g = Jᵀr und F in fester Reihenfolge aus ihnen zusammen. Störungen über
 // ToleranceModel::apply (M8-T4, ADR-0011), deterministisch: ±δ je Zufallsgröße oder eine feste
-// Stichprobe mit Startwert. Verfahren und Formeln: docs/optimierung-erweiterungen.md, Abschnitt 6.
+// Stichprobe mit Startwert. Optional (M11-T6b) gestörte Systeme nach Abzug von Kolben und Kippung
+// wie Tolerierung und Empfindlichkeiten; Anbindung an die Synthese über den Standardsatz. Verfahren
+// und Formeln: docs/optimierung.md, Abschnitt 14; docs/optimierung-erweiterungen.md, Abschnitt 6.
 
+#include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/model/system.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/variable_set.hpp"
+#include "mikroptim/tolerance/sensitivity.hpp"
 #include "mikroptim/tolerance/tolerance_model.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -34,6 +39,16 @@ enum class ToleranceAwareScheme {
 const char* to_string(ToleranceAwareScheme scheme);
 std::optional<ToleranceAwareScheme> tolerance_aware_scheme_from_string(std::string_view name);
 
+// Bewertung der gestörten Systeme (M11-T6b).
+enum class ToleranceAwareTilt {
+    Keep,   // volle Merit bei fester Bildlage, Kippung zählt (Standard, wie M11-T6)
+    Remove, // Strahlresiduen nach Abzug von Kolben und Kippung pro Tupel (TiltProjection), wie
+            // Tolerierung (M8-T4) und Empfindlichkeiten (M10-T3); nominal unverändert
+};
+
+const char* to_string(ToleranceAwareTilt tilt);
+std::optional<ToleranceAwareTilt> tolerance_aware_tilt_from_string(std::string_view name);
+
 inline constexpr double kDefaultToleranceAwareWeight = 0.5;
 
 struct ToleranceAwareSettings {
@@ -41,6 +56,7 @@ struct ToleranceAwareSettings {
     ToleranceAwareScheme scheme = ToleranceAwareScheme::PlusMinus;
     int samples = 0;        // nur Samples: S ≥ 1
     std::uint64_t seed = 0; // nur Samples
+    ToleranceAwareTilt tilt = ToleranceAwareTilt::Keep;
 };
 
 // Inneres Backend für eine Menge von Variablen und eine Vorlage (CPU: CpuLmBackend, GPU:
@@ -73,6 +89,7 @@ public:
 
     int samples() const { return samples_; } // S
     double alpha() const { return alpha_; }
+    bool remove_tilt() const { return settings_.tilt == ToleranceAwareTilt::Remove; }
     // Gewicht des Teilsystems s: w_0 = 1 − α (nominal), w_s = α/S (s = 1 … S).
     double weight(int s) const { return s == 0 ? nominal_weight_ : sample_weight_; }
     const ToleranceAwareSettings& settings() const { return settings_; }
@@ -122,6 +139,12 @@ struct ToleranceAwareMerits {
 //   A = Σ_s w_s D_s A_s D_s,  g = Σ_s w_s D_s g_s,  F = Σ_s w_s F_s,
 // versagte Strahlen als Summe über alle Teilsysteme. Bitgleich für jede Zahl und Reihenfolge der
 // Läufe, wenn das innere Backend es ist.
+//
+// Mit Kippungsabzug (ToleranceAwareTilt::Remove, M11-T6b) holt das Backend J_s, r_s und den
+// Status vom inneren Backend (host_jacobians bzw. host_residuals), projiziert für s ≥ 1 r_s und
+// jede Spalte von J_s mit TiltProjection (Maske am Punkt x'_s) und bildet A_s = (P J_s)ᵀ(P J_s),
+// g_s = (P J_s)ᵀ(P r_s), F_s = ‖P r_s‖² auf dem Host (normal_equations_host, Summen aufsteigend);
+// s = 0 ohne Projektion auf demselben Weg.
 class ToleranceAwareBackend final : public LmBackend {
 public:
     ToleranceAwareBackend(const ToleranceAwareModel& model, const ToleranceInnerFactory& inner,
@@ -137,8 +160,12 @@ public:
 
 private:
     void inner_points(std::span<const int> runs, std::span<const double> x);
+    // Kippungsabzug der Zeilen von inneren Lauf i (s = i mod (1 + S) ≥ 1), J nur wenn vorhanden.
+    void project(std::size_t i, LmHostRows& rows) const;
 
     const ToleranceAwareModel& model_;
+    ResidualLayout layout_; // Ablage der inneren Batches (Kippungsabzug)
+    LmHostRows rows_;
     int outer_templates_ = 0;
     SystemBatchHost inner_base_;
     SystemBatchHost scratch_;
@@ -155,5 +182,23 @@ LmResult optimize_lm_tolerance_aware(const ToleranceAwareModel& model,
                                      const ToleranceInnerFactory& inner, const VariableSet& set,
                                      const SystemBatchHost& base, std::span<const double> x0,
                                      const LmOptions& options = {});
+
+// Toleranzsatz der toleranzbewussten Synthese (M11-T6b): Mikroptim-Standardsatz der Beschreibung
+// (default_sensitivity_tolerances mit `defaults`, M10-T3) ohne Brechzahltoleranzen an Gläsern mit
+// Glasvariablen in `set` (nicht darstellbar, siehe ToleranceAwareModel). Die Synthese fügt
+// Elemente ein und nummeriert die Flächen um; ein Toleranzsatz der Datei würde dabei nicht
+// mitgeführt, deshalb wird der Satz an jedem Punkt aus der realisierten Beschreibung gebildet.
+Tolerances tolerance_aware_standard_set(const SystemDescription& system, const VariableSet& set,
+                                        const SensitivityDefaults& defaults = {});
+
+// Gebündelter LM mit der erwarteten Merit für eine Beschreibung ohne eigenen Toleranzsatz
+// (Synthese, M11-T6b): `system` mit tolerance_aware_standard_set, ToleranceAwareModel mit
+// `settings` und optimize_lm_tolerance_aware. `set`, `base` und `x0` wie dort.
+LmResult optimize_lm_tolerance_aware_standard(const SystemDescription& system,
+                                              const ToleranceAwareSettings& settings,
+                                              const ToleranceInnerFactory& inner,
+                                              const VariableSet& set, const SystemBatchHost& base,
+                                              std::span<const double> x0,
+                                              const LmOptions& options = {});
 
 } // namespace mko

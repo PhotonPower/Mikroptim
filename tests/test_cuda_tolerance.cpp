@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <vector>
@@ -241,4 +242,86 @@ TEST(CudaToleranceAware, PicksInsensitiveSolutionLikeCpu) {
     std::printf("[ Messung ] toleranzbewusst GPU: Teilmerits gegen CPU %.3e relativ; c CPU %.3e, "
                 "GPU %.3e; F_tol CPU %.12e, GPU %.12e\n",
                 dev, c.x[0], g.x[0], c.merit, g.merit);
+}
+
+// Kippungsabzug (M11-T6b) auf der GPU: Teilmerits und Normalgleichungen (FD und adjungiert)
+// gegen die CPU, zwei GPU-Läufe der Optimierung bitgleich. Kittblock mit Dezentrierung,
+// Verkippung und Radien der Sammellinse und der Brechzahl des hinteren Teils.
+TEST(CudaToleranceAware, TiltRemovalMatchesCpu) {
+    MKO_REQUIRE_GPU();
+    const std::string file =
+        std::string(MKO_SOURCE_DIR) + "/data/systems/kittblock_toleranzbewusst.json";
+    mko::SystemDescription sys = mko::load_system(file).system;
+    mko::ToleranceSpec dec;
+    dec.type = mko::ToleranceType::ElementDecenter;
+    dec.element_selection = mko::SurfaceSelection::One;
+    dec.elements = {{4, 5}};
+    dec.delta = 0.01;
+    mko::ToleranceSpec tilt;
+    tilt.type = mko::ToleranceType::ElementTilt;
+    tilt.element_selection = mko::SurfaceSelection::One;
+    tilt.elements = {{4, 5}};
+    tilt.arcmin = 2.0;
+    mko::ToleranceSpec radius;
+    radius.type = mko::ToleranceType::Radius;
+    radius.selection = mko::SurfaceSelection::List;
+    radius.surfaces = {4, 5};
+    radius.relative = 0.002;
+    sys.tolerances->items.push_back(dec);
+    sys.tolerances->items.push_back(tilt);
+    sys.tolerances->items.push_back(radius);
+    const mko::LoadedSystem loaded =
+        mko::prepare_system(sys, std::filesystem::path(file).parent_path());
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::ToleranceAwareSettings ts;
+    ts.alpha = 0.5;
+    ts.tilt = mko::ToleranceAwareTilt::Remove;
+    const mko::ToleranceAwareModel model(loaded.system, base, set, ts);
+    mko::cuda::TraceEngine engine(0);
+    const mko::ToleranceInnerFactory gpu = mko::cuda::gpu_tolerance_inner(engine);
+    const mko::ToleranceInnerFactory cpu = mko::cpu_tolerance_inner();
+    const std::vector<double> x = set.extract(base, 0);
+    const auto P = static_cast<std::size_t>(set.size());
+    const int run0 = 0;
+    const std::span<const int> run(&run0, 1);
+    double dev_merit = 0.0;
+    double dev_gradient = 0.0;
+    for (const mko::JacobianMethod method :
+         {mko::JacobianMethod::FiniteDifferences, mko::JacobianMethod::Adjoint}) {
+        mko::LmOptions o;
+        o.jacobian.quadrature.failure = mko::FailureMode::Hard;
+        o.jacobian_method = method;
+        mko::ToleranceAwareBackend bc(model, cpu, base, o);
+        mko::ToleranceAwareBackend bg(model, gpu, base, o);
+        const mko::ToleranceAwareMerits mc = bc.merits(run, x);
+        const mko::ToleranceAwareMerits mg = bg.merits(run, x);
+        ASSERT_EQ(mg.merit.size(), mc.merit.size());
+        for (std::size_t s = 0; s < mc.merit.size(); ++s) {
+            dev_merit = std::max(dev_merit, std::abs(mg.merit[s] - mc.merit[s]) / mc.merit[s]);
+            EXPECT_EQ(mg.failed[s], mc.failed[s]);
+        }
+        std::vector<double> ac(P * P), gc(P), ag(P * P), gg(P);
+        bc.normal_equations(run, x, ac, gc);
+        bg.normal_equations(run, x, ag, gg);
+        double scale = 0.0;
+        for (std::size_t k = 0; k < P; ++k) {
+            scale = std::max(scale, std::abs(gc[k]));
+        }
+        for (std::size_t k = 0; k < P; ++k) {
+            dev_gradient = std::max(dev_gradient, std::abs(gg[k] - gc[k]) / scale);
+        }
+    }
+    EXPECT_LE(dev_merit, mko::test::kSensitivityCpuGpuQuality);
+    EXPECT_LE(dev_gradient, mko::test::kSensitivityCpuGpuJacobian);
+    mko::LmOptions o;
+    o.max_iterations = 20;
+    o.jacobian.quadrature.failure = mko::FailureMode::Hard;
+    const mko::LmResult rg = mko::optimize_lm_tolerance_aware(model, gpu, set, base, x, o);
+    const mko::LmResult rg2 = mko::optimize_lm_tolerance_aware(model, gpu, set, base, x, o);
+    EXPECT_EQ(rg.runs.at(0).x, rg2.runs.at(0).x);
+    EXPECT_EQ(rg.runs.at(0).history, rg2.runs.at(0).history);
+    std::printf("[ Messung ] Kippungsabzug GPU gegen CPU: Teilmerits %.3e relativ, Gradient %.3e "
+                "relativ zur größten Komponente (FD und adjungiert)\n",
+                dev_merit, dev_gradient);
 }

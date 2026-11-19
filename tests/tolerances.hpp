@@ -547,4 +547,16 @@ inline constexpr double kToleranceAwareDirect = 1e-12;
 // skaliert mit s_k, relativ zur größten skalierten Komponente.
 inline constexpr double kToleranceAwareGradient = 1e-5;
 
+// M11-T6b Kippungsabzug. Projektion der Strahlresiduen gegen den Rest der Tolerierung
+// (tuple_quality), Q, Idempotenz und Orthogonalität, relativ zum größten Residuum bzw. zu Q; nur
+// Rundung (gemessen: siehe PR).
+inline constexpr double kTiltProjectionRest = 1e-12;
+// Teilsysteme mit Kippungsabzug gegen Q der Monte-Carlo-Tolerierung (ohne Kompensator) und Q± der
+// Empfindlichkeiten, relativ; gleiche OPD, nur Rundung der Anpassung (gemessen: siehe PR).
+inline constexpr double kToleranceAwareVsTolerancing = 1e-12;
+// Reine Dezentrierung 10 µm der Sammellinse (Kittblock, NA 0,1): |F(±δ) − F₀|/F₀ mit
+// Kippungsabzug; übrig bleibt die echte Änderung der Bildgüte (Koma der dezentrierten Linse)
+// (gemessen: siehe PR).
+inline constexpr double kToleranceAwareShiftOnly = 1e-3;
+
 } // namespace mko::test

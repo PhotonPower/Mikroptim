@@ -152,6 +152,18 @@ struct LmResult {
     int cycles = 0; // Zyklen der Schleife über alle Läufe
 };
 
+// Zeilen der Residuenvektoren mehrerer Läufe auf dem Host (LmBackend::host_jacobians und
+// host_residuals, M11-T6b). Ablage wie FdJacobian: J_j(r, p) bei (j·P + p)·R + r, r_j(r) bei
+// j·R + r mit R = shape.rows() (Strahl- und Strafresiduen, dann Zusatzresiduen einschließlich der
+// trace-abhängigen), Status des Strahls k bei j·rays_per_variant + k.
+struct LmHostRows {
+    JacobianShape shape;
+    std::int64_t rays_per_variant = 0;
+    std::vector<double> jacobian;     // [runs][P][R]; leer bei host_residuals
+    std::vector<double> residuals;    // [runs][R]
+    std::vector<std::uint8_t> status; // [runs][rays] TraceStatus
+};
+
 // Rechnungen pro Punkt für die Steuerlogik. Läufe werden über ihren Index (0 … runs − 1)
 // angesprochen; `runs` ist aufsteigend, `x` enthält die Punkte hintereinander (x[j·P …] für
 // runs[j]). Die Ergebnisse eines Laufs dürfen nur von seinem Index und seinem Punkt abhängen,
@@ -167,6 +179,16 @@ public:
     virtual void merit(std::span<const int> runs, std::span<const double> x,
                        std::span<double> merit, std::span<std::int64_t> failed,
                        std::span<std::int64_t> hard_failed) = 0;
+    // Optional (M11-T6b, für Backends, die die Zeilen weiterverarbeiten, z. B. den Kippungsabzug
+    // der toleranzbewussten Merit): J, r und Status an x_j auf dem Host, J nach demselben
+    // Verfahren wie normal_equations (normal_equations_host daraus ergibt A und g bis auf die
+    // Summationsreihenfolge des Backends). Standard: std::logic_error.
+    virtual void host_jacobians(std::span<const int> runs, std::span<const double> x,
+                                LmHostRows& out);
+    // Optional: r und Status an x_j (‖r‖² = F bis auf die Summationsreihenfolge, die
+    // Zusatzresiduen wie in J). Standard: std::logic_error.
+    virtual void host_residuals(std::span<const int> runs, std::span<const double> x,
+                                LmHostRows& out);
 };
 
 // Schranken und typische Größen (Länge P; ±∞ für offene Schranken, typical > 0).
@@ -225,6 +247,14 @@ public:
                           std::span<double> g) override;
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
                std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override;
+    // J wie normal_equations (FD bzw. adjungiert), Status der Strahlen am Punkt (Variante x₀ des
+    // FD-Batches bzw. Status der adjungierten Rechnung).
+    void host_jacobians(std::span<const int> runs, std::span<const double> x,
+                        LmHostRows& out) override;
+    // residuals_cpu, Zusatzresiduen wie fd_extra_residuals (trace-abhängige aus
+    // surface_extrema_cpu desselben Punkts).
+    void host_residuals(std::span<const int> runs, std::span<const double> x,
+                        LmHostRows& out) override;
 
 private:
     const VariableSet& set_;

@@ -104,6 +104,9 @@ struct OptimizeArgs {
     bool have_tol_seed = false;
     enum class TolSet { Auto, File, Default } tol_set = TolSet::Auto;
     bool have_tol_set = false;
+    // M11-T6b: Bewertung der gestörten Systeme mit (keep, Standard) bzw. ohne Kippung (remove)
+    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Keep;
+    bool have_tol_tilt = false;
     bool have_max_iterations = false;
     // Globale Suche (M11-T7): --global cma|starts[,schlüssel=wert…], Standard aus
     std::optional<MemeticOptions> global;
@@ -312,6 +315,15 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
                                  std::string(v) + "'");
             }
             a.have_tol_set = true;
+        } else if (arg == "--tolerance-tilt") {
+            const std::string_view v = next_value(args, i, arg);
+            const std::optional<ToleranceAwareTilt> t = tolerance_aware_tilt_from_string(v);
+            if (!t) {
+                throw UsageError("--tolerance-tilt erwartet keep oder remove, nicht '" +
+                                 std::string(v) + "'");
+            }
+            a.tol_tilt = *t;
+            a.have_tol_tilt = true;
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -333,9 +345,10 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     if (a.al_rounds > 0 && a.runs > 1) {
         throw UsageError("--augmented-lagrangian verlangt einen Lauf (nicht mit --runs K > 1)");
     }
-    if ((a.have_tol_samples || a.have_tol_seed || a.have_tol_set) && !(a.tol_alpha > 0.0)) {
-        throw UsageError("--tolerance-samples, --tolerance-seed und --tolerance-set verlangen "
-                         "--tolerance-aware");
+    if ((a.have_tol_samples || a.have_tol_seed || a.have_tol_set || a.have_tol_tilt) &&
+        !(a.tol_alpha > 0.0)) {
+        throw UsageError("--tolerance-samples, --tolerance-seed, --tolerance-set und "
+                         "--tolerance-tilt verlangen --tolerance-aware");
     }
     if (a.have_tol_seed && a.tol_samples == 0) {
         throw UsageError("--tolerance-seed verlangt --tolerance-samples S mit S >= 1");
@@ -691,7 +704,8 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
            "alpha = " + fixed(m.alpha(), 4) + ", S = " + std::to_string(m.samples()) + " (" +
                scheme + "), " + std::to_string(m.model().tolerances().size()) + " Toleranzen, " +
                std::to_string(m.model().draws()) + " Zufallsgrößen, Satz " +
-               (r.tol_default_set ? "Mikroptim-Standard" : "Datei (tolerances)"));
+               (r.tol_default_set ? "Mikroptim-Standard" : "Datei (tolerances)") +
+               (m.remove_tilt() ? ", gestört ohne Kippung" : ""));
     }
 }
 
@@ -1155,6 +1169,7 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
                                     {"samples", m.samples()},
                                     {"seed", a.tol_samples > 0 ? Json(a.tol_seed) : Json(nullptr)},
                                     {"set", r.tol_default_set ? "default" : "file"},
+                                    {"tilt", to_string(m.settings().tilt)},
                                     {"tolerances", m.model().tolerances().size()},
                                     {"draws", m.model().draws()},
                                     {"start", parts(r.tol_start)},
@@ -1279,7 +1294,8 @@ void print_optimize_usage(std::ostream& out) {
            "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
            "                          [--sine-condition w]\n"
            "                          [--tolerance-aware A [--tolerance-samples S]\n"
-           "                           [--tolerance-seed n] [--tolerance-set file|default]]\n"
+           "                           [--tolerance-seed n] [--tolerance-set file|default]\n"
+           "                           [--tolerance-tilt keep|remove]]\n"
            "                          [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
            "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
@@ -1326,6 +1342,8 @@ void print_optimize_usage(std::ostream& out) {
            "  --tolerance-seed n Startwert der Stichproben (Standard 0)\n"
            "  --tolerance-set T  file: Toleranzsatz der Datei; default: Mikroptim-Standardsatz\n"
            "                     (Standard: Datei, sonst Standardsatz)\n"
+           "  --tolerance-tilt K keep: gestörte Systeme mit voller Merit (Standard); remove:\n"
+           "                     nach Abzug von Kolben und Kippung wie die Tolerierung\n"
            "  --global M[,...]   globale Suche in fester Topologie (M11-T7): cma (CMA-ES mit\n"
            "                     kurzem LM pro Individuum) oder starts (gestörte Starts zum\n"
            "                     Vergleich); Einträge population=N (Standard 4 + 3 ln P),\n"
@@ -1533,6 +1551,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
                 a.tol_samples > 0 ? ToleranceAwareScheme::Samples : ToleranceAwareScheme::PlusMinus;
             ts.samples = a.tol_samples;
             ts.seed = a.tol_seed;
+            ts.tilt = a.tol_tilt;
             r.tol.emplace(tol_system, base, r.set, ts);
 #ifdef MIKROPTIM_HAS_CUDA
             if (engine) {

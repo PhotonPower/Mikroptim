@@ -27,6 +27,13 @@ using HomotopyOptimizer =
     std::function<LmResult(const VariableSet& set, const SystemBatchHost& base,
                            std::span<const double> x0, const LmOptions& options)>;
 
+// Optimierer eines Schritts mit der realisierten Beschreibung am Punkt (M11-T6b), z. B. die
+// toleranzbewusste Merit (optimize_lm_tolerance_aware_standard in
+// mikroptim/tolerance/tolerance_aware.hpp), die den Toleranzsatz aus der Beschreibung bildet.
+using HomotopySystemOptimizer = std::function<LmResult(
+    const SystemDescription& realized, const VariableSet& set, const SystemBatchHost& base,
+    std::span<const double> x0, const LmOptions& options)>;
+
 // FP32-Vorfilter der Strahlsuche (M7-T2): Grobbewertung aller Varianten von `batch` mit der
 // Quadratur `quadrature`, den Kriterien `options` und den Zusatzresiduen `extra_merit` (FP64,
 // eine Zahl pro Variante). Standard prefilter_cpu; GPU z. B. TraceEngine::prefilter_variants.
@@ -50,6 +57,10 @@ struct OpticalHomotopyOptions {
     // `mikroptim optimize`).
     LmOptions lm{};
     HomotopyOptimizer optimizer; // leer: optimize_lm_cpu
+    // Gesetzt, ersetzt er `optimizer` (M11-T6b, toleranzbewusste Synthese). Die Merit des
+    // Schritts (HomotopySolve::merit, Rangfolge der Strahlsuche, Wahl zwischen Starts am
+    // Sattelpunkt) ist dann die des Optimierers; die Bewertung F_B und das Ziel bleiben nominal.
+    HomotopySystemOptimizer system_optimizer;
     // Spektrumstufen (leer: nur das Spektrum der Startdatei, Stufe 0). Stufe k ersetzt das
     // Spektrum der Beschreibung.
     std::vector<Spectrum> spectra;

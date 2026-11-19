@@ -66,6 +66,7 @@ add_executable(mikroptim_tests
     test_smooth_extrema.cpp
     test_paraxial_residuals.cpp
     test_petzval_optimization.cpp
+    test_piston_tilt.cpp
     test_prefilter.cpp
     test_psf.cpp
     test_raytatouille.cpp

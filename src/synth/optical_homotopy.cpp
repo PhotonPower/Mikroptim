@@ -454,8 +454,11 @@ OpticalHomotopyModel::solve_all(std::span<SystemDescription* const> systems, con
         Extras e = make_extras(lead.l, lead.base, lead.set, need_hull ? &hull : nullptr);
         o.jacobian.extra = std::move(e.extra);
         o.jacobian.trace_extra = std::move(e.traced);
-        const LmResult res = options_.optimizer ? options_.optimizer(lead.set, lead.base, x0, o)
-                                                : optimize_lm_cpu(lead.set, lead.base, x0, o);
+        const LmResult res =
+            options_.system_optimizer
+                ? options_.system_optimizer(lead.l.system, lead.set, lead.base, x0, o)
+            : options_.optimizer ? options_.optimizer(lead.set, lead.base, x0, o)
+                                 : optimize_lm_cpu(lead.set, lead.base, x0, o);
         for (std::size_t j = 0; j < members.size(); ++j) {
             const std::size_t i = members[j];
             out[i] = finish_solve(prep[i], *systems[i], res.runs.at(j), o.jacobian.quadrature,
