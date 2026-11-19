@@ -132,6 +132,52 @@ inline std::vector<std::unique_ptr<AdjointCase>> adjoint_cases() {
     return out;
 }
 
+// Dasselbe Problem mit einer anderen Referenzsphäre (ADR-0017, κ beim Aufbau).
+inline FdProblem with_reference_sphere(const FdProblem& p, ReferenceSphereKind kind) {
+    SystemDescription d = p.loaded.system;
+    d.reference_sphere = kind;
+    return make_fd_problem(prepare_system(d, std::filesystem::path(kResidualSystems)));
+}
+
+// Testfälle mit der Referenzsphäre um den Bildpunkt (M6-T7): Arbeitsabstand als Variable (M_z
+// hängt daran, κ ist fest), Geisterplatten, Punktquelle, weiches Versagen, beide Radien; dazu
+// ein Fall, in dem Strahlen die Sphäre verfehlen (κ von Hand auf R = 0,5 µm, weich fortgesetzt).
+inline std::vector<std::unique_ptr<AdjointCase>> image_reference_cases() {
+    std::vector<std::unique_ptr<AdjointCase>> out;
+    const auto add = [&out](std::string name, FdProblem p) -> AdjointCase& {
+        auto c = std::make_unique<AdjointCase>();
+        c->name = std::move(name);
+        c->p = std::move(p);
+        out.push_back(std::move(c));
+        return *out.back();
+    };
+    const FdProblem ghost = ghost_gap_problem();
+    add("Geisterplatten im Spalt, Bildpunkt ∞",
+        with_reference_sphere(ghost, ReferenceSphereKind::ImageInfinite));
+    add("Geisterplatten im Spalt, Bildpunkt AP",
+        with_reference_sphere(ghost, ReferenceSphereKind::ImageExitPupil));
+    add("Punktquelle, Bildpunkt AP",
+        with_reference_sphere(point_source_problem(), ReferenceSphereKind::ImageExitPupil));
+    {
+        AdjointCase& c = add("Mehrlinser + paraxial, Bildpunkt ∞",
+                             with_reference_sphere(mehrlinser_constraints_problem(),
+                                                   ReferenceSphereKind::ImageInfinite));
+        c.options.extra = paraxial_extra(c.p);
+    }
+    const FdProblem soft = make_fd_problem(load_residual_system("weiches_versagen_start.json"));
+    add("Weiches Versagen, Bildpunkt AP",
+        with_reference_sphere(soft, ReferenceSphereKind::ImageExitPupil));
+    {
+        AdjointCase& c = add("Einzellinse, Sphäre verfehlt",
+                             with_reference_sphere(einzellinse_constraints_problem(),
+                                                   ReferenceSphereKind::ImageExitPupil));
+        for (int f = 0; f < c.p.base.fields(); ++f) {
+            c.p.base.reference_curvature(0, f) = 1.0 / 0.0005;
+        }
+    }
+    return out;
+}
+
 // Jacobi-Matrix eines Laufs als Spanne (Spalten zusammenhängend, [P][R]).
 inline std::span<const double> run_columns(const AdjointJacobian& j, int run) {
     const std::size_t n =

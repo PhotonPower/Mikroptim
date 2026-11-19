@@ -418,6 +418,47 @@ MKO_HD inline void reference_step_backward(const Vec3<R>& p, const Vec3<R>& d,
     adj = in;
 }
 
+// Rückwärts durch den Schritt auf die Referenzsphäre um den Bildpunkt (image_sphere_step,
+// ADR-0017) um M = `center` mit fester Krümmung κ (Größe des Batches, ∂κ/∂x = 0) im Medium n_B:
+// q = p − M, b = −q·d, t = −|q × d|², u = √(1 + κ²t), OPL += n_B (b − κt/(u + 1)).
+// Wegen κt/(u + 1) = (u − 1)/κ ist ∂(s + σR)/∂b = 1 und ∂(s + σR)/∂t = −κ/(2u) (stabil, auch
+// κ = 0). Zweig kBranchSoftMissed (1 + κ²t < 0): OPL += n_B (b − κt) mit ∂/∂t = −κ und Strafe
+// π = −(1 + κ²t), ∂π/∂t = −κ². Mit ∂|c|²/∂q = 2 d × c und ∂|c|²/∂d = 2 c × q (c = q × d).
+// Eingang, Ausgänge und Addition wie reference_step_backward.
+template <class R>
+MKO_HD inline void image_step_backward(const Vec3<R>& p, const Vec3<R>& d, const Vec3<R>& center,
+                                       R kappa, R n_image, unsigned char branch,
+                                       AdjointSeed<R> seed, RayAdjoint<R>& adj, Vec3<R>& center_adj,
+                                       R& n_image_adj) {
+    const Vec3<R> q = p - center;
+    const R b = -dot(q, d);
+    const Vec3<R> c = cross(q, d);
+    const R t = -dot(c, c);
+    const bool missed = (branch & kBranchSoftMissed) != 0;
+    R step;
+    R dstep_dt;
+    R tb = R(0);
+    if (missed) {
+        step = b - kappa * t;
+        dstep_dt = -kappa;
+        tb += seed.penalty * (-(kappa * kappa));
+    } else {
+        const R u = msqrt(R(1) + kappa * kappa * t);
+        step = b - kappa * t / (u + R(1));
+        dstep_dt = -kappa / (R(2) * u);
+    }
+    const R sb = seed.opl * n_image;
+    n_image_adj += seed.opl * step;
+    const R bb = sb;
+    tb += sb * dstep_dt;
+    // b = −q·d, t = −|q × d|²
+    const Vec3<R> qb = (-bb) * d + (R(-2) * tb) * cross(d, c);
+    const Vec3<R> db = (-bb) * q + (R(-2) * tb) * cross(c, q);
+    RayAdjoint<R> in{qb, db};
+    center_adj += (R(-1)) * qb;
+    adj = in;
+}
+
 // Rückwärts durch den Startstrahl der Punktquelle (point_source_ray): d₀ hängt über
 // sin_max = NA/n₀ von der Brechzahl n₀ = index[0] des Startmediums ab,
 // ∂d₀/∂sin_max = (d_x, d_y, −(d_x² + d_y²)/d_z)/sin_max, also
@@ -449,10 +490,12 @@ MKO_HD inline R point_source_backward(const Vec3<R>& d0, R n0, const RayAdjoint<
 // in_piston); dann ist rec.count = S und der Zweig rec.image_branch. `center` = M_f,
 // `point_source`: Startstrahl der Punktquelle (sonst kollimiert). Die Tabelle ist dieselbe wie im
 // Vorwärtsdurchlauf (Wellenlängenindex `wavelength_index`).
+// `ref`: Referenzsphäre (ADR-0017); die Form mit `center` ist die Sphäre durch den Scheitel der
+// letzten Fläche.
 template <class R, class SurfaceTable, class Record, class Sink>
 MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, const Record& rec,
-                                bool reached_image, const Vec3<R>& center, bool point_source,
-                                AdjointSeed<R> seed, Sink& sink) {
+                                bool reached_image, const ReferenceSphere<R>& ref,
+                                bool point_source, AdjointSeed<R> seed, Sink& sink) {
     const int S = sys.surfaces;
     const int L = sys.wavelengths;
     const int count = rec.count;
@@ -473,9 +516,14 @@ MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, c
                 if (reached_image && count == S) {
                     Vec3<R> center_adj = detail::vec_zero<R>();
                     R n_image_adj = R(0);
-                    reference_step_backward(p, d, center,
-                                            R(sys.index[(S - 1) * L + wavelength_index]),
-                                            rec.image_branch, seed, adj, center_adj, n_image_adj);
+                    const R n_image = R(sys.index[(S - 1) * L + wavelength_index]);
+                    if (ref.kind == ReferenceSphereKind::LastSurface) {
+                        reference_step_backward(p, d, ref.center, n_image, rec.image_branch, seed,
+                                                adj, center_adj, n_image_adj);
+                    } else {
+                        image_step_backward(p, d, ref.center, ref.kappa, n_image, rec.image_branch,
+                                            seed, adj, center_adj, n_image_adj);
+                    }
                     sink.thickness(S - 1, center_adj.z); // M_z = Arbeitsabstand
                     n_carry = n_image_adj;
                 }
@@ -538,6 +586,14 @@ MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, c
         n_carry += point_source_backward(d0, R(sys.index[wavelength_index]), adj);
     }
     sink.index(0, n_carry);
+}
+
+template <class R, class SurfaceTable, class Record, class Sink>
+MKO_HD inline void backward_ray(const SurfaceTable& sys, int wavelength_index, const Record& rec,
+                                bool reached_image, const Vec3<R>& center, bool point_source,
+                                AdjointSeed<R> seed, Sink& sink) {
+    const ReferenceSphere<R> ref{center, R(0), ReferenceSphereKind::LastSurface};
+    backward_ray(sys, wavelength_index, rec, reached_image, ref, point_source, seed, sink);
 }
 
 } // namespace mko

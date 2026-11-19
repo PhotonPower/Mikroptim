@@ -160,6 +160,10 @@ void DeviceSystemBatch::upload(const SystemBatchHost& host, int first, int count
         to_device(base, layout.decenter_tilt,
                   host.decenter_tilt_data().data() + v0 * sh.transform_stride());
     }
+    if (is_image_reference(host.topology().reference_sphere)) {
+        to_device(base, layout.reference_curvature,
+                  host.reference_curvature_data().data() + v0 * sh.field_stride());
+    }
 
     topology_ = host.topology();
     variants_ = count;
@@ -220,6 +224,10 @@ void DeviceSystemBatch::download(SystemBatchHost& host, int first) const {
         to_host(base, layout_.decenter_tilt,
                 host.decenter_tilt_data().data() + v0 * sh.transform_stride());
     }
+    if (is_image_reference(topology_.reference_sphere)) {
+        to_host(base, layout_.reference_curvature,
+                host.reference_curvature_data().data() + v0 * sh.field_stride());
+    }
     host.reference_wavelength_nm = reference_wavelength_nm_;
     host.source_point = source_point_;
     host.source_na = source_na_;
@@ -265,6 +273,10 @@ SystemBatchView<double> DeviceSystemBatch::view() const {
     b.paraxial_ghost_index = region_ptr<double>(buffer_, layout_.paraxial_ghost_index);
     b.decenter_tilt =
         topology_.non_coaxial ? region_ptr<double>(buffer_, layout_.decenter_tilt) : nullptr;
+    b.reference_sphere = topology_.reference_sphere;
+    b.reference_curvature = is_image_reference(topology_.reference_sphere)
+                                ? region_ptr<double>(buffer_, layout_.reference_curvature)
+                                : nullptr;
     return b;
 }
 

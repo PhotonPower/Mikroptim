@@ -369,6 +369,36 @@ Ohne Versagen ist W_ok = 1 (bis auf Rundung), und das ist genau der Kolbenabzug 
 
 Die Abweichung des RMS von der Seidel-Näherung ist der Anteil höherer Ordnung (W₀₆₀ ρ⁶ usw., relativ ∝ NA²: Faktor 4 zwischen NA 0,049 und 0,025); der Fit A ρ⁴ + B ρ⁶ + K trennt ihn ab. Die Lage der Referenzsphäre durch den Scheitel statt durch die Austrittspupille ändert auf der Achse nur Terme zweiter Ordnung in der Queraberration und ist darin enthalten.
 
+### Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017)
+
+Die Sphäre durch den Scheitel der letzten Fläche (oben, M1-T7) hängt an einer Fläche, die optisch nichts bedeuten muss; liegt dort eine Hilfsebene nahe am Bild, kann der Optimierer den Fokus in ihren Scheitel legen und den Defokus verstecken (M6-T6, Befunde F11/F12). Seit [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md) wählt das optionale Feld `reference_sphere` der Systemdatei die Konvention (`ReferenceSphereKind`, `include/mikroptim/trace/reference_kind.hpp`):
+
+| Wert | Mittelpunkt | Radius | Bemerkung |
+|---|---|---|---|
+| `last_surface` (ohne Feld) | **M**_f | \|**M**_f\| (durch den Scheitel der letzten Fläche) | M1-T7, bitgleich zu den Ergebnissen vor ADR-0017 |
+| `image_exit_pupil` | **M**_f | \|**M**_f − **E**\|, **E** = (0, 0, z_AP) Mitte der paraxialen Austrittspupille bei λ_ref | κ beim Aufbau des Batches eingefroren; telezentrisch κ = 0 |
+| `image_infinite` | **M**_f | ∞ (κ = 0) | OPD als Funktion der Strahlrichtung (Debye-Näherung); empfohlen für die Synthese |
+
+**Mittelpunkt** ist in allen Fällen der ideale Bildpunkt **M**_f = (0, h_f, w) in der Bildebene (w = `thickness[S−1]`, h_f wie oben). Der Durchstoßpunkt des Hauptstrahls oder der Schwerpunkt unterscheiden sich davon nur um eine Verschiebung in der Bildebene, die als Kippung der OPD erscheint; diese Kippung (Verzeichnung, Brennweitenfehler) soll die Merit weiter bestrafen. **Bildlage** ist w, die wie bisher eine Variable sein kann (Arbeitsabstand); eine eingefügte Hilfsebene verkürzt w um ihren Abstand, die Bildebene bleibt im Raum fest. Ein Modus „Bildlage = paraxialer Fokus“ ist zurückgestellt (ADR-0017, Punkt 5).
+
+**Schritt** (`image_sphere_step`, `include/mikroptim/trace/reference_sphere.hpp`; dieselben Operationen wie `exit_pupil_sphere_step` des Modus EVAL, bitgleiche OPL). Mit **q** = **p** − **M**_f, b = −**q**·**d**, t = −|**q** × **d**|² und κ = σ/R (σ = +1 für M_z ≥ z_AP, sonst −1):
+
+$$\mathrm{OPL} \mathrel{+}= n_B\Big(b - \frac{\kappa\,t}{\sqrt{1 + \kappa^2 t} + 1}\Big) = n_B\,(s + \sigma R)$$
+
+Das ist die OPL bis zur Kappe durch **E** ohne den für alle Strahlen eines Feldes gleichen Anteil −σ n_B R (fällt beim Kolbenabzug weg). Für κ = 0 bleibt n_B·b, die optische Weglänge bis zum Fußpunkt des Lots von **M**_f auf den Strahl. Danach steht der Strahl in diesem Fußpunkt (**p** += b **d**; der Punkt auf der Sphäre ist für großes R nicht genau darstellbar). Die OPL hängt nicht davon ab, an welcher Stelle der Geraden der Schritt beginnt: Eine Hilfsebene oder eine Luftplatte hinter dem System ändert sie nicht (bis auf Rundung), anders als bei `last_surface`, wo sich der Radius ändert.
+
+**Defokus und Kippung** bleiben in der OPD wie bisher. Für eine ideale Kugelwelle um den Punkt **P** ist die OPD analytisch: mit **q** = **P** − **M**_f gilt dieselbe Formel mit dem Strahl durch **P**, für κ = 0 also OPD = n_B (**M**_f − **P**)·**d** − Kolben = n_B (Δz cos θ + Δh d_y) − Kolben (Test `ImageReference.PureDefocusOfPointSourceIsAnalytic`). Eine Kugelwelle um einen Punkt **P** auf der Sphäre ergäbe auf ihr OPD = 0 (alle Strahlen treffen sie in **P**): Das ist die Falle F12, bei `last_surface` im Scheitel der letzten Fläche, bei `image_exit_pupil` in **E** (bei Systemen ohne Geisterplatten weit vom Bild, R ≈ 100 mm), bei `image_infinite` gar nicht.
+
+**Versagen.** Nur bei endlichem Radius kann die Gerade die Sphäre verfehlen: 1 + κ²t < 0 oder NaN ergibt `Missed` mit versagender Fläche S. Weiches Versagen (Abschnitt 11): Strafe −(1 + κ²t) (dieselbe Größe wie −(b² − g)/R_ref² bei `last_surface`) und Fortsetzung mit √(1 + κ²t) := 0, also n_B(b − κt), stetig an der Grenze; Status `SoftMissed`. Einen Bildpunkt in der Austrittspupille (R = 0) und eine nicht endliche Pupillenlage weist der Aufbau zurück.
+
+**κ als feste Größe des Batches.** `make_system_batch` setzt `BatchTopology::reference_sphere` aus der Datei und berechnet κ mit `update_reference_curvature` (aus `batch_paraxial`, dieselben Ausdrücke wie `eval_reference_geometry`, bitgleich). `VariableSet::apply` ändert κ nicht, FD- und adjungierte Jacobi setzen ∂κ/∂x = 0 (wie beim Feldziel h_f). Der Unterschied zu einer mit den Variablen mitlaufenden Pupille ist von zweiter Ordnung in der Queraberration; jeder neue Aufbau (nächster LM-Lauf, nächste Stufe der Synthese) nimmt die aktuelle Pupille. M_z = w ist dagegen eine Variable (Arbeitsabstand) und geht in die Ableitungen ein.
+
+**Adjungiert** (`image_step_backward`, `include/mikroptim/trace/adjoint_backward.hpp`): Wegen κt/(u + 1) = (u − 1)/κ mit u = √(1 + κ²t) ist ∂(s + σR)/∂b = 1 und ∂(s + σR)/∂t = −κ/(2u) (stabil, auch für κ = 0); im Zweig `kBranchSoftMissed` ∂/∂t = −κ und ∂π/∂t = −κ². Mit ∂|**c**|²/∂**q** = 2 **d** × **c** und ∂|**c**|²/∂**d** = 2 **c** × **q** (**c** = **q** × **d**): **p̄** = **q̄**, **M̄** = −**q̄**, M̄_z geht an `thickness[S−1]`, n̄_B = ō (s + σR).
+
+**Vorfilterung (FP32):** Prüfgröße √(1 + κ²t) (für κ = 0 immer 1), Versagen mit dem Grenzabstand √(−(1 + κ²t)). **EVAL** hat zusätzlich die Lage `infinite` (κ = 0); ohne `--reference` folgt `mikroptim eval` der Datei (`image_infinite` → `infinite`, sonst `exit-pupil` wie bisher).
+
+**Ergebnisse der Abnahme** (CPU: `tests/test_reference_sphere.cpp`, `AdjointLocal.ImageStepMatchesRichardson`, `AdjointJacobian.ImageReferenceAgainstRichardsonAndFd`; GPU: `CudaResiduals.MatchCpuWithImageReference`, `CudaMerit.MatchesCpuWithImageReference`, `CudaDf64.MatchesFp64ForPerturbedVariants`, `CudaPrefilter.*`, `CudaEval.MatchesCpu`, `CudaAdjointJacobian.ImageReferenceMatchesCpuFdAndDf64`; RTX 3090): siehe [Bericht M6-T7](ergebnisse/m6-t7-referenzsphaere.md).
+
 ### Residuen pro Strahl (M2, Gewichte M4-T1)
 
 Festlegung für den Kernel `RESIDUALS` und seine CPU-Referenz (M2-T2, `include/mikroptim/merit/ray_residual.hpp`, Ablage: [architektur.md, „Kernel RESIDUALS“](architektur.md#kernel-residuals-m2-t2)). Pro Variante, Feld f, Wellenlänge l und Stützstelle k:

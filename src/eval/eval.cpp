@@ -151,6 +151,7 @@ void check_eval_settings(const EvalSettings& settings) {
     switch (settings.reference) {
     case EvalReference::ExitPupil:
     case EvalReference::Vertex:
+    case EvalReference::Infinite:
         break;
     default:
         throw std::invalid_argument("EVAL: unbekannte Lage der Referenzsphäre");
@@ -226,7 +227,7 @@ EvalReferenceGeometry eval_reference_geometry(const SystemBatchHost& batch,
     for (int v = 0; v < V; ++v) {
         const double w = batch.thickness(v, S - 1);
         double z_ap = 0.0;
-        bool infinite = false;
+        bool infinite = reference == EvalReference::Infinite;
         if (reference == EvalReference::ExitPupil) {
             const ParaxialData p = batch_paraxial(batch, v);
             infinite = p.exit_pupil_at_infinity;

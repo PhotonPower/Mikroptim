@@ -7,6 +7,7 @@
 #include "mikroptim/config.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
 #include "mikroptim/trace/ray.hpp"
+#include "mikroptim/trace/reference_kind.hpp"
 #include "mikroptim/trace/surface_table.hpp"
 #include "mikroptim/trace/trace.hpp"
 
@@ -112,6 +113,8 @@ struct SystemBatchView {
     R source_point[3];         // Punktquelle: Quellpunkt in lokalen Koordinaten von Fläche 0
     R source_na;               // Punktquelle: NA im Medium nach Fläche 0
     R reference_wavelength_nm; // Referenzwellenlänge λ_ref (OPD in Wellen) [nm]
+    // Art der Referenzsphäre (ADR-0017, aus BatchTopology::reference_sphere)
+    ReferenceSphereKind reference_sphere;
 
     // Gemeinsam für den Batch
     const SurfaceKind* type;    // [S]
@@ -137,6 +140,9 @@ struct SystemBatchView {
     // Dezentrierung und Verkippung (M8-T3): [V][S][4] = Δx, Δy, α, β; nullptr bei koaxialer
     // Topologie (dann lesen die Kernel nichts davon).
     const R* decenter_tilt;
+    // Krümmung κ_f = σ/R der Referenzsphäre um den Bildpunkt (ADR-0017): [V][F] wie
+    // field_target, beim Aufbau eingefroren; nullptr bei ReferenceSphereKind::LastSurface.
+    const R* reference_curvature;
 
     // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K, v·G·L bzw.
     // v·S·4 versetzt; type und ghost_norm_radius sind für alle Varianten dieselben. Ohne

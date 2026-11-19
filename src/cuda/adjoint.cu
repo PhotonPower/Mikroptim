@@ -143,7 +143,7 @@ __global__ void __launch_bounds__(kBlockThreads) adjoint_forward_kernel(const Ad
         tid);
     __syncthreads();
 
-    const Vec3<R> center = batch_image_point(a.batch, table, v, f);
+    const ReferenceSphere<R> ref = batch_reference(a.batch, table, v, f);
     const int n = plan.samples;
     const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n;
     const std::int64_t ray0 = static_cast<std::int64_t>(v) * a.rays + first;
@@ -165,12 +165,12 @@ __global__ void __launch_bounds__(kBlockThreads) adjoint_forward_kernel(const Ad
         TraceStatus st;
         if constexpr (kStorage == kStorageNone) {
             NoTraceRecorder* const no_record = nullptr;
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, no_observer, soft_ptr,
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, ref, &opl, no_observer, soft_ptr,
                                no_record);
             a.checksum[ray0 + k] = 0;
         } else {
             typename KernelRecord<R, kStorage, kCapacity>::type record;
-            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl, no_observer, soft_ptr,
+            st = batch_ray_opl(a.batch, table, 0, v, f, l, s, ref, &opl, no_observer, soft_ptr,
                                &record);
             consume_record<R>(table, record, a, ray0 + k, S);
         }

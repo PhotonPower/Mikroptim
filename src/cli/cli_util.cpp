@@ -144,6 +144,19 @@ std::string join_fixed(const std::vector<double>& values, int decimals) {
     return s;
 }
 
+ReferenceSphereKind parse_reference_sphere(std::string_view option, std::string_view text) {
+    for (const ReferenceSphereKind k :
+         {ReferenceSphereKind::LastSurface, ReferenceSphereKind::ImageExitPupil,
+          ReferenceSphereKind::ImageInfinite}) {
+        if (text == reference_sphere_name(k)) {
+            return k;
+        }
+    }
+    throw UsageError(std::string(option) +
+                     " erwartet last_surface, image_exit_pupil oder image_infinite, nicht '" +
+                     std::string(text) + "'");
+}
+
 double parse_sine_condition_weight(std::string_view option, std::string_view text) {
     const double w = parse_double(option, text);
     if (!(w >= 0.0)) {

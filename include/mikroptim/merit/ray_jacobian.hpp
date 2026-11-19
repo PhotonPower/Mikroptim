@@ -90,10 +90,11 @@ MKO_HD inline bool has_penalty_gradient(bool soft_mode, TraceStatus soft_first) 
 //   penalty_scale · √(W_i V_j), das fertige Strafresiduum).
 // Hart versagte Strahlen ohne weiches Ereignis schreiben nichts (Wellenfront- und Strafzeile 0).
 template <class R, class SurfaceTable, class Record>
-MKO_HD inline void
-ray_gradient_rows(const SurfaceTable& table, int table_l, const Record& rec, TraceStatus status,
-                  TraceStatus soft_first, bool soft_mode, const Vec3<R>& center, bool point_source,
-                  const JacobianRowWriter<R>& opl_row, const JacobianRowWriter<R>& penalty_row) {
+MKO_HD inline void ray_gradient_rows(const SurfaceTable& table, int table_l, const Record& rec,
+                                     TraceStatus status, TraceStatus soft_first, bool soft_mode,
+                                     const ReferenceSphere<R>& center, bool point_source,
+                                     const JacobianRowWriter<R>& opl_row,
+                                     const JacobianRowWriter<R>& penalty_row) {
     const bool reached = in_piston(status);
     if (reached) {
         backward_ray(table, table_l, rec, true, center, point_source, AdjointSeed<R>{R(1), R(0)},

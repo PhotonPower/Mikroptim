@@ -69,6 +69,7 @@ struct SynthArgs {
     double extrema_beta = 0.0;            // M11-T1b
     bool predictor = false;               // M11-T3
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
+    std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
     // Augmented Lagrangian (M11-T2): Läufe K, Toleranz T, Faktor S auf die Gewichte (K = 0: aus)
     int al_rounds = 0;
     double al_tolerance = kDefaultShiftTolerance;
@@ -197,6 +198,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.predictor = true;
         } else if (arg == "--sine-condition") {
             a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
+        } else if (arg == "--reference-sphere") {
+            a.reference_sphere = parse_reference_sphere(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-beta") {
             a.extrema_beta = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-stages") {
@@ -427,6 +430,8 @@ void print_synth_usage(std::ostream& out) {
            "                            --augmented-lagrangian\n"
            "  --sine-condition W        Verletzung der Sinusbedingung (OSC) als Residuum mit\n"
            "                            Gewicht W (Eintrag sine_condition setzen, M11-T4)\n"
+           "  --reference-sphere K      Referenzsphäre der Merit: last_surface,\n"
+           "                            image_exit_pupil oder image_infinite (ADR-0017)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
            "bis 1\n"
            "                            mit adaptiver Schrittweite (M11-T5f)\n"
@@ -538,6 +543,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         // Neustart des Augmented Lagrangian (Entscheidung des Maintainers 2026-11-19)
         if (!a.shifts_from.empty()) {
             set_shift_values(start.system, read_shift_file(fs::path(a.shifts_from)));
+        }
+        if (a.reference_sphere) {
+            start.system.reference_sphere = *a.reference_sphere;
         }
         for (const std::string& w : start.warnings) {
             err << "mikroptim synth: Warnung: " << w << '\n';

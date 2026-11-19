@@ -115,7 +115,7 @@ __global__ void __launch_bounds__(kBlockThreads) prefilter_kernel(const Prefilte
     const detail::KernelTable<R, kTransforms> table = detail::block_kernel_table<R, kTransforms>(
         sh_table, S, ghosts, reinterpret_cast<R*>(sh_dynamic + a.ghost_bytes), a.batch, v, tid);
     __syncthreads();
-    const Vec3<R> center = batch_image_point(a.batch, table, v, f);
+    const ReferenceSphere<R> ref = batch_reference(a.batch, table, v, f);
     const R offset = prefilter_opl_offset(table, 0);
     const R abs_offset = offset < R(0) ? -offset : offset;
     const int n = plan.samples;
@@ -128,7 +128,7 @@ __global__ void __launch_bounds__(kBlockThreads) prefilter_kernel(const Prefilte
     std::int32_t uncertain_failed = 0;
     for (int k = tid; k < n; k += kBlockThreads) {
         const PupilSample<R> s = sample(sh_table.pupil, k);
-        const PrefilterRay<R> r = prefilter_ray(a.batch, table, 0, v, f, l, s, center, offset);
+        const PrefilterRay<R> r = prefilter_ray(a.batch, table, 0, v, f, l, s, ref, offset);
         const bool ok = r.status == TraceStatus::Ok;
         const bool certain = r.margin > a.boundary;
         const std::uint8_t cls = ok ? (certain ? kCertainOk : kUncertainOk)

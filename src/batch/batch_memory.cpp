@@ -79,6 +79,9 @@ SystemBatchLayout make_batch_layout(const BatchTopology& t, int variants) {
     b.decenter_tilt = place(
         end,
         t.non_coaxial ? mul_sat(V, S * static_cast<std::size_t>(kSurfaceTransformValues) * d) : 0);
+    // Danach, damit Batches mit der Sphäre durch die letzte Fläche ihre Ablage behalten.
+    b.reference_curvature =
+        place(end, is_image_reference(t.reference_sphere) ? mul_sat(V, F * d) : 0);
     b.total_bytes = end;
     return b;
 }

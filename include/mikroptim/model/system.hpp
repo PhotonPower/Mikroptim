@@ -7,6 +7,7 @@
 #include "mikroptim/model/material.hpp"
 #include "mikroptim/model/tolerances.hpp"
 #include "mikroptim/model/variables.hpp"
+#include "mikroptim/trace/reference_kind.hpp"
 
 #include <array>
 #include <functional>
@@ -116,6 +117,9 @@ struct SystemDescription {
     Spectrum spectrum;
     Source source;
     std::optional<Target> target;
+    // Referenzsphäre der Merit (ADR-0017). Leer: LastSurface (Konvention vor ADR-0017, alte
+    // Dateien rechnen bitgleich weiter); geschrieben wird das Feld nur, wenn es gesetzt ist.
+    std::optional<ReferenceSphereKind> reference_sphere;
     std::vector<Surface> surfaces; // in Tracerichtung, surfaces[0] ist die Blende
     // Geisterplatten, sortiert nach (after_surface, distance); leer: keine
     std::vector<GhostPlate> ghost_plates;

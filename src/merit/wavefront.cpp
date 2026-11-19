@@ -1,6 +1,7 @@
 // Wellenfrontauswertung auf der CPU: Referenzsphäre, Kolbenabzug, RMS pro Feld und Wellenlänge.
 
 #include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cpu/cpu_trace.hpp"
 #include "mikroptim/merit/opd.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
@@ -95,6 +96,18 @@ PupilMode wavefront_pupil_mode(const SystemDescription& system, int field,
 WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSurfaceTable& table,
                                    std::span<const Vec3<double>> image_points,
                                    const WavefrontOptions& options) {
+    std::vector<ReferenceSphere<double>> refs;
+    refs.reserve(image_points.size());
+    for (const Vec3<double>& m : image_points) {
+        refs.push_back(ReferenceSphere<double>{m, 0.0, ReferenceSphereKind::LastSurface});
+    }
+    return evaluate_wavefront(system, table, std::span<const ReferenceSphere<double>>(refs),
+                              options);
+}
+
+WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSurfaceTable& table,
+                                   std::span<const ReferenceSphere<double>> image_points,
+                                   const WavefrontOptions& options) {
     check_table(system, table);
     const int fields = source_field_count(system);
     if (image_points.size() != static_cast<std::size_t>(fields)) {
@@ -119,7 +132,8 @@ WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSu
         const auto quad = make_pupil_quadrature(options.rings, options.spokes,
                                                 wavefront_pupil_mode(system, f, options));
         const int n = sample_count(quad);
-        const Vec3<double> center = image_points[static_cast<std::size_t>(f)];
+        const ReferenceSphere<double> ref = image_points[static_cast<std::size_t>(f)];
+        const Vec3<double> center = ref.center;
         for (int l = 0; l < table.wavelengths; ++l) {
             WavefrontMap m;
             m.field = f;
@@ -140,7 +154,7 @@ WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSu
                 weight[k] = m.pupil[k].weight;
                 Ray<double> ray = source_ray(system, table, f, l, m.pupil[k]);
                 int failed = -1;
-                m.status[k] = trace_to_reference_sphere(view, l, ray, center, &failed);
+                m.status[k] = trace_to_reference_sphere(view, l, ray, ref, &failed);
                 m.failed_surface[k] = failed;
                 m.opl[k] = ray.opl;
             }
@@ -174,7 +188,21 @@ WavefrontResult evaluate_wavefront(const LoadedSystem& system, const WavefrontOp
         f = target_focal_length(system.system, system.catalog);
     }
     const std::vector<Vec3<double>> points = ideal_image_points(system.system, system.table, f);
-    WavefrontResult res = evaluate_wavefront(system.system, system.table, points, options);
+    const ReferenceSphereKind kind =
+        system.system.reference_sphere.value_or(ReferenceSphereKind::LastSurface);
+    std::vector<ReferenceSphere<double>> refs;
+    std::vector<double> kappa(points.size(), 0.0);
+    if (kind == ReferenceSphereKind::ImageExitPupil) {
+        const SystemBatchHost batch = make_system_batch(system, 1);
+        for (std::size_t i = 0; i < points.size(); ++i) {
+            kappa[i] = batch.reference_curvature(0, static_cast<int>(i));
+        }
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        refs.push_back(ReferenceSphere<double>{points[i], kappa[i], kind});
+    }
+    WavefrontResult res = evaluate_wavefront(
+        system.system, system.table, std::span<const ReferenceSphere<double>>(refs), options);
     res.focal_length = f;
     return res;
 }

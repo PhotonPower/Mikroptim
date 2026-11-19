@@ -203,13 +203,13 @@ void variant_residuals(const SystemBatchHost& batch, int v, const ResidualLayout
             pupil[k] = sample(q, static_cast<int>(k));
             weight[k] = pupil[k].weight;
         }
-        const Vec3<double> center = batch_image_point(view, table, v, f);
+        const ReferenceSphere<double> ref = batch_reference(view, table, v, f);
         for (int l = 0; l < layout.wavelengths(); ++l) {
             const std::size_t o = to_size(layout.offset(f, l));
             for (std::size_t k = 0; k < nu; ++k) {
                 SoftFailure<double> soft{0.0, TraceStatus::Ok};
-                st[k] = batch_ray_opl(view, table, l, v, f, l, pupil[k], center, &opl[k],
-                                      no_observer, soft_mode ? &soft : nullptr);
+                st[k] = batch_ray_opl(view, table, l, v, f, l, pupil[k], ref, &opl[k], no_observer,
+                                      soft_mode ? &soft : nullptr);
                 penalty[k] = soft.penalty;
             }
             // Kolbenabzug ohne hart versagte Strahlen; deren OPD (und die aller Strahlen eines

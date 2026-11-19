@@ -7,10 +7,22 @@
 #include "mikroptim/math/scalar.hpp"
 #include "mikroptim/math/vec3.hpp"
 #include "mikroptim/trace/ray.hpp"
+#include "mikroptim/trace/reference_kind.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 #include "mikroptim/trace/trace.hpp"
 
 namespace mko {
+
+// Referenzsphäre eines Feldes (ADR-0017): Mittelpunkt M_f in lokalen Koordinaten der letzten
+// Fläche, Art und – nur für die Arten am Bildpunkt – die vorzeichenbehaftete Krümmung
+// κ = σ/R (0: unendlicher Radius). Bei LastSurface ist der Radius |M_f| (durch den Scheitel der
+// letzten Fläche), κ wird nicht verwendet.
+template <class R>
+struct ReferenceSphere {
+    Vec3<R> center;
+    R kappa;
+    ReferenceSphereKind kind;
+};
 
 // Schritt vom Schnittpunkt mit der letzten Fläche (Ende von trace_ray) auf die Referenzsphäre
 // um den idealen Bildpunkt `center` = M (lokale Koordinaten der letzten Fläche) mit Radius
@@ -77,8 +89,75 @@ reference_sphere_step(Ray<R>& ray, Vec3<R> center, R n_image,
     return TraceStatus::Ok;
 }
 
-// Sequenzieller Trace (trace_ray) und anschließend der Schritt auf die Referenzsphäre um
-// `center` im Medium nach der letzten Fläche (index[(S−1)·L + l]). Pro-Strahl-Teil der
+// Schritt auf die Referenzsphäre um den Bildpunkt `center` = M mit der vorzeichenbehafteten
+// Krümmung κ = σ/R (ADR-0017, docs/numerik.md, Abschnitt 7; κ = 0: unendlicher Radius). Mit
+// q = p − M, b = −q·d und t = −|q × d|² (= b² − |q|² für |d| = 1) schneidet der Strahl die
+// Kappe durch die Austrittspupille bei s = b − σ√(R² + t). Addiert wird n_image · (s + σR),
+// also ohne den für alle Strahlen eines Feldes gleichen Anteil −σ n R:
+//
+//     s + σR = b − κ t / (√(1 + κ² t) + 1)
+//
+// (dieselben Operationen wie exit_pupil_sphere_step des Modus EVAL, bitgleiche OPL). Die
+// Position wird auf den Fußpunkt des Lots von M auf den Strahl gesetzt (p += b d; der Punkt
+// auf der Sphäre ist für großes R nicht genau darstellbar und für κ = 0 nicht definiert).
+// `s_out` erhält s + σR.
+//
+// Status Missed, wenn 1 + κ²t < 0 (die Gerade verfehlt die Sphäre, nur bei endlichem Radius)
+// oder ein Ergebnis NaN ist; der Strahl bleibt dann unverändert. Weiches Versagen (`soft`
+// gesetzt) bei 1 + κ²t < 0: Strafe −(1 + κ²t) (dieselbe Größe wie −(b² − g)/R_ref² der
+// Sphäre durch den Scheitel) und Fortsetzung mit √(1 + κ²t) := 0, also s + σR = b − κt
+// (stetig an der Grenze); Rückgabe SoftMissed.
+template <class R>
+MKO_HD inline TraceStatus
+image_sphere_step(Ray<R>& ray, Vec3<R> center, R kappa, R n_image,
+                  typename detail::NonDeduced<R>::type* s_out = nullptr,
+                  typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
+    const Vec3<R> q = ray.p - center;
+    const R b = -dot(q, ray.d);
+    const Vec3<R> c{q.y * ray.d.z - q.z * ray.d.y, q.z * ray.d.x - q.x * ray.d.z,
+                    q.x * ray.d.y - q.y * ray.d.x};
+    const R t = -dot(c, c);
+    const R disc = R(1) + kappa * kappa * t;
+    R step;
+    TraceStatus st = TraceStatus::Ok;
+    if (disc >= R(0)) {
+        step = b - kappa * t / (msqrt(disc) + R(1));
+    } else if (soft != nullptr && disc < R(0)) {
+        step = b - kappa * t;
+        st = TraceStatus::SoftMissed;
+    } else {
+        return TraceStatus::Missed;
+    }
+    if (!(step >= R(0)) && !(step < R(0))) { // NaN
+        return TraceStatus::Missed;
+    }
+    if (st == TraceStatus::SoftMissed) {
+        soft->add(-disc, TraceStatus::SoftMissed);
+    }
+    ray.p += b * ray.d;
+    ray.opl += n_image * step;
+    if (s_out != nullptr) {
+        *s_out = step;
+    }
+    return st;
+}
+
+// Schritt auf die Referenzsphäre `ref` der jeweiligen Art (reference_sphere_step bzw.
+// image_sphere_step), Argumente wie dort.
+template <class R>
+MKO_HD inline TraceStatus
+reference_step(Ray<R>& ray, const ReferenceSphere<R>& ref, R n_image,
+               typename detail::NonDeduced<R>::type* s_out = nullptr,
+               typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr) {
+    if (ref.kind == ReferenceSphereKind::LastSurface) {
+        return reference_sphere_step(ray, ref.center, n_image, s_out, soft);
+    }
+    return image_sphere_step(ray, ref.center, ref.kappa, n_image, s_out, soft);
+}
+
+// Sequenzieller Trace (trace_ray) und anschließend der Schritt auf die Referenzsphäre `ref`
+// (ADR-0017; die Form mit `center` ist die Sphäre durch den Scheitel der letzten Fläche, M1-T7)
+// im Medium nach der letzten Fläche (index[(S−1)·L + l]). Pro-Strahl-Teil der
 // Wellenfrontauswertung für CPU und Kernel.
 //
 // Status: der von trace_ray (dann *failed_surface = versagende Fläche); Backward, wenn der
@@ -103,7 +182,7 @@ template <class R, class SurfaceTable, class Observer = NoSurfaceObserver,
           class Recorder = NoTraceRecorder>
 MKO_HD inline TraceStatus
 trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
-                          Vec3<R> center, int* failed_surface = nullptr,
+                          const ReferenceSphere<R>& ref, int* failed_surface = nullptr,
                           Observer* observer = nullptr,
                           typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
                           Recorder* recorder = nullptr) {
@@ -122,24 +201,38 @@ trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>&
     const int last = sys.surfaces - 1;
     const R n_image = R(sys.index[last * sys.wavelengths + wavelength_index]);
     R s_ref = R(0);
-    const TraceStatus ref = reference_sphere_step(ray, center, n_image, &s_ref, soft);
-    if (is_hard_failure(ref)) {
+    const TraceStatus rst = reference_step(ray, ref, n_image, &s_ref, soft);
+    if (is_hard_failure(rst)) {
         if (failed_surface != nullptr) {
             *failed_surface = sys.surfaces;
         }
-        return ref;
+        return rst;
     }
     if (recorder != nullptr) {
-        recorder->image(s_ref, ref == TraceStatus::SoftMissed ? kBranchSoftMissed : kBranchRegular,
+        recorder->image(s_ref, rst == TraceStatus::SoftMissed ? kBranchSoftMissed : kBranchRegular,
                         ray);
     }
     if (st != TraceStatus::Ok) {
         return st; // erstes weiches Ereignis vor der Referenzsphäre (failed_surface gesetzt)
     }
-    if (ref != TraceStatus::Ok && failed_surface != nullptr) {
+    if (rst != TraceStatus::Ok && failed_surface != nullptr) {
         *failed_surface = sys.surfaces;
     }
-    return ref;
+    return rst;
+}
+
+// Sphäre durch den Scheitel der letzten Fläche um `center` (M1-T7).
+template <class R, class SurfaceTable, class Observer = NoSurfaceObserver,
+          class Recorder = NoTraceRecorder>
+MKO_HD inline TraceStatus
+trace_to_reference_sphere(const SurfaceTable& sys, int wavelength_index, Ray<R>& ray,
+                          Vec3<R> center, int* failed_surface = nullptr,
+                          Observer* observer = nullptr,
+                          typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
+                          Recorder* recorder = nullptr) {
+    const ReferenceSphere<R> ref{center, R(0), ReferenceSphereKind::LastSurface};
+    return trace_to_reference_sphere(sys, wavelength_index, ray, ref, failed_surface, observer,
+                                     soft, recorder);
 }
 
 } // namespace mko
