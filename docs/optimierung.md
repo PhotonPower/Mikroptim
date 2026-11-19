@@ -1178,3 +1178,81 @@ Gemessen mit `mikroptim optimize data/systems/zweilinser_petzval.json --hard-fai
 | GPU (RTX 3090) | 0,50 ms | 1,3 ms | ≈ 2,7 |
 
 Erwartet ist auf der CPU etwa (1 + S) × Faktor der vollen Pupille = 37 × 3,2 (Achsfeld 10 → 80 Strahlen, Feld 2° 40 → 80) ≈ 118; dass es weniger ist, liegt an der festen Host-Arbeit pro Zyklus, die sich auf mehr Varianten verteilt. Auf der GPU füllen die zusätzlichen Varianten vor allem ein sonst kaum ausgelastetes Gerät. Mit S Stichproben (`--tolerance-samples S`) ist der Faktor entsprechend (1 + S)/(1 + 2D) davon.
+
+## 15. Memetische globale Suche (M11-T7)
+
+Vorschlag und Einordnung: [optimierung-erweiterungen.md, Abschnitt 7.1](optimierung-erweiterungen.md#71-memetische-suche-cma-es-mit-lm). Bibliothek `Mikroptim::optim`: `include/mikroptim/optim/cma_es.hpp` (CMA-ES, eigene Umsetzung ohne externe Abhängigkeit), `include/mikroptim/optim/memetic.hpp` (`memetic_search`); Kommandozeile `mikroptim optimize --global` ([cli.md](cli.md#globale-suche---global-ab-m11-t7)). Die Topologie bleibt fest; gesucht wird über die Variablen der Datei.
+
+### Ablauf
+
+Pro Generation g (höchstens `generations`):
+
+1. **Kandidaten ziehen.** CMA-ES: λ Proben (mit Vorfilter K·λ) aus der Suchverteilung in normierten Koordinaten, zurück in x und auf die Schranken projiziert. Vergleich (`starts`): gleichverteilt gestörte Starts um x₀ wie `--runs` (`perturbed_vector` mit `relative = σ₀` für alle Typen, Startwert `seed`, Variante j = g·K·λ + i), ohne Lernen. Mit `include_start` (Standard) ist der erste Kandidat der Generation 0 x₀ selbst; mit `elitist` (Standard, nur CMA-ES) ist der erste Kandidat jeder späteren Generation der verfeinerte Punkt des bisher besten Individuums, der so weitere L_g Zyklen erhält (Elitismus). Die übrigen Proben behalten ihren Index i.
+2. **Vorfilter** (optional, `prefilter`): Die K·λ Kandidaten gehen als ein Batch durch den FP32-Vorfilter (M7-T2, Abschnitt 8; CPU `prefilter_cpu`, GPU `TraceEngine::prefilter_variants`), mit den Zusatzresiduen ohne die trace-abhängigen (die untere Schranke L_v bleibt gültig). Kriterien wie in der Strahlsuche: mehr als die Hälfte der Strahlen versagt sicher oder L_v über dem Zehnfachen der besten oberen Schranke. Optimiert werden die ersten λ behaltenen in Kandidatenreihenfolge; fehlen welche, die aussortierten mit der kleinsten unteren Schranke (Gleichstand: Index). Die FP32-Werte dienen nur dieser Auswahl (AGENTS.md §6.1), nie als Merit oder im Ranking.
+3. **Lokale Verfeinerung.** Alle λ Starts in **einem** Aufruf des gebündelten LM (`optimize_lm_cpu` bzw. `cuda::optimize_lm_gpu`, auf der GPU ein Block pro Variante, ADR-0004) mit `max_iterations = L_g` Zyklen pro Individuum; alle übrigen Einstellungen (Quadratur, Strahlversagen und Strafverfahren, Zusatzresiduen, Abbruchkriterien) aus den `LmOptions` des Aufrufers.
+4. **Ranking** der Individuen nach dem verfeinerten Ergebnis mit derselben Regel wie `optimize` (`memetic_better`): endliche Merit, dann weniger versagte Strahlen, dann kleinere Merit; Gleichstand nach Index (stabile Sortierung). CMA-ES braucht nur die Rangfolge, die Merits mit verschiedenen w_fail müssen also nicht vergleichbar sein.
+5. **Fortschreiben** der Verteilung (nur CMA-ES): Lamarck (Standard) mit den verfeinerten Punkten x*_i, Baldwin (`lamarckian = false`) mit den Startpunkten; beide in der Rangfolge der verfeinerten Merit. Mit `step_size_from_starts` (nur Lamarck, Standard aus) kommt der Pfad p_σ der Schrittweite aus den Startpunkten, Mittelwert und Kovarianz weiter aus den verfeinerten Punkten.
+
+Ergebnis: alle Individuen (Start, `LmRunResult`), Kennzahlen pro Generation und das beste Individuum nach `memetic_better`.
+
+### Normierung
+
+u_k = x_k / d_k mit d_k = max(|x₀_k|, x_typ,k), fest für den ganzen Lauf. Der Vorschlag nennt x/x_typ; mit dem Maximum wie bei der Schrittweite der finiten Differenzen (Abschnitt 4) ist σ₀ eine relative Störung wie `PerturbationScale::relative` und damit mit `--perturbation` vergleichbar, auch wenn x_typ (Standard 0,01/mm für Krümmungen) klein gegen |x₀| ist. Variablen mit x₀ = 0 (Geisterkoeffizienten) haben die Skala x_typ. Rückabbildung x_k = u_k · d_k, danach `clamp_to_bounds`.
+
+### CMA-ES
+
+Nach Hansen (2016, „The CMA Evolution Strategy: A Tutorial“), nur positive Gewichte, n = P:
+
+| Größe | Formel |
+|---|---|
+| Population | λ = 4 + ⌊3 ln n⌋ (Standard, `population = 0`), μ = ⌊λ/2⌋ |
+| Gewichte | w_i = (ln((λ+1)/2) − ln i) / Σ_j (ln((λ+1)/2) − ln j), i = 1 … μ; μ_eff = 1/Σ w_i² |
+| Schrittweite | c_σ = (μ_eff + 2)/(n + μ_eff + 5), d_σ = 1 + 2 max(0, √((μ_eff − 1)/(n + 1)) − 1) + c_σ |
+| Kovarianz | c_c = (4 + μ_eff/n)/(n + 4 + 2μ_eff/n), c_1 = 2/((n + 1,3)² + μ_eff), c_μ = min(1 − c_1, 2(μ_eff − 2 + 1/μ_eff)/((n + 2)² + μ_eff)) |
+| E‖N(0, I)‖ | χ_n = √n (1 − 1/(4n) + 1/(21n²)) |
+
+**Probe** i der Generation g: x_i = m + σ B (D ∘ z), z_k = Σ_{j=1}^{12} u_j − 6 (Irwin-Hall wie im Variantengenerator, Abschnitt 4) aus einem eigenen `std::mt19937_64` mit Startwert `variant_seed(variant_seed(seed, g), i)`, Ziehungen k = 0 … n − 1. Die Probe hängt nur von Startwert, Generation, Index und Zustand ab.
+
+**Fortschreiben** mit λ Punkten x_i (verfeinert oder Starts) und ihrer Rangfolge:
+
+- Schritte y_i = (x_{i:λ} − m)/σ der μ besten. Weil die verfeinerten Punkte nicht aus der Verteilung stammen, wird jeder auf die Mahalanobis-Länge ‖C^{−1/2} y_i‖ ≤ c_y = √n + 2n/(n + 2) gekürzt (Hansen 2011, „Injecting external solutions into CMA-ES“).
+- Rekombination y_w = Σ_{i=1}^{μ} w_i y_i, m ← m + σ y_w (c_m = 1).
+- p_σ ← (1 − c_σ) p_σ + √(c_σ(2 − c_σ) μ_eff) C^{−1/2} y_w mit C^{−1/2} = B D⁻¹ Bᵀ.
+- h_σ = 1, wenn ‖p_σ‖ / √(1 − (1 − c_σ)^{2(g+1)}) < (1,4 + 2/(n + 1)) χ_n, sonst 0; die Potenz als laufendes Produkt.
+- p_c ← (1 − c_c) p_c + h_σ √(c_c(2 − c_c) μ_eff) y_w.
+- C ← (1 + c_1 δ(h_σ) − c_1 − c_μ) C + c_1 p_c p_cᵀ + c_μ Σ_i w_i y_i y_iᵀ, δ(h_σ) = (1 − h_σ) c_c (2 − c_c).
+- σ ← σ · exp(min(1, (c_σ/d_σ)(‖p_σ‖/χ_n − 1))); die Obergrenze 1 (höchstens Faktor e pro Generation) empfiehlt Hansen für eingespeiste Punkte.
+- **Schrittweite bei Lamarck.** Die verfeinerten Punkte liegen meist weit außerhalb von σ (der LM läuft ins nächste Becken). p_σ wird dann lang, und σ wächst fast jede Generation (Mehrlinser mit σ₀ = 0,05: 1,4 nach 8 Generationen); die Proben erkunden zunehmend den ganzen Schrankenbereich, der Mittelwert folgt den besten Becken. Am Mehrlinser ist das die wirksame Variante (beste Merit 1,4·10⁻⁴ gegen 1,8·10⁻² mit p_σ aus den Starts, bei der σ etwa konstant bleibt und die Suche im Becken des Elite-Individuums endet). `step_size_from_starts` bleibt als Option für Systeme, bei denen große Proben vor allem Strahlversagen erzeugen.
+- C symmetrisieren, Eigenzerlegung C = B diag(λ_k) Bᵀ (zyklisches Jacobi-Verfahren, Rotationen in fester Reihenfolge p < q, Rutishauser-Abbruch, höchstens 64 Durchgänge), D_k = √max(λ_k, 10⁻¹⁴ max λ). Entartet C (nicht endlich oder max λ ≤ 0), beginnt sie wieder bei I.
+
+### Budget
+
+Gezählt werden **LM-Zyklen** (Versuchsschritte einschließlich verworfener) über alle Individuen: Σ `LmRunResult::iterations`, einschließlich der Runden des Strafverfahrens beim weichen Versagen. Budget B = `cycle_budget`, Standard λ · `generations` · `lm_iterations`. Eine Generation erhält L_g = min(L, ⌊(B − verbraucht)/λ⌋) Zyklen pro Individuum und startet nur bei L_g ≥ 1; der Verbrauch bleibt so höchstens B (außer durch zusätzliche Runden des Strafverfahrens, die in beiden Verfahren gleich gezählt werden). Der Vorfilter kostet keine LM-Zyklen (ein FP32-Trace der Kandidaten).
+
+### Determinismus
+
+Kein Zufall außer den Generatoren mit festem Startwert; CMA-ES verwendet nur korrekt gerundete Operationen (+, −, ·, /, √) und exakte Hilfsfunktionen (floor, frexp, ldexp). Die Logarithmen der Gewichte und die Exponentialfunktion der Schrittweite sind eigene Reihen (`portable_log`: x = m·2^e, m ∈ [√½, √2), ln m = 2 artanh((m − 1)/(m + 1)) bis s³¹; `portable_exp`: Cody-Waite-Reduktion x = k ln 2 + r, Taylor-Reihe bis r²⁰), weil `std::exp` und `std::log` zwischen Bibliotheken um ein ulp abweichen dürfen; Abweichung von der Standardbibliothek ≤ 10⁻¹⁵ relativ. Alle Summen laufen in fester Reihenfolge; der gebündelte LM ist bitgleich für jede Threadzahl und Gruppierung (Abschnitt 4). Zwei Läufe mit gleichen Eingaben sind damit bitgleich, auf der GPU auf derselben Karte. MSVC und GCC (Windows) lieferten für `optimize --global cma,generations=4,iterations=10,seed=3` an `einzellinse_bk7_nebenbedingungen.json` dieselbe JSON-Ausgabe; der CMA-ES-Teil ist plattformunabhängig, der LM so weit wie seine Mathematikbibliothek.
+
+### Abnahme (M11-T7)
+
+Tests `tests/test_memetic.cpp` (CPU), `tests/test_cuda_memetic.cpp` (GPU), `CliOptimize.GlobalSearchMatchesLibrary`; Testfall `tests/memetic_test_cases.hpp`. Vergleich mit `perturbed_starts` (`tests/lm_test_systems.hpp`, derselbe `perturbed_vector` wie `optimize --runs`, gleichverteilt mit relativer Störung σ₀, gleicher Startwert): ⌈Z/L⌉ Starts mit je L Zyklen gemeinsam optimiert, Z = verbrauchte Zyklen der memetischen Suche, also **mindestens gleich viele LM-Zyklen** für den Vergleich.
+
+| Prüfung | Einstellung | Ergebnis (Test) |
+|---|---|---|
+| Mehrlinser (`mehrlinser_lm_problem`, P = 13, Brennweitenbedingung, weiches Versagen), CPU | CMA-ES λ = 11, 8 Generationen, L = 20, σ₀ = 0,1, Startwert 1 (Budget 1.760) | F₀ = 0,731; CMA **1,41·10⁻⁴** (1.760 Zyklen) gegen `perturbed_starts` L = 20: 4,50·10⁻² (88 Läufe, 1.760 Zyklen) und L = 100: 1,86·10⁻² (18 Läufe, 1.800 Zyklen) (`Memetic.CmaBeatsPerturbedStartsOnMehrlinser`, 2,5 s Release) |
+| dasselbe, GPU (RTX 3090) | wie oben, `optimize_lm_gpu` | CMA **7,67·10⁻⁴** gegen 4,50·10⁻² (je 1.760 Zyklen), 0,32 s; zwei Läufe bitgleich (`CudaMemetic.CmaBeatsPerturbedStartsOnMehrlinser`). Der Pfad weicht nach einigen Generationen von dem der CPU ab (Rundung der Strahlresiduen ändert die Rangfolge), das Ergebnis liegt im selben Bereich |
+| Weitere Startwerte (Mehrlinser, CPU) | Startwerte 2, 3 | CMA 1,56·10⁻⁴ und 1,33·10⁻⁴ gegen `perturbed_starts` L = 20: 4,3·10⁻² und 4,2·10⁻² |
+| Determinismus | zwei Läufe, 1 und 3 Host-Threads; Vorfilter auf CPU und GPU | bitgleich (`Memetic.TwoRunsAreBitIdentical`, `Memetic.PrefilterSelectsKeptCandidates`, `CudaMemetic.PrefilterIsDeterministic`) |
+| Vergleichsverfahren | `--global starts` | Starts bitgleich zu `perturbed_starts` (`Memetic.PerturbedStartsMethodUsesExistingGenerator`) |
+| CMA-ES-Kern | gedrehtes Ellipsoid (Kondition 10⁶, n = 6), Parameter nach Hansen, Eigenzerlegung, exp/log | f < 10⁻¹⁰ in 400 Generationen; Eigenzerlegung ≤ 10⁻¹³; exp/log ≤ 2,2·10⁻¹⁶ relativ zur Standardbibliothek (`CmaEs.*`, `PortableMath.*`) |
+
+**M6-T6-Zwischenstand** (`docs/ergebnisse/m6-t6/a2.json`: Vergleichszweig a2, 4 Elemente, NA 0,94, 17 Variablen, 3 paraxiale und 24 mechanische Bedingungen, F₀ = 561 am Start, der LM steht dort mit `converged_step`). GPU, 16 × 8 Strahlen, σ₀ = 0,02, Vergleich mit gleichem Budget (`--global starts,budget=Z,generations=100` mit Z = Verbrauch der CMA-Suche und denselben übrigen Einträgen); Befehl `mikroptim optimize docs/ergebnisse/m6-t6/a2.json --gpu --rings 16 --quiet --json --global cma,generations=8,iterations=50,sigma=0.02,seed=S`:
+
+| Einstellung | Startwert 1 | 2 | 3 | 4 | Mittel |
+|---|---|---|---|---|---|
+| CMA, 8 × 50 Zyklen | 3,25·10⁻³ | **2,01·10⁻³** | 3,90·10⁻³ | **2,07·10⁻³** | 2,81·10⁻³ |
+| `starts`, gleiches Budget | **3,01·10⁻³** | 4,87·10⁻³ | **2,83·10⁻³** | 3,21·10⁻³ | 3,48·10⁻³ |
+| CMA, 20 × 20 Zyklen | **1,95·10⁻³** | 3,39·10⁻³ | 4,01·10⁻³ | **2,29·10⁻³** | 2,91·10⁻³ |
+| `starts`, gleiches Budget | 3,03·10⁻³ | **2,74·10⁻³** | **3,14·10⁻³** | 3,17·10⁻³ | 3,02·10⁻³ |
+
+Verbrauch 4.900–5.800 Zyklen bei einem Budget von 4.800 (Strafrunden des weichen Versagens). Hier ist die memetische Suche im Mittel und im besten von vier Läufen besser, aber nicht bei jedem Startwert: Fast alle Läufe enden mit `max_iterations`, weil der LM an den Knicken der aktiven mechanischen Bedingungen kriecht (F10, optimierung-erweiterungen.md, Abschnitt 1); das Ergebnis hängt dann mehr von den verfügbaren Zyklen als vom Start ab. Am glatten Mehrlinser ist der Vorteil dagegen zwei Größenordnungen.

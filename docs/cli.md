@@ -508,6 +508,7 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--tolerance-samples S` | S ≥ 1 feste Stichproben des Toleranzsatzes statt ±δ je Zufallsgröße; 0 = ±δ; nur mit `--tolerance-aware` | 0 |
 | `--tolerance-seed n` | Startwert der Stichproben; nur mit `--tolerance-samples` ≥ 1 | 0 |
 | `--tolerance-set T` | `file`: Abschnitt `tolerances` der Datei (Fehler ohne ihn); `default`: Mikroptim-Standardsatz (wie `mikroptim sensitivity`); nur mit `--tolerance-aware` | Datei, sonst Standardsatz |
+| `--global M[,…]` | globale Suche in fester Topologie (ab M11-T7, siehe [Globale Suche](#globale-suche---global-ab-m11-t7)): `cma` (CMA-ES mit kurzem LM pro Individuum) oder `starts` (gestörte Starts zum Vergleich); nicht mit `--runs`, `--perturbation`, `--seed`, `--max-iterations`, `--augmented-lagrangian`, `--tolerance-aware` | aus |
 | `--gpu` | auf der GPU rechnen (`cuda::optimize_lm_gpu`: Jacobi-Matrix und Normalgleichungen auf dem Gerät, Merit im Modus MERIT der TraceEngine) | aus (CPU, `optimize_lm_cpu`) |
 | `--device N` | CUDA-Gerät für `--gpu`; nur zusammen mit `--gpu` | 0 |
 | `--help`, `-h` | Hilfe | – |
@@ -542,6 +543,24 @@ Variablen
 
 **Multistart.** Mit `--runs K` laufen K Läufe gemeinsam: Lauf 0 startet im Punkt x₀ der Datei, Lauf j ≥ 1 im gestörten Punkt `perturbed_vector(set, x₀, options, j)` mit `relative = s` für alle Variablentypen (Geisterkoeffizienten a = 0 bleiben ungestört), `seed = n` und `first_is_base` (gleichverteilt, plattformunabhängig, auf die Schranken projiziert; [optimierung.md, Variantengenerator](optimierung.md#variantengenerator-ab-m3-t1)). Lauf 0 ist bitgleich zum Aufruf ohne `--runs` (die Läufe sind voneinander unabhängig), der Multistart ist also nie schlechter. **Bester Lauf:** endliche Merit, dann die wenigsten versagten Strahlen (hart versagte Strahlen haben r = 0, beim weichen Versagen enthält F Strafen mit dem w_fail der letzten Runde des Laufs; in beiden Fällen ist eine Merit mit mehr versagten Strahlen nicht vergleichbar), dann die kleinste Merit, bei Gleichstand der kleinste Index. Die Auswahl ist deterministisch; zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe.
 
+**Globale Suche (`--global`, ab M11-T7).** <a id="globale-suche---global-ab-m11-t7"></a>Memetische Suche nach [optimierung.md, Abschnitt 15](optimierung.md#15-memetische-globale-suche-m11-t7) (`memetic_search`): pro Generation λ Starts, alle in einem Aufruf des gebündelten LM (CPU oder mit `--gpu` auf dem Gerät) mit L Zyklen pro Individuum verfeinert. Wert: Methode und durch Kommas getrennte Einträge, z. B. `--global cma,generations=8,iterations=20,sigma=0.1,seed=1`:
+
+| Eintrag | Bedeutung | Standard |
+|---|---|---|
+| `cma` / `starts` (erster Eintrag) | CMA-ES über normierte Variablen (Lamarck, Elitismus) bzw. gleichverteilt gestörte Starts um x₀ wie `--runs` (ohne Lernen, zum Vergleich) | – |
+| `population=N` | Individuen pro Generation λ ≥ 2 | 4 + ⌊3 ln P⌋ |
+| `generations=G` | höchstens G Generationen | 10 |
+| `iterations=L` | LM-Zyklen pro Individuum und Generation (`LmOptions::max_iterations` des Aufrufs) | 30 |
+| `budget=B` | LM-Zyklen über alle Individuen (Σ Zyklen einschließlich der Strafrunden des weichen Versagens); eine Generation erhält höchstens ⌊Rest/λ⌋ Zyklen pro Individuum | λ·G·L |
+| `sigma=s` | Startschrittweite σ₀ in normierten Koordinaten x/max(\|x₀\|, x_typ), also relativ; bei `starts` die halbe Breite der Gleichverteilung | 0,05 |
+| `seed=n` | Startwert der Zufallszahlen | 0 |
+| `prefilter[=K]` | FP32-Vorfilter (M7-T2, nur Vorfilterung): K·λ Kandidaten ziehen, die ersten λ behaltenen optimieren | aus, K = 2 |
+| `baldwin` | Verteilung aus den Starts statt aus den verfeinerten Punkten | Lamarck |
+| `csa-starts` | Schrittweitenpfad aus den Starts (nur Lamarck) | aus |
+| `no-elite` | kein Elitismus | Elitismus |
+
+Lauf 0 startet in x₀ der Datei. Alle Individuen erscheinen als Läufe (`runs`, Text-Tabelle „Läufe“) in der Reihenfolge Generation für Generation; der beste Lauf, die Ergebnisdatei und die Zusammenfassung folgen der Regel des Multistarts. Der Text enthält zusätzlich die Einstellungen im Kopf und eine Tabelle „Globale Suche“ pro Generation (σ, Kandidaten, vom Vorfilter behalten, Zyklen pro Individuum, verbrauchte Zyklen, beste Merit, Lauf). Das Iterationsprotokoll nennt den fortlaufenden Lauf. Zwei Aufrufe mit gleichen Argumenten liefern dieselbe Ausgabe. Vergleich bei gleichem Budget: `--global starts,budget=Z,generations=100,…` mit Z = `global_search.cycles` der CMA-Suche.
+
 **Glasvariablen** (ab M6-T1, [optimierung.md, Abschnitte 1 und 2.4](optimierung.md#24-glas-hülle-ab-m6-t1)): Hat das System Variablen `glass`, wandelt der Befehl nach dem Laden die Materialien dieser Flächen in Buchdahl-Materialien um (`convert_glass_variables`: Katalogglas → 3-Term-Fit über 400–700 nm, ν₃ fest) und baut Brechzahltabelle und Batch neu; Startpunkt, Wellenfront „vorher“ und Merit beziehen sich auf das umgewandelte System (beim Fit von N-BK7 ändern sich die Brechzahlen um höchstens 4,3·10⁻⁶). Mit einem Eintrag `glass_hull` entsteht die Hülle aus allen Gläsern aller `glass_catalogs` der Systemdatei, deren Gültigkeitsbereich 400–700 nm abdeckt (eigene Kataloge: [data/glass/README.md](../data/glass/README.md)). Im Multistart werden die Glaskoordinaten wie die übrigen Variablen relativ gestört (`--perturbation`). Die Strafe erreicht den Rand nur asymptotisch (Abstand ∝ 1/w). Mit großem Gewicht direkt vom Start kommt LM zwar an den Rand, bleibt dort aber leicht vor dem beschränkten Optimum stehen (Beispiel: `mikroptim optimize data/systems/einzellinse_glasvariable.json --max-iterations 200 --rings 6 --spokes 4` mit w = 10⁸: Überschreitung am Ende 1,5·10⁻⁸ normiert, Status `max_iterations` bei n₀ = 1,5205, ν₁ = −0,0439; die zentralen Differenzen überspannen den Knick der Strafe am Rand wie bei Petzval). Das Optimum auf dem Rand (dort die Ecke CaF₂) findet die Penalty-Fortsetzung mit stufenweise wachsendem Gewicht (optimierung.md, Abschnitt 2.4; später der Homotopie-Controller).
 
 ### Ergebnisdatei
@@ -561,7 +580,7 @@ Wie bei `trace`:
 |---|---|
 | 0 | Optimierung abgeschlossen, auch ohne Konvergenz (Status `max_iterations`, `damping_limit`; siehe `result.status`) |
 | 1 | Fehler beim Laden (wie `trace`), **keine Variablen** (Abschnitt `variables` fehlt oder ist leer), Nebenbedingung passt nicht zum System, Merit in keinem Lauf endlich, Fehler beim Schreiben der Ergebnisdatei (z. B. Verzeichnis fehlt); mit `--gpu` auch: Gerät `--device N` existiert nicht, CUDA-Fehler |
-| 2 | ungültige Kommandozeile (wie `trace`; zusätzlich `-o` ohne Datei oder gleich der Eingabedatei, `--runs` < 1, `--max-iterations` < 0, `--perturbation` < 0, `--perturbation`/`--seed` ohne `--runs` ≥ 2, `--fail-weight` nicht endlich oder ≤ 0 oder zusammen mit `--hard-failure`) |
+| 2 | ungültige Kommandozeile (wie `trace`; zusätzlich `-o` ohne Datei oder gleich der Eingabedatei, `--runs` < 1, `--max-iterations` < 0, `--perturbation` < 0, `--perturbation`/`--seed` ohne `--runs` ≥ 2, `--fail-weight` nicht endlich oder ≤ 0 oder zusammen mit `--hard-failure`, `--global` mit unbekannter Methode, unbekanntem oder ungültigem Eintrag oder zusammen mit `--runs`, `--perturbation`, `--seed`, `--max-iterations`, `--augmented-lagrangian`, `--tolerance-aware`) |
 | 3 | `--gpu`, aber ohne CUDA gebaut oder kein CUDA-Gerät (vor dem Laden geprüft) |
 
 Fehlermeldungen beginnen mit `mikroptim optimize: Fehler: `, z. B.
@@ -785,7 +804,7 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `backend`, `device`, `precision` | | wie bei `trace` (`precision` immer `"fp64"`) |
 | `merit_unit` | string | Einheit aller Merit-Werte (`merit`, `trial_merit`, `start_merit`): `"waves^2"` (Wellen² bei λ_ref, seit M4-T1) |
 | `quadrature` | object | `{"rings": N, "spokes": M}` |
-| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1), `failure` (`"soft"` oder `"hard"`, ab M4-T2), `fail_weight` (Start-w_fail in Wellen², `null` bei `"hard"`), `jacobian` (`"fd"` oder `"adjoint"`, ab M5-T3) |
+| `settings` | object | `max_iterations`, `runs`, `perturbation` und `seed` (beide `null` bei `runs` = 1), `failure` (`"soft"` oder `"hard"`, ab M4-T2), `fail_weight` (Start-w_fail in Wellen², `null` bei `"hard"`), `jacobian` (`"fd"` oder `"adjoint"`, ab M5-T3), `global` (ab M11-T7: `null` oder `method`, `population` (0 = Standard), `generations`, `iterations`, `budget` (0 = Standard), `sigma`, `seed`, `lamarckian`, `step_size_from_starts`, `elitist`, `prefilter`, `prefilter_oversampling`) |
 | `variables` | object[] | pro Variable k: `name` (`"c[1]"`, `"t[2]"`, `"w"`, `"a[g,k]"`, `"n0[1]"`, `"nu1[1]"`, `"nu2[1]"`), `type`, `surface` (Dateifläche, bei Glas die Fläche vor dem Medium; `null` bei Geisterkoeffizienten), `plate` und `order` (nur Geisterkoeffizienten, sonst `null`; ab M4-T6), `lower`, `upper` (`null` = offen), `typical`, `start` (x₀), `result` (x des besten Laufs) |
 | `constraints` | object[] | pro paraxialer Nebenbedingung: `item` (Eintrag in `constraints.items`), `type`, `mode`, `weight`, `target` (Soll), `value_start`, `value_result` (Ist: Brennweite 1/φ, Arbeitsabstand, Abgleichlänge; bei `paraxial_focus` die Randstrahlhöhe q in der Bildebene), `residual_start`, `residual_result` (r = √w·q̃ wie im Residuenvektor) |
 | `glass_hull` | object \| null | Glas-Hülle (ab M6-T1; `null` ohne Glasvariablen oder ohne Eintrag `glass_hull`): `glasses` (Zahl der Gläser der Hülle), `dimension` (0–3), `vertices` (Namen der Gläser auf den Ecken), `weight`, `margin`, `elements` (pro Glasfläche `surface`, `excess_start`, `excess_result`: max(0, φ) in normierten Koordinaten am Start und am Ergebnis) |
@@ -795,6 +814,7 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `iterations` | object[] \| null | Protokoll in der Reihenfolge der Rückrufe: `run`, `iteration`, `status`, `evaluated`, `accepted`, `merit`, `trial_merit`, `gain_ratio`, `damping`, `step_norm`, `failed_rays`, `hard_failed_rays` (wie `LmIterationInfo`; `iteration` läuft über die Runden des Strafverfahrens fort); `null` mit `--quiet` |
 | `runs` | object[] | pro Lauf: `run`, `status`, `iterations`, `accepted`, `jacobians`, `start_merit` (F am Startpunkt), `merit`, `failed_rays`, `hard_failed_rays`, `penalty_rounds` (Runden des Strafverfahrens, 1 ohne Neustart), `fail_weight` (w_fail der letzten Runde, `null` bei hartem Versagen), `start` (Startpunkt), `x` (Endpunkt) |
 | `best_run` | integer | Index des besten Laufs |
+| `global_search` | object \| null | ab M11-T7, nur mit `--global`: `lambda`, `budget`, `cycles` (verbrauchte LM-Zyklen), `generations` (pro Generation `generation`, `sigma`, `candidates`, `prefilter_kept`, `iterations` (Zyklen pro Individuum), `cycles`, `best_merit`, `best_run`), `run_generation` (Generation jedes Laufs) |
 | `result` | object | bester Lauf: `status`, `converged` (einer der drei Converged-Zustände), `iterations`, `accepted`, `jacobians`, `start_merit` (F(x₀) der Datei, = `runs[0].start_merit`), `merit`, `start_failed_rays`, `failed_rays`, `start_hard_failed_rays`, `hard_failed_rays`, `penalty_rounds`, `fail_weight`, `damping`, `gradient_norm`, `model_decrease` (wie `LmRunResult`) |
 | `reference_nm` | number | λ_ref für `rms_waves` |
 | `wavefront` | object \| null | `{"start": [...], "result": [...]}`, Einträge pro Feld und Wellenlänge (Reihenfolge f · L + l): `field`, `field_angle_deg`, `wavelength`, `wavelength_nm`, `rays`, `failed_rays`, `rms_waves`, `rms_mm` (wie bei `trace`); `null`, wenn nicht auswertbar |

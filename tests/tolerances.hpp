@@ -518,6 +518,9 @@ inline constexpr double kSensitivityCpuGpuQuality = 1e-9;
 inline constexpr double kSensitivityCpuGpuJacobian = 1e-4;
 // Herstellbarkeit: Randdicken, Halbkugelgrad, Z gegen die geschlossene Form [mm bzw. 1].
 inline constexpr double kManufacturabilityGeometry = 1e-12;
+// portable_exp/portable_log (M11-T7, nur Grundoperationen) gegen std::exp/std::log: relativ
+// (beim Logarithmus relativ zu max(1, |ln x|)).
+inline constexpr double kPortableMathRelative = 1e-15;
 
 // M11-T6 toleranzbewusste Optimierung (Kittblock mit Kittfläche zwischen gleichen Gläsern).
 // Unsichtbare Kittfläche: F(c = 0,05) gegen F(0) und F(0, ±Δn) gegen F(0), relativ; nur Rundung

@@ -238,6 +238,8 @@ Die Verteilung wird aus den verfeinerten Punkten aktualisiert (Lamarck'sche Vari
 
 **Abnahme:** Auf dem Mehrlinser-Testsystem und einem M6-T6-Zwischenstand wird bei gleicher Zahl von LM-Zyklen eine kleinere beste Merit gefunden als mit `perturbed_starts`.
 
+**Stand M11-T7:** umgesetzt ([optimierung.md, Abschnitt 15](optimierung.md#15-memetische-globale-suche-m11-t7), `optimize --global`). Abweichungen vom Vorschlag: Normierung mit max(|x₀|, x_typ) statt x_typ (σ₀ relativ wie `--perturbation`), Elitismus (das beste Individuum läuft in jeder Generation weiter), gekürzte eingespeiste Punkte nach Hansen. Mehrlinser: beste Merit zwei Größenordnungen kleiner als `perturbed_starts` bei gleichen LM-Zyklen (CPU und GPU); M6-T6-Zwischenstand a2: im Mittel über vier Startwerte kleiner, aber nicht bei jedem (Kriechen des LM, F10).
+
 ### 7.2 Netz der Minima
 
 Die Minima einer festen Topologie sind über Sattelpunkte vom Morse-Index 1 verbunden (Bociort und Mitarbeiter). Mikroptim nutzt Sattelpunkte bisher nur beim Einfügen (Operator A).

@@ -13,11 +13,13 @@
 #include "mikroptim/model/constraints.hpp"
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/optim/augmented_lagrangian.hpp"
+#include "mikroptim/optim/cma_es.hpp"
 #include "mikroptim/optim/ghost_diagnosis.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/optim/mechanical_constraints.hpp"
+#include "mikroptim/optim/memetic.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
@@ -102,7 +104,83 @@ struct OptimizeArgs {
     bool have_tol_seed = false;
     enum class TolSet { Auto, File, Default } tol_set = TolSet::Auto;
     bool have_tol_set = false;
+    bool have_max_iterations = false;
+    // Globale Suche (M11-T7): --global cma|starts[,schlüssel=wert…], Standard aus
+    std::optional<MemeticOptions> global;
 };
+
+// --global METHODE[,population=N][,generations=G][,iterations=L][,budget=B][,sigma=s][,seed=n]
+//          [,prefilter[=K]][,baldwin][,csa-starts][,no-elite]
+MemeticOptions parse_global(std::string_view option, std::string_view text) {
+    MemeticOptions o;
+    std::size_t pos = 0;
+    bool first = true;
+    while (pos <= text.size()) {
+        const std::size_t comma = text.find(',', pos);
+        const std::string_view item = text.substr(
+            pos, comma == std::string_view::npos ? std::string_view::npos : comma - pos);
+        pos = comma == std::string_view::npos ? text.size() + 1 : comma + 1;
+        if (first) {
+            const std::optional<GlobalSearchMethod> m = global_search_method_from_string(item);
+            if (!m) {
+                throw UsageError(std::string(option) + " erwartet cma oder starts, nicht '" +
+                                 std::string(item) + "'");
+            }
+            o.method = *m;
+            first = false;
+            continue;
+        }
+        const std::size_t eq = item.find('=');
+        const std::string_view key = item.substr(0, eq);
+        const std::string_view value =
+            eq == std::string_view::npos ? std::string_view() : item.substr(eq + 1);
+        const auto need_value = [&] {
+            if (eq == std::string_view::npos) {
+                throw UsageError(std::string(option) + ": " + std::string(key) +
+                                 " erwartet einen Wert (schlüssel=wert)");
+            }
+        };
+        if (key == "population") {
+            need_value();
+            o.population = parse_int(option, value);
+        } else if (key == "generations") {
+            need_value();
+            o.generations = parse_int(option, value);
+        } else if (key == "iterations") {
+            need_value();
+            o.lm_iterations = parse_int(option, value);
+        } else if (key == "budget") {
+            need_value();
+            o.cycle_budget = parse_int(option, value);
+        } else if (key == "sigma") {
+            need_value();
+            o.sigma = parse_double(option, value);
+        } else if (key == "seed") {
+            need_value();
+            o.seed = parse_uint64(option, value);
+        } else if (key == "prefilter") {
+            o.prefilter = true;
+            if (eq != std::string_view::npos) {
+                o.prefilter_oversampling = parse_int(option, value);
+            }
+        } else if (key == "baldwin" && eq == std::string_view::npos) {
+            o.lamarckian = false;
+        } else if (key == "csa-starts" && eq == std::string_view::npos) {
+            o.step_size_from_starts = true;
+        } else if (key == "no-elite" && eq == std::string_view::npos) {
+            o.elitist = false;
+        } else {
+            throw UsageError(std::string(option) + ": unbekannter Eintrag '" + std::string(item) +
+                             "'");
+        }
+    }
+    try {
+        check_memetic_options(o);
+    } catch (const std::invalid_argument& e) {
+        throw UsageError(std::string(option) + ": " + e.what());
+    }
+    return o;
+}
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
                             std::string_view option) {
@@ -174,6 +252,9 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             if (a.max_iterations < 0) {
                 throw UsageError("--max-iterations muss >= 0 sein");
             }
+            a.have_max_iterations = true;
+        } else if (arg == "--global") {
+            a.global = parse_global(arg, next_value(args, i, arg));
         } else if (arg == "--runs") {
             a.runs = parse_int(arg, next_value(args, i, arg));
             if (a.runs < 1) {
@@ -261,6 +342,12 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     }
     if (a.have_fail_weight && a.hard_failure) {
         throw UsageError("--fail-weight gilt nur für weiches Versagen (nicht mit --hard-failure)");
+    }
+    if (a.global && (a.runs > 1 || a.have_perturbation || a.have_seed || a.al_rounds > 0 ||
+                     a.have_max_iterations || a.tol_alpha > 0.0)) {
+        throw UsageError("--global nicht mit --runs, --perturbation, --seed, "
+                         "--augmented-lagrangian, --tolerance-aware oder --max-iterations (Zyklen "
+                         "pro Individuum: iterations=L, Startwert: seed=n)");
     }
     return a;
 }
@@ -371,6 +458,8 @@ struct OptimizeReport {
     };
     TolParts tol_start;
     TolParts tol_result;
+    // Globale Suche (M11-T7): Generationen; result.runs und starts enthalten alle Individuen
+    std::optional<MemeticResult> global;
 
     const LmRunResult& best_run() const { return result.runs[static_cast<std::size_t>(best)]; }
     // F am Startpunkt der Datei (Lauf 0 startet immer dort).
@@ -557,13 +646,36 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
            std::to_string(sys.ghost_plates.size()) +
                " (L1-Strafe: " + std::to_string(r.penalty.size()) + " Koeffizienten)");
     }
-    std::string runs = std::to_string(a.runs);
-    if (a.runs > 1) {
-        runs += " (Lauf 0 ungestört, Störung " + fixed(a.perturbation, 6) + " relativ, Startwert " +
-                std::to_string(a.seed) + ")";
+    if (a.global) {
+        const MemeticOptions& g = *a.global;
+        const int lambda = g.population > 0 ? g.population : cma_default_lambda(r.set.size());
+        const std::int64_t budget = g.cycle_budget > 0 ? g.cycle_budget
+                                                       : static_cast<std::int64_t>(lambda) *
+                                                             g.generations * g.lm_iterations;
+        std::string text = "gestörte Starts (Vergleich)";
+        if (g.method == GlobalSearchMethod::Cma) {
+            text = g.lamarckian ? "CMA-ES mit LM (memetisch, Lamarck)"
+                                : "CMA-ES mit LM (memetisch, Baldwin)";
+        }
+        kv(out, "Globale Suche", text);
+        kv(out, "Population x Generationen",
+           std::to_string(lambda) + " x höchstens " + std::to_string(g.generations));
+        kv(out, "Zyklen pro Individuum", std::to_string(g.lm_iterations));
+        kv(out, "Budget LM-Zyklen", std::to_string(budget));
+        kv(out, "Startschrittweite sigma0", fixed(g.sigma, 6) + " (normiert, relativ)");
+        kv(out, "Startwert", std::to_string(g.seed));
+        kv(out, "FP32-Vorfilter",
+           g.prefilter ? "ja, " + std::to_string(g.prefilter_oversampling) + "-fach überabgetastet"
+                       : std::string("nein"));
+    } else {
+        std::string runs = std::to_string(a.runs);
+        if (a.runs > 1) {
+            runs += " (Lauf 0 ungestört, Störung " + fixed(a.perturbation, 6) +
+                    " relativ, Startwert " + std::to_string(a.seed) + ")";
+        }
+        kv(out, "Läufe", runs);
+        kv(out, "Zyklen höchstens", std::to_string(a.max_iterations));
     }
-    kv(out, "Läufe", runs);
-    kv(out, "Zyklen höchstens", std::to_string(a.max_iterations));
     if (a.al_rounds > 0) {
         kv(out, "Augmented Lagrangian",
            "höchstens " + std::to_string(a.al_rounds) +
@@ -614,7 +726,7 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
 
     out << '\n' << "Ergebnis\n";
     kv(out, "Status", to_string(b.status));
-    if (a.runs > 1) {
+    if (a.runs > 1 || r.global) {
         kv(out, "Bester Lauf", std::to_string(r.best));
     }
     kv(out, "Zyklen", std::to_string(b.iterations));
@@ -641,7 +753,23 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
         kv(out, "w_fail am Ende [Wellen²]", sci(b.fail_weight, 3));
     }
 
-    if (a.runs > 1) {
+    if (r.global) {
+        const MemeticResult& g = *r.global;
+        out << '\n' << "Globale Suche (" << g.cycles << " von " << g.budget << " LM-Zyklen)\n";
+        out << "  " << pad_left("Gen.", 4) << pad_left("sigma", 12) << pad_left("Kandidaten", 11)
+            << pad_left("behalten", 9) << pad_left("Zyklen/Ind.", 12) << pad_left("Zyklen", 8)
+            << pad_left("beste Merit", 17) << pad_left("Lauf", 6) << '\n';
+        for (const MemeticGeneration& gen : g.generations) {
+            out << "  " << pad_left(std::to_string(gen.generation), 4)
+                << pad_left(sci(gen.sigma, 3), 12) << pad_left(std::to_string(gen.candidates), 11)
+                << pad_left(std::to_string(gen.prefilter_kept), 9)
+                << pad_left(std::to_string(gen.lm_iterations), 12)
+                << pad_left(std::to_string(gen.cycles), 8) << pad_left(sci(gen.best_merit, 9), 17)
+                << pad_left(std::to_string(gen.best), 6) << '\n';
+        }
+    }
+
+    if (a.runs > 1 || r.global) {
         out << '\n' << "Läufe\n";
         out << "  " << pad_left("Lauf", 4) << "  " << pad_right("Status", 20)
             << pad_left("Zyklen", 7) << pad_left("Merit Start", 17) << pad_left("Merit Ende", 17)
@@ -888,6 +1016,23 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
     settings["failure"] = a.hard_failure ? "hard" : "soft";
     settings["fail_weight"] = a.hard_failure ? Json(nullptr) : number(a.fail_weight);
     settings["jacobian"] = to_string(a.jacobian);
+    if (a.global) {
+        const MemeticOptions& g = *a.global;
+        settings["global"] = Json{{"method", to_string(g.method)},
+                                  {"population", g.population},
+                                  {"generations", g.generations},
+                                  {"iterations", g.lm_iterations},
+                                  {"budget", g.cycle_budget},
+                                  {"sigma", number(g.sigma)},
+                                  {"seed", g.seed},
+                                  {"lamarckian", g.lamarckian},
+                                  {"step_size_from_starts", g.step_size_from_starts},
+                                  {"elitist", g.elitist},
+                                  {"prefilter", g.prefilter},
+                                  {"prefilter_oversampling", g.prefilter_oversampling}};
+    } else {
+        settings["global"] = nullptr;
+    }
     j["settings"] = std::move(settings);
 
     Json vars = Json::array();
@@ -1062,6 +1207,31 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
     }
     j["runs"] = std::move(runs);
     j["best_run"] = r.best;
+    if (r.global) {
+        const MemeticResult& g = *r.global;
+        Json gens = Json::array();
+        for (const MemeticGeneration& gen : g.generations) {
+            gens.push_back(Json{{"generation", gen.generation},
+                                {"sigma", number(gen.sigma)},
+                                {"candidates", gen.candidates},
+                                {"prefilter_kept", gen.prefilter_kept},
+                                {"iterations", gen.lm_iterations},
+                                {"cycles", gen.cycles},
+                                {"best_merit", number(gen.best_merit)},
+                                {"best_run", gen.best}});
+        }
+        Json gen_of_run = Json::array();
+        for (const MemeticIndividual& ind : g.individuals) {
+            gen_of_run.push_back(ind.generation);
+        }
+        j["global_search"] = Json{{"lambda", g.lambda},
+                                  {"budget", g.budget},
+                                  {"cycles", g.cycles},
+                                  {"generations", std::move(gens)},
+                                  {"run_generation", std::move(gen_of_run)}};
+    } else {
+        j["global_search"] = nullptr;
+    }
 
     Json res;
     res["status"] = to_string(b.status);
@@ -1156,6 +1326,14 @@ void print_optimize_usage(std::ostream& out) {
            "  --tolerance-seed n Startwert der Stichproben (Standard 0)\n"
            "  --tolerance-set T  file: Toleranzsatz der Datei; default: Mikroptim-Standardsatz\n"
            "                     (Standard: Datei, sonst Standardsatz)\n"
+           "  --global M[,...]   globale Suche in fester Topologie (M11-T7): cma (CMA-ES mit\n"
+           "                     kurzem LM pro Individuum) oder starts (gestörte Starts zum\n"
+           "                     Vergleich); Einträge population=N (Standard 4 + 3 ln P),\n"
+           "                     generations=G (10), iterations=L (LM-Zyklen pro Individuum,\n"
+           "                     30), budget=B (LM-Zyklen insgesamt, Standard N·G·L),\n"
+           "                     sigma=s (0.05, relativ), seed=n (0), prefilter[=K]\n"
+           "                     (FP32-Vorfilter, K-fach überabgetastet, 2), baldwin,\n"
+           "                     csa-starts, no-elite (docs/optimierung.md, Abschnitt 15)\n"
            "  --gpu              auf der GPU rechnen statt auf der CPU\n"
            "  --device N         CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help             diese Hilfe\n"
@@ -1410,7 +1588,39 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
 #endif
             return optimize_lm_cpu(r.set, base, x, options);
         };
-        if (a.al_rounds == 0) {
+        if (a.global) {
+            // Globale Suche (M11-T7, docs/optimierung.md, Abschnitt 15): alle Individuen als Läufe
+            const MemeticOptimizer optimizer = [&](const VariableSet& set, const SystemBatchHost& b,
+                                                   std::span<const double> x, const LmOptions& o) {
+#ifdef MIKROPTIM_HAS_CUDA
+                if (engine) {
+                    return cuda::optimize_lm_gpu(*engine, set, b, x, o);
+                }
+#endif
+                return optimize_lm_cpu(set, b, x, o);
+            };
+            MemeticPrefilterFn prefilter;
+#ifdef MIKROPTIM_HAS_CUDA
+            if (engine) {
+                prefilter = [&](const SystemBatchHost& batch, const ResidualSettings& quadrature,
+                                const PrefilterOptions& po, std::span<const double> extra) {
+                    cuda::PrefilterSettings ps;
+                    ps.quadrature = quadrature;
+                    ps.options = po;
+                    ps.extra_merit = extra;
+                    return engine->prefilter_variants(batch, ps);
+                };
+            }
+#endif
+            r.global = memetic_search(r.set, base, r.x0, options, *a.global, optimizer, prefilter);
+            starts.clear();
+            r.result.runs.clear();
+            for (const MemeticIndividual& ind : r.global->individuals) {
+                starts.insert(starts.end(), ind.start.begin(), ind.start.end());
+                r.result.runs.push_back(ind.run);
+            }
+            r.result.cycles = static_cast<int>(r.global->cycles);
+        } else if (a.al_rounds == 0) {
             r.result = run_lm(starts);
         } else {
             // Augmented Lagrangian (M11-T2, docs/optimierung.md, Abschnitt 2.6): LM-Läufe mit

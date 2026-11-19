@@ -58,6 +58,7 @@ add_executable(mikroptim_tests
     test_mechanical_constraints.cpp
     test_manufacturability.cpp
     test_mechanical_optimization.cpp
+    test_memetic.cpp
     test_multi_gpu_split.cpp
     test_glass_preselection.cpp
     test_paraxial.cpp
@@ -112,6 +113,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_insertion.cpp
         test_cuda_levenberg_marquardt.cpp
         test_cuda_mechanical.cpp
+        test_cuda_memetic.cpp
         test_cuda_merit.cpp
         test_cuda_multi_trace_engine.cpp
         test_cuda_petzval_optimization.cpp

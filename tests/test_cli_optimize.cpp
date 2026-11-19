@@ -16,6 +16,7 @@
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
+#include "mikroptim/optim/memetic.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
@@ -666,6 +667,61 @@ TEST(CliOptimize, MultistartIsDeterministic) {
     EXPECT_NE(json::parse(other.out)["runs"][1]["start"], runs[1]["start"]);
 }
 
+// Globale Suche (M11-T7): --global wie memetic_search der Bibliothek, alle Individuen als Läufe,
+// zwei Aufrufe bitgleich; Text mit Tabelle der Generationen.
+TEST(CliOptimize, GlobalSearchMatchesLibrary) {
+    const std::vector<std::string> args{kNebenbedingungen, "--json", "--quiet", "--global",
+                                        "cma,generations=3,iterations=4,seed=5,sigma=0.1"};
+    const RunResult a = optimize(args);
+    const RunResult b = optimize(args);
+    ASSERT_EQ(a.code, mko::cli::kExitOk) << a.err;
+    EXPECT_EQ(a.out, b.out);
+    const json j = json::parse(a.out);
+    EXPECT_EQ(j["settings"]["global"]["method"], "cma");
+    EXPECT_EQ(j["settings"]["global"]["seed"], 5);
+
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(kNebenbedingungen));
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::LmOptions lm;
+    lm.jacobian.quadrature.rings = 10;
+    lm.jacobian.quadrature.spokes = 8;
+    lm.jacobian.extra = mko::make_paraxial_residuals(mko::make_paraxial_constraints(loaded.system));
+    mko::MemeticOptions o;
+    o.generations = 3;
+    o.lm_iterations = 4;
+    o.seed = 5;
+    o.sigma = 0.1;
+    const mko::MemeticResult lib = mko::memetic_search(set, base, set.extract(base, 0), lm, o);
+    const json& runs = j["runs"];
+    ASSERT_EQ(runs.size(), lib.individuals.size());
+    for (std::size_t i = 0; i < runs.size(); ++i) {
+        EXPECT_TRUE(same_bits(runs[i]["merit"].get<double>(), lib.individuals[i].run.merit)) << i;
+        const std::vector<double> start = doubles(runs[i]["start"]);
+        for (std::size_t k = 0; k < start.size(); ++k) {
+            EXPECT_TRUE(same_bits(start[k], lib.individuals[i].start[k]));
+        }
+        EXPECT_EQ(j["global_search"]["run_generation"][i], lib.individuals[i].generation);
+    }
+    EXPECT_EQ(j["best_run"], lib.best);
+    EXPECT_EQ(j["global_search"]["cycles"], lib.cycles);
+    EXPECT_EQ(j["global_search"]["generations"].size(), lib.generations.size());
+    EXPECT_TRUE(same_bits(j["result"]["merit"].get<double>(), lib.best_individual().run.merit));
+
+    const RunResult text =
+        optimize({kNebenbedingungen, "--quiet", "--global", "starts,generations=2,iterations=2"});
+    ASSERT_EQ(text.code, mko::cli::kExitOk) << text.err;
+    for (const char* s : {"Globale Suche  ", "gestörte Starts (Vergleich)", "Budget LM-Zyklen",
+                          "\nGlobale Suche (", "\nLäufe\n", "Bester Lauf"}) {
+        EXPECT_NE(text.out.find(s), std::string::npos) << s << "\n" << text.out;
+    }
+    // Ohne --global: Feld null
+    const RunResult plain =
+        optimize({kNebenbedingungen, "--json", "--quiet", "--max-iterations", "1"});
+    ASSERT_EQ(plain.code, mko::cli::kExitOk);
+    EXPECT_TRUE(json::parse(plain.out)["global_search"].is_null());
+}
+
 // Textausgabe: Kopf, Protokoll, Zusammenfassung; --quiet ohne Protokoll.
 TEST(CliOptimize, TextOutput) {
     const TempDir dir("text");
@@ -840,29 +896,38 @@ TEST(CliOptimize, Errors) {
     EXPECT_EQ(r.code, mko::cli::kExitError);
     EXPECT_NE(r.err.find("mikroptim optimize: Fehler: "), std::string::npos);
     // Kommandozeile
-    for (const std::vector<std::string>& args :
-         std::vector<std::vector<std::string>>{{},
-                                               {kBiegung, "--unbekannt"},
-                                               {kBiegung, kBiegung},
-                                               {kBiegung, "-o"},
-                                               {kBiegung, "--runs", "0"},
-                                               {kBiegung, "--max-iterations", "-1"},
-                                               {kBiegung, "--perturbation", "0.1"},
-                                               {kBiegung, "--seed", "3"},
-                                               {kBiegung, "--runs", "2", "--perturbation", "-1"},
-                                               {kBiegung, "--runs", "2", "--perturbation", "x"},
-                                               {kBiegung, "--runs", "2", "--seed", "-1"},
-                                               {kBiegung, "--rings", "17"},
-                                               {kBiegung, "--spokes", "0"},
-                                               {kBiegung, "--fail-weight", "0"},
-                                               {kBiegung, "--fail-weight", "-1"},
-                                               {kBiegung, "--fail-weight", "x"},
-                                               {kBiegung, "--fail-weight", "1e8", "--hard-failure"},
-                                               {kBiegung, "--jacobian"},
-                                               {kBiegung, "--jacobian", "adjungiert"},
-                                               {kBiegung, "--sine-condition"},
-                                               {kBiegung, "--sine-condition", "-1"},
-                                               {kBiegung, "--device", "0"}}) {
+    for (const std::vector<std::string>& args : std::vector<std::vector<std::string>>{
+             {},
+             {kBiegung, "--unbekannt"},
+             {kBiegung, kBiegung},
+             {kBiegung, "-o"},
+             {kBiegung, "--runs", "0"},
+             {kBiegung, "--max-iterations", "-1"},
+             {kBiegung, "--perturbation", "0.1"},
+             {kBiegung, "--seed", "3"},
+             {kBiegung, "--runs", "2", "--perturbation", "-1"},
+             {kBiegung, "--runs", "2", "--perturbation", "x"},
+             {kBiegung, "--runs", "2", "--seed", "-1"},
+             {kBiegung, "--rings", "17"},
+             {kBiegung, "--spokes", "0"},
+             {kBiegung, "--fail-weight", "0"},
+             {kBiegung, "--fail-weight", "-1"},
+             {kBiegung, "--fail-weight", "x"},
+             {kBiegung, "--fail-weight", "1e8", "--hard-failure"},
+             {kBiegung, "--jacobian"},
+             {kBiegung, "--jacobian", "adjungiert"},
+             {kBiegung, "--sine-condition"},
+             {kBiegung, "--sine-condition", "-1"},
+             {kBiegung, "--device", "0"},
+             {kBiegung, "--global"},
+             {kBiegung, "--global", "ga"},
+             {kBiegung, "--global", "cma,population=1"},
+             {kBiegung, "--global", "cma,sigma=0"},
+             {kBiegung, "--global", "cma,iterations"},
+             {kBiegung, "--global", "cma,foo=1"},
+             {kBiegung, "--global", "cma", "--runs", "2"},
+             {kBiegung, "--global", "cma", "--tolerance-aware", "0.5"},
+             {kBiegung, "--global", "cma", "--max-iterations", "5"}}) {
         r = optimize(args);
         EXPECT_EQ(r.code, mko::cli::kExitUsage) << (args.empty() ? "" : args.back());
         EXPECT_NE(r.err.find("Aufruf: mikroptim optimize"), std::string::npos);
