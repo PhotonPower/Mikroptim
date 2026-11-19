@@ -516,11 +516,12 @@ TEST(RttExport, WarningsForDroppedData) {
     s.surfaces[2].type = mko::SurfaceType::Sphere;
     s.surfaces[2].curvature = 0.0;
     s.surfaces[2].comment = "Rückfläche mit Leerzeichen";
+    s.surfaces[1].group = "front"; // Feld group (Entscheidung Maintainer 2026-11-19)
     std::vector<std::string> w;
     const json r = json::parse(mko::system_to_rtt_json(s, basis_export(), &w));
-    for (const char* text :
-         {"description:", "target:", "variables:", "constraints:", "spectrum.reference_nm:",
-          "surfaces[2]: Kugel mit Krümmung 0", "surfaces[2].comment:"}) {
+    for (const char* text : {"description:", "target:", "variables:", "constraints:",
+                             "spectrum.reference_nm:", "surfaces[2]: Kugel mit Krümmung 0",
+                             "surfaces[2].comment:", "surfaces[1].group: Gruppe entfällt"}) {
         EXPECT_TRUE(has_warning(w, text)) << text;
     }
     EXPECT_EQ(r["wavelengths"].back(),

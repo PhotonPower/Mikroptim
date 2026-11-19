@@ -74,4 +74,26 @@ void apply_shift_update(SystemDescription& system, const ShiftUpdate& update);
 // Setzt alle Verschiebungen zurück (leere shift-Felder).
 void clear_shifts(SystemDescription& system);
 
+// Neustart (Entscheidung des Maintainers 2026-11-19): θ gehört nicht zur Systembeschreibung,
+// sondern zum Ergebnis- bzw. Neustartzustand eines Laufs (JSON von `mikroptim optimize` und
+// `mikroptim synth`, Feld augmented_lagrangian.shifts). Ein Wert pro Residuum: Eintrag `item`
+// von constraints.items, Residuum `index` innerhalb des Eintrags, Typ zur Prüfung.
+struct ShiftValue {
+    int item = -1;
+    int index = 0;
+    ConstraintType type = ConstraintType::FocalLength;
+    double shift = 0.0;
+};
+
+// Alle gespeicherten Verschiebungen der Beschreibung (Einträge mit nicht leerem shift-Feld, in
+// der Reihenfolge der Einträge, dann der Residuen).
+std::vector<ShiftValue> shift_values(const SystemDescription& system);
+
+// Schreibt Verschiebungen eines früheren Laufs in die Beschreibung (Einträge, die in `values`
+// vorkommen, bekommen ein shift-Feld der Länge größter Index + 1, fehlende Residuen 0).
+// Wirft std::invalid_argument, wenn ein Wert nicht passt: Eintrag fehlt, trägt keine
+// Verschiebung, anderer Typ, Index außerhalb (mechanisch: Zahl der Flächen aus
+// constraint_surfaces, sonst 1), θ negativ oder nicht endlich.
+void set_shift_values(SystemDescription& system, const std::vector<ShiftValue>& values);
+
 } // namespace mko

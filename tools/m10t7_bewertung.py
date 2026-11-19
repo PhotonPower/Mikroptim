@@ -8,7 +8,11 @@ Benchmarks (Startsysteme frei erfunden):
         (Start von M6-T6 mit Feldwinkeln × 0,1; Feld und Spektrum können die Entwurfswerkzeuge
         noch nicht stufenweise ändern, bei vollem Feld wird schon NA 0,3 verworfen)
     B3  40x/0,85 trocken, Aperturteil: NA 0,3 → 0,85 bei 10 % Feld, 546 nm
-    B4  Patentsysteme aus dem privaten Verzeichnis – nur lokal, hier nicht umgesetzt
+    B4  Patentsysteme aus dem privaten Verzeichnis ``data/systems/private/`` – nur lokal, nur
+        mit Ollama (Entscheidung Maintainer 2026-11-19). Die Liste steht in
+        ``data/systems/private/b4.json`` (Format: data/systems/README.md); fehlt sie, wird B4
+        übersprungen. Sitzungen unter ``<work>/private/``, Ergebnisse unter ``<out>/private/``
+        (beides nicht im Repository); ClaudeDecider ist für B4 gesperrt.
 
 Varianten:
 
@@ -37,6 +41,7 @@ Beispiele:
     python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:20b --think
     python tools/m10t7_bewertung.py --varianten LM --decider claude --model claude-opus-5-5 --max-usd 20
     python tools/m10t7_bewertung.py --tabelle
+    python tools/m10t7_bewertung.py --benchmarks B4 --varianten V0,LM --decider ollama --model qwen3:14b
 """
 
 from __future__ import annotations
@@ -53,6 +58,9 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SYSTEMS = ROOT / "data" / "systems"
+#: privates Verzeichnis der Patentsysteme (B4, nie im Repository) und seine Benchmark-Liste
+PRIVATE_SYSTEMS = SYSTEMS / "private"
+PRIVATE_MANIFEST = PRIVATE_SYSTEMS / "b4.json"
 RMS_TARGET = 1.0 / 14.0
 #: relative Toleranz der NA (die Brennweite weicht über die Nebenbedingung leicht vom Soll ab)
 NA_TOLERANCE = 1e-3
@@ -70,6 +78,52 @@ BENCHMARKS = {
                     "target_color_class": "c", "target_field_class": [4, 5]}, "steps": 12,
            "field_scale": 0.1},
 }
+
+
+def private_benchmarks(manifest=None) -> dict:
+    """Benchmarks B4 aus ``data/systems/private/b4.json`` (nur lokal, Entscheidung Maintainer
+    2026-11-19): ``{"benchmarks": [{"name": "B4…", "start": "<datei>.json", "na": …,
+    "max_elements": …, "spec": {…}, "steps": …, "field_scale": …}]}`` mit ``start`` relativ zum
+    Verzeichnis der Liste. Leer, wenn die Liste fehlt."""
+    manifest = pathlib.Path(manifest or PRIVATE_MANIFEST)
+    if not manifest.is_file():
+        return {}
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    out = {}
+    for e in data.get("benchmarks", []):
+        name = str(e["name"])
+        if not name.startswith("B4"):
+            raise ValueError(f"{manifest}: Name {name} beginnt nicht mit B4")
+        b = {"start": manifest.parent / e["start"], "na": float(e["na"]),
+             "max_elements": int(e.get("max_elements", 15)),
+             "spec": dict(e.get("spec") or {"na": float(e["na"])}),
+             "steps": int(e.get("steps", 12)), "private": True}
+        if "field_scale" in e:
+            b["field_scale"] = float(e["field_scale"])
+        out[name] = b
+    return out
+
+
+def expand_benchmarks(names, manifest=None) -> list[tuple[str, dict]]:
+    """Benchmarks der Kommandozeile; ``B4`` steht für alle Einträge der privaten Liste (ohne
+    Liste: übersprungen mit Hinweis), ``B4…`` für einen Eintrag."""
+    private = None
+    out = []
+    for b in names:
+        if b in BENCHMARKS:
+            out.append((b, BENCHMARKS[b]))
+            continue
+        if not b.startswith("B4"):
+            raise SystemExit(f"unbekannter Benchmark {b}")
+        private = private_benchmarks(manifest) if private is None else private
+        if not private:
+            print(f"{b}: keine private Liste {manifest or PRIVATE_MANIFEST}, übersprungen")
+            continue
+        sel = private if b == "B4" else {k: v for k, v in private.items() if k == b}
+        if not sel:
+            raise SystemExit(f"Benchmark {b} fehlt in der privaten Liste")
+        out += list(sel.items())
+    return out
 
 
 def _mko():
@@ -386,16 +440,24 @@ def main(argv=None) -> int:
         ledger = design.CostLedger(args.max_usd, args.cost_file or work_root / "claude_cost.json")
     llm = None
     try:
-        for b in args.benchmarks.split(","):
-            work_root.mkdir(parents=True, exist_ok=True)
-            bench = prepare_start(BENCHMARKS[b], work_root, b)
+        for b, bench in expand_benchmarks(args.benchmarks.split(",")):
+            # private Benchmarks (B4): Arbeits- und Ergebnisverzeichnis unter private/, das die
+            # Datenschutzprüfung des ClaudeDecider erkennt und .gitignore ausschließt
+            b_work = work_root / "private" if bench.get("private") else work_root
+            b_out = out / "private" if bench.get("private") else out
+            b_work.mkdir(parents=True, exist_ok=True)
+            b_out.mkdir(parents=True, exist_ok=True)
+            bench = prepare_start(bench, b_work, b)
             for v in args.varianten.split(","):
                 tag = tag_of(v, args)
-                res_path = out / f"{b}_{tag}.json"
+                if bench.get("private") and v == "LM" and args.decider == "claude":
+                    print(f"{b} {tag}: private Daten nur lokal (Ollama), übersprungen")
+                    continue
+                res_path = b_out / f"{b}_{tag}.json"
                 if res_path.exists():
                     print(f"{b} {tag}: vorhanden, übersprungen")
                     continue
-                work = work_root / b / tag
+                work = b_work / b / tag
                 work.mkdir(parents=True, exist_ok=True)
                 steps = args.steps or bench["steps"]
                 print(f"{b} {tag}: läuft …", flush=True)

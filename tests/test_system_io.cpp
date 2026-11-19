@@ -301,6 +301,38 @@ TEST(SystemIo, FileWriteAndReadRoundtrip) {
     EXPECT_TRUE(mko::read_system_file(file) == a);
 }
 
+// Feld group an Flächen (Entscheidung Maintainer 2026-11-19): optional, Lesen/Schreiben
+// verlustfrei, ohne Angabe nicht geschrieben, nur front/middle/rear.
+TEST(SystemIo, SurfaceGroupRoundtrip) {
+    const std::string text = replaced(
+        replaced(kBase, kFront,
+                 replaced(kFront, "\"semi_diameter\"", "\"group\": \"front\", \"semi_diameter\"")),
+        kBack, replaced(kBack, "\"semi_diameter\"", "\"group\": \"rear\", \"semi_diameter\""));
+    std::vector<std::string> warnings;
+    const SystemDescription a = mko::read_system_json(text, &warnings);
+    EXPECT_TRUE(warnings.empty());
+    EXPECT_FALSE(a.surfaces[0].group.has_value());
+    EXPECT_EQ(a.surfaces[1].group, "front");
+    EXPECT_EQ(a.surfaces[2].group, "rear");
+    const std::string written = mko::write_system_json(a);
+    EXPECT_TRUE(mko::read_system_json(written) == a);
+    EXPECT_NE(written.find("\"group\": \"front\""), std::string::npos);
+    // ohne Gruppe kein Feld; Vergleich unterscheidet die Gruppe
+    const SystemDescription base = mko::read_system_json(kBase);
+    EXPECT_EQ(mko::write_system_json(base).find("\"group\""), std::string::npos);
+    EXPECT_FALSE(base == a);
+    // ungültiger Wert: Fehler mit JSON-Pfad
+    try {
+        (void)mko::read_system_json(replaced(
+            kBase, kFront,
+            replaced(kFront, "\"semi_diameter\"", "\"group\": \"vorn\", \"semi_diameter\"")));
+        FAIL() << "keine Ausnahme";
+    } catch (const FormatError& e) {
+        EXPECT_EQ(e.json_path(), "surfaces[1].group") << e.what();
+        EXPECT_NE(std::string(e.what()).find("front, middle, rear"), std::string::npos);
+    }
+}
+
 // --------------------------------------------------------------------------
 // Negativtests: Meldung enthält den JSON-Pfad
 // --------------------------------------------------------------------------

@@ -38,6 +38,17 @@ struct SurfaceAberration {
     double full_order_spherical = 0.0;
     double higher_order_spherical = 0.0;
     double full_order_spherical_zone = 0.0;
+    // Gruppe der Dateifläche (Surface::group), leer ohne Angabe
+    std::string group;
+};
+
+// Gruppensumme (Entscheidung des Maintainers 2026-11-19): Summe der Beiträge aller Dateiflächen
+// mit Surface::group == name, in Flächenreihenfolge. `sum` enthält S, C, Sphärochromasie und die
+// Vollordnung (surface = −1, Strahldaten 0); Wellen über AberrationReport::waves(sum).
+struct GroupAberration {
+    std::string name;
+    std::vector<int> surfaces;
+    SurfaceAberration sum;
 };
 
 // Spektrallinien für den chromatischen Fokusverlauf (M10-T2; Farbklassen nach Zhang 2019,
@@ -107,6 +118,9 @@ struct AberrationReport {
     bool real_rays_valid = false;
     // M10-T2: chromatischer Fokusverlauf über kSpectralLines
     std::vector<FocalShift> focal_shifts;
+    // Gruppensummen über das Feld `group` der Dateiflächen, Reihenfolge front, middle, rear (nur
+    // vorhandene Gruppen; leer, wenn keine Fläche eine Gruppe hat)
+    std::vector<GroupAberration> groups;
     // Geisterplatten werden nicht berücksichtigt (Bericht über die Dateiflächen); Zahl der
     // Platten mit Koeffizienten ungleich 0, deren Wirkung damit fehlt.
     int ghost_plates_ignored = 0;

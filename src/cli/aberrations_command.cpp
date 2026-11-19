@@ -135,9 +135,27 @@ Json report_json(const AberrationReport& rep, const std::string& file) {
         e["higher_order_spherical"] = number_or_null(s.higher_order_spherical);
         e["full_order_spherical_zone"] = number_or_null(s.full_order_spherical_zone);
         e["waves"] = waves_json(rep.waves(s));
+        e["group"] = s.group.empty() ? Json(nullptr) : Json(s.group);
         surfaces.push_back(e);
     }
     j["surfaces"] = surfaces;
+    // Gruppensummen über das Feld group der Flächen (leer ohne Gruppen)
+    Json groups = Json::array();
+    for (const GroupAberration& g : rep.groups) {
+        Json e;
+        e["group"] = g.name;
+        e["surfaces"] = g.surfaces;
+        e["S"] = Json::array(
+            {g.sum.S[0], g.sum.S[1], g.sum.S[2], g.sum.S[3], number_or_null(g.sum.S[4])});
+        e["C"] = Json::array({g.sum.C[0], g.sum.C[1]});
+        e["spherochromatism"] = g.sum.spherochromatism;
+        e["full_order_spherical"] = number_or_null(g.sum.full_order_spherical);
+        e["higher_order_spherical"] = number_or_null(g.sum.higher_order_spherical);
+        e["full_order_spherical_zone"] = number_or_null(g.sum.full_order_spherical_zone);
+        e["waves"] = waves_json(rep.waves(g.sum));
+        groups.push_back(e);
+    }
+    j["groups"] = groups;
     return j;
 }
 
@@ -177,6 +195,15 @@ void print_text(std::ostream& out, const AberrationReport& rep, const std::strin
         row(std::to_string(s.surface), s.y, rep.waves(s));
     }
     row("Σ", std::nan(""), rep.waves());
+    if (!rep.groups.empty()) {
+        out << "Gruppensummen (Feld group der Flächen):\n";
+        for (const GroupAberration& g : rep.groups) {
+            row(g.name == "front"    ? "Σv"
+                : g.name == "middle" ? "Σm"
+                                     : "Σh",
+                std::nan(""), rep.waves(g.sum));
+        }
+    }
 }
 
 } // namespace

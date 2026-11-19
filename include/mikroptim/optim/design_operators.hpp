@@ -23,6 +23,7 @@
 
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace mko {
@@ -75,19 +76,34 @@ int glass_block_end(const SystemDescription& system, int first);
 // Rundung gleich.
 bool is_null_element(const SystemDescription& system, int first);
 
+// Angehobene obere Schranke einer Dickenvariable bzw. des Arbeitsabstands (Rückbau und
+// Rückbau-Homotopie verlängern Spalte). Die Operatoren heben die Schranke weiterhin an, melden es
+// aber als Warnung (Entscheidung des Maintainers 2026-11-19).
+struct BoundWidening {
+    int gap = 0;                   // Dateifläche vor dem Spalt (Ergebnissystem)
+    bool working_distance = false; // Schranke des Arbeitsabstands statt einer Dickenvariable
+    double old_max = 0.0;          // bisherige Schranke [mm]
+    double new_max = 0.0;          // neue Schranke = Dicke des Spalts [mm]
+};
+
+// Text der Warnung, z. B. „obere Schranke der Dicke nach Fläche 2 von 3 auf 4,5 mm angehoben“.
+std::string bound_widening_warning(const BoundWidening& w);
+
 struct RemovalResult {
     SystemDescription system;
     std::vector<int> new_of_old; // alte Dateifläche → neue, −1: entfernt
     int first_removed = 0;       // erste entfernte Dateifläche
     int removed_surfaces = 0;
-    int merged_gap = 0; // Fläche vor dem vereinigten Luftspalt (first_removed − 1)
+    int merged_gap = 0;                 // Fläche vor dem vereinigten Luftspalt (first_removed − 1)
+    std::vector<BoundWidening> widened; // angehobene Schranken (Warnungen)
 };
 
 // Entfernt den Glasblock first … glass_block_end(first): Spalt nach first − 1 wird
 // t_{first−1} + Σ t_first … t_last (fortlaufend summiert; ist der Block die Frontgruppe, ist das
 // der neue Arbeitsabstand). Variablen und Bedingungen über remap_surfaces (Dickenbezüge des
 // Spalts nach `last` gehen auf den vereinigten Spalt über; liegt seine Dicke über der oberen
-// Schranke der Dickenvariable bzw. des Arbeitsabstands, wird die Schranke angehoben);
+// Schranke der Dickenvariable bzw. des Arbeitsabstands, wird die Schranke angehoben und in
+// `widened` als Warnung gemeldet);
 // Geisterplatten nach `last` liegen danach nach first − 1 mit distance + t_{first−1} + … +
 // t_{last−1}. Umkehrung von Operator A (insert_meniscus mit Dicke 0) und insert_null_doublet: Das
 // Ergebnis ist das Ausgangssystem (Spaltdicke bis auf die Rundung von p + fl(T − p)). Wirft
@@ -102,8 +118,10 @@ RemovalResult remove_element(const SystemDescription& system, int first);
 // bei Bedarf angehoben). Krümmungen, Glasdicken und Gläser des Blocks werden festgesetzt
 // (freeze_variables). Aufeinanderfolgende Stufen mit f = 1/K, 1/(K − 1), …,
 // 1 erreichen das Null-Element genau. Wirft std::invalid_argument wie glass_block_end oder bei
-// f außerhalb (0, 1], FormatError wie remove_element.
-SystemDescription collapse_element(const SystemDescription& system, int first, double fraction);
+// f außerhalb (0, 1], FormatError wie remove_element. Mit `widened` ≠ nullptr werden angehobene
+// Schranken dort angehängt (Warnungen).
+SystemDescription collapse_element(const SystemDescription& system, int first, double fraction,
+                                   std::vector<BoundWidening>* widened = nullptr);
 
 // ---------------------------------------------------------------------------------------------
 // Glas tauschen

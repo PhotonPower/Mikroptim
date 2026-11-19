@@ -39,10 +39,12 @@ Beispiel: [data/systems/einzellinse_bk7.json](../data/systems/einzellinse_bk7.js
 | `semi_diameter` | number | Halbdurchmesser (mechanisch); bei `stop` der Pupillenradius |
 | `decenter` | number[2] | optional (ab M8-T3): Dezentrierung [Δx, Δy] in mm relativ zur nominellen Lage des Scheitels, Standard [0, 0] |
 | `tilt_deg` | number[2] | optional (ab M8-T3): Verkippung [α, β] in Grad um die lokale x- bzw. y-Achse, Drehpunkt ist der Scheitel, R = R_y(β)·R_x(α) (aktiv, rechtshändig), Standard [0, 0] |
-| `zones` | number[] | nur `sine_condition`: Pupillenzonen ρ_k (Anteil des Pupillenradius), je in (0, 1], keine doppelt, mindestens eine; fehlt: [1/√2, 1] (Zone und Rand wie im Aberrationsbericht) |
+| `group` | string | optional (Entscheidung Maintainer 2026-11-19): Gruppe der Fläche, `"front"`, `"middle"` oder `"rear"` (Front-, Mittel-, Hintergruppe, [entwurfssteuerung.md, Abschnitt 3.3](entwurfssteuerung.md#33-neu-gruppen-kennzahlen-klassen-m10-t2)). Überschreibt die automatische Zuordnung nach der Randstrahlhöhe; nur Diagnose (Gruppensummen im Aberrationsbericht, Gruppen im Zustand von `mikroptim.design`), ohne Einfluss auf Trace und Optimierung |
 | `comment` | string | optional |
 
 Krümmungen statt Radien, damit Planflächen ohne Sonderwert `inf` auskommen.
+
+**Gruppen.** `group` ist eine kompatible Erweiterung von `mikroptim.system/1`: Ältere Dateien bleiben gültig, Flächen ohne Gruppe schreiben das Feld nicht, ältere Leser warnen nur über das unbekannte Feld. Andere Werte als `front`, `middle`, `rear` sind ein Fehler unter `surfaces[i].group`. Die Operatoren von `mikroptim insert` übernehmen die Gruppe bestehender Flächen; neu eingefügte Flächen haben keine, `insert_module` in `mikroptim.design` setzt sie aus dem Parameter `group` bzw. der Gruppe des Moduls. Beim Export nach Raytatouille (`mikroptim convert`) entfällt das Feld (Warnung).
 
 **Dezentrierung und Verkippung** (M8-T3, ADR-0011; Konventionen und Rechnung: [numerik.md, Abschnitt 2](numerik.md#dezentrierung-und-verkippung-m8-t3-adr-0011)): Die Transformation betrifft nur die Fläche selbst („dezentrieren und zurück“); `thickness` bleibt der Abstand der nominellen Scheitel entlang +z, Folgeflächen sind nicht betroffen. Elementbewegungen (eine Linse als Ganzes um einen Punkt P) werden aus Verkippung und Dezentrierung der Einzelflächen zusammengesetzt; der Axialanteil geht in die Dicken. Sobald eine Fläche transformiert ist, rechnen Wellenfront, Optimierung und EVAL mit der vollen Pupille für alle Felder; Paraxialdaten bleiben koaxial. Die Felder sind eine kompatible Erweiterung von `mikroptim.system/1`: ältere Dateien bleiben gültig, koaxiale Flächen schreiben die Felder nicht. Beispiel: [data/systems/testsystem_mehrlinser_dezentriert.json](../data/systems/testsystem_mehrlinser_dezentriert.json):
 
@@ -243,6 +245,7 @@ Verletzung der Sinusbedingung (ab M11-T4, nur kollimierte Quelle; ohne `zones` d
 | `angle` | number | nur `max_incidence_angle`, dort Pflicht: größter Einfallswinkel θ_max in Grad, 0 < θ_max < 90 |
 | `clearance` | number | nur `max_semi_diameter` und `min_edge_thickness`: Fassungszugabe δ ≥ 0 [mm] zur Strahlhöhe bzw. zum Halbdurchmesser der Randdicke (Standard 0) |
 | `height` | string | nur `min_edge_thickness`: Halbdurchmesser h der Randdicke: `"semi_diameter"` (Standard: max der `semi_diameter` beider Flächen, unabhängig vom Trace) oder `"rays"` (max der größten Strahlhöhen beider Flächen, freie Öffnung), jeweils plus `clearance` |
+| `zones` | number[] | nur `sine_condition`: Pupillenzonen ρ_k (Anteil des Pupillenradius), je in (0, 1], keine doppelt, mindestens eine; fehlt: [1/√2, 1] (Zone und Rand wie im Aberrationsbericht) |
 | `comment` | string | optional |
 
 **Sollwerte stehen nur in `target`** (eine Quelle der Wahrheit): `focal_length` nimmt `target.focal_length` (dieselbe Größe bestimmt die Feldziele h_f = f_soll · tan θ_f), `parfocal_length` nimmt `target.parfocal_length`, `working_distance` nimmt `target.working_distance`; bei `mode` `min`/`max` ist der Sollwert die Grenze (z. B. Mindestarbeitsabstand). `paraxial_focus` und `sine_condition` haben den festen Sollwert 0 und brauchen keinen Eintrag in `target`. Ausnahme sind reine Grenzen ohne Zielgröße in `target`: κ_max der Petzval-Bedingung (`max_curvature`) und die Grenzen der mechanischen Bedingungen (`semi_diameter`, `thickness`, `angle`) stehen nur im Eintrag; `ghost_penalty` und `glass_hull` haben keine Sollgröße. Ein `target` ohne Nebenbedingung wird (außer `focal_length` für die Feldziele) nicht ausgewertet.
@@ -400,7 +403,7 @@ Beide Formate sind rechtshändig mit +z als optischer Achse in Lichtrichtung, L�
 | `optimization`, `tolerances`, weitere `configurations` | – | Warnung |
 | `active: false` | – | Knoten wird nicht durchlaufen (Warnung), seine Lage zählt für relative Bezüge |
 | Interaktion `fresnel` (Standard), `ideal_anti_reflection`, `coating` | – | ohne Wirkung auf die Strahlen; die beiden letzten mit Warnung. Spiegel, Phasenschichten, Beugungseffizienz, Kristalle (`optic_axis`, Materialobjekt): Fehler |
-| – | `target`, `variables`, `constraints`, `tolerances`, `description` | Export: Warnung |
+| – | `target`, `variables`, `constraints`, `tolerances`, `description`, `group` der Flächen | Export: Warnung |
 | – | `decenter`, `tilt_deg` ≠ 0 | Export: Fehler (eine verlustfreie Abbildung auf Raytatouille-Posen ist möglich, aber nicht Teil von M9-T2) |
 | – | Geisterplatten | Export: Fehler bei Koeffizienten ≠ 0, sonst entfallen sie (Warnung) |
 | – | Buchdahl-Modellglas | Export: Fehler (vorher einrasten, `mikroptim snap`) |

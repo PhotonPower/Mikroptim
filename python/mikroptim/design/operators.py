@@ -23,7 +23,7 @@ from ._cli import ToolError, cli_json
 from .actions import ActionError, _require, _tmp_out, resolve_filter
 from .files import elements, is_air, read_system, write_system
 from .modules import NULL_TEMPLATES, module
-from .state import assign_groups
+from .state import element_groups
 
 #: Stufen der Dicken- bzw. Rückbau-Homotopie und LM-Zyklen pro Stufe (Standard)
 DEFAULT_STAGES = 4
@@ -64,6 +64,21 @@ def _optimize(path, workdir, cycles) -> tuple[pathlib.Path, dict | None]:
     res = rep.get("result") or {}
     return out, {"merit": res.get("merit"), "status": res.get("status"),
                  "iterations": res.get("iterations")}
+
+
+#: erlaubte Werte des Felds ``group`` an Flächen (docs/dateiformat.md)
+GROUPS = ("front", "middle", "rear")
+
+
+def _set_group(path, surfaces, group):
+    """Feld ``group`` an den Flächen ``surfaces`` der Datei setzen (Entscheidung Maintainer
+    2026-11-19; ohne Gruppe nichts)."""
+    if group is None:
+        return
+    data = read_system(path)
+    for s in surfaces:
+        data["surfaces"][s]["group"] = group
+    write_system(data, path)
 
 
 def _drop(paths, keep):
@@ -194,8 +209,10 @@ def insert_module(a, system_path, workdir):
     s = int(a["after_surface"])
     gap = _air_gap(data, s, allow_last=(kind == "aplanatic_shell"))
     glasses = [_glass_name(g, system_path) for g in a.get("glasses", [])]
-    report = {"module": a["module"], "template": kind, "after_surface": s,
-              "group": a.get("group", mod["group"])}
+    group = a.get("group", mod["group"])
+    if group is not None and group not in GROUPS:
+        raise ActionError("invalid_parameter", f"group {group}: erlaubt sind {', '.join(GROUPS)}")
+    report = {"module": a["module"], "template": kind, "after_surface": s, "group": group}
     files = []
     if kind == "aplanatic_shell":
         if not glasses:
@@ -210,6 +227,7 @@ def insert_module(a, system_path, workdir):
                                                           "c_aplanatic", "c_concentric",
                                                           "working_distance")},
                        "merit_before": rep["merit_before"], "merit_after": rep["merit_after"]})
+        _set_group(out, report["surfaces"], group)
         return [(out, report)]
     if kind == "petzval_group":
         return _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report)
@@ -277,8 +295,10 @@ def insert_module(a, system_path, workdir):
         files.append(out)
         _drop(files, cur)
         report["homotopy"] = log
+        _set_group(cur, report["surfaces"], group)
         return [(pathlib.Path(cur), report)]
     _drop(files, out)
+    _set_group(out, report["surfaces"], group)
     return [(out, report)]
 
 
@@ -429,6 +449,7 @@ def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report):
                    "focal_length_before": f,
                    "focal_length_after": after["paraxial"]["focal_length"],
                    "failed_rays": after["failed_rays"], "optimize": opt})
+    _set_group(final, report["surfaces"], report.get("group"))
     return [(pathlib.Path(final), report)]
 
 
@@ -437,21 +458,26 @@ def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report):
 
 def _remove_block(system_path, workdir, first, stages, cycles, files):
     """Rückbau des Glasblocks ab ``first``: Rückbau-Homotopie (falls kein Null-Element) und
-    Entfernen. Rückgabe (Datei, Bericht)."""
+    Entfernen. Rückgabe (Datei, Bericht). ``warnings`` sammelt die Warnungen von
+    ``mikroptim insert`` (angehobene obere Schranken von Dicke bzw. Arbeitsabstand, Entscheidung
+    Maintainer 2026-11-19); sie stehen im Bericht und damit im Sitzungsprotokoll."""
     log = []
+    warnings = []
     cur = pathlib.Path(system_path)
     for k in range(stages):
         frac = 1.0 / (stages - k)
         nxt, rep = _insert(cur, workdir, ["--collapse", f"{first},{frac!r}"])
+        warnings += rep.get("warnings") or []
         files.append(nxt)
         cur, opt = _optimize(nxt, workdir, cycles)
         files.append(cur)
         log.append({"fraction": frac, "merit": rep["merit_after"], "optimize": opt})
     out, rep = _insert(cur, workdir, ["--remove", first])
+    warnings += rep.get("warnings") or []
     return out, {"first_surface": first, "removed_surfaces": rep["details"]["removed_surfaces"],
                  "homotopy": log,
                  "merit_before_removal": rep["merit_before"], "merit_after": rep["merit_after"],
-                 "relative_change": rep["relative_change"]}
+                 "relative_change": rep["relative_change"], "warnings": warnings}
 
 
 def _is_null(data, first) -> bool:
@@ -542,11 +568,12 @@ def replace_glass(a, system_path, workdir):
 
 
 def group_elements(system_path) -> dict:
-    """Elemente pro Gruppe wie im Zustand (state.assign_groups, Randstrahlhöhen)."""
+    """Elemente pro Gruppe wie im Zustand (state.element_groups: Feld ``group`` der Flächen,
+    sonst Randstrahlhöhen)."""
     data = read_system(system_path)
     elems = elements(data)
     heights = [s["y"] for s in aberrations(system_path)["surfaces"]]
-    groups = assign_groups(elems, heights)
+    groups = element_groups(data, elems, heights)
     out = {"front": [], "middle": [], "rear": []}
     for e in elems:
         out[groups[e["element"]]].append(e["element"])
@@ -605,7 +632,8 @@ def replace_group(a, system_path, workdir):
         inserted.append(rep)
     _drop(files, cur)
     return [(pathlib.Path(cur), {"group": group, "removed": removed, "inserted": inserted,
-                                 "gap_surface": gap_surface})]
+                                 "gap_surface": gap_surface,
+                                 "warnings": [w for r in removed for w in r["warnings"]]})]
 
 
 # --- start_from_skeleton ----------------------------------------------------------------------

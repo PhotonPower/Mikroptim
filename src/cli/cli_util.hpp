@@ -16,6 +16,7 @@
 namespace mko {
 struct SystemDescription;
 enum class JacobianMethod; // mikroptim/optim/levenberg_marquardt.hpp
+struct ShiftValue;         // mikroptim/optim/augmented_lagrangian.hpp
 } // namespace mko
 
 namespace mko::cli {
@@ -73,6 +74,14 @@ double parse_sine_condition_weight(std::string_view option, std::string_view tex
 // constraints mit neuem Abschnitt). Danach check_constraints (FormatError, z. B. bei
 // Punktquelle). Die Ergebnisdatei enthält den Eintrag.
 void apply_sine_condition_option(SystemDescription& system, double weight);
+
+// ---- Neustart des Augmented Lagrangian (optimize, synth) -----------------------------------
+
+// Verschiebungen θ eines früheren Laufs aus dessen JSON-Ausgabe (`mikroptim optimize --json`
+// oder Protokoll von `mikroptim synth`): Feld augmented_lagrangian.shifts, je Eintrag `item`,
+// `index`, `type`, `shift`. Wirft std::runtime_error, wenn die Datei fehlt, kein JSON ist oder
+// das Feld fehlt bzw. nicht passt (Entscheidung des Maintainers 2026-11-19).
+std::vector<ShiftValue> read_shift_file(const std::filesystem::path& path);
 
 // ---- Dateien (optimize, snap) ------------------------------------------------------------
 

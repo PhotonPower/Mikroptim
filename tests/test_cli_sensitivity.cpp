@@ -103,6 +103,26 @@ TEST(CliSensitivity, DefaultSetOptionsAndManufacturabilityOnly) {
     EXPECT_TRUE(j["tolerances"].is_null());
     EXPECT_EQ(j["manufacturability"]["limits"]["min_edge_thickness_mm"].get<double>(), 5.0);
     EXPECT_GE(j["manufacturability"]["warnings"].get<int>(), 1);
+    EXPECT_EQ(j["manufacturability"]["limits"]["min_edge_thickness_relative"].get<double>(), 0.05);
+    for (const json& c : j["manufacturability"]["checks"]) {
+        EXPECT_EQ(c["message"].get<std::string>().empty(), c["severity"] == "ok");
+    }
+    // Zentrierbarkeit: nur Glockenzentrierung ungeeignet (Entscheidung Maintainer 2026-11-19)
+    r = run({mko::test::kToleranceSystemFile, "--json", "--manufacturability-only",
+             "--min-centering", "100", "--min-edge-relative", "0.5"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    j = json::parse(r.out);
+    EXPECT_EQ(j["manufacturability"]["limits"]["min_edge_thickness_relative"].get<double>(), 0.5);
+    bool centering = false;
+    for (const json& c : j["manufacturability"]["checks"]) {
+        if (c["check"] == "centering") {
+            EXPECT_EQ(c["severity"], "warning");
+            EXPECT_EQ(c["message"],
+                      "Glockenzentrierung ungeeignet (Z < 100), andere Zentrierverfahren nötig");
+            centering = true;
+        }
+    }
+    EXPECT_TRUE(centering);
     // Text
     r = run({mko::test::kToleranceSystemFile, "--set", "default", "--top", "3"});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
@@ -116,6 +136,7 @@ TEST(CliSensitivity, Errors) {
     EXPECT_EQ(run({kEinzellinse, "--set", "beides"}).code, mko::cli::kExitUsage);
     EXPECT_EQ(run({kEinzellinse, "--set", "file", "--decenter", "0.1"}).code, mko::cli::kExitUsage);
     EXPECT_EQ(run({kEinzellinse, "--step", "0"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(run({kEinzellinse, "--min-edge-relative", "-1"}).code, mko::cli::kExitUsage);
     EXPECT_EQ(run({kEinzellinse, "--device", "1"}).code, mko::cli::kExitUsage);
     // Datei ohne Toleranzsatz mit --set file
     RunResult r = run({kEinzellinse, "--set", "file"});

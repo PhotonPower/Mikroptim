@@ -72,6 +72,8 @@ struct SynthArgs {
     // Augmented Lagrangian (M11-T2): Läufe K, Toleranz T, Faktor S auf die Gewichte (K = 0: aus)
     int al_rounds = 0;
     double al_tolerance = kDefaultShiftTolerance;
+    // Neustart: Verschiebungen θ aus dem Protokoll bzw. der JSON-Ausgabe eines früheren Laufs
+    std::string shifts_from;
     double al_scale = 1.0;
     bool split_preselect = false;     // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
     bool split_start_target = false;  // und das freigegebene Glas dort starten
@@ -216,6 +218,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.max_steps = parse_int(arg, next_value(args, i, arg));
             if (a.max_steps < 1) {
                 throw UsageError("--max-steps muss >= 1 sein");
+            }
+        } else if (arg == "--shifts-from") {
+            a.shifts_from = std::string(next_value(args, i, arg));
+            if (a.shifts_from.empty()) {
+                throw UsageError("--shifts-from erwartet einen Dateinamen");
             }
         } else if (arg == "--augmented-lagrangian") {
             // K[,T[,S]]: Augmented Lagrangian statt Penalty-Fortsetzung (M11-T2)
@@ -363,6 +370,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.al_rounds > 0) {
         throw UsageError("--augmented-lagrangian gibt es nur ohne --beam");
     }
+    if (!a.shifts_from.empty() && a.al_rounds == 0) {
+        throw UsageError("--shifts-from verlangt --augmented-lagrangian K mit K >= 1");
+    }
     if (!a.beam && (a.seed || a.alternatives || a.starts || a.start_perturbation || a.prefilter ||
                     a.dedup || !a.dot.empty())) {
         throw UsageError("--seed, --alternatives, --starts, --start-perturbation, --prefilter, "
@@ -411,6 +421,10 @@ void print_synth_usage(std::ostream& out) {
            "                            (Standard 1), Abbruch bei max Wurzel(w)|dtheta| <= T\n"
            "                            (1e-6); theta nach jeder Optimierung fortgeschrieben\n"
            "                            (M11-T2; Standard aus; nicht mit --beam)\n"
+           "  --shifts-from DATEI       Neustart: theta aus dem Protokoll (--log) bzw. der\n"
+           "                            JSON-Ausgabe eines früheren Laufs (Feld\n"
+           "                            augmented_lagrangian.shifts); verlangt\n"
+           "                            --augmented-lagrangian\n"
            "  --sine-condition W        Verletzung der Sinusbedingung (OSC) als Residuum mit\n"
            "                            Gewicht W (Eintrag sine_condition setzen, M11-T4)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
@@ -520,6 +534,10 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         LoadedSystem start = load_system(fs::path(a.file));
         if (a.sine_condition) {
             apply_sine_condition_option(start.system, *a.sine_condition);
+        }
+        // Neustart des Augmented Lagrangian (Entscheidung des Maintainers 2026-11-19)
+        if (!a.shifts_from.empty()) {
+            set_shift_values(start.system, read_shift_file(fs::path(a.shifts_from)));
         }
         for (const std::string& w : start.warnings) {
             err << "mikroptim synth: Warnung: " << w << '\n';
@@ -750,6 +768,20 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                  {"result", Json::parse(beam ? beam_result_json(*beam, -1)
                                              : homotopy_result_json(*single, -1))},
                  {"output", a.output.empty() ? Json(nullptr) : Json(a.output)}};
+        if (a.al_rounds > 0) {
+            // Verschiebungen θ am Endpunkt als Neustartzustand (--shifts-from), nicht in der
+            // Systemdatei (Entscheidung des Maintainers 2026-11-19)
+            Json shifts = Json::array();
+            for (const ShiftValue& v : shift_values(end_system)) {
+                shifts.push_back(Json{{"item", v.item},
+                                      {"index", v.index},
+                                      {"type", std::string(to_string(v.type))},
+                                      {"shift", v.shift}});
+            }
+            doc["augmented_lagrangian"] =
+                Json{{"shifts_from", a.shifts_from.empty() ? Json(nullptr) : Json(a.shifts_from)},
+                     {"shifts", std::move(shifts)}};
+        }
         if (!a.log.empty()) {
             std::ofstream f{fs::path(a.log), std::ios::binary};
             f << doc.dump(2) << '\n';

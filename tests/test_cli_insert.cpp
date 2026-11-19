@@ -266,5 +266,44 @@ TEST(CliInsert, DesignOperatorsMatchLibrary) {
     EXPECT_EQ(insert({kGeister, "--remove", "2", "-o", back}).code, cli::kExitError);
 }
 
+// Rückbau verlängert einen Spalt über die obere Schranke seiner Dickenvariable: Schranke
+// angehoben, Warnung im JSON (`warnings`), im Text und auf stderr (Entscheidung Maintainer
+// 2026-11-19).
+TEST(CliInsert, RemovalWarnsAboutRaisedBound) {
+    const InsertTempDir dir("bound");
+    SystemDescription d = load_system(kResidualSystems + "testsystem_mehrlinser.json").system;
+    d.glass_catalogs = {std::string(MKO_SOURCE_DIR) + "/data/glass/basis.json"};
+    Variables v;
+    VariableSpec t;
+    t.type = VariableType::Thickness;
+    t.selection = SurfaceSelection::List;
+    t.surfaces = {3, 5};
+    t.min = 0.1;
+    t.max = 3.0;
+    v.items.push_back(t);
+    d.variables = v;
+    const std::string in = dir.file("start.json");
+    write_system_file(d, fs::path(in));
+    const std::string out = dir.file("neu.json");
+    CliResult r = insert({in, "--remove", "4", "-o", out, "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    EXPECT_NE(
+        r.out.find("\"warnings\": [\n    \"obere Schranke der Dicke nach Fläche 3 von 3 auf 6 "
+                   "mm angehoben\""),
+        std::string::npos)
+        << r.out;
+    EXPECT_NE(r.err.find("Warnung: obere Schranke"), std::string::npos);
+    EXPECT_EQ(load_system(out).system.variables->items[0].max, 6.0);
+    r = insert({in, "--collapse", "4,1", "-o", out});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("Warnung: obere Schranke der Dicke nach Fläche 5"), std::string::npos)
+        << r.out;
+    // ohne Anhebung: leere Liste
+    r = insert({in, "--collapse", "4,0.1", "-o", out, "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("\"warnings\": []"), std::string::npos);
+    EXPECT_TRUE(r.err.empty());
+}
+
 } // namespace
 } // namespace mko::test

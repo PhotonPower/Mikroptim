@@ -135,4 +135,62 @@ void clear_shifts(SystemDescription& system) {
     }
 }
 
+std::vector<ShiftValue> shift_values(const SystemDescription& system) {
+    std::vector<ShiftValue> out;
+    if (!system.constraints) {
+        return out;
+    }
+    const std::vector<ConstraintSpec>& items = system.constraints->items;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        for (std::size_t k = 0; k < items[i].shift.size(); ++k) {
+            out.push_back(ShiftValue{static_cast<int>(i), static_cast<int>(k), items[i].type,
+                                     items[i].shift[k]});
+        }
+    }
+    return out;
+}
+
+void set_shift_values(SystemDescription& system, const std::vector<ShiftValue>& values) {
+    if (values.empty()) {
+        return;
+    }
+    const auto bad = [](const ShiftValue& v, const std::string& why) {
+        throw std::invalid_argument("Verschiebung für Eintrag " + std::to_string(v.item) +
+                                    ", Residuum " + std::to_string(v.index) + ": " + why);
+    };
+    if (!system.constraints) {
+        bad(values.front(), "die Beschreibung hat keine Nebenbedingungen");
+    }
+    const std::vector<ConstraintSpec>& items = system.constraints->items;
+    ShiftUpdate u;
+    for (const ShiftValue& v : values) {
+        if (v.item < 0 || static_cast<std::size_t>(v.item) >= items.size()) {
+            bad(v, "Eintrag fehlt");
+        }
+        const ConstraintSpec& spec = items[static_cast<std::size_t>(v.item)];
+        if (!supports_shift(spec)) {
+            bad(v, "der Eintrag trägt keine Verschiebung");
+        }
+        if (spec.type != v.type) {
+            bad(v, "Typ " + std::string(to_string(v.type)) + " statt " +
+                       std::string(to_string(spec.type)));
+        }
+        const std::size_t count =
+            is_mechanical(spec.type) ? constraint_surfaces(system, spec).size() : 1;
+        if (v.index < 0 || static_cast<std::size_t>(v.index) >= count) {
+            bad(v, "Index außerhalb (" + std::to_string(count) + " Residuen)");
+        }
+        if (!(v.shift >= 0.0) || !std::isfinite(v.shift)) {
+            bad(v, "θ muss endlich und mindestens 0 sein");
+        }
+        ShiftEntry e;
+        e.item = v.item;
+        e.index = v.index;
+        e.type = v.type;
+        e.new_shift = v.shift;
+        u.entries.push_back(e);
+    }
+    apply_shift_update(system, u);
+}
+
 } // namespace mko

@@ -83,6 +83,8 @@ struct OptimizeArgs {
     // Augmented Lagrangian (M11-T2): höchstens al_rounds LM-Läufe, 0 = aus
     int al_rounds = 0;
     double al_tolerance = kDefaultShiftTolerance;
+    // Neustart: Verschiebungen θ aus der JSON-Ausgabe eines früheren Laufs (leer: alle 0)
+    std::string shifts_from;
     int runs = 1;
     bool have_perturbation = false;
     double perturbation = kDefaultPerturbation;
@@ -250,6 +252,11 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             if (a.al_rounds < 0 || !(a.al_tolerance >= 0.0) || !std::isfinite(a.al_tolerance)) {
                 throw UsageError("--augmented-lagrangian: K >= 0 und T >= 0 erwartet");
             }
+        } else if (arg == "--shifts-from") {
+            a.shifts_from = std::string(next_value(args, i, arg));
+            if (a.shifts_from.empty()) {
+                throw UsageError("--shifts-from erwartet einen Dateinamen");
+            }
         } else if (arg == "--max-iterations") {
             a.max_iterations = parse_int(arg, next_value(args, i, arg));
             if (a.max_iterations < 0) {
@@ -341,6 +348,9 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     }
     if ((a.have_perturbation || a.have_seed) && a.runs < 2) {
         throw UsageError("--perturbation und --seed verlangen --runs K mit K >= 2");
+    }
+    if (!a.shifts_from.empty() && a.al_rounds == 0) {
+        throw UsageError("--shifts-from verlangt --augmented-lagrangian K mit K >= 1");
     }
     if (a.al_rounds > 0 && a.runs > 1) {
         throw UsageError("--augmented-lagrangian verlangt einen Lauf (nicht mit --runs K > 1)");
@@ -693,6 +703,9 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
         kv(out, "Augmented Lagrangian",
            "höchstens " + std::to_string(a.al_rounds) +
                " Läufe, Abbruch bei max Wurzel(w)|dtheta| <= " + sci(a.al_tolerance, 2));
+        if (!a.shifts_from.empty()) {
+            kv(out, "Neustart theta aus", a.shifts_from);
+        }
     }
     if (r.tol) {
         const ToleranceAwareModel& m = *r.tol;
@@ -1132,6 +1145,7 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         Json al;
         al["max_rounds"] = a.al_rounds;
         al["tolerance"] = number(a.al_tolerance);
+        al["shifts_from"] = a.shifts_from.empty() ? Json(nullptr) : Json(a.shifts_from);
         Json rounds = Json::array();
         for (const OptimizeReport::AlRound& k : r.al_rounds) {
             rounds.push_back(Json{{"status", to_string(k.status)},
@@ -1289,7 +1303,8 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
 void print_optimize_usage(std::ostream& out) {
     out << "Aufruf: mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
            "                          [--max-iterations N] [--stall W[,T]]\n"
-           "                          [--augmented-lagrangian K[,T]] [--rings N] [--spokes M]\n"
+           "                          [--augmented-lagrangian K[,T] [--shifts-from DATEI]]\n"
+           "                          [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
            "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
            "                          [--sine-condition w]\n"
@@ -1314,6 +1329,9 @@ void print_optimize_usage(std::ostream& out) {
            "                     Lagrangian): höchstens K LM-Läufe, theta nach jedem Lauf\n"
            "                     fortgeschrieben, Abbruch bei max Wurzel(w)|dtheta| <= T\n"
            "                     (Standard 1e-6; K = 0: aus, Standard; nur mit einem Lauf)\n"
+           "  --shifts-from DATEI  Neustart: theta aus der JSON-Ausgabe eines früheren Laufs\n"
+           "                     (optimize --json oder synth --log, Feld\n"
+           "                     augmented_lagrangian.shifts); verlangt --augmented-lagrangian\n"
            "  --rings N          radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -1420,6 +1438,11 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         }
         if (a.sine_condition) {
             apply_sine_condition_option(r.loaded.system, *a.sine_condition);
+        }
+        // Neustart des Augmented Lagrangian (Entscheidung des Maintainers 2026-11-19): θ steht
+        // im Ergebnis des früheren Laufs, nicht in der Systemdatei
+        if (!a.shifts_from.empty()) {
+            set_shift_values(r.loaded.system, read_shift_file(fs::path(a.shifts_from)));
         }
         std::error_code ec;
         fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();

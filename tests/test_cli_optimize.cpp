@@ -325,6 +325,93 @@ TEST(CliOptimize, AugmentedLagrangianMatchesLibrary) {
               mko::cli::kExitUsage);
 }
 
+// Neustart des Augmented Lagrangian (Entscheidung Maintainer 2026-11-19): θ steht im Ergebnis
+// (augmented_lagrangian.shifts), nicht in der Systemdatei. Zwei Hälften mit je 2 Läufen, die
+// zweite ab der Ergebnisdatei der ersten mit --shifts-from, ergeben bitgleich dasselbe wie ein
+// Lauf mit 4 Läufen (Toleranz 0: kein vorzeitiger Abbruch).
+TEST(CliOptimize, AugmentedLagrangianRestartEqualsSingleRun) {
+    const TempDir dir("al_neustart");
+    const mko::test::FdProblem p = mko::test::mechanical_problem();
+    mko::SystemDescription d = mko::test::mechanical_al_system(p);
+    d.glass_catalogs = {std::string(MKO_SOURCE_DIR) + "/data/glass/basis.json"};
+    const std::string file = dir.file("zweilinser_al.json");
+    mko::write_system_file(d, fs::path(file));
+
+    const RunResult full = optimize(
+        {file, "--augmented-lagrangian", "4,0", "--max-iterations", "40", "--json", "--quiet"});
+    ASSERT_EQ(full.code, mko::cli::kExitOk) << full.err;
+    const json jf = json::parse(full.out);
+    ASSERT_EQ(jf["augmented_lagrangian"]["rounds"].size(), 4U);
+    EXPECT_TRUE(jf["augmented_lagrangian"]["shifts_from"].is_null());
+
+    const std::string half = dir.file("haelfte.json");
+    const RunResult first = optimize({file, "--augmented-lagrangian", "2,0", "--max-iterations",
+                                      "40", "--json", "--quiet", "-o", half});
+    ASSERT_EQ(first.code, mko::cli::kExitOk) << first.err;
+    const std::string state = dir.file("haelfte_ergebnis.json");
+    {
+        std::ofstream f{fs::path(state), std::ios::binary};
+        f << first.out;
+    }
+    // Die Systemdatei trägt kein θ
+    EXPECT_EQ(mko::read_system_file(fs::path(half)).constraints->items[0].shift.size(), 0U);
+    const RunResult second = optimize({half, "--augmented-lagrangian", "2,0", "--max-iterations",
+                                       "40", "--json", "--quiet", "--shifts-from", state});
+    ASSERT_EQ(second.code, mko::cli::kExitOk) << second.err;
+    const json js = json::parse(second.out);
+    EXPECT_EQ(js["augmented_lagrangian"]["shifts_from"], state);
+
+    const std::vector<double> xf = doubles(jf["runs"][0]["x"]);
+    const std::vector<double> xs = doubles(js["runs"][0]["x"]);
+    ASSERT_EQ(xf.size(), xs.size());
+    for (std::size_t k = 0; k < xf.size(); ++k) {
+        EXPECT_TRUE(same_bits(xf[k], xs[k])) << k;
+    }
+    EXPECT_TRUE(
+        same_bits(jf["result"]["merit"].get<double>(), js["result"]["merit"].get<double>()));
+    const json& sf = jf["augmented_lagrangian"]["shifts"];
+    const json& ss = js["augmented_lagrangian"]["shifts"];
+    ASSERT_EQ(sf.size(), ss.size());
+    bool active = false;
+    for (std::size_t k = 0; k < sf.size(); ++k) {
+        EXPECT_TRUE(same_bits(sf[k]["shift"].get<double>(), ss[k]["shift"].get<double>())) << k;
+        active = active || sf[k]["shift"].get<double>() > 0.0;
+    }
+    EXPECT_TRUE(active);
+    // je Hälfte die Läufe 2 und 3 des Gesamtlaufs
+    for (std::size_t k = 0; k < 2; ++k) {
+        EXPECT_TRUE(
+            same_bits(js["augmented_lagrangian"]["rounds"][k]["merit_result"].get<double>(),
+                      jf["augmented_lagrangian"]["rounds"][k + 2]["merit_result"].get<double>()))
+            << k;
+    }
+    // ohne --shifts-from beginnt die zweite Hälfte mit θ = 0 und weicht ab
+    const RunResult cold = optimize(
+        {half, "--augmented-lagrangian", "2,0", "--max-iterations", "40", "--json", "--quiet"});
+    ASSERT_EQ(cold.code, mko::cli::kExitOk) << cold.err;
+    EXPECT_FALSE(same_bits(json::parse(cold.out)["result"]["merit"].get<double>(),
+                           jf["result"]["merit"].get<double>()));
+    // Fehler: ohne --augmented-lagrangian, fehlende Datei, Datei ohne Feld, falscher Eintrag
+    EXPECT_EQ(optimize({half, "--shifts-from", state}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(
+        optimize({half, "--augmented-lagrangian", "1", "--shifts-from", dir.file("fehlt.json")})
+            .code,
+        mko::cli::kExitError);
+    EXPECT_EQ(optimize({half, "--augmented-lagrangian", "1", "--shifts-from", half}).code,
+              mko::cli::kExitError);
+    json bad = json::parse(first.out);
+    bad["augmented_lagrangian"]["shifts"][0]["type"] = "petzval";
+    const std::string bad_file = dir.file("falsch.json");
+    {
+        std::ofstream f{fs::path(bad_file), std::ios::binary};
+        f << bad.dump();
+    }
+    const RunResult wrong =
+        optimize({half, "--augmented-lagrangian", "1", "--shifts-from", bad_file});
+    EXPECT_EQ(wrong.code, mko::cli::kExitError);
+    EXPECT_NE(wrong.err.find("Typ petzval"), std::string::npos) << wrong.err;
+}
+
 // Das JSON-Protokoll enthält jeden Zyklus; die Merit nach Zyklus k ist history[k].
 TEST(CliOptimize, JsonIterationsMatchLibraryHistory) {
     const RunResult r = optimize({kBiegung, "--json", "--max-iterations", "20"});

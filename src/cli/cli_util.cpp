@@ -4,12 +4,17 @@
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/model/format_error.hpp"
 #include "mikroptim/model/system.hpp"
+#include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 #include <system_error>
 
 namespace mko::cli {
@@ -167,6 +172,48 @@ void apply_sine_condition_option(SystemDescription& system, double weight) {
     }
     entry->weight = weight;
     check_constraints(system);
+}
+
+// ---- Neustart des Augmented Lagrangian ---------------------------------------------------
+
+std::vector<ShiftValue> read_shift_file(const std::filesystem::path& path) {
+    const std::string where = utf8(path) + ": ";
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error(where + "Datei nicht lesbar");
+    }
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(in);
+    } catch (const nlohmann::json::exception& e) {
+        throw std::runtime_error(where + "kein gültiges JSON (" + e.what() + ")");
+    }
+    if (!j.is_object() || !j.contains("augmented_lagrangian") ||
+        !j["augmented_lagrangian"].is_object() || !j["augmented_lagrangian"].contains("shifts") ||
+        !j["augmented_lagrangian"]["shifts"].is_array()) {
+        throw std::runtime_error(where + "Feld augmented_lagrangian.shifts fehlt (Ausgabe von "
+                                         "mikroptim optimize --json bzw. Protokoll von "
+                                         "mikroptim synth mit --augmented-lagrangian)");
+    }
+    std::vector<ShiftValue> out;
+    const nlohmann::json& shifts = j["augmented_lagrangian"]["shifts"];
+    for (std::size_t k = 0; k < shifts.size(); ++k) {
+        const nlohmann::json& e = shifts[k];
+        const std::string at = where + "augmented_lagrangian.shifts[" + std::to_string(k) + "]";
+        if (!e.is_object() || !e.contains("item") || !e["item"].is_number_integer() ||
+            !e.contains("index") || !e["index"].is_number_integer() || !e.contains("type") ||
+            !e["type"].is_string() || !e.contains("shift") || !e["shift"].is_number()) {
+            throw std::runtime_error(at + ": item, index, type und shift erwartet");
+        }
+        const std::optional<ConstraintType> type =
+            constraint_type_from_string(e["type"].get<std::string>());
+        if (!type) {
+            throw std::runtime_error(at + ": unbekannter Typ " + e["type"].get<std::string>());
+        }
+        out.push_back(ShiftValue{e["item"].get<int>(), e["index"].get<int>(), *type,
+                                 e["shift"].get<double>()});
+    }
+    return out;
 }
 
 // ---- Dateien ------------------------------------------------------------------------------

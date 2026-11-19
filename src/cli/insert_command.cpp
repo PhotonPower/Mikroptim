@@ -429,6 +429,8 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
         int first_new = -1;
         int new_count = 0;
         Json details = Json::object();
+        // Warnungen der Operatoren (angehobene Schranken beim Rückbau)
+        std::vector<std::string> warnings;
         switch (a.op) {
         case Op::Meniscus:
         case Op::Split: {
@@ -453,11 +455,19 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
             details["removed_surfaces"] = r.removed_surfaces;
             details["merged_gap"] = r.merged_gap;
             details["null_element"] = null_element;
+            for (const BoundWidening& w : r.widened) {
+                warnings.push_back(bound_widening_warning(w));
+            }
             result = std::move(r.system);
             break;
         }
         case Op::Collapse: {
-            result = collapse_element(before.system, a.collapse->first, a.collapse->second);
+            std::vector<BoundWidening> widened;
+            result =
+                collapse_element(before.system, a.collapse->first, a.collapse->second, &widened);
+            for (const BoundWidening& w : widened) {
+                warnings.push_back(bound_widening_warning(w));
+            }
             details["first"] = a.collapse->first;
             details["last"] = glass_block_end(before.system, a.collapse->first);
             details["fraction"] = a.collapse->second;
@@ -535,6 +545,7 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
             j["focal_length_before"] = json_number(fl_before);
             j["focal_length_after"] = json_number(fl_after);
             j["details"] = details;
+            j["warnings"] = warnings;
             out << j.dump(2) << '\n';
         } else {
             out << "mikroptim insert: " << op_title(a.op) << '\n';
@@ -557,7 +568,13 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
             kv(out, "relative Änderung", sci(rel, 2));
             kv(out, "Brennweite vorher / nachher [mm]",
                fixed(fl_before, 9) + " / " + fixed(fl_after, 9));
+            for (const std::string& w : warnings) {
+                out << "Warnung: " << w << '\n';
+            }
             out << "Ergebnis geschrieben: " << a.output << '\n';
+        }
+        for (const std::string& w : warnings) {
+            err << "mikroptim insert: Warnung: " << w << '\n';
         }
         out.flush();
         if (!out) {
