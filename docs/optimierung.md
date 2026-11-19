@@ -243,7 +243,7 @@ Bikonvexe Linse (c_i > 0 > c_{i+1}): e = t − |sag_i| − |sag_{i+1}|; Meniskus
 
 ### 2.6 Augmented Lagrangian für einseitige Bedingungen (M11-T2)
 
-API: `include/mikroptim/optim/augmented_lagrangian.hpp` (`Mikroptim::optim`); Vorschlag und Begründung: [optimierung-erweiterungen.md, Abschnitt 2](optimierung-erweiterungen.md#2-augmented-lagrangian-für-einseitige-bedingungen-m11-t2). Option, Standard aus: Ohne Verschiebungen rechnen alle Residuen bitgleich wie bisher.
+API: `include/mikroptim/optim/augmented_lagrangian.hpp` (`Mikroptim::optim`); Vorschlag und Begründung: [optimierung-erweiterungen.md, Abschnitt 2](optimierung-erweiterungen.md#2-augmented-lagrangian-für-einseitige-bedingungen-m11-t2); Grundsatzentscheidung [ADR-0018](adr/0018-optionale-merit-terme.md). Option, Standard aus: Ohne Verschiebungen rechnen alle Residuen bitgleich wie bisher.
 
 **Problem.** Die Strafe w · max(0, g)² erreicht die Grenze nur asymptotisch, g* ≈ λ/(2w) (Abschnitte 2.3–2.5). Deshalb die Gewichtsstufen bis zu großen w; große w verschlechtern die Kondition von JᵀJ, und sobald g* unter die Änderung von g über die FD-Schrittweite fällt, liegt der Punkt am Knick von max(0, ·) (Abschnitt 2.5, Befund F10).
 
@@ -1116,7 +1116,7 @@ Tests `tests/test_design_operators.cpp`, `tests/test_cli_insert.cpp` (`CliInsert
 
 ## 14. Toleranzbewusste Optimierung (M11-T6)
 
-Ziel: von nominal gleichwertigen Lösungen die unempfindlichere wählen, indem die Optimierung die erwartete Merit über feste Störungen eines Toleranzsatzes minimiert ([optimierung-erweiterungen.md, Abschnitt 6](optimierung-erweiterungen.md#6-toleranzbewusste-optimierung-m11-t6)). Bibliothek `Mikroptim::tolerance` (`include/mikroptim/tolerance/tolerance_aware.hpp`, [architektur.md](architektur.md#monte-carlo-tolerierung-m8-t4)), Kommandozeile `mikroptim optimize --tolerance-aware α` ([cli.md](cli.md#toleranzbewusste-optimierung-ab-m11-t6)). Standard aus; ohne die Option laufen alle Pfade unverändert (bitgleich).
+Ziel: von nominal gleichwertigen Lösungen die unempfindlichere wählen, indem die Optimierung die erwartete Merit über feste Störungen eines Toleranzsatzes minimiert ([optimierung-erweiterungen.md, Abschnitt 6](optimierung-erweiterungen.md#6-toleranzbewusste-optimierung-m11-t6)). Bibliothek `Mikroptim::tolerance` (`include/mikroptim/tolerance/tolerance_aware.hpp`, [architektur.md](architektur.md#monte-carlo-tolerierung-m8-t4)), Kommandozeile `mikroptim optimize --tolerance-aware α` ([cli.md](cli.md#toleranzbewusste-optimierung-ab-m11-t6)); Grundsatzentscheidung [ADR-0018](adr/0018-optionale-merit-terme.md). Standard aus; ohne die Option laufen alle Pfade unverändert (bitgleich).
 
 ### Merit
 

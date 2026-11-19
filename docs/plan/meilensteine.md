@@ -440,7 +440,12 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M8-T3
 - **Inhalt:** erwartete Merit über feste Störungen als zusätzliche Varianten im Batch.
 - **Abnahme:** wählt von zwei nominal gleichwertigen Lösungen die unempfindlichere.
-- **Stand:** umgesetzt (`optimize --tolerance-aware α`, Standard aus; `ToleranceAwareBackend` in `Mikroptim::tolerance`, CPU und GPU; [optimierung.md, Abschnitt 14](../optimierung.md#14-toleranzbewusste-optimierung-m11-t6)). Abnahme am Kittblock (Kittfläche zwischen gleichen Gläsern, Brechzahltoleranz ±0,002): Lösungen A (c = 0,05/mm) und B (c = 0) nominal bitgleich, F_tol(A) = 1,09·10⁻² > F_tol(B) = 5,29·10⁻³; ab A läuft die toleranzbewusste Optimierung nach c = −5,9·10⁻⁸ (2 Zyklen), die gewöhnliche bleibt bei A; Monte-Carlo-Tolerierung bestätigt. Offen: Kompensatoren pro Störung, Bewertung ohne Bildverschiebung, `synth`.
+- **Stand:** umgesetzt (`optimize --tolerance-aware α`, Standard aus; `ToleranceAwareBackend` in `Mikroptim::tolerance`, CPU und GPU; [optimierung.md, Abschnitt 14](../optimierung.md#14-toleranzbewusste-optimierung-m11-t6)). Abnahme am Kittblock (Kittfläche zwischen gleichen Gläsern, Brechzahltoleranz ±0,002): Lösungen A (c = 0,05/mm) und B (c = 0) nominal bitgleich, F_tol(A) = 1,09·10⁻² > F_tol(B) = 5,29·10⁻³; ab A läuft die toleranzbewusste Optimierung nach c = −5,9·10⁻⁸ (2 Zyklen), die gewöhnliche bleibt bei A; Monte-Carlo-Tolerierung bestätigt. Offen: Kompensatoren pro Störung, Bewertung ohne Bildverschiebung, `synth` (M11-T6b). Grundsatzentscheidung zu beiden optionalen Merit-Termen (mit M11-T2): [ADR-0018](../adr/0018-optionale-merit-terme.md).
+
+### M11-T6b – Toleranzbewusste Merit mit Kippungsabzug bzw. Bildlage-Kompensator; Anbindung an synth/Strahlsuche
+- **Abhängig von:** M11-T6
+- **Inhalt:** gestörte Systeme in F_tol nach Abzug von Bildverschiebung und Kippung bewerten (wie Tolerierung und Empfindlichkeiten, [optimierung.md, Abschnitte 11, 12](../optimierung.md#11-monte-carlo-tolerierung-m8-t4)) oder mit Bildlage-Kompensator pro Störung; Option in `synth` und in der Rangfolge der Strahlsuche ([ADR-0018](../adr/0018-optionale-merit-terme.md), bekannte Grenzen).
+- **Abnahme:** reine Dezentrierung einer Linse mit Brechkraft, die nur das Bild verschiebt, verschlechtert F_tol nicht; F_tol stimmt mit der Bewertung der Monte-Carlo-Tolerierung überein; ohne Option bitgleich.
 
 ### M11-T7 – Memetische globale Suche
 - **Abhängig von:** M7-T2
