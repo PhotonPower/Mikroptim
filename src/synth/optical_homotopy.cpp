@@ -10,6 +10,7 @@
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/glass/glass_hull.hpp"
+#include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_snap.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
@@ -390,6 +391,20 @@ LoadedSystem OpticalHomotopyModel::load(const SystemDescription& realized) const
 HomotopySolve OpticalHomotopyModel::solve(SystemDescription& system, const HomotopyPoint& p) {
     SystemDescription* one = &system;
     return solve_all(std::span<SystemDescription* const>(&one, 1), p).at(0);
+}
+
+double OpticalHomotopyModel::update_shifts(SystemDescription& system, const HomotopyPoint& p,
+                                           double max_shift) {
+    if (!has_shiftable_constraints(system)) {
+        return 0.0;
+    }
+    // Verletzungen am realisierten Punkt (Gewichte × penalty_scale, Grenzen mit Vorhalt, wie im
+    // LM); realize behält die Reihenfolge der Einträge, θ geht in die Basisbeschreibung zurück.
+    const Prepared pr = prepare(*this, system, p);
+    const ShiftUpdate u =
+        shift_update(pr.l.system, pr.base, 0, options_.lm.jacobian.quadrature, max_shift);
+    apply_shift_update(system, u);
+    return u.max_change;
 }
 
 std::vector<HomotopySolve>

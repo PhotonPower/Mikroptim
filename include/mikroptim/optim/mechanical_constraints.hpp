@@ -53,6 +53,9 @@ struct MechanicalConstraint {
     double semi_diameter = 0.0;
     double next_semi_diameter = 0.0;
     int item = -1; // Eintrag in constraints.items (−1: von Hand gebaut)
+    // Verschiebung θ ≥ 0 des Augmented Lagrangian (M11-T2) in der Einheit von g: Residuum
+    // √w · max(0, g + θ); 0 = reine Strafe.
+    double shift = 0.0;
 
     friend bool operator==(const MechanicalConstraint&, const MechanicalConstraint&) = default;
 };
@@ -76,12 +79,15 @@ struct MechanicalConstraints {
 // Bedingungen aus der Systembeschreibung (alle mechanischen Einträge von `constraints`, geprüft
 // mit check_constraints): Flächen aus constraint_surfaces, Tabellenflächen über die SurfaceMap,
 // fehlender semi_diameter bei MaxSemiDiameter aus surfaces[i].semi_diameter, limit bei
-// MaxIncidenceAngle = cos(angle · π/180). Wirft FormatError bei ungültigem Abschnitt.
+// MaxIncidenceAngle = cos(angle · π/180), Verschiebung der k-ten Fläche eines Eintrags aus
+// ConstraintSpec::shift[k] (nur bei passender Länge, sonst 0). Wirft FormatError bei ungültigem
+// Abschnitt.
 MechanicalConstraints make_mechanical_constraints(const SystemDescription& system);
 
 // Prüft gegen eine Topologie: mechanischer Typ, Tabellenflächen existieren und sind keine
 // Geisterplatten, bei Dicken 0 ≤ surface < next_surface < S, Gewicht, Grenze, clearance und
-// Halbdurchmesser endlich (w, clearance ≥ 0; Halbdurchmesser > 0). Wirft std::invalid_argument.
+// Halbdurchmesser endlich (w, clearance ≥ 0; Halbdurchmesser > 0), Verschiebung endlich und ≥ 0.
+// Wirft std::invalid_argument.
 void check_mechanical_constraints(const MechanicalConstraints& constraints,
                                   const BatchTopology& topology);
 
@@ -106,7 +112,7 @@ double mechanical_value(const MechanicalConstraint& c, const SystemBatchHost& ba
 // MaxIncidenceAngle (cos I ≤ cos θ_max ⇔ I ≥ θ_max).
 double mechanical_violation(const MechanicalConstraint& c, double value);
 
-// Residuum √w · max(0, g) der Variante v.
+// Residuum √w · max(0, g + θ) der Variante v (θ = c.shift; θ = 0: √w · max(0, g)).
 double mechanical_residual(const MechanicalConstraint& c, const SystemBatchHost& batch, int v,
                            const VariantExtrema* extrema);
 

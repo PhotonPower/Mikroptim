@@ -6,6 +6,7 @@
 #include "cli/synth_command.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/synth/beam_search.hpp"
 #include "mikroptim/synth/homotopy.hpp"
@@ -63,8 +64,12 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
-    double extrema_beta = 0.0;        // M11-T1b
-    bool predictor = false;           // M11-T3
+    double extrema_beta = 0.0; // M11-T1b
+    bool predictor = false;    // M11-T3
+    // Augmented Lagrangian (M11-T2): Läufe K, Toleranz T, Faktor S auf die Gewichte (K = 0: aus)
+    int al_rounds = 0;
+    double al_tolerance = kDefaultShiftTolerance;
+    double al_scale = 1.0;
     bool split_preselect = false;     // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
     bool split_start_target = false;  // und das freigegebene Glas dort starten
     bool split_achromat = false;      // M11-T5e: Achromat-Start des geteilten Glieds
@@ -199,6 +204,24 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             if (a.max_steps < 1) {
                 throw UsageError("--max-steps muss >= 1 sein");
             }
+        } else if (arg == "--augmented-lagrangian") {
+            // K[,T[,S]]: Augmented Lagrangian statt Penalty-Fortsetzung (M11-T2)
+            const std::string v(next_value(args, i, arg));
+            const std::size_t c1 = v.find(',');
+            a.al_rounds = parse_int(arg, std::string_view(v).substr(0, c1));
+            if (c1 != std::string::npos) {
+                const std::size_t c2 = v.find(',', c1 + 1);
+                a.al_tolerance = parse_double(
+                    arg, std::string_view(v).substr(
+                             c1 + 1, c2 == std::string::npos ? std::string::npos : c2 - c1 - 1));
+                if (c2 != std::string::npos) {
+                    a.al_scale = parse_double(arg, std::string_view(v).substr(c2 + 1));
+                }
+            }
+            if (a.al_rounds < 0 || !(a.al_tolerance >= 0.0) || !std::isfinite(a.al_tolerance) ||
+                !(a.al_scale > 0.0) || !std::isfinite(a.al_scale)) {
+                throw UsageError("--augmented-lagrangian: K >= 0, T >= 0 und S > 0 erwartet");
+            }
         } else if (arg == "--stall") {
             // W oder W,T: Stagnation über W Zyklen mit relativer Abnahme ≤ T (M11-T1c)
             const std::string v(next_value(args, i, arg));
@@ -300,6 +323,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.predictor) {
         throw UsageError("--predictor gibt es nur ohne --beam");
     }
+    if (a.beam && a.al_rounds > 0) {
+        throw UsageError("--augmented-lagrangian gibt es nur ohne --beam");
+    }
     if (!a.beam && (a.seed || a.alternatives || a.starts || a.start_perturbation || a.prefilter ||
                     a.dedup || !a.dot.empty())) {
         throw UsageError("--seed, --alternatives, --starts, --start-perturbation, --prefilter, "
@@ -335,6 +361,12 @@ void print_synth_usage(std::ostream& out) {
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
            "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
            "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --augmented-lagrangian K[,T[,S]]\n"
+           "                            einseitige Bedingungen mit Verschiebung theta statt\n"
+           "                            Penalty-Fortsetzung: bis K Läufe mit Gewichten x S\n"
+           "                            (Standard 1), Abbruch bei max Wurzel(w)|dtheta| <= T\n"
+           "                            (1e-6); theta nach jeder Optimierung fortgeschrieben\n"
+           "                            (M11-T2; Standard aus; nicht mit --beam)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
            "bis 1\n"
            "                            mit adaptiver Schrittweite (M11-T5f)\n"
@@ -493,6 +525,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.merit_factor = a.merit_factor;
         h.extrema_beta = a.extrema_beta;
         h.predictor = a.predictor;
+        h.augmented_lagrangian.rounds = a.al_rounds;
+        h.augmented_lagrangian.tolerance = a.al_tolerance;
+        h.al_penalty_scale = a.al_scale;
         h.extrema_stages = a.extrema_stages;
         h.extrema_factor = a.extrema_factor;
         h.max_elements = a.max_elements;
@@ -584,6 +619,10 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"max_elements", a.max_elements},
                      {"max_iterations", a.max_iterations},
                      {"stall", Json{{"window", a.stall_window}, {"tolerance", a.stall_tolerance}}},
+                     {"augmented_lagrangian", a.al_rounds > 0 ? Json{{"rounds", a.al_rounds},
+                                                                     {"tolerance", a.al_tolerance},
+                                                                     {"penalty_scale", a.al_scale}}
+                                                              : Json(nullptr)},
                      {"color_rule", a.color_rule ? Json(a.color_ratio) : Json(nullptr)},
                      {"spectrum_stages", a.spectrum_stages},
                      {"spectrum_continuous", a.spectrum_continuous},

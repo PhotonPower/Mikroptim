@@ -55,6 +55,9 @@ struct ParaxialConstraint {
     int reference_surface = 0; // nur ParfocalLength: Fläche im Batch (Tabellenfläche)
     double offset = 0.0;       // nur ParfocalLength: Anlagefläche vor deren Scheitel [mm]
     int item = -1;             // Eintrag in constraints.items, −1 wenn von Hand gebaut
+    // Verschiebung θ ≥ 0 des Augmented Lagrangian (M11-T2, nur Modus min/max) in der Einheit
+    // von q: Obergrenze √w · max(q + θ, 0), Untergrenze √w · min(q − θ, 0); 0 = reine Strafe.
+    double shift = 0.0;
 };
 
 struct ParaxialConstraints {
@@ -68,20 +71,32 @@ struct ParaxialConstraints {
 // Löst die paraxialen Einträge von system.constraints in Dateireihenfolge auf: Sollwerte aus
 // `target` bzw. bei Petzval κ_max aus max_curvature (constraint_bound), Standardwerte fehlender
 // Felder (Petzval: Modus Max), Referenzfläche der Abgleichlänge von der Dateifläche auf die
-// Tabellenfläche abgebildet (make_surface_map). Ohne Abschnitt leer.
+// Tabellenfläche abgebildet (make_surface_map), Verschiebung aus ConstraintSpec::shift (Länge 1,
+// sonst 0). Ohne Abschnitt leer.
 // Wirft FormatError wie check_constraints.
 ParaxialConstraints make_paraxial_constraints(const SystemDescription& system);
 
 // Prüft die Bedingungen gegen eine Batch-Topologie: Gewicht endlich und >= 0, Sollwert
 // endlich (bei FocalLength ≠ 0, bei Petzval ≥ 0), Modus erlaubt (FocalLength und ParaxialFocus
 // nur Equal, Petzval nur Max), Referenzfläche in [0, S) und keine Geisterplatte, ParaxialFocus
-// nur bei kollimierter Quelle.
+// nur bei kollimierter Quelle, Verschiebung endlich und ≥ 0, bei einer Gleichung 0.
 // Wirft std::invalid_argument mit der Nummer der Bedingung.
 void check_paraxial_constraints(const ParaxialConstraints& constraints,
                                 const BatchTopology& topology);
 
+// Abweichung q einer Bedingung für Variante v (Tabelle in docs/optimierung.md, Abschnitt 2.2,
+// bei Petzval |κ_P| − κ_max); `p` wie bei paraxial_residual. Prüft nur den Variantenindex.
+double paraxial_deviation(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
+                          const ParaxialData& p);
+
+// Verletzung g einer einseitigen Bedingung zur Abweichung q (> 0: verletzt): q bei Modus max
+// (auch Petzval), −q bei min; bei einer Gleichung |q|.
+double paraxial_violation(const ParaxialConstraint& c, double q);
+
 // Residuum einer Bedingung für Variante v; `p` sind deren Paraxialdaten (batch_paraxial),
 // die nur FocalLength, ParaxialFocus und Petzval lesen. Prüft nichts außer dem Variantenindex.
+// Mit Verschiebung θ = c.shift ≠ 0 (nur einseitig) ist es √w · max(0, g + θ) mit dem Vorzeichen
+// des Modus (docs/optimierung.md, Abschnitt 2.6).
 double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
                          const ParaxialData& p);
 

@@ -269,5 +269,34 @@ TEST(CliSynth, StallDefaultAndSwitch) {
     EXPECT_EQ(synth({kStart, "--predictor", "--beam", "2"}).code, cli::kExitUsage);
 }
 
+// Augmented Lagrangian (M11-T2): Option im JSON, Fortschreibung im Protokoll, Standard aus,
+// Fehler der Kommandozeile.
+TEST(CliSynth, AugmentedLagrangian) {
+    const std::vector<std::string> base{kStart, "--max-elements", "1",  "--max-iterations",
+                                        "40",   "--merit-factor", "10", "--json"};
+    const nlohmann::json off = nlohmann::json::parse(synth(base).out);
+    EXPECT_TRUE(off["options"]["augmented_lagrangian"].is_null());
+    EXPECT_FALSE(off["result"]["steps"][0]["lm"].contains("shift_change"));
+    std::vector<std::string> on = base;
+    on.push_back("--augmented-lagrangian");
+    on.push_back("3,1e-4,0.01");
+    const SynthCliResult r = synth(on);
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_EQ(j["options"]["augmented_lagrangian"]["rounds"], 3);
+    EXPECT_EQ(j["options"]["augmented_lagrangian"]["tolerance"], 1e-4);
+    EXPECT_EQ(j["options"]["augmented_lagrangian"]["penalty_scale"], 0.01);
+    const nlohmann::json& steps = j["result"]["steps"];
+    ASSERT_FALSE(steps.empty());
+    EXPECT_EQ(steps[0]["kind"], "penalty");
+    EXPECT_TRUE(steps[0]["lm"]["shift_change"].is_number());
+    EXPECT_EQ(steps[0]["point"]["penalty_scale"], 0.01);
+    for (const std::string bad : {"-1", "x", "2,-1", "2,1e-3,0"}) {
+        EXPECT_EQ(synth({kStart, "--augmented-lagrangian", bad}).code, cli::kExitUsage) << bad;
+    }
+    EXPECT_EQ(synth({kStart, "--augmented-lagrangian", "3", "--beam", "2"}).code, cli::kExitUsage);
+    EXPECT_NE(synth({"--help"}).out.find("--augmented-lagrangian"), std::string::npos);
+}
+
 } // namespace
 } // namespace mko::test

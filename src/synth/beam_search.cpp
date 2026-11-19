@@ -99,6 +99,9 @@ using Clock = std::chrono::steady_clock;
 
 void check_beam_options(const BeamOptions& o) {
     check_homotopy_options(o.homotopy);
+    if (o.homotopy.augmented_lagrangian.rounds > 0) {
+        invalid("Augmented Lagrangian (M11-T2) wird in der Strahlsuche nicht unterstützt");
+    }
     if (o.beam_width < 1 || o.alternatives < 1 || o.perturbed_starts < 0) {
         invalid("verlangt Strahlbreite ≥ 1, Varianten ≥ 1 und gestörte Starts ≥ 0");
     }

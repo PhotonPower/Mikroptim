@@ -396,6 +396,13 @@ bool is_mechanical(ConstraintType type) {
     return false;
 }
 
+bool supports_shift(const ConstraintSpec& spec) {
+    if (is_mechanical(spec.type)) {
+        return true;
+    }
+    return is_paraxial(spec.type) && spec.mode_or_default() != ConstraintMode::Equal;
+}
+
 std::optional<double> constraint_target(const SystemDescription& system, ConstraintType type) {
     if (type == ConstraintType::ParaxialFocus) {
         return 0.0;
@@ -486,6 +493,19 @@ void check_constraints(const SystemDescription& system) {
         if (c.weight && !(std::isfinite(*c.weight) && *c.weight >= 0.0)) {
             fail(path + ".weight",
                  "Gewicht muss endlich und mindestens 0 sein, ist " + num(*c.weight));
+        }
+        if (!c.shift.empty()) {
+            // Verschiebungen des Augmented Lagrangian (M11-T2, nicht aus der Datei)
+            if (!supports_shift(c)) {
+                fail(path + ".shift", "Verschiebung nur bei einseitigen Bedingungen (paraxial mit "
+                                      "Modus min/max, Petzval, mechanisch)");
+            }
+            for (const double t : c.shift) {
+                if (!(std::isfinite(t) && t >= 0.0)) {
+                    fail(path + ".shift",
+                         "Verschiebung muss endlich und mindestens 0 sein, ist " + num(t));
+                }
+            }
         }
         if (!is_mechanical(c.type)) {
             // Felder der mechanischen Bedingungen (M4-T3) sind bei den übrigen Typen verboten

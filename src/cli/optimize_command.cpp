@@ -12,6 +12,7 @@
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/model/constraints.hpp"
 #include "mikroptim/model/format_error.hpp"
+#include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/ghost_diagnosis.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
@@ -73,6 +74,9 @@ struct OptimizeArgs {
     int max_iterations = kDefaultMaxIterations;
     int stall_window = 0; // M11-T1c, 0 = aus
     double stall_tolerance = 1e-3;
+    // Augmented Lagrangian (M11-T2): höchstens al_rounds LM-Läufe, 0 = aus
+    int al_rounds = 0;
+    double al_tolerance = kDefaultShiftTolerance;
     int runs = 1;
     bool have_perturbation = false;
     double perturbation = kDefaultPerturbation;
@@ -140,6 +144,17 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             if (a.stall_window < 0 || !(a.stall_tolerance >= 0.0)) {
                 throw UsageError("--stall: W >= 0 und T >= 0 erwartet");
             }
+        } else if (arg == "--augmented-lagrangian") {
+            // K oder K,T: höchstens K LM-Läufe, Abbruch bei max √w|Δθ| ≤ T (M11-T2)
+            const std::string v(next_value(args, i, arg));
+            const std::size_t comma = v.find(',');
+            a.al_rounds = parse_int(arg, std::string_view(v).substr(0, comma));
+            if (comma != std::string::npos) {
+                a.al_tolerance = parse_double(arg, std::string_view(v).substr(comma + 1));
+            }
+            if (a.al_rounds < 0 || !(a.al_tolerance >= 0.0) || !std::isfinite(a.al_tolerance)) {
+                throw UsageError("--augmented-lagrangian: K >= 0 und T >= 0 erwartet");
+            }
         } else if (arg == "--max-iterations") {
             a.max_iterations = parse_int(arg, next_value(args, i, arg));
             if (a.max_iterations < 0) {
@@ -192,6 +207,9 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     }
     if ((a.have_perturbation || a.have_seed) && a.runs < 2) {
         throw UsageError("--perturbation und --seed verlangen --runs K mit K >= 2");
+    }
+    if (a.al_rounds > 0 && a.runs > 1) {
+        throw UsageError("--augmented-lagrangian verlangt einen Lauf (nicht mit --runs K > 1)");
     }
     if (a.have_fail_weight && a.hard_failure) {
         throw UsageError("--fail-weight gilt nur für weiches Versagen (nicht mit --hard-failure)");
@@ -283,6 +301,17 @@ struct OptimizeReport {
     std::optional<GhostDiagnosis> ghost; // nur mit Geisterplatten
     std::vector<std::string> warnings;   // Lader und Befehl
     bool focal_from_start = false;       // Feldziele aus der paraxialen Brennweite des Starts
+    // Augmented Lagrangian (M11-T2): ein Eintrag pro LM-Lauf, Verschiebungen am Ende
+    struct AlRound {
+        LmStatus status = LmStatus::Running;
+        int iterations = 0;
+        double start_merit = 0.0;
+        double merit = 0.0;
+        double max_violation = 0.0; // max √w · max(0, g) am Endpunkt des Laufs
+        double max_change = 0.0;    // max √w |Δθ| der Fortschreibung danach
+    };
+    std::vector<AlRound> al_rounds;
+    ShiftUpdate al_last; // letzte Fortschreibung (Verletzungen und θ am Ende)
 
     const LmRunResult& best_run() const { return result.runs[static_cast<std::size_t>(best)]; }
     // F am Startpunkt der Datei (Lauf 0 startet immer dort).
@@ -474,6 +503,11 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
     }
     kv(out, "Läufe", runs);
     kv(out, "Zyklen höchstens", std::to_string(a.max_iterations));
+    if (a.al_rounds > 0) {
+        kv(out, "Augmented Lagrangian",
+           "höchstens " + std::to_string(a.al_rounds) +
+               " Läufe, Abbruch bei max Wurzel(w)|dtheta| <= " + sci(a.al_tolerance, 2));
+    }
 }
 
 void write_iteration_header(std::ostream& out, double reference_nm) {
@@ -629,6 +663,39 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
                 << pad_left(fixed(m.value_before, 4), 12) << pad_left(fixed(m.value_after, 4), 12)
                 << pad_left(sci(m.residual_before, 3), 13) << pad_left(sci(m.residual_after, 3), 13)
                 << (m.violation_after > 0.0 ? "  verletzt" : "") << '\n';
+        }
+    }
+
+    if (a.al_rounds > 0) {
+        out << '\n'
+            << "Augmented Lagrangian (r = Wurzel(w) max(0, g + theta), theta nach jedem Lauf "
+               "fortgeschrieben)\n";
+        out << "  " << pad_left("Lauf", 4) << "  " << pad_right("Status", 18)
+            << pad_left("Zyklen", 7) << pad_left("Merit Start", 17) << pad_left("Merit Ende", 17)
+            << pad_left("max Wurzel(w) g+", 18) << pad_left("max Wurzel(w) dtheta", 22) << '\n';
+        for (std::size_t k = 0; k < r.al_rounds.size(); ++k) {
+            const OptimizeReport::AlRound& l = r.al_rounds[k];
+            out << "  " << pad_left(std::to_string(k), 4) << "  "
+                << pad_right(to_string(l.status), 18) << pad_left(std::to_string(l.iterations), 7)
+                << pad_left(sci(l.start_merit, 9), 17) << pad_left(sci(l.merit, 9), 17)
+                << pad_left(sci(l.max_violation, 3), 18) << pad_left(sci(l.max_change, 3), 22)
+                << '\n';
+        }
+        out << "  Verschiebungen theta > 0 am Ende (Einheit von g):\n";
+        bool any = false;
+        for (const ShiftEntry& e : r.al_last.entries) {
+            if (e.new_shift > 0.0) {
+                any = true;
+                out << "    Eintrag " << e.item << " " << to_string(e.type);
+                if (e.file_surface >= 0) {
+                    out << " Fläche " << e.file_surface;
+                }
+                out << ": theta = " << sci(e.new_shift, 6) << ", g = " << sci(e.violation, 3)
+                    << '\n';
+            }
+        }
+        if (!any) {
+            out << "    keine\n";
         }
     }
 
@@ -812,6 +879,35 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         mech.push_back(std::move(e));
     }
     j["mechanical_constraints"] = std::move(mech);
+    if (a.al_rounds > 0) {
+        // Augmented Lagrangian (M11-T2): nur mit --augmented-lagrangian
+        Json al;
+        al["max_rounds"] = a.al_rounds;
+        al["tolerance"] = number(a.al_tolerance);
+        Json rounds = Json::array();
+        for (const OptimizeReport::AlRound& k : r.al_rounds) {
+            rounds.push_back(Json{{"status", to_string(k.status)},
+                                  {"iterations", k.iterations},
+                                  {"merit_start", number(k.start_merit)},
+                                  {"merit_result", number(k.merit)},
+                                  {"max_violation", number(k.max_violation)},
+                                  {"max_shift_change", number(k.max_change)}});
+        }
+        al["rounds"] = std::move(rounds);
+        Json shifts = Json::array();
+        for (const ShiftEntry& e : r.al_last.entries) {
+            shifts.push_back(
+                Json{{"item", e.item},
+                     {"index", e.index},
+                     {"type", std::string(to_string(e.type))},
+                     {"surface", e.file_surface >= 0 ? Json(e.file_surface) : Json(nullptr)},
+                     {"weight", number(e.weight)},
+                     {"violation", number(e.violation)},
+                     {"shift", number(e.new_shift)}});
+        }
+        al["shifts"] = std::move(shifts);
+        j["augmented_lagrangian"] = std::move(al);
+    }
     j["ghost_diagnosis"] = r.ghost ? Json::parse(ghost_diagnosis_json(*r.ghost)) : Json(nullptr);
 
     if (a.quiet) {
@@ -900,7 +996,8 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
 
 void print_optimize_usage(std::ostream& out) {
     out << "Aufruf: mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet]\n"
-           "                          [--max-iterations N] [--rings N] [--spokes M]\n"
+           "                          [--max-iterations N] [--stall W[,T]]\n"
+           "                          [--augmented-lagrangian K[,T]] [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
            "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
            "                          [--gpu [--device N]]\n"
@@ -916,6 +1013,11 @@ void print_optimize_usage(std::ostream& out) {
         << "; 0 = nur auswerten)\n"
            "  --stall W[,T]      Abbruch bei Stagnation: F sank in W Zyklen um <= T·F\n"
            "                     (T Standard 1e-3; W = 0: aus, Standard)\n"
+           "  --augmented-lagrangian K[,T]\n"
+           "                     einseitige Bedingungen mit Verschiebung theta (Augmented\n"
+           "                     Lagrangian): höchstens K LM-Läufe, theta nach jedem Lauf\n"
+           "                     fortgeschrieben, Abbruch bei max Wurzel(w)|dtheta| <= T\n"
+           "                     (Standard 1e-6; K = 0: aus, Standard; nur mit einem Lauf)\n"
            "  --rings N          radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -1079,11 +1181,16 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         // Zusatzresiduen: paraxiale Nebenbedingungen, dahinter die L1-Strafe, die Glas-Hülle und
         // die mechanischen Bedingungen ohne Strahlbezug; die trace-abhängigen mechanischen
         // Bedingungen (aus den Extrema) stehen ganz hinten (docs/optimierung.md, Abschnitt 2.1).
-        MechanicalResiduals mechanical = make_mechanical_residuals(r.mechanical);
-        options.jacobian.extra = concat_extra_residuals(
-            {make_paraxial_residuals(r.constraints), make_ghost_penalty_residuals(r.penalty),
-             make_glass_hull_residuals(r.glass_penalty), std::move(mechanical.geometric)});
-        options.jacobian.trace_extra = std::move(mechanical.traced);
+        // Mit --augmented-lagrangian baut jeder Lauf sie mit den Verschiebungen θ neu (M11-T2).
+        const auto set_extras = [&](const ParaxialConstraints& paraxial,
+                                    const MechanicalConstraints& mech) {
+            MechanicalResiduals mechanical = make_mechanical_residuals(mech);
+            options.jacobian.extra = concat_extra_residuals(
+                {make_paraxial_residuals(paraxial), make_ghost_penalty_residuals(r.penalty),
+                 make_glass_hull_residuals(r.glass_penalty), std::move(mechanical.geometric)});
+            options.jacobian.trace_extra = std::move(mechanical.traced);
+        };
+        set_extras(r.constraints, r.mechanical);
 
         // Startpunkte: Lauf 0 ist x₀, Lauf j ≥ 1 gestört (perturbed_vector mit first_is_base).
         std::vector<double>& starts = r.starts;
@@ -1141,15 +1248,76 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             }
         };
 
+        const auto run_lm = [&](std::span<const double> x) {
 #ifdef MIKROPTIM_HAS_CUDA
-        if (engine) {
-            r.result = cuda::optimize_lm_gpu(*engine, r.set, base, starts, options);
-        } else {
-            r.result = optimize_lm_cpu(r.set, base, starts, options);
-        }
-#else
-        r.result = optimize_lm_cpu(r.set, base, starts, options);
+            if (engine) {
+                return cuda::optimize_lm_gpu(*engine, r.set, base, x, options);
+            }
 #endif
+            return optimize_lm_cpu(r.set, base, x, options);
+        };
+        if (a.al_rounds == 0) {
+            r.result = run_lm(starts);
+        } else {
+            // Augmented Lagrangian (M11-T2, docs/optimierung.md, Abschnitt 2.6): LM-Läufe mit
+            // festen Gewichten, nach jedem Lauf θ ← min(max(0, θ + g), θ_max/√w); Abbruch bei
+            // max √w |Δθ| ≤ T oder nach K Läufen. Das Ergebnis ist der letzte Lauf mit den Zyklen
+            // und dem Verlauf aller Läufe.
+            SystemDescription al_system = sys;
+            std::vector<double> x = starts;
+            LmRunResult total;
+            int cycles = 0;
+            for (int k = 0; k < a.al_rounds; ++k) {
+                if (k > 0) {
+                    set_extras(make_paraxial_constraints(al_system),
+                               make_mechanical_constraints(al_system));
+                }
+                LmResult res = run_lm(x);
+                LmRunResult& run = res.runs.at(0);
+                cycles += res.cycles;
+                const int run0 = 0;
+                const SystemBatchHost at =
+                    lm_point_batch(r.set, base, std::span<const int>(&run0, 1), run.x);
+                r.al_last = shift_update(al_system, at, 0, options.jacobian.quadrature);
+                apply_shift_update(al_system, r.al_last);
+                OptimizeReport::AlRound round;
+                round.status = run.status;
+                round.iterations = run.iterations;
+                round.start_merit = run.history.empty() ? std::nan("") : run.history.front();
+                round.merit = run.merit;
+                round.max_violation = r.al_last.max_violation;
+                round.max_change = r.al_last.max_change;
+                r.al_rounds.push_back(round);
+                if (stream_text) {
+                    out << "  Augmented Lagrangian: Lauf " << k << " beendet (" << run.iterations
+                        << " Zyklen, F = " << sci(run.merit, 9)
+                        << "), max Wurzel(w) g+ = " << sci(round.max_violation, 3)
+                        << ", max Wurzel(w) dtheta = " << sci(round.max_change, 3) << '\n';
+                }
+                if (k == 0) {
+                    total = run;
+                } else {
+                    std::vector<double> history = std::move(total.history);
+                    history.insert(history.end(), run.history.begin(), run.history.end());
+                    const int iterations = total.iterations + run.iterations;
+                    const int accepted = total.accepted + run.accepted;
+                    const int jacobians = total.jacobians + run.jacobians;
+                    const int rounds = total.penalty_rounds + run.penalty_rounds;
+                    total = run;
+                    total.history = std::move(history);
+                    total.iterations = iterations;
+                    total.accepted = accepted;
+                    total.jacobians = jacobians;
+                    total.penalty_rounds = rounds;
+                }
+                x = run.x;
+                if (!std::isfinite(run.merit) || r.al_last.max_change <= a.al_tolerance) {
+                    break;
+                }
+            }
+            r.result.runs.assign(1, std::move(total));
+            r.result.cycles = cycles;
+        }
         // Versagte Strahlen bei x₀ (das Protokoll kennt sie nur an den Versuchspunkten); F(x₀)
         // ist history[0] von Lauf 0.
         {

@@ -481,6 +481,7 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--quiet`, `-q` | ohne Iterationsprotokoll (Text: nur Kopf und Zusammenfassung, JSON: `"iterations": null`) | aus |
 | `--max-iterations N` | Zyklen pro Lauf (Versuchsschritte einschließlich verworfener, `LmOptions::max_iterations`), N ≥ 0; 0 wertet nur den Startpunkt aus | 100 |
 | `--stall W[,T]` | Abbruch bei Stagnation (`converged_stall`): F sank in W Zyklen um höchstens T·F (T Standard 10⁻³; M11-T1c) | 0 (aus) |
+| `--augmented-lagrangian K[,T]` | einseitige Bedingungen (paraxial mit Modus `min`/`max`, Petzval, mechanisch) mit Verschiebung θ (Augmented Lagrangian, M11-T2, [optimierung.md, Abschnitt 2.6](optimierung.md#26-augmented-lagrangian-für-einseitige-bedingungen-m11-t2)): höchstens K LM-Läufe mit den Gewichten der Datei, nach jedem Lauf θ ← min(max(0, θ + g), θ_max/√w), Abbruch bei max √w\|Δθ\| ≤ T (Standard 10⁻⁶). Das Ergebnis ist der letzte Lauf mit den Zyklen und dem Merit-Verlauf aller Läufe (die Merit enthält die Verschiebungen); Text und JSON (`augmented_lagrangian`: `rounds` mit Status, Zyklen, Merit, `max_violation` = max √w·max(0, g), `max_shift_change`; `shifts` mit Eintrag, Fläche, g und θ am Ende) berichten die Läufe. Nur mit einem Lauf (nicht mit `--runs` ≥ 2); die Glas-Hülle bleibt reine Strafe | 0 (aus) |
 | `--rings N`, `--spokes M` | Pupillenquadratur der Strahlresiduen wie bei `trace` | 10, 8 |
 | `--runs K` | Multistart mit K ≥ 1 Läufen (siehe unten) | 1 |
 | `--perturbation s` | relative Störung der Startpunkte, s ≥ 0; nur mit `--runs` ≥ 2 | 0,05 |
@@ -1150,6 +1151,7 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--spectrum-stages N` | Spektrum-Homotopie: von monochromatisch bei λ_ref in N Stufen zum Spektrum der Datei (M11-T5d) |
 | `--split-start-target` | wie `--split-preselect`, und das freigegebene Glas startet beim Zielglas |
 | `--predictor` | Start jedes Apertur-/Feldschritts aus der Sekante der beiden letzten angenommenen Zustände (M11-T3; nicht mit `--beam`, Standard aus) |
+| `--augmented-lagrangian K[,T[,S]]` | Augmented Lagrangian statt Penalty-Fortsetzung (M11-T2, [optimierung.md, Abschnitt 2.6](optimierung.md#26-augmented-lagrangian-für-einseitige-bedingungen-m11-t2)): am Start und nach jedem Einfügen höchstens K Optimierungen (Schrittart `penalty`) mit dem festen Faktor S auf die Gewichte der einseitigen Bedingungen (Standard 1) bis max √w\|Δθ\| ≤ T (Standard 10⁻⁶); nach jeder Optimierung werden die Verschiebungen θ fortgeschrieben, auch in den stetigen Schritten. Im Protokoll `lm.shift_change` (nur mit der Option), in den Optionen `augmented_lagrangian` (sonst `null`). Nicht mit `--beam`; Standard aus |
 | `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |
 | `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |
 | `--max-elements N` | höchstens N Glaselemente (Standard 6) |

@@ -17,11 +17,13 @@
 // mikroptim/synth/optical_homotopy.hpp; Tests verwenden synthetische Modelle.
 
 #include "mikroptim/model/system.hpp"
+#include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/ghost_diagnosis.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <span>
@@ -80,6 +82,9 @@ struct HomotopySolve {
                                   // Tupels]; NaN ohne gültigen Strahl
     double ghost_sum = 0.0;       // Σ|a| aller Geisterkoeffizienten [mm]
     std::int64_t failed_rays = 0; // versagte Strahlen am Ende (weich und hart)
+    // Augmented Lagrangian (M11-T2): max √w |Δθ| der Fortschreibung nach dem Lauf
+    // (HomotopyModel::update_shifts); NaN ohne Augmented Lagrangian
+    double shift_change = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Diagnose (Bedarf an einem neuen Element).
@@ -157,6 +162,11 @@ public:
     virtual int elements(const SystemDescription& system) const = 0;
     // Hat das System einseitige Nebenbedingungen (Penalty-Fortsetzung nötig)?
     virtual bool one_sided_constraints(const SystemDescription& system) const = 0;
+    // Augmented Lagrangian (M11-T2): schreibt die Verschiebungen θ der einseitigen Bedingungen
+    // am Zustand `system` (nach einer Optimierung bei `point`) fort, θ ← min(max(0, θ + g),
+    // max_shift/√w), und liefert max √w |Δθ|. Standard: nichts fortzuschreiben, 0.
+    virtual double update_shifts(SystemDescription& system, const HomotopyPoint& point,
+                                 double max_shift);
 
     // ---- Strahlsuche (M6-T4, docs/optimierung.md, Abschnitt 8); Standards ohne Bündelung ----
 
@@ -297,6 +307,13 @@ struct HomotopyOptions {
     // Faktoren penalty_factor^{−(K−1)}, …, 1/penalty_factor, 1 (K = penalty_stages).
     int penalty_stages = 3;
     double penalty_factor = 10.0;
+    // Augmented Lagrangian (M11-T2, docs/optimierung.md, Abschnitt 2.6): rounds > 0 ersetzt die
+    // Penalty-Fortsetzung durch höchstens `rounds` Optimierungen mit dem festen Faktor
+    // al_penalty_scale auf die Gewichte (bis max √w |Δθ| ≤ tolerance); nach jeder Optimierung
+    // (auch der stetigen Schritte) werden die Verschiebungen θ fortgeschrieben. Standard aus.
+    // Nicht mit der Strahlsuche.
+    AugmentedLagrangianOptions augmented_lagrangian{};
+    double al_penalty_scale = 1.0;
     // ε-Fortsetzung am Ende: smoothing_stages Stufen mit Faktor smoothing_factor auf ε.
     int smoothing_stages = 1;
     double smoothing_factor = 0.1;

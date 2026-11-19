@@ -121,6 +121,9 @@ ParaxialConstraints make_paraxial_constraints(const SystemDescription& system) {
             c.reference_surface = map.table_surface(spec.reference_surface_or_default());
             c.offset = spec.offset_or_default();
         }
+        if (spec.shift.size() == 1) {
+            c.shift = spec.shift.front(); // Augmented Lagrangian (M11-T2)
+        }
         c.item = static_cast<int>(i);
         out.items.push_back(c);
     }
@@ -143,6 +146,12 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
         }
         if (!std::isfinite(c.target)) {
             fail_constraint(i, c, "Sollwert muss endlich sein");
+        }
+        if (!(std::isfinite(c.shift) && c.shift >= 0.0)) {
+            fail_constraint(i, c, "Verschiebung muss endlich und mindestens 0 sein");
+        }
+        if (c.shift != 0.0 && c.mode == ConstraintMode::Equal) {
+            fail_constraint(i, c, "Verschiebung nur bei einseitigen Bedingungen");
         }
         switch (c.type) {
         case ConstraintType::FocalLength:
@@ -196,8 +205,8 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
     }
 }
 
-double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
-                         const ParaxialData& p) {
+double paraxial_deviation(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
+                          const ParaxialData& p) {
     check_variant(batch, v);
     const int S = batch.surfaces();
     double q = 0.0;
@@ -241,6 +250,33 @@ double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& bat
     case ConstraintType::MaxIncidenceAngle:
         throw std::invalid_argument("Paraxial-Nebenbedingungen: " + std::string(to_string(c.type)) +
                                     " ist kein paraxialer Typ");
+    }
+    return q;
+}
+
+double paraxial_violation(const ParaxialConstraint& c, double q) {
+    switch (c.mode) {
+    case ConstraintMode::Min:
+        return -q;
+    case ConstraintMode::Max:
+        return q;
+    case ConstraintMode::Equal:
+        break;
+    }
+    return std::abs(q);
+}
+
+double paraxial_residual(const ParaxialConstraint& c, const SystemBatchHost& batch, int v,
+                         const ParaxialData& p) {
+    double q = paraxial_deviation(c, batch, v, p);
+    // Augmented Lagrangian (M11-T2): Grenze um θ verschoben, √w · max(0, g + θ) mit g = q (max)
+    // bzw. g = −q (min). Ohne Verschiebung unverändert (bitgleich zur reinen Strafe).
+    if (c.shift != 0.0) {
+        if (c.mode == ConstraintMode::Max) {
+            q += c.shift;
+        } else if (c.mode == ConstraintMode::Min) {
+            q -= c.shift;
+        }
     }
     return std::sqrt(c.weight) * apply_mode(c.mode, q);
 }

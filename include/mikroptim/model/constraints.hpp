@@ -125,6 +125,13 @@ struct ConstraintSpec {
     std::optional<double> angle{};
     std::optional<double> clearance{};
     std::optional<EdgeHeight> height{};
+    // Verschiebungen θ ≥ 0 des Augmented Lagrangian (M11-T2, docs/optimierung.md, Abschnitt 2.6)
+    // pro Residuum des Eintrags, in der Einheit von g: das Residuum ist √w · max(0, g + θ). Nur
+    // bei einseitigen Bedingungen (supports_shift), Länge 1 bei paraxialen, sonst die Zahl der
+    // Flächen aus constraint_surfaces; leer = alle 0. Passt die Länge nicht zur Zahl der
+    // Residuen (z. B. nach einem Einfügen), gelten alle als 0. Zustand des Optimierers, nicht
+    // Teil des Dateiformats (wird weder gelesen noch geschrieben).
+    std::vector<double> shift{};
 
     friend bool operator==(const ConstraintSpec&, const ConstraintSpec&) = default;
 
@@ -205,6 +212,10 @@ std::vector<int> constraint_surfaces(const SystemDescription& system, const Cons
 bool is_paraxial(ConstraintType type);
 // Wahr für die mechanischen Typen (M4-T3).
 bool is_mechanical(ConstraintType type);
+// Wahr, wenn der Eintrag eine Verschiebung θ des Augmented Lagrangian tragen kann (M11-T2):
+// paraxiale Bedingungen mit Modus min oder max (auch Petzval) und alle mechanischen. Nicht:
+// Gleichungen, ghost_penalty, glass_hull (vektorielles Residuum, docs/optimierung.md, 2.6).
+bool supports_shift(const ConstraintSpec& spec);
 
 // Namen für Meldungen und Dateiformat: "focal_length", "parfocal_length", "working_distance",
 // "paraxial_focus", "petzval", "ghost_penalty", "glass_hull", "max_semi_diameter",

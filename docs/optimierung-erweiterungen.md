@@ -100,6 +100,8 @@ nach jedem LM-Lauf (g* am Endpunkt). Am Fixpunkt gilt g* = 0 bei aktiver Bedingu
 - Petzval-Abnahme (M4-T4) und Mechanik-Abnahme (M4-T3) mit festem w (z. B. das kleinste Gewicht der heutigen Fortsetzung) erreichen Restverletzungen unter den heutigen Toleranzen.
 - Die Zahl der LM-Zyklen insgesamt ist nicht größer als mit der Fortsetzung.
 
+**Stand M11-T2:** umgesetzt ([optimierung.md, Abschnitt 2.6](optimierung.md#26-augmented-lagrangian-für-einseitige-bedingungen-m11-t2)): θ in `ConstraintSpec::shift` (Zustand, nicht im Dateiformat) für paraxiale Bedingungen mit Modus `min`/`max`, Petzval und alle mechanischen (Glas-Hülle offen), Fortschreibung θ ← min(max(0, θ + g*), θ_max/√w), Abbruch bei max √w|Δθ| ≤ T; `optimize --augmented-lagrangian K[,T]`, im Controller `synth --augmented-lagrangian K[,T[,S]]` statt der Penalty-Fortsetzung mit Fortschreibung nach jeder Optimierung (Standard aus, nicht mit der Strahlsuche). Abnahme erreicht, aber nicht mit dem kleinsten Gewicht der Fortsetzung (dort konvergieren die Multiplikatoren zu langsam), sondern mit Datei · 10⁻⁴ (Petzval) bzw. · 10⁻¹ (Mechanik): Petzval 391 statt 546 LM-Zyklen, Restverletzung 1,5·10⁻⁹ relativ; Mechanik 56 statt 104, alle g ≤ 2,1·10⁻⁷ mm. Am System von M6-T3 kein Gewinn allein (28.637 statt 21.038 Zyklen), mit `--stall 20,1e-3` 1.785 statt 4.931 Zyklen bei besserem RMS.
+
 ## 3. Tangentenprädiktor in der Homotopie (M11-T3)
 
 **Problem.** Jeder stetige Homotopie-Schritt startet beim Ergebnis des vorigen Punkts, also mit einem Prädiktor nullter Ordnung. Bei großer NA verlängert das die LM-Läufe. Es führt auch früher zu abgelehnten Schritten und Halbierungen bis Δ_min.

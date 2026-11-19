@@ -180,6 +180,7 @@ target_link_libraries(mikroptim_batch
 find_package(Threads REQUIRED) # std::thread (Teil von CMake, keine externe Abhängigkeit)
 add_library(mikroptim_optim STATIC
     src/optim/adjoint_jacobian.cpp
+    src/optim/augmented_lagrangian.cpp
     src/optim/fd_jacobian.cpp
     src/optim/ghost_diagnosis.cpp
     src/optim/ghost_penalty.cpp
