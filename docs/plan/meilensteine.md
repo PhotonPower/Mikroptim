@@ -413,6 +413,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M6-T3
 - **Inhalt:** Verschiebung θ pro einseitigem Residuum, Fortschreibung nach jedem LM-Lauf, Option im Homotopie-Controller.
 - **Abnahme:** Petzval- und Mechanik-Abnahme mit festem, moderatem Gewicht unter den heutigen Toleranzen, nicht mehr LM-Zyklen.
+- **Stand:** umgesetzt (`optimize --augmented-lagrangian`, `synth --augmented-lagrangian`, Standard aus; [optimierung.md, Abschnitt 2.6](../optimierung.md#26-augmented-lagrangian-für-einseitige-bedingungen-m11-t2)). Abnahme mit w = Datei · 10⁻⁴ (Petzval: 391 statt 546 LM-Zyklen) bzw. · 10⁻¹ (Mechanik: 56 statt 104), CPU und GPU; das kleinste Gewicht der Fortsetzung ist zu klein. Am System von M6-T3 allein kein Gewinn, mit `--stall 20,1e-3` 2,8-mal weniger Zyklen als die Fortsetzung mit demselben Fenster. Offen: Glas-Hülle, Strahlsuche, Lauf auf der Zielspezifikation.
 
 ### M11-T3 – Tangentenprädiktor in der Homotopie
 - **Abhängig von:** M6-T3

@@ -52,7 +52,7 @@ Die Merit ist F = ‖r‖². Der Residuenvektor einer Variante besteht aus:
 1. **Wellenfront:** √(ŵ_f · ŵ_λ · W_i · V_j) · OPD_ij / λ_ref für alle Felder f, Wellenlängen λ, Pupillenstützstellen (i, j), mit den auf Summe 1 normierten Gewichten ŵ_f = w_f/Σw_f, ŵ_λ = w_λ/Σw_λ (ab M4-T1, Definition und Begründung: [numerik.md, „Residuen pro Strahl“](numerik.md#residuen-pro-strahl-m2-gewichte-m4-t1)). Die Residuen sind dimensionslos (Wellen bei λ_ref); ohne Versagen ist ihr Anteil an F der gewichtete mittlere RMS² Σ ŵ_f ŵ_λ (RMS_fλ/λ_ref)² in Wellen².
 2. **Paraxiale Nebenbedingungen:** √w · (Ist − Soll) für Brennweite (3,29 mm, über die Brechkraft formuliert), Abgleichlänge (45 mm), ggf. Arbeitsabstand (Gleichung oder Untergrenze); Definitionen in Abschnitt 2.2.
 3. **Petzval:** √w · max(0, |κ_P| − κ_max), inklusive Beiträgen der Geisterplatten; Definition und Gewichtswahl in Abschnitt 2.3.
-4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°); ab M4-T3, Definitionen in Abschnitt 2.5. Strahlhöhen und Einfallswinkel kommen aus den Max-Reduktionen des Traces (trace-abhängige Zusatzresiduen, Abschnitt 2.1).
+4. **Mechanik (einseitig):** √w · max(0, g) für Durchmesser, Mitten- und Randdicken, maximalen Einfallswinkel (Vorgabe ca. 55–60°); ab M4-T3, Definitionen in Abschnitt 2.5. Mit dem Augmented Lagrangian (ab M11-T2, Option) tragen die einseitigen Bedingungen 2–4 eine Verschiebung θ: √w · max(0, g + θ), Abschnitt 2.6. Strahlhöhen und Einfallswinkel kommen aus den Max-Reduktionen des Traces (trace-abhängige Zusatzresiduen, Abschnitt 2.1).
 5. **Weiches Versagen** (ab M4-T2): ein Strafresiduum pro Strahl, p_k = √(w_fail · ŵ_f · ŵ_λ · W_i · V_j) · π_k, mit der Summe π_k der dimensionslosen Strafgrößen seiner Ereignisse (−D, −k, −Radikand, −disc/R_ref²; hart versagt zusätzlich 1). Die Strafresiduen stehen als eigener Block gleicher Länge direkt hinter den Wellenfrontresiduen (vor den Zusatzresiduen 2–7) und entstehen im Kernel; weich versagte Strahlen bleiben mit der OPL ihrer Fortsetzung in Kolben und Wellenfrontresiduen. Gewicht w_fail in Wellen² (`ResidualSettings::fail_weight`, Standard 10⁶), im LM mit äußerem Strafverfahren (Abschnitt 4). Regeln, Grenzfälle und Messungen: [numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen).
 6. **Geisterplatten (L1, geglättet):** im Plan √(μ·w_k) · (a_{g,k}² + ε²)^{1/4}, sodass das Quadrat μ·w_k·√(a² + ε²) ≈ μ·w_k·|a| ist. Implementiert (ab M4-T6) ist die gleichwertige Form √(μ·w_k) · a/√(ε + √(a² + ε²)) mit dem Quadrat μ·w_k·(√(a² + ε²) − ε): gleicher Gradient, also gleiches Minimum, aber r(0) = 0 und eine Gauß-Newton-Krümmung, die bei a = 0 exakt stimmt (Begründung in Abschnitt 3).
 7. **Glas-Hülle:** √w · Abstand außerhalb der Hülle der Katalog-Gläser in normierten Koordinaten, als Vektor √w (u − P(u)) mit drei Residuen pro Glaselement (ab M6-T1, Abschnitt 2.4).
@@ -239,6 +239,81 @@ Bikonvexe Linse (c_i > 0 > c_{i+1}): e = t − |sag_i| − |sag_{i+1}|; Meniskus
 | alle Grenzen eingehalten (Restverletzung der Strafe) | g ≤ 9,4·10⁻⁵ mm (Glasrand Linse 1), 2,9·10⁻⁵ mm (Strahlhöhe Fläche 3), 8,2·10⁻⁶ mm (Luftspalt), 2,4·10⁻⁵ in cos (Einfallswinkel 26,0031°); Toleranzen `kMechanicalPenaltyLength` = 2·10⁻⁴ mm, `kMechanicalPenaltyCos` = 10⁻⁴; GPU (RTX 3090) dieselben Werte auf drei Stellen (F am Ende relativ 5·10⁻¹¹ zur CPU) |
 | Bedingungen aktiv | Luftspalt, Glasrand Linse 1, Strahlhöhe Fläche 3 und Einfallswinkel Fläche 3 liegen auf ihrer Grenze; F steigt von 1,11 (frei) auf 18,5 Wellen² |
 | Brennweite | f − f_s = −3,5·10⁻⁴ mm (Toleranz `kMechanicalFocalLength` = 2·10⁻³ mm) |
+
+### 2.6 Augmented Lagrangian für einseitige Bedingungen (M11-T2)
+
+API: `include/mikroptim/optim/augmented_lagrangian.hpp` (`Mikroptim::optim`); Vorschlag und Begründung: [optimierung-erweiterungen.md, Abschnitt 2](optimierung-erweiterungen.md#2-augmented-lagrangian-für-einseitige-bedingungen-m11-t2). Option, Standard aus: Ohne Verschiebungen rechnen alle Residuen bitgleich wie bisher.
+
+**Problem.** Die Strafe w · max(0, g)² erreicht die Grenze nur asymptotisch, g* ≈ λ/(2w) (Abschnitte 2.3–2.5). Deshalb die Gewichtsstufen bis zu großen w; große w verschlechtern die Kondition von JᵀJ, und sobald g* unter die Änderung von g über die FD-Schrittweite fällt, liegt der Punkt am Knick von max(0, ·) (Abschnitt 2.5, Befund F10).
+
+**Residuum mit Verschiebung.** Jedes einseitige Residuum bekommt eine Verschiebung θ ≥ 0 in der Einheit von g:
+
+$$r = \sqrt{w}\,\max(0,\ g + \theta),\qquad r^2 = w\,\max(0, g + \theta)^2 .$$
+
+Paraxial mit Modus `max` (auch Petzval, g = q bzw. |κ_P| − κ_max) heißt das √w · max(q + θ, 0), mit Modus `min` (g = −q) √w · min(q − θ, 0), das Vorzeichen des Modus bleibt (`paraxial_deviation`, `paraxial_violation`). Mechanisch √w · max(0, g + θ) mit g aus `mechanical_violation`. Für θ = 0 wird nichts addiert (bitgleich zur reinen Strafe). Nicht verschoben werden Gleichungen, die L1-Strafe und die Glas-Hülle: Deren Residuum ist ein Vektor √w (u − P(u)), dessen Richtung innerhalb der Hülle nicht definiert ist (offen, siehe unten).
+
+**Fortschreibung** nach jedem LM-Lauf, mit g* am Endpunkt (Multiplikatormethode nach Hestenes und Powell, Form mit Verschiebung; Nocedal/Wright, Kap. 17):
+
+$$\theta \leftarrow \min\Bigl(\max(0,\ \theta + g^*),\ \frac{\theta_{\max}}{\sqrt{w}}\Bigr),\qquad \lambda = 2 w \theta .$$
+
+Am Fixpunkt ist g* = 0 bei aktiver Bedingung (θ > 0), bei inaktiver θ = 0; die Grenze wird also bei **festem** w exakt erreicht. Der Punkt liegt dabei im glatten Teil (g + θ = θ > 0, weit weg vom Knick bei g = −θ), anders als die Strafe mit großem w. Bei w = 0 ist θ = 0.
+
+- **Schranke** θ_max in Residueneinheiten (`AugmentedLagrangianOptions::max_shift`, Standard `kDefaultMaxShift` = 10³): √w θ ≤ θ_max, der Beitrag der Verschiebung zu F ist höchstens θ_max² Wellen². Sie begrenzt das lineare Wachsen von θ bei einer unerfüllbaren Bedingung.
+- **Abbruch** der äußeren Schleife, wenn max √w |Δθ| ≤ T (`tolerance`, Standard 10⁻⁶ Wellen), oder nach K Läufen (`rounds`). Ist eine Bedingung am Endpunkt verletzt (g* > 0), gilt Δθ = g* (ohne Schranke); der Abbruch garantiert also g* ≤ T/√w für alle Bedingungen. Die Toleranz T = √w · δ folgt damit aus der zulässigen Verletzung δ.
+- **Wahl von w.** Die Multiplikatoren konvergieren linear mit einem Faktor etwa H/(H + 2w) (H: Krümmung der übrigen Merit entlang der Bedingung). Zu kleines w heißt viele Läufe, zu großes die Steifheit der Strafe; moderat ist ein Gewicht einige Dekaden unter dem der Penalty-Fortsetzung am Ende (Messung unten).
+- **Determinismus.** Die Fortschreibung ist elementweise ohne Reduktion; g* kommt aus denselben Rechnungen wie die Residuen (Paraxialtrace, Extrema auf der CPU mit derselben Quadratur und Glättung wie im LM). Zwei Läufe mit gleichen Eingaben liefern bitgleiche θ.
+
+**Zustand.** θ steht pro Eintrag in `ConstraintSpec::shift` (Länge 1 bei paraxialen Bedingungen, sonst die Zahl der Flächen aus `constraint_surfaces`; leer = 0), ist Zustand des Optimierers und **nicht** Teil des Dateiformats (weder gelesen noch geschrieben). `make_paraxial_constraints` und `make_mechanical_constraints` übernehmen θ nach `ParaxialConstraint::shift` bzw. `MechanicalConstraint::shift`; passt die Länge nicht zur Zahl der Residuen (etwa nachdem ein Einfügen die Flächen eines Eintrags erweitert hat), gelten alle θ des Eintrags als 0. `check_constraints` lehnt θ < 0, nicht endliche θ und θ an Einträgen ohne `supports_shift` ab. Weil θ zur Beschreibung gehört, gehört es zum Zustand eines Kandidaten; gleiche Topologie im Sinn der Strahlsuche verlangt gleiche θ (die realisierten Beschreibungen werden verglichen).
+
+```cpp
+double update_shift(double theta, double violation, double weight, double max_shift);
+struct ShiftEntry { int item, index; ConstraintType type; int file_surface;
+                    double weight, violation, shift, new_shift; };
+struct ShiftUpdate { std::vector<ShiftEntry> entries; double max_change, max_violation; };
+ShiftUpdate shift_update(const SystemDescription&, const SystemBatchHost&, int v,
+                         const ResidualSettings& quadrature, double max_shift = kDefaultMaxShift);
+void apply_shift_update(SystemDescription&, const ShiftUpdate&);   // θ nach ConstraintSpec::shift
+bool has_shiftable_constraints(const SystemDescription&);
+void clear_shifts(SystemDescription&);
+```
+
+**Wo die Schleife sitzt.** `mikroptim optimize --augmented-lagrangian K[,T]` ([cli.md](cli.md#mikroptim-optimize)): K LM-Läufe mit den Gewichten der Datei, Zusatzresiduen pro Lauf mit den aktuellen θ neu gebaut. Homotopie-Controller (`HomotopyOptions::augmented_lagrangian`, `al_penalty_scale`; `synth --augmented-lagrangian K[,T[,S]]`): Die Penalty-Fortsetzung am Start und nach jedem Einfügen wird durch höchstens K Optimierungen mit dem festen Faktor S ersetzt (Schrittart `penalty`, Abbruch über T), und **nach jeder Optimierung** schreibt das Modell θ fort (`HomotopyModel::update_shifts`; optisch an der realisierten Beschreibung mit Gewichten × S und Vorhalt, θ zurück in die Basisbeschreibung). Die stetigen Schritte starten so mit den Multiplikatoren des vorigen Punkts (θ₀ = θ der vorigen Stufe). Die Strahlsuche unterstützt die Option nicht.
+
+**Abnahme** (`tests/test_augmented_lagrangian.cpp`, GPU `tests/test_cuda_augmented_lagrangian.cpp`): dieselben Systeme und Toleranzen wie die Abnahmen von M4-T4 (Petzval) und M4-T3 (Mechanik), eine äußere Schleife mit festem Gewicht (`al_loop` in `tests/augmented_lagrangian_test_systems.hpp`, LM höchstens 1000 Zyklen pro Lauf), T = √w · δ aus der Toleranz δ der Abnahme; Vergleich mit der Penalty-Fortsetzung im selben Test.
+
+| Kriterium | Petzval (w = 1,677·10⁵ mm², Datei · 10⁻⁴) | Mechanik (w = 10⁵/mm², Datei · 10⁻¹) |
+|---|---|---|
+| Läufe | 2 (378 + 13 Zyklen) | 2 (46 + 10 Zyklen) |
+| LM-Zyklen AL / Fortsetzung, CPU | **391 / 546** | **56 / 104** |
+| LM-Zyklen AL / Fortsetzung, GPU (RTX 3090) | 390 / 540 | 56 / 119 |
+| Restverletzung | (\|κ_P\| − κ_max)/κ_max = 1,5·10⁻⁹ (GPU 1,6·10⁻¹⁰), Toleranz `kPetzvalPenaltyRelative` = 10⁻⁶ | alle g ≤ 2,1·10⁻⁷ mm (GPU ≤ 0), Toleranzen `kMechanicalPenaltyLength` = 2·10⁻⁴ mm, `kMechanicalPenaltyCos` = 10⁻⁴ |
+| Brennweite | f − f_s = 4,8·10⁻⁷ mm | f − 10 mm = −3,2·10⁻⁵ mm |
+| aktiv am Ende | Petzval (θ = 7,8·10⁻⁷/mm) | Luftspalt, Glasrand Linse 1, Luftrand vor Linse 1 |
+
+Der Mechaniklauf endet in einem anderen lokalen Minimum als die Fortsetzung (F = 18,27 statt 18,5 Wellen²; Einfallswinkel und Strahlhöhe dort nicht aktiv, dafür der Luftrand vor der ersten Linse). Messung der festen Gewichte (CPU, gleiche Schleife):
+
+| Gewicht | Petzval | Mechanik |
+|---|---|---|
+| kleinstes der Fortsetzung (Datei · 10⁻⁶ bzw. 10⁻⁴) | 3 Läufe, 492 Zyklen; auf der GPU bleibt g bei 1,1·10⁻⁶ relativ stehen (der innere LM endet mit `converged_step`, bevor er die winzige Änderung von θ nachvollzieht), 28 Läufe | nach 30 Läufen noch g = 0,024 mm, 525 Zyklen (Multiplikatoren zu langsam) |
+| Datei · 10⁻⁵ bzw. 10⁻³ | 2 Läufe, 414 Zyklen (GPU 425) | nach 30 Läufen g = 1,5·10⁻⁴ mm, 617 Zyklen |
+| **Datei · 10⁻⁴ bzw. 10⁻²** | **2 Läufe, 391 Zyklen** (GPU 390) | 6 Läufe, 178 Zyklen |
+| Datei · 10⁻³ bzw. **10⁻¹** | erster Lauf vom Start 1000 Zyklen `max_iterations` | **2 Läufe, 56 Zyklen** |
+
+Folgerung: Mit einem Gewicht drei bzw. eine Dekade unter dem der Datei erreicht der Augmented Lagrangian die Grenze genauer als die Fortsetzung (Petzval um zwei Größenordnungen) und mit 28 bzw. 46 % weniger LM-Zyklen; mit dem kleinsten Gewicht der Fortsetzung konvergieren die Multiplikatoren zu langsam.
+
+**Am Abnahmesystem von M6-T3** (`synth einzellinse_homotopie_start.json --target-na 0.6 --max-iterations 500 --curvature-bound 1`, CPU; mechanische Gewichte der Datei 10⁴/mm², Penalty-Fortsetzung 10², 10³, 10⁴; mit AL `--augmented-lagrangian 10,1e-3,S`):
+
+| Lauf | Ziel | RMS [Wellen] | Optimierungen | LM-Zyklen | davon `max_iterations` | Zeit |
+|---|---|---|---|---|---|---|
+| Penalty-Fortsetzung (Standard) | erreicht, 4 Elemente | 0,0163 | 63 | 21.038 | 35 | 17,9 s |
+| AL, S = 1 (10⁴/mm²) | erreicht, 4 Elemente | 0,0141 | 72 | 28.637 | 53 | 22,6 s |
+| AL, S = 0,1 (10³/mm²) | erreicht, 4 Elemente | **0,0032** | 73 | 23.461 | 37 | 20,3 s |
+| Fortsetzung mit `--stall 20,1e-3` | erreicht, 4 Elemente | 0,0179 | 64 | 4.931 | 4 | 4,8 s |
+| AL, S = 1, mit `--stall 20,1e-3` | erreicht, 4 Elemente | 0,0119 | 58 | **1.785** | 0 | 1,9 s |
+
+Allein behebt der Augmented Lagrangian das Kriechen aus F10 nicht: Die LM-Läufe der stetigen Schritte enden weiter mit `max_iterations`. In diesen Schritten wechseln die aktiven Randdicken (Träger des Maximums, Glas- und Luftrand gleichzeitig), und der innere LM muss jeder Änderung von θ folgen. Zusammen mit dem Stagnationsfenster braucht er aber 2,8-mal weniger LM-Zyklen als die Fortsetzung mit demselben Fenster, bei kleinerem RMS und ohne einen Lauf am Iterationslimit; mit S = 0,1 wird das Endsystem deutlich besser (RMS 0,0032 statt 0,0163 Wellen). Die Option bleibt Standard aus; ein Lauf auf der Zielspezifikation (M6-T6) steht aus.
+
+**Offen.** Glas-Hülle (Vektorresiduum, Richtung innen undefiniert; eine Verschiebung auf φ mit Sicherheitsabstand wäre möglich, braucht aber ein inneres g); Strahlsuche (θ pro Kandidat und gemeinsame Gruppen nur bei gleichem θ sind vorbereitet, die Fortschreibung pro Kandidat fehlt).
 
 ## 3. Warum L1 für Geisterplatten
 
@@ -690,6 +765,7 @@ Die Stufe „annehmbar, aber langsam“ ergänzt den Plan (der nur vergrößern 
 **Generische Fortsetzungen.**
 
 - *Penalty-Fortsetzung* der einseitigen Bedingungen (Abschnitte 2.3–2.5) am Start und nach jedem Einfügen: s = 10^{−(K−1)}, …, 1/10, 1 (K = `penalty_stages` = 3, Faktor `penalty_factor` = 10), jede Stufe ab dem Ergebnis der vorigen; ohne einseitige Bedingungen eine Optimierung mit s = 1. Während der stetigen Schritte bleibt s = 1: Ein kleiner Schritt verletzt die Grenzen nur wenig. Zusammen mit dem Vorhalt (oben) ist das die Lehre aus M4-T3, M4-T4 und M6-T1.
+- *Augmented Lagrangian* statt Penalty-Fortsetzung (ab M11-T2, Option `augmented_lagrangian`, Standard aus): fester Faktor `al_penalty_scale` auf die Gewichte, am Start und nach jedem Einfügen bis zu `rounds` Optimierungen bis max √w|Δθ| ≤ `tolerance`, Fortschreibung der Verschiebungen nach jeder Optimierung (Abschnitt 2.6).
 - *ε-Fortsetzung* der L1-Glättung am Endpunkt (Abschnitt 3): `smoothing_stages` = 1 Stufe mit ε × 0,1 (10⁻⁶ → 10⁻⁷ mm); die Restkoeffizienten |a| ≈ ε|g|/(μw) werden entsprechend kleiner.
 - *μ-Fortsetzung* am Endpunkt, nur wenn das Ziel verfehlt ist: höchstens `ghost_weight_stages` = 2 Stufen mit μ × 10; danach übernimmt das reale System die Korrektur.
 

@@ -14,6 +14,7 @@ add_executable(mikroptim_tests
     test_adjoint_jacobian.cpp
     test_adjoint_lm.cpp
     test_adjoint_record.cpp
+    test_augmented_lagrangian.cpp
     test_batch_memory.cpp
     test_batch_merit.cpp
     test_batch_residuals.cpp
@@ -89,6 +90,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_adjoint.cpp
         test_cuda_adjoint_jacobian.cpp
         test_cuda_adjoint_lm.cpp
+        test_cuda_augmented_lagrangian.cpp
         test_cuda_beam_search.cpp
         test_cuda_coaxial_fingerprint.cpp
         test_cuda_decenter.cpp

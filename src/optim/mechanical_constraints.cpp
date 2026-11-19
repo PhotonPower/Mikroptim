@@ -102,8 +102,13 @@ MechanicalConstraints make_mechanical_constraints(const SystemDescription& syste
         if (!is_mechanical(spec.type)) {
             continue;
         }
-        for (const int i : constraint_surfaces(system, spec)) {
+        const std::vector<int> surfaces = constraint_surfaces(system, spec);
+        // Verschiebungen des Augmented Lagrangian nur bei passender Länge (M11-T2)
+        const bool shifted = spec.shift.size() == surfaces.size();
+        for (std::size_t j = 0; j < surfaces.size(); ++j) {
+            const int i = surfaces[j];
             MechanicalConstraint c;
+            c.shift = shifted ? spec.shift[j] : 0.0;
             c.type = spec.type;
             c.file_surface = i;
             c.surface = map.table_surface(i);
@@ -179,6 +184,9 @@ void check_mechanical_constraints(const MechanicalConstraints& constraints,
         }
         if (!(std::isfinite(c.clearance) && c.clearance >= 0.0)) {
             fail_constraint(k, c, "clearance muss endlich und mindestens 0 sein");
+        }
+        if (!(std::isfinite(c.shift) && c.shift >= 0.0)) {
+            fail_constraint(k, c, "Verschiebung muss endlich und mindestens 0 sein");
         }
         if (c.type == ConstraintType::MinEdgeThickness) {
             if (c.height != EdgeHeight::SemiDiameter && c.height != EdgeHeight::Rays) {
@@ -262,7 +270,10 @@ double mechanical_violation(const MechanicalConstraint& c, double value) {
 
 double mechanical_residual(const MechanicalConstraint& c, const SystemBatchHost& batch, int v,
                            const VariantExtrema* extrema) {
-    const double g = mechanical_violation(c, mechanical_value(c, batch, v, extrema));
+    double g = mechanical_violation(c, mechanical_value(c, batch, v, extrema));
+    if (c.shift != 0.0) {
+        g += c.shift; // Augmented Lagrangian (M11-T2); ohne Verschiebung bitgleich
+    }
     return std::sqrt(c.weight) * std::max(g, 0.0);
 }
 

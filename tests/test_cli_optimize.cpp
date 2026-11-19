@@ -4,6 +4,7 @@
 // deterministisch, Text, Fehlerfälle. Im CUDA-Build zusätzlich --gpu (übersprungen ohne Gerät).
 // Der Aufruf des fertigen Programms steht als ctest-Kommando in tests/CMakeLists.txt.
 
+#include "augmented_lagrangian_test_systems.hpp"
 #include "cli/optimize_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/batch/system_batch.hpp"
@@ -39,6 +40,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -256,6 +258,68 @@ TEST(CliOptimize, MeritDecreasesAndResultReproducesMerit) {
     EXPECT_EQ(written.variables, loaded.system.variables);
     EXPECT_EQ(written.constraints, loaded.system.constraints);
     EXPECT_EQ(written.surfaces[1].thickness, loaded.system.surfaces[1].thickness);
+}
+
+// Augmented Lagrangian (M11-T2): `--augmented-lagrangian K,T` rechnet dieselbe äußere Schleife
+// wie die Bibliothek (bitgleich), berichtet Läufe und Verschiebungen; ohne die Option kein
+// Abschnitt im JSON.
+TEST(CliOptimize, AugmentedLagrangianMatchesLibrary) {
+    const TempDir dir("al");
+    const mko::test::FdProblem p = mko::test::mechanical_problem();
+    mko::SystemDescription d = mko::test::mechanical_al_system(p);
+    d.glass_catalogs = {std::string(MKO_SOURCE_DIR) + "/data/glass/basis.json"};
+    const std::string file = dir.file("zweilinser_al.json");
+    mko::write_system_file(d, fs::path(file));
+    const double tolerance = 0.05;
+    const RunResult r =
+        optimize({file, "--augmented-lagrangian", "10,0.05", "--max-iterations", "1000", "--json"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    const json& al = j["augmented_lagrangian"];
+    EXPECT_EQ(al["max_rounds"], 10);
+
+    const mko::test::AlResult lib = mko::test::al_loop(
+        p, d, mko::test::mechanical_al_options,
+        [&](const mko::LmOptions& o, std::span<const double> x0) {
+            return mko::optimize_lm_cpu(p.set, p.base, x0, o);
+        },
+        tolerance, 10);
+    ASSERT_EQ(al["rounds"].size(), lib.rounds.size());
+    EXPECT_GE(lib.rounds.size(), 2U);
+    for (std::size_t k = 0; k < lib.rounds.size(); ++k) {
+        EXPECT_EQ(al["rounds"][k]["iterations"], lib.rounds[k].run.iterations);
+        EXPECT_TRUE(
+            same_bits(al["rounds"][k]["merit_result"].get<double>(), lib.rounds[k].run.merit));
+        EXPECT_TRUE(same_bits(al["rounds"][k]["max_shift_change"].get<double>(),
+                              lib.rounds[k].update.max_change));
+    }
+    EXPECT_LE(al["rounds"].back()["max_shift_change"].get<double>(), tolerance);
+    const std::vector<double> x = doubles(j["runs"][0]["x"]);
+    ASSERT_EQ(x.size(), lib.x.size());
+    for (std::size_t k = 0; k < x.size(); ++k) {
+        EXPECT_TRUE(same_bits(x[k], lib.x[k])) << k;
+    }
+    EXPECT_EQ(j["result"]["iterations"], lib.iterations);
+    const mko::ShiftUpdate& last = lib.rounds.back().update;
+    ASSERT_EQ(al["shifts"].size(), last.entries.size());
+    for (std::size_t k = 0; k < last.entries.size(); ++k) {
+        EXPECT_TRUE(same_bits(al["shifts"][k]["shift"].get<double>(), last.entries[k].new_shift));
+    }
+
+    // Text: Abschnitt mit den Läufen; ohne die Option kein Abschnitt im JSON
+    const RunResult t = optimize({file, "--augmented-lagrangian", "2", "--quiet"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("Augmented Lagrangian (r = Wurzel(w) max(0, g + theta)"),
+              std::string::npos);
+    const RunResult plain = optimize({file, "--max-iterations", "2", "--json"});
+    ASSERT_EQ(plain.code, mko::cli::kExitOk) << plain.err;
+    EXPECT_FALSE(json::parse(plain.out).contains("augmented_lagrangian"));
+    // Kommandozeile
+    for (const std::string bad : {"-1", "x", "3,-1"}) {
+        EXPECT_EQ(optimize({file, "--augmented-lagrangian", bad}).code, mko::cli::kExitUsage);
+    }
+    EXPECT_EQ(optimize({file, "--augmented-lagrangian", "3", "--runs", "2"}).code,
+              mko::cli::kExitUsage);
 }
 
 // Das JSON-Protokoll enthält jeden Zyklus; die Merit nach Zyklus k ist history[k].

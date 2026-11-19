@@ -267,6 +267,53 @@ TEST(HomotopyControl, PenaltySmoothingAndGhostWeightContinuation) {
     EXPECT_TRUE(r.goal.reached);
 }
 
+// Augmented Lagrangian (M11-T2): statt der Penalty-Fortsetzung Läufe mit festem Faktor, bis
+// max √w|Δθ| ≤ Toleranz; Fortschreibung nach jeder Optimierung (auch den stetigen Schritten),
+// Protokoll mit shift_change. Ohne die Option keine Fortschreibung.
+TEST(HomotopyControl, AugmentedLagrangianReplacesPenaltyContinuation) {
+    MockSpec spec;
+    spec.one_sided = true;
+    spec.shift_changes = {0.5, 1e-3, 1e-8, 0.25};
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.32);
+    o.augmented_lagrangian.rounds = 5;
+    o.augmented_lagrangian.tolerance = 1e-6;
+    o.al_penalty_scale = 0.1;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    const std::vector<const HomotopyStep*> penalty = steps_of(r, HomotopyStepKind::Penalty);
+    ASSERT_EQ(penalty.size(), 3U); // dritter Lauf: 1e-8 ≤ 1e-6
+    EXPECT_DOUBLE_EQ(penalty[0]->solve.shift_change, 0.5);
+    EXPECT_DOUBLE_EQ(penalty[2]->solve.shift_change, 1e-8);
+    EXPECT_NE(penalty[0]->operation.find("Augmented Lagrangian, Lauf 1"), std::string::npos);
+    for (const MockCall& c : m.calls) {
+        EXPECT_DOUBLE_EQ(c.point.penalty_scale, 0.1); // festes Gewicht im ganzen Lauf
+    }
+    // eine Fortschreibung pro Optimierung
+    EXPECT_EQ(m.shift_points.size(), m.calls.size());
+    const std::vector<const HomotopyStep*> aperture = steps_of(r, HomotopyStepKind::Aperture);
+    ASSERT_FALSE(aperture.empty());
+    EXPECT_DOUBLE_EQ(aperture[0]->solve.shift_change, 0.25);
+    const nlohmann::json j = nlohmann::json::parse(homotopy_result_json(r));
+    EXPECT_DOUBLE_EQ(j["steps"][0]["lm"]["shift_change"].get<double>(), 0.5);
+
+    // Standard: keine Fortschreibung, kein Feld im Protokoll
+    MockModel plain(spec);
+    const HomotopyResult rp =
+        run_homotopy(plain, MockModel::start(0.3), mock_point(0.3), mock_options(0.32));
+    EXPECT_TRUE(plain.shift_points.empty());
+    EXPECT_TRUE(std::isnan(rp.steps[0].solve.shift_change));
+    const nlohmann::json jp = nlohmann::json::parse(homotopy_result_json(rp));
+    EXPECT_FALSE(jp["steps"][0]["lm"].contains("shift_change"));
+
+    HomotopyOptions bad = mock_options(0.32);
+    bad.augmented_lagrangian.rounds = -1;
+    EXPECT_THROW(check_homotopy_options(bad), std::invalid_argument);
+    bad = mock_options(0.32);
+    bad.al_penalty_scale = 0.0;
+    EXPECT_THROW(check_homotopy_options(bad), std::invalid_argument);
+}
+
 // β-Fortsetzung der Strahl-Extrema (M11-T1b): Start mit β, am Ende β · 10, β · 100, dann hart,
 // vor der ε-Fortsetzung; ohne extrema_beta keine solchen Schritte.
 TEST(HomotopyControl, ExtremaSmoothingContinuation) {
@@ -687,6 +734,33 @@ TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {
     bad.system.target.reset();
     bad.system.constraints->items.erase(bad.system.constraints->items.begin());
     EXPECT_THROW(OpticalHomotopyModel(bad, {}), std::invalid_argument);
+}
+
+// Augmented Lagrangian (M11-T2): Fortschreibung am realisierten Punkt (Gewichte × s, Grenzen
+// mit Vorhalt), θ in der Basisbeschreibung, wirksam in der nächsten Realisierung.
+TEST(OpticalHomotopy, UpdateShiftsAtRealizedPoint) {
+    const LoadedSystem start = load_residual_system("zweilinser_mechanik.json");
+    OpticalHomotopyModel m(start, OpticalHomotopyOptions{});
+    HomotopyPoint p = m.start_point();
+    p.penalty_scale = 0.1;
+    SystemDescription d = start.system;
+    const double change = m.update_shifts(d, p, kDefaultMaxShift);
+
+    const SystemDescription realized = m.realize(start.system, p);
+    const LoadedSystem l = m.load(realized);
+    const SystemBatchHost b = make_system_batch(l, 1);
+    const ShiftUpdate u =
+        shift_update(l.system, b, 0, OpticalHomotopyOptions{}.lm.jacobian.quadrature);
+    EXPECT_EQ(change, u.max_change);
+    EXPECT_GT(change, 0.0);
+    SystemDescription expected = start.system;
+    apply_shift_update(expected, u);
+    EXPECT_EQ(d, expected);
+    // realize übernimmt θ unverändert (Reihenfolge der Einträge bleibt)
+    const SystemDescription again = m.realize(d, p);
+    for (std::size_t i = 0; i < d.constraints->items.size(); ++i) {
+        EXPECT_EQ(again.constraints->items[i].shift, d.constraints->items[i].shift);
+    }
 }
 
 TEST(OpticalHomotopy, ElementsAndOneSided) {

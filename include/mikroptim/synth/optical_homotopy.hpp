@@ -153,6 +153,8 @@ public:
 
     // Strahlsuche (M6-T4): Gruppen gleicher Topologie, Varianten aus der Diagnose, Abstand,
     // gestörte Starts, FP32-Vorfilter.
+    double update_shifts(SystemDescription& system, const HomotopyPoint& point,
+                         double max_shift) override;
     std::vector<HomotopySolve> solve_all(std::span<SystemDescription* const> systems,
                                          const HomotopyPoint& point,
                                          std::vector<int>* groups = nullptr) override;

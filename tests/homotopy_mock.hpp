@@ -42,6 +42,8 @@ struct MockSpec {
     double prefilter_max = std::numeric_limits<double>::infinity(); // Vorfilter: Marke ≤ Wert
     bool group_by_elements = false; // solve_all bündelt Systeme gleicher Flächenzahl
     bool predict = false;           // Prädiktor (M11-T3): predict liefert den aktuellen Zustand
+    // Augmented Lagrangian (M11-T2): Rückgaben von update_shifts der Reihe nach (danach 0)
+    std::vector<double> shift_changes{};
 };
 
 struct MockCall {
@@ -59,6 +61,13 @@ public:
     std::vector<int> batches;           // Größe jedes gemeinsamen Aufrufs (solve_all)
     std::vector<std::uint64_t> seeds;   // Startwerte der gestörten Starts
     std::vector<double> predict_ratios; // Verhältnisse der Aufrufe von predict
+    std::vector<double> shift_points;   // Apertur jedes Aufrufs von update_shifts (M11-T2)
+
+    double update_shifts(SystemDescription&, const HomotopyPoint& p, double) override {
+        const std::size_t k = shift_points.size();
+        shift_points.push_back(p.aperture);
+        return k < spec_.shift_changes.size() ? spec_.shift_changes[k] : 0.0;
+    }
 
     std::optional<SystemDescription> predict(const SystemDescription&,
                                              const SystemDescription& current, const HomotopyPoint&,

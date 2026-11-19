@@ -133,6 +133,12 @@ void check_options_impl(const HomotopyOptions& o) {
         !(o.extrema_factor > 1.0) || !std::isfinite(o.extrema_factor)) {
         invalid("β-Fortsetzung ungültig (β ≥ 0, Stufen ≥ 0, Faktor > 1)");
     }
+    const AugmentedLagrangianOptions& al = o.augmented_lagrangian;
+    if (al.rounds < 0 || !(al.tolerance >= 0.0) || !std::isfinite(al.tolerance) ||
+        !(al.max_shift >= 0.0) || !std::isfinite(al.max_shift) ||
+        !finite_positive(o.al_penalty_scale)) {
+        invalid("Augmented Lagrangian ungültig (Läufe ≥ 0, Toleranz und Schranke ≥ 0, Faktor > 0)");
+    }
     check_control(o.aperture_step, "Apertur");
     check_control(o.field_step, "Feld");
     check_control(o.spectrum_step, "Spektrumbreite");
@@ -201,6 +207,10 @@ std::optional<SystemDescription> HomotopyModel::predict(const SystemDescription&
                                                         const SystemDescription&,
                                                         const HomotopyPoint&, double) {
     return std::nullopt;
+}
+
+double HomotopyModel::update_shifts(SystemDescription&, const HomotopyPoint&, double) {
+    return 0.0;
 }
 
 double HomotopyModel::distance(const SystemDescription&, const SystemDescription&,
@@ -294,6 +304,11 @@ private:
         step.kind = kind;
         step.point = point;
         step.solve = model_.solve(system, point);
+        if (o_.augmented_lagrangian.rounds > 0) {
+            // Augmented Lagrangian (M11-T2): Fortschreibung nach jedem LM-Lauf
+            step.solve.shift_change =
+                model_.update_shifts(system, point, o_.augmented_lagrangian.max_shift);
+        }
         step.solved = true;
         step.seconds = std::chrono::duration<double>(Clock::now() - t0).count();
         ++r_.solves;
@@ -321,6 +336,23 @@ private:
             last.accepted = true;
             last.operation = note;
             emit(last);
+            return last;
+        }
+        if (o_.augmented_lagrangian.rounds > 0) {
+            // Augmented Lagrangian (M11-T2): festes Gewicht, Läufe bis max √w |Δθ| ≤ Toleranz
+            s.point.penalty_scale = o_.al_penalty_scale;
+            for (int j = 0; j < o_.augmented_lagrangian.rounds; ++j) {
+                last = solve(s.system, s.point, HomotopyStepKind::Penalty);
+                last.accepted = true;
+                last.operation = (j == 0 && !note.empty() ? note + "; " : std::string()) +
+                                 "Augmented Lagrangian, Lauf " + std::to_string(j + 1) +
+                                 ", Gewichte ×" + number(o_.al_penalty_scale) +
+                                 ", max √w|Δθ| = " + number(last.solve.shift_change);
+                emit(last);
+                if (!(last.solve.shift_change > o_.augmented_lagrangian.tolerance)) {
+                    break;
+                }
+            }
             return last;
         }
         for (int j = 0; j < o_.penalty_stages; ++j) {
@@ -727,6 +759,9 @@ Json step_object(const HomotopyStep& s) {
                        {"rms_waves", num(s.solve.rms)},
                        {"ghost_sum_mm", num(s.solve.ghost_sum)},
                        {"failed_rays", s.solve.failed_rays}};
+        if (std::isfinite(s.solve.shift_change)) {
+            j["lm"]["shift_change"] = s.solve.shift_change; // nur mit Augmented Lagrangian
+        }
     } else {
         j["lm"] = nullptr;
     }
