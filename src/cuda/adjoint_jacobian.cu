@@ -141,7 +141,7 @@ __global__ void __launch_bounds__(kBlockThreads, kAdjointMinBlocks<R>)
         tid);
     __syncthreads();
 
-    const Vec3<R> center = batch_image_point(a.batch, table, v, f);
+    const ReferenceSphere<R> ref = batch_reference(a.batch, table, v, f);
     const bool point_source = a.batch.source == SourceKind::Point;
     const int n = plan.samples;
     const std::int64_t first = plan.offset + static_cast<std::int64_t>(l) * n;
@@ -163,8 +163,8 @@ __global__ void __launch_bounds__(kBlockThreads, kAdjointMinBlocks<R>)
         SoftFailure<R>* const soft_ptr = a.soft ? &soft : nullptr;
         NoSurfaceObserver* const no_observer = nullptr;
         AdjointRecord<R, kCapacity> record;
-        const TraceStatus st = batch_ray_opl(a.batch, table, 0, v, f, l, s, center, &opl,
-                                             no_observer, soft_ptr, &record);
+        const TraceStatus st =
+            batch_ray_opl(a.batch, table, 0, v, f, l, s, ref, &opl, no_observer, soft_ptr, &record);
         if (in_piston(st)) {
             weight_ok += s.weight;
             weighted_opl += s.weight * opl;
@@ -177,8 +177,8 @@ __global__ void __launch_bounds__(kBlockThreads, kAdjointMinBlocks<R>)
         const JacobianRowWriter<R> opl_row{a.map, l, col0, R_rows, first + k, R(1)};
         const JacobianRowWriter<R> penalty_row{
             a.map, l, col0, R_rows, a.rays + first + k, pscale * residual_weight(s)};
-        ray_gradient_rows(table, 0, record, st, soft.first, a.soft != 0, center, point_source,
-                          opl_row, penalty_row);
+        ray_gradient_rows(table, 0, record, st, soft.first, a.soft != 0, ref, point_source, opl_row,
+                          penalty_row);
     }
 
     // ---- Kolben und Wellenfrontresiduen (wie RESIDUALS) ----

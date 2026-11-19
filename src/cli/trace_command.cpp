@@ -2,6 +2,7 @@
 // die TraceEngine), Ausgabe als Text oder JSON. Ausgabeformate und JSON-Schema: docs/cli.md.
 
 #include "cli/trace_command.hpp"
+#include "cli/cli_util.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/merit/wavefront.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
@@ -46,6 +47,7 @@ struct TraceArgs {
     bool df64 = false; // --precision df64 (nur mit --gpu)
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
+    std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: überschreibt die Datei
 };
 
 TraceArgs parse_args(std::span<const std::string_view> args) {
@@ -57,6 +59,11 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == "--reference-sphere") {
+            if (i + 1 >= args.size()) {
+                throw UsageError("--reference-sphere erwartet einen Wert");
+            }
+            a.reference_sphere = parse_reference_sphere(arg, args[++i]);
         } else if (arg == "--gpu") {
             a.gpu = true;
         } else if (arg == "--device") {
@@ -468,6 +475,8 @@ void print_trace_usage(std::ostream& out) {
            "  Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge und versagte Strahlen\n"
            "  (FP64; Beschreibung: docs/cli.md).\n"
            "  --json       maschinenlesbare Ausgabe (Format mikroptim.trace/1)\n"
+           "  --reference-sphere K  Referenzsphäre: last_surface (Standard ohne Angabe in der\n"
+           "               Datei), image_exit_pupil oder image_infinite (ADR-0017)\n"
            "  --rings N    radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -537,6 +546,9 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
         r.loaded = load_system(std::filesystem::path(a.file));
         for (const std::string& w : r.loaded.warnings) {
             err << "mikroptim trace: Warnung: " << w << '\n';
+        }
+        if (a.reference_sphere) {
+            r.loaded.system.reference_sphere = *a.reference_sphere;
         }
         r.paraxial = compute_paraxial(r.loaded.system, r.loaded.catalog);
         r.options.rings = a.rings;

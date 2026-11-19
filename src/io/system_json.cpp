@@ -95,6 +95,22 @@ public:
         if (const Json* t = member(root, "target")) {
             sys.target = read_target(*t, "target");
         }
+        if (const Json* r = member(root, "reference_sphere")) {
+            const std::string v = as_string(*r, "reference_sphere");
+            bool found = false;
+            for (const ReferenceSphereKind k :
+                 {ReferenceSphereKind::LastSurface, ReferenceSphereKind::ImageExitPupil,
+                  ReferenceSphereKind::ImageInfinite}) {
+                if (v == reference_sphere_name(k)) {
+                    sys.reference_sphere = k;
+                    found = true;
+                }
+            }
+            if (!found) {
+                fail("reference_sphere", "unbekannte Referenzsphäre '" + v +
+                                             "' (last_surface, image_exit_pupil, image_infinite)");
+            }
+        }
         sys.surfaces = read_surfaces(required(root, "", "surfaces"), "surfaces");
 
         if (const Json* g = member(root, "ghost_plates")) {
@@ -111,8 +127,8 @@ public:
         }
         warn_unknown(root, "",
                      {"format", "name", "description", "units", "glass_catalogs", "spectrum",
-                      "source", "target", "surfaces", "ghost_plates", "variables", "constraints",
-                      "tolerances"});
+                      "source", "target", "reference_sphere", "surfaces", "ghost_plates",
+                      "variables", "constraints", "tolerances"});
 
         validate_system(sys);
         return sys;
@@ -1075,6 +1091,9 @@ Json to_json(const SystemDescription& sys) {
             target["working_distance"] = *sys.target->working_distance;
         }
         root["target"] = std::move(target);
+    }
+    if (sys.reference_sphere) {
+        root["reference_sphere"] = std::string(reference_sphere_name(*sys.reference_sphere));
     }
 
     Json surfaces = Json::array();

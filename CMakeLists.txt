@@ -156,7 +156,7 @@ add_library(mikroptim_merit STATIC
 add_library(Mikroptim::merit ALIAS mikroptim_merit)
 target_link_libraries(mikroptim_merit
     PUBLIC mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu
-    PRIVATE mikroptim_warnings)
+    PRIVATE mikroptim_batch mikroptim_warnings)
 
 # --------------------------------------------------------------------------
 # SystemBatch (Host): SoA-Layout vieler Varianten, Speicherabschätzung, CPU-Trace und

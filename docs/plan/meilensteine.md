@@ -259,6 +259,11 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Inhalt:** stufenweiser Lauf nach optimierung.md, Abschnitt 7, bis zur vollen Spezifikation aus docs/spezifikation.md.
 - **Abnahme:** Bericht unter `docs/ergebnisse/` mit Kandidaten, Linsenzahl, Wellenfrontfehler pro Feld und Wellenlänge, Laufzeit. Forschungsaufgabe ohne festen Zielwert; Vergleich mit den Startsystemen des Maintainers.
 
+### M6-T7 – Referenzsphäre unabhängig von der letzten Fläche
+- **Abhängig von:** M6-T6 (Befunde F11, F12), M11-T4; Konventionsänderung vom Maintainer am 2026-11-19 freigegeben ([ADR-0017](../adr/0017-referenzsphaere-bildpunkt.md))
+- **Inhalt:** Referenzsphäre um den idealen Bildpunkt mit Radius bis zur paraxialen Austrittspupille (`image_exit_pupil`) oder unendlich (`image_infinite`), κ als feste Größe des Batches; optionales Feld `reference_sphere` (ohne Feld die alte Konvention `last_surface`, bitgleich); alle Pfade: CPU-Referenzen, RESIDUALS, MERIT, FD- und adjungierte Jacobi, df64, FP32-Vorfilter, EVAL (`--reference infinite`); CLI `--reference-sphere` für `trace`, `optimize`, `synth`; Skript `--referenzsphaere`, `--ohne-f12-schutz`.
+- **Abnahme:** analytische Orakel (reine Defokussierung, Falle F12 mit ideal fokussierender Geisterplatte), Unabhängigkeit von einer Hilfsebene hinter dem System, adjungiert gegen Richardson und FD, CPU gegen GPU, alte Konvention bitgleich zu main; Messung mit `--osc-versuch`, Bericht `docs/ergebnisse/m6-t7-referenzsphaere.md`.
+
 ---
 
 ## M7 – Performance

@@ -32,12 +32,12 @@ void variant_extrema(const SystemBatchHost& batch, int v, const ResidualLayout& 
     std::vector<double> hm(static_cast<std::size_t>(S), 0.0), hs(hm), cm(hm), cs(hm);
     for (int f = 0; f < layout.fields(); ++f) {
         const PupilQuadrature<double>& q = layout.quadrature(f);
-        const Vec3<double> center = batch_image_point(view, table, v, f);
+        const ReferenceSphere<double> ref = batch_reference(view, table, v, f);
         for (int l = 0; l < layout.wavelengths(); ++l) {
             for (int k = 0; k < sample_count(q); ++k) {
                 double opl = 0.0;
                 const TraceStatus st =
-                    batch_ray_opl(view, table, l, v, f, l, sample(q, k), center, &opl, ray.get());
+                    batch_ray_opl(view, table, l, v, f, l, sample(q, k), ref, &opl, ray.get());
                 if (st == TraceStatus::Ok) {
                     acc->add_ray(*ray, S);
                     if (smoothing.enabled()) {

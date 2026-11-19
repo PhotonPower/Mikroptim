@@ -347,6 +347,32 @@ TEST(CudaMerit, MatchesCpu) {
     }
 }
 
+// Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017): MERIT gegen die CPU wie MatchesCpu für
+// beide Radien, weich und hart.
+TEST(CudaMerit, MatchesCpuWithImageReference) {
+    MKO_REQUIRE_GPU();
+    for (const Case& cs : kCases) {
+        for (const mko::ReferenceSphereKind kind :
+             {mko::ReferenceSphereKind::ImageExitPupil, mko::ReferenceSphereKind::ImageInfinite}) {
+            SCOPED_TRACE(cs.file);
+            SCOPED_TRACE(mko::reference_sphere_name(kind));
+            mko::SystemDescription d = mko::test::load_residual_system(cs.file).system;
+            d.reference_sphere = kind;
+            const mko::LoadedSystem ls =
+                mko::prepare_system(d, std::filesystem::path(mko::test::kResidualSystems));
+            SystemBatchHost batch = mko::test::perturbed_batch(ls, 500, cs.seed + 77);
+            mko::update_reference_curvature(batch);
+            const ResidualLayout layout(batch.topology(), cs.settings);
+            const MeritResult gpu = gpu_merit(batch, cs.settings);
+            const MeritResult cpu = mko::merit_cpu(batch, layout, true);
+            const CpuComparison c =
+                compare_with_cpu(gpu, cpu, mko::residuals_cpu(batch, layout), batch, layout);
+            std::printf("[ Info     ] %s, %s: max |√F_GPU - √F_CPU| = %.3e Wellen\n", cs.file,
+                        mko::reference_sphere_name(kind), c.max_sqrt_merit);
+        }
+    }
+}
+
 // Geisterplatten (M4-T5): MERIT lädt die Geisterdaten wie RESIDUALS in den dynamischen Shared
 // Memory. 1.000 gestörte Varianten von einzellinse_geisterplatte.json (auch Koeffizienten und
 // Gläser gestört): Merit gegen Σ RESIDUALS² und CPU, Extrema gegen CPU und bitgleich zu

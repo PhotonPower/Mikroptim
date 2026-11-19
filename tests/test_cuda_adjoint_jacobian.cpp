@@ -143,6 +143,52 @@ TEST(CudaAdjointJacobian, AcceptanceAgainstRichardsonAndFd) {
     }
 }
 
+// Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017): GPU (FP64) gegen CPU wie MatchesCpu, gegen
+// die FD-Jacobi der GPU (spaltenskaliert ≤ kAdjointJacobian plus deren Fehler gegen
+// Richardson) und df64 gegen FP64.
+TEST(CudaAdjointJacobian, ImageReferenceMatchesCpuFdAndDf64) {
+    MKO_REQUIRE_GPU();
+    TraceEngine engine(0);
+    const auto cases = mko::test::image_reference_cases();
+    for (const auto& c : cases) {
+        const mko::test::FdProblem& p = c->p;
+        const int P = p.set.size();
+        const AdjointJacobian cpu = mko::adjoint_jacobian_cpu(p.set, p.base, p.x0, c->options);
+        const AdjointJacobian gpu =
+            mko::cuda::adjoint_jacobian_gpu(engine, p.set, p.base, p.x0, c->options);
+        const AdjointJacobian g64 = mko::cuda::adjoint_jacobian_gpu(engine, p.set, p.base, p.x0,
+                                                                    c->options, Precision::Df64);
+        ASSERT_EQ(gpu.shape, cpu.shape) << c->name;
+        EXPECT_TRUE(same_bytes<std::uint8_t>(gpu.status, cpu.status)) << c->name;
+        EXPECT_TRUE(same_bytes<std::uint8_t>(g64.status, gpu.status)) << c->name;
+        const std::int64_t rv = cpu.shape.ray_rows;
+        const auto jg = mko::test::run_columns(gpu, 0);
+        const double dev =
+            max_column_deviation(mko::test::row_block(jg, P, 0, rv),
+                                 mko::test::row_block(mko::test::run_columns(cpu, 0), P, 0, rv), P);
+        const double dev64 =
+            max_column_deviation(mko::test::row_block(mko::test::run_columns(g64, 0), P, 0, rv),
+                                 mko::test::row_block(jg, P, 0, rv), P);
+        const mko::FdJacobian fd =
+            mko::cuda::fd_jacobian_gpu(engine, p.set, p.base, p.x0, mko::fd_options_of(c->options));
+        const ResidualLayout layout(p.base.topology(), c->options.quadrature);
+        const auto ref = mko::test::adaptive_reference(p, layout, c->options.extra, rv);
+        ASSERT_FALSE(ref.r2.empty()) << c->name;
+        const auto jf = mko::test::run_jacobian(fd, 0);
+        const double fd_error =
+            mko::test::adjoint_deviation(mko::test::row_block(jf, P, 0, rv),
+                                         mko::test::row_block(ref.r2, P, 0, rv), p)
+                .scaled.frobenius;
+        const auto dfd = mko::test::adjoint_deviation(jg, jf, p);
+        std::printf("[GPU, Bildpunkt] %s: gegen CPU %.3e, df64 gegen FP64 %.3e, gegen FD-GPU "
+                    "%.3e (FD gegen Richardson %.3e)\n",
+                    c->name.c_str(), dev, dev64, dfd.scaled.frobenius, fd_error);
+        EXPECT_LT(dev, mko::test::kAdjointCpuGpu) << c->name;
+        EXPECT_LT(dev64, mko::test::kAdjointDf64) << c->name;
+        EXPECT_LT(dfd.scaled.frobenius, mko::test::kAdjointJacobian + fd_error) << c->name;
+    }
+}
+
 // df64 gegen FP64 (beide GPU): Status gleich, Trace-Zeilen von J relativ pro Spalte
 // ≤ kAdjointDf64 (die trace-abhängigen Zusatzzeilen sind finite Differenzen der df64-Extrema).
 TEST(CudaAdjointJacobian, Df64MatchesFp64) {

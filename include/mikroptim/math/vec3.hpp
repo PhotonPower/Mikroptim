@@ -43,6 +43,12 @@ MKO_HD constexpr R dot(Vec3<R> a, Vec3<R> b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
+// Kreuzprodukt a × b.
+template <class R>
+MKO_HD constexpr Vec3<R> cross(Vec3<R> a, Vec3<R> b) {
+    return Vec3<R>{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
 template <class R>
 MKO_HD inline R norm(Vec3<R> a) {
     return msqrt(dot(a, a));

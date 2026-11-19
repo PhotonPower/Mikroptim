@@ -20,4 +20,5 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0014](0014-glasmodelle-sellmeier-polynom.md) | Glasmodelle Sellmeier mit mehr Termen und Polynom | angenommen |
 | [0015](0015-cuda13-ohne-p100.md) | CUDA 13 erlaubt, Tesla P100 entfällt | angenommen |
 | [0016](0016-claude-als-entscheider.md) | Claude-API als zusätzlicher Entscheider (optionales Extra) | angenommen |
+| [0017](0017-referenzsphaere-bildpunkt.md) | Referenzsphäre unabhängig von der letzten Fläche | angenommen |
 | [0018](0018-optionale-merit-terme.md) | Optionale Merit-Terme: Augmented Lagrangian und toleranzbewusste Merit | angenommen |

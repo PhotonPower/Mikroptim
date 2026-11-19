@@ -99,18 +99,17 @@ __global__ void MKO_TRACE_LAUNCH_BOUNDS residuals_kernel(const ResidualKernelArg
         const int f = sh.field[j];
         const int l = sh.wavelength[j];
         const PupilSample<R> s = detail::pack_sample(sh, j, k);
-        const Vec3<R> center = batch_image_point(a.batch, table, v, f);
+        const ReferenceSphere<R> ref = batch_reference(a.batch, table, v, f);
         R opl = R(0);
         SoftFailure<R> soft{R(0), TraceStatus::Ok};
         SoftFailure<R>* const soft_ptr = a.soft ? &soft : nullptr;
         const int table_l = l - pack.first_wavelength;
         TraceStatus st;
         if constexpr (kExtrema) {
-            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, center, &opl, &extrema,
-                               soft_ptr);
+            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, ref, &opl, &extrema, soft_ptr);
         } else {
             NoSurfaceObserver* const none = nullptr;
-            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, center, &opl, none, soft_ptr);
+            st = batch_ray_opl(a.batch, table, table_l, v, f, l, s, ref, &opl, none, soft_ptr);
         }
         if constexpr (kExtrema) {
             if (st == TraceStatus::Ok) {

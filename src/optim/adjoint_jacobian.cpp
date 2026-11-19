@@ -410,7 +410,7 @@ AdjointJacobian adjoint_jacobian_cpu(const VariableSet& set, const SystemBatchHo
         const SurfaceTableView<double> table = view.surface_table(v);
         double* const col0 = out.jacobian.data() + out.column_offset(v, 0);
         const PupilQuadrature<double>& q = layout.quadrature(f);
-        const Vec3<double> center = batch_image_point(view, table, v, f);
+        const ReferenceSphere<double> ref = batch_reference(view, table, v, f);
         const int n = layout.samples(f);
         for (int l = 0; l < layout.wavelengths(); ++l) {
             const std::int64_t offset = layout.offset(f, l);
@@ -427,7 +427,7 @@ AdjointJacobian adjoint_jacobian_cpu(const VariableSet& set, const SystemBatchHo
                 NoSurfaceObserver* const no_observer = nullptr;
                 double opl = 0.0;
                 const TraceStatus st =
-                    batch_ray_opl(view, table, l, v, f, l, s, center, &opl, no_observer,
+                    batch_ray_opl(view, table, l, v, f, l, s, ref, &opl, no_observer,
                                   soft_mode ? &soft : nullptr, rec.get());
                 const TraceStatus expected = static_cast<TraceStatus>(
                     out.status[static_cast<std::size_t>(v) * static_cast<std::size_t>(rays) +
@@ -442,7 +442,7 @@ AdjointJacobian adjoint_jacobian_cpu(const VariableSet& set, const SystemBatchHo
                 const JacobianRowWriter<double> opl_row{map, l, col0, R, offset + k, 1.0};
                 const JacobianRowWriter<double> penalty_row{
                     map, l, col0, R, rays + offset + k, pscale * root_weight[kk]};
-                ray_gradient_rows(table, l, *rec, st, soft.first, soft_mode, center, point_source,
+                ray_gradient_rows(table, l, *rec, st, soft.first, soft_mode, ref, point_source,
                                   opl_row, penalty_row);
             }
             // Kolbenabzug als lineare Projektion (Summen aufsteigend in k)

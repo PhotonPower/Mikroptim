@@ -19,6 +19,7 @@ namespace mko {
 struct SystemDescription;
 struct IndexTable;
 struct LoadedSystem;
+struct ParaxialData;
 
 // Topologie eines Batches: alles, was für alle Varianten gleich sein muss, damit sie in
 // denselben Kernelaufruf passen (ADR-0004).
@@ -42,6 +43,10 @@ struct BatchTopology {
     // (pupil_mode leer oder überall Full; validate_topology). Koaxiale Batches (Standard) haben
     // keine Transformationsdaten, und die Kernel lesen keine (keine Kosten).
     bool non_coaxial = false;
+    // Art der Referenzsphäre der Merit (ADR-0017): LastSurface (Standard, M1-T7) oder eine der
+    // Arten um den Bildpunkt; dann trägt der Batch pro Variante und Feld die Krümmung
+    // reference_curvature (sonst keinen Speicher dafür, Kernel lesen nichts).
+    ReferenceSphereKind reference_sphere = ReferenceSphereKind::LastSurface;
 
     friend bool operator==(const BatchTopology&, const BatchTopology&) = default;
 };
@@ -147,6 +152,12 @@ public:
     double decenter_tilt(int v, int s, int k) const;
     // Setzt alle vier Werte der Fläche s in Variante v.
     void set_surface_transform(int v, int s, double dx, double dy, double alpha, double beta);
+    // Krümmung κ = σ/R der Referenzsphäre um den Bildpunkt für Feld f (ADR-0017). Nur bei
+    // einer Art am Bildpunkt (topology().reference_sphere): Der schreibende Zugriff wirft sonst
+    // std::invalid_argument, der lesende liefert 0. Feste Größe des Batches wie field_target:
+    // update_reference_curvature setzt sie, VariableSet::apply ändert sie nicht.
+    double& reference_curvature(int v, int f);
+    double reference_curvature(int v, int f) const;
     // Arbeitsabstand = thickness(v, S−1) (einzige Quelle, kein eigenes Feld).
     double& image_distance(int v) { return thickness(v, surfaces() - 1); }
     double image_distance(int v) const { return thickness(v, surfaces() - 1); }
@@ -184,6 +195,8 @@ public:
     std::span<const double> paraxial_ghost_index_data() const { return paraxial_ghost_index_; }
     std::span<double> decenter_tilt_data() { return decenter_tilt_; }
     std::span<const double> decenter_tilt_data() const { return decenter_tilt_; }
+    std::span<double> reference_curvature_data() { return reference_curvature_; }
+    std::span<const double> reference_curvature_data() const { return reference_curvature_; }
     std::span<double> buchdahl_coeff_data() { return buchdahl_coeff_; }
     std::span<const double> buchdahl_coeff_data() const { return buchdahl_coeff_; }
 
@@ -226,8 +239,9 @@ private:
     std::vector<double> ghost_index_;
     std::vector<double> paraxial_index_;
     std::vector<double> paraxial_ghost_index_;
-    std::vector<double> buchdahl_coeff_; // nur Host, [V][S][4]
-    std::vector<double> decenter_tilt_;  // [V][S][4], leer bei koaxialer Topologie
+    std::vector<double> buchdahl_coeff_;      // nur Host, [V][S][4]
+    std::vector<double> decenter_tilt_;       // [V][S][4], leer bei koaxialer Topologie
+    std::vector<double> reference_curvature_; // [V][F], leer bei LastSurface (ADR-0017)
 };
 
 // Kopie von `batch` mit nicht koaxialer Topologie (non_coaxial = true, volle Pupille für alle
@@ -235,6 +249,19 @@ private:
 // bitgleich zu `batch` mit voller Pupille. Ein schon nicht koaxialer Batch wird unverändert
 // kopiert.
 SystemBatchHost make_non_coaxial(const SystemBatchHost& batch);
+
+// Krümmung der Referenzsphäre um den Bildpunkt (ADR-0017) für die Varianten
+// [first, first + count) (count < 0: bis zum Ende) aus ihrem aktuellen Zustand:
+// ImageExitPupil: E = (0, 0, z_AP) Mitte der paraxialen Austrittspupille bei λ_ref
+// (batch_paraxial, wie EVAL), M_f = (0, h_f, w), R = |M_f − E|, κ = σ/R mit σ = +1 für
+// w >= z_AP, sonst −1 (derselbe Ausdruck wie eval_reference_geometry, bitgleich); bildseitig
+// telezentrisch κ = 0. ImageInfinite: κ = 0. LastSurface: nichts. Wirft std::invalid_argument,
+// wenn die Lage der Austrittspupille nicht endlich ist oder der Bildpunkt in ihr liegt (R = 0).
+void update_reference_curvature(SystemBatchHost& batch, int first = 0, int count = -1);
+
+// Paraxialdaten der Variante v bei λ_ref (Beschreibung bei der Deklaration in
+// mikroptim/optim/paraxial_residuals.hpp; definiert in der Bibliothek Mikroptim::batch).
+ParaxialData batch_paraxial(const SystemBatchHost& batch, int v);
 
 // Prüft, ob die Varianten [first, first + count) (count < 0: bis zum Ende) zu den
 // Pupillenarten der Topologie passen: kollimiert verlangt Axis den Feldwinkel θ_f = 0 (±0) in
@@ -262,6 +289,8 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
 // Wellenlängen des Spektrums ist; Geisterplatten im Luftspalt erhalten das Medium des Spalts.
 // Buchdahl-Koeffizienten (buchdahl_coeff) aus den Materialien vom Typ Buchdahl, sonst 0.
 // Dezentrierung und Verkippung (nur nicht koaxiale Systeme) aus der Flächentabelle.
+// Referenzsphäre aus system.reference_sphere (ohne Angabe LastSurface), bei den Arten am
+// Bildpunkt κ mit update_reference_curvature (ADR-0017).
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
 // `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (mit den
 // Brechzahlen bei λ_ref wie paraxial_index). Ist keine Brennweite bestimmbar (afokales System)

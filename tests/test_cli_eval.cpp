@@ -11,6 +11,7 @@
 #include "mikroptim/eval/eval.hpp"
 #include "mikroptim/eval/psf.hpp"
 #include "mikroptim/eval/vector_psf.hpp"
+#include "mikroptim/io/system_json.hpp"
 #include "temp_paths.hpp"
 #include "tolerances.hpp"
 
@@ -120,6 +121,35 @@ TEST(CliEval, JsonMatchesLibrary) {
     EXPECT_EQ(jv["reference_sphere"], "vertex");
     EXPECT_EQ(jv["half_pupil"], true);
     EXPECT_TRUE(jv["exit_pupil_position"].is_null());
+}
+
+// M6-T7 (ADR-0017): `--reference infinite` und ohne --reference die Lage aus der Datei
+// (reference_sphere = image_infinite → infinite, sonst exit-pupil).
+TEST(CliEval, InfiniteReferenceAndDefaultFromFile) {
+    const RunResult a = run({kEinzellinse, "--json", "--grid", "16", "--reference", "infinite"});
+    ASSERT_EQ(a.code, mko::cli::kExitOk) << a.err;
+    EXPECT_EQ(json::parse(a.out)["reference_sphere"], "infinite");
+    mko::SystemDescription d = mko::load_system(kEinzellinse).system;
+    d.reference_sphere = mko::ReferenceSphereKind::ImageInfinite;
+    std::vector<std::string> catalogs;
+    for (const std::filesystem::path& c : mko::resolve_glass_catalogs(
+             d, std::filesystem::path(MKO_SOURCE_DIR) / "data" / "systems")) {
+        catalogs.push_back(c.string());
+    }
+    d.glass_catalogs = catalogs;
+    const std::filesystem::path file = mko::test::temp_dir() / "cli_eval_infinite.json";
+    mko::write_system_file(d, file);
+    const RunResult b = run({file.string(), "--json", "--grid", "16"});
+    const RunResult c = run({file.string(), "--json", "--grid", "16", "--reference", "exit-pupil"});
+    std::filesystem::remove(file);
+    ASSERT_EQ(b.code, mko::cli::kExitOk) << b.err;
+    ASSERT_EQ(c.code, mko::cli::kExitOk) << c.err;
+    EXPECT_EQ(json::parse(b.out)["reference_sphere"], "infinite");
+    EXPECT_EQ(json::parse(b.out)["tuples"], json::parse(a.out)["tuples"]);
+    EXPECT_EQ(json::parse(c.out)["reference_sphere"], "exit-pupil");
+    const RunResult t = run({kEinzellinse, "--grid", "16", "--reference", "infinite"});
+    EXPECT_NE(t.out.find("um den Bildpunkt mit unendlichem Radius"), std::string::npos);
+    EXPECT_EQ(run({kEinzellinse, "--reference", "foo"}).code, mko::cli::kExitUsage);
 }
 
 TEST(CliEval, OpdMapCsvMatchesLibrary) {

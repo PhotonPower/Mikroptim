@@ -163,10 +163,15 @@ MKO_HD inline R prefilter_surface_failure(const SurfaceTable& sys, int l, int fs
 // Grenzabstand der Referenzsphäre (Prüfgrößen von reference_sphere_step): √(b² − g)/R_ref
 // (= Kosinus des Winkels zwischen Strahl und Sphärennormale) und der Nenner
 // σ (b + σ√(b² − g))/R_ref.
+//
+// Referenzsphäre um den Bildpunkt (ADR-0017, `ref.kind` ≠ LastSurface): Prüfgröße
+// √(1 + κ²t) (Kosinus-Analogon wie √(b² − g)/R_ref; für κ = 0 immer 1), Versagen
+// 1 + κ²t < 0 mit dem Grenzabstand prefilter_failure_root(1 + κ²t).
 template <class R, class B, class SurfaceTable>
-MKO_HD inline PrefilterRay<R> prefilter_ray(const SystemBatchView<B>& b, const SurfaceTable& table,
-                                            int table_l, int v, int f, int l,
-                                            const PupilSample<R>& s, Vec3<R> center, R opl_offset) {
+MKO_HD inline PrefilterRay<R>
+prefilter_ray(const SystemBatchView<B>& b, const SurfaceTable& table, int table_l, int v, int f,
+              int l, const PupilSample<R>& s, const ReferenceSphere<R>& ref, R opl_offset) {
+    const Vec3<R> center = ref.center;
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
     ray.opl -= opl_offset;
     PrefilterMarginObserver<R> obs{R(1)};
@@ -185,6 +190,23 @@ MKO_HD inline PrefilterRay<R> prefilter_ray(const SystemBatchView<B>& b, const S
         return out;
     }
     R margin = prefilter_min_margin(obs.margin, ray.d.z);
+    if (is_image_reference(ref.kind)) {
+        const Vec3<R> qi = ray.p - center;
+        const Vec3<R> ci = cross(qi, ray.d);
+        const R disc_i = R(1) + ref.kappa * ref.kappa * (-dot(ci, ci));
+        const int last_i = table.surfaces - 1;
+        const R n_i = R(table.index[last_i * table.wavelengths + table_l]);
+        const TraceStatus st_i = image_sphere_step(ray, center, ref.kappa, n_i);
+        if (st_i != TraceStatus::Ok) {
+            out.status = st_i;
+            out.margin = disc_i < R(0) ? prefilter_failure_root(disc_i) : R(0);
+            return out;
+        }
+        margin = prefilter_min_margin(margin, msqrt(disc_i));
+        out.opl = ray.opl;
+        out.margin = margin;
+        return out;
+    }
     // Prüfgrößen der Referenzsphäre (dieselben Ausdrücke wie reference_sphere_step)
     const R r2 = dot(center, center);
     const R inv_r = r2 > R(0) ? R(1) / msqrt(r2) : R(1);
@@ -198,11 +220,11 @@ MKO_HD inline PrefilterRay<R> prefilter_ray(const SystemBatchView<B>& b, const S
 
     const int last = table.surfaces - 1;
     const R n_image = R(table.index[last * table.wavelengths + table_l]);
-    const TraceStatus ref = reference_sphere_step(ray, center, n_image);
-    if (ref != TraceStatus::Ok) {
+    const TraceStatus rst = reference_sphere_step(ray, center, n_image);
+    if (rst != TraceStatus::Ok) {
         const R a = prefilter_failure_root(disc * inv_r * inv_r);
         const R c = disc >= R(0) ? prefilter_failure_linear(denom) : R(0);
-        out.status = ref;
+        out.status = rst;
         out.margin = a > c ? a : c;
         return out;
     }
@@ -211,6 +233,15 @@ MKO_HD inline PrefilterRay<R> prefilter_ray(const SystemBatchView<B>& b, const S
     out.opl = ray.opl;
     out.margin = margin;
     return out;
+}
+
+// Sphäre durch den Scheitel der letzten Fläche um `center` (M1-T7).
+template <class R, class B, class SurfaceTable>
+MKO_HD inline PrefilterRay<R> prefilter_ray(const SystemBatchView<B>& b, const SurfaceTable& table,
+                                            int table_l, int v, int f, int l,
+                                            const PupilSample<R>& s, Vec3<R> center, R opl_offset) {
+    const ReferenceSphere<R> ref{center, R(0), ReferenceSphereKind::LastSurface};
+    return prefilter_ray(b, table, table_l, v, f, l, s, ref, opl_offset);
 }
 
 // Konstante des Tupels für opl_offset: axiale optische Länge Σ_{s=0}^{S−2} n_s t_s vom

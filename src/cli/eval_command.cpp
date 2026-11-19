@@ -50,9 +50,10 @@ struct EvalArgs {
     bool have_device = false;
     int device = 0;
     EvalSettings settings{};
-    std::string map_file;  // leer: keine OPD-Karte
-    bool have_map = false; // --map angegeben
-    int map_field = 0;     // Tupel der Karte
+    std::string map_file;        // leer: keine OPD-Karte
+    bool have_reference = false; // --reference angegeben (sonst folgt EVAL der Datei)
+    bool have_map = false;       // --map angegeben
+    int map_field = 0;           // Tupel der Karte
     int map_wavelength = 0;
     OpdRemoval removal = OpdRemoval::Piston;
     // PSF, MTF, Strehl (M8-T2)
@@ -111,13 +112,16 @@ EvalArgs parse_args(std::span<const std::string_view> args) {
                 throw UsageError("--grid muss in [1, " + std::to_string(kMaxEvalGrid) + "] liegen");
             }
         } else if (arg == "--reference") {
+            a.have_reference = true;
             const std::string_view v = next_value(args, i, arg);
             if (v == "exit-pupil") {
                 a.settings.reference = EvalReference::ExitPupil;
             } else if (v == "vertex") {
                 a.settings.reference = EvalReference::Vertex;
+            } else if (v == "infinite") {
+                a.settings.reference = EvalReference::Infinite;
             } else {
-                throw UsageError("--reference erwartet exit-pupil oder vertex, nicht '" +
+                throw UsageError("--reference erwartet exit-pupil, vertex oder infinite, nicht '" +
                                  std::string(v) + "'");
             }
         } else if (arg == "--map") {
@@ -219,6 +223,9 @@ double marechal_strehl(double rms_mm, double lambda_mm) {
 }
 
 const char* reference_name(EvalReference r) {
+    if (r == EvalReference::Infinite) {
+        return "infinite";
+    }
     return r == EvalReference::Vertex ? "vertex" : "exit-pupil";
 }
 
@@ -434,6 +441,8 @@ void write_text(const EvalReport& r, std::ostream& out) {
     out << "  Referenzsphäre: "
         << (r.result.settings.reference == EvalReference::Vertex
                 ? std::string("durch den Scheitel der letzten Fläche")
+            : r.result.settings.reference == EvalReference::Infinite
+                ? std::string("um den Bildpunkt mit unendlichem Radius")
                 : "durch die Austrittspupille (z = " +
                       format_number("%.6f", r.result.exit_pupil_position[0]) +
                       " mm ab letzter Fläche)")
@@ -653,6 +662,9 @@ void print_eval_usage(std::ostream& out) {
            "  --half          nur die Hälfte x >= 0 rechnen (Symmetrie x -> -x)\n"
            "  --reference R   Referenzsphäre durch die Austrittspupille (exit-pupil, Standard)\n"
            "                  oder durch den Scheitel der letzten Fläche (vertex, wie trace)\n"
+           "                  oder um den Bildpunkt mit unendlichem Radius (infinite);\n"
+           "                  ohne Angabe infinite, wenn die Datei reference_sphere =\n"
+           "                  image_infinite setzt, sonst exit-pupil (ADR-0017)\n"
            "  --json          maschinenlesbare Ausgabe (Format mikroptim.eval/1)\n"
            "  --map F,L       OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben ...\n"
            "  --map-file D    ... als CSV nach D (Wellen bei der Referenzwellenlänge)\n"
@@ -728,6 +740,12 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
             err << "mikroptim eval: Warnung: " << w << '\n';
         }
         r.batch = make_system_batch(r.loaded, 1);
+        // Ohne --reference folgt EVAL der Datei (ADR-0017): image_infinite → infinite, sonst
+        // wie bisher die Austrittspupille.
+        if (!a.have_reference &&
+            r.loaded.system.reference_sphere == ReferenceSphereKind::ImageInfinite) {
+            a.settings.reference = EvalReference::Infinite;
+        }
 #ifdef MIKROPTIM_HAS_CUDA
         if (engine) {
             r.gpu = true;

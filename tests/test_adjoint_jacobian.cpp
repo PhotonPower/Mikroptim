@@ -393,6 +393,97 @@ TEST(AdjointLocal, ReferenceStepMatchesRichardson) {
     EXPECT_GE(cases[2], 200);
 }
 
+// Referenzsphäre um den Bildpunkt (ADR-0017, image_step_backward): unendlicher Radius (κ = 0),
+// endlicher Radius mit σ = ±1 und verfehlte Sphäre (weich fortgesetzt) gegen Richardson; κ ist
+// eine feste Größe (keine Ableitung).
+TEST(AdjointLocal, ImageStepMatchesRichardson) {
+    std::mt19937_64 rng(11);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::array<int, 4> cases{}; // κ = 0, κ > 0, κ < 0, verfehlt
+    double worst[4] = {0.0, 0.0, 0.0, 0.0};
+    int tries = 0;
+    while ((cases[0] < 200 || cases[1] < 200 || cases[2] < 200 || cases[3] < 200) &&
+           tries < 200000) {
+        ++tries;
+        const int kind = tries % 4;
+        const Vec3<double> center{0.3 * u(rng), 2.0 * u(rng), 5.0 + 30.0 * std::abs(u(rng))};
+        double kappa = 0.0;
+        if (kind == 1) {
+            kappa = 1.0 / (20.0 + 80.0 * std::abs(u(rng)));
+        } else if (kind == 2) {
+            kappa = -1.0 / (20.0 + 80.0 * std::abs(u(rng)));
+        } else if (kind == 3) {
+            kappa = (u(rng) > 0.0 ? 1.0 : -1.0) / (0.5 + 2.0 * std::abs(u(rng)));
+        }
+        const Vec3<double> p{3.0 * u(rng), 3.0 * u(rng), 0.5 * u(rng)};
+        const double spread = tries % 5 == 0 ? 3.0 : 0.15;
+        const Vec3<double> d = unit({spread * u(rng), spread * u(rng), 1.0});
+        const double n_img = 1.0 + 0.5 * std::abs(u(rng));
+        const std::vector<double> x0{p.x, p.y,      p.z,      d.x,      d.y,
+                                     d.z, center.x, center.y, center.z, n_img};
+        const auto run = [&](const std::vector<double>& x, TraceStatus& st, double& pen) {
+            mko::Ray<double> r{{x[0], x[1], x[2]}, {x[3], x[4], x[5]}, 0.0};
+            mko::SoftFailure<double> sf{0.0, TraceStatus::Ok};
+            st = mko::image_sphere_step(r, Vec3<double>{x[6], x[7], x[8]}, kappa, x[9], nullptr,
+                                        &sf);
+            pen = sf.penalty;
+            return r.opl;
+        };
+        TraceStatus st0;
+        double pen0 = 0.0;
+        run(x0, st0, pen0);
+        if (mko::is_hard_failure(st0)) {
+            continue;
+        }
+        const int bucket = st0 == TraceStatus::SoftMissed ? 3 : (kind == 3 ? -1 : kind);
+        if (bucket < 0 || cases[static_cast<std::size_t>(bucket)] >= 200) {
+            continue;
+        }
+        bool stable = true;
+        for (std::size_t i = 0; i < x0.size() && stable; ++i) {
+            for (const double sgn : {-1.0, 1.0}) {
+                std::vector<double> xs = x0;
+                xs[i] += sgn * 1e-3 * std::max(std::abs(x0[i]), 1.0);
+                TraceStatus st;
+                double pp = 0.0;
+                run(xs, st, pp);
+                stable = stable && st == st0;
+            }
+        }
+        if (!stable) {
+            continue;
+        }
+        const LocalSeeds s = random_seeds(rng);
+        const auto f = [&](const std::vector<double>& x) {
+            TraceStatus st;
+            double pp = 0.0;
+            const double opl = run(x, st, pp);
+            return s.seed.opl * opl + s.seed.penalty * pp;
+        };
+        RayAdjoint<double> adj{};
+        Vec3<double> center_adj{0.0, 0.0, 0.0};
+        double n_adj = 0.0;
+        mko::image_step_backward(p, d, center, kappa, n_img,
+                                 st0 == TraceStatus::SoftMissed ? mko::kBranchSoftMissed
+                                                                : mko::kBranchRegular,
+                                 s.seed, adj, center_adj, n_adj);
+        const std::vector<double> g{adj.p.x, adj.p.y,      adj.p.z,      adj.d.x,      adj.d.y,
+                                    adj.d.z, center_adj.x, center_adj.y, center_adj.z, n_adj};
+        const std::vector<double> typical{1.0, 1.0, 1.0, 0.1, 0.1, 0.1, 1.0, 1.0, 1.0, 1.0};
+        const std::vector<double> ref = richardson_gradient(f, x0, typical, 1e-2);
+        const double e = relative_error(g, ref);
+        worst[bucket] = std::max(worst[bucket], e);
+        ++cases[static_cast<std::size_t>(bucket)];
+        EXPECT_LT(e, mko::test::kAdjointLocalRichardson) << "Fall " << bucket;
+    }
+    std::printf("Sphäre um den Bildpunkt: κ = 0 %d Fälle (max %.2e), κ > 0 %d (%.2e), κ < 0 %d "
+                "(%.2e), verfehlt %d (%.2e)\n",
+                cases[0], worst[0], cases[1], worst[1], cases[2], worst[2], cases[3], worst[3]);
+    for (int c : cases) {
+        EXPECT_GE(c, 200);
+    }
+}
+
 // Startstrahl der Punktquelle: ∂(d̄·d₀)/∂n₀ über sin_max = NA/n₀ gegen Richardson.
 TEST(AdjointLocal, PointSourceStartMatchesRichardson) {
     std::mt19937_64 rng(3);
@@ -623,6 +714,49 @@ TEST(AdjointJacobian, MatchesFdJacobian) {
                     fd_error, j.shape.extra_rows, full.scaled.frobenius);
         EXPECT_LT(d.scaled.frobenius, mko::test::kAdjointJacobian + fd_error) << c->name;
         EXPECT_LT(full.scaled.frobenius, mko::test::kAdjointJacobian + fd_error) << c->name;
+    }
+}
+
+// Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017): adjungierte Jacobi gegen Richardson
+// (Trace-Zeilen pro Spalte ≤ kAdjointJacobian) und gegen die FD-Jacobi (spaltenskaliert ≤
+// kAdjointJacobian plus deren eigener Fehler), r₀ bitgleich zur FD-Jacobi. Der Arbeitsabstand
+// geht über M_z ein; κ ist eine feste Größe des Batches.
+TEST(AdjointJacobian, ImageReferenceAgainstRichardsonAndFd) {
+    const auto cases = mko::test::image_reference_cases();
+    for (const auto& c : cases) {
+        const mko::test::FdProblem& p = c->p;
+        const int P = p.set.size();
+        const ResidualLayout layout(p.base.topology(), c->options.quadrature);
+        const std::int64_t rv = layout.trace_rows();
+        const AdjointJacobian j = mko::adjoint_jacobian_cpu(p.set, p.base, p.x0, c->options);
+        const mko::FdJacobian fd =
+            mko::fd_jacobian_cpu(p.set, p.base, p.x0, mko::fd_options_of(c->options));
+        EXPECT_TRUE(same_bytes<double>(j.residuals, fd.residuals)) << c->name;
+        const std::span<const double> ja = mko::test::run_columns(j, 0);
+        const std::span<const double> jf = mko::test::run_jacobian(fd, 0);
+        const mko::test::AdaptiveReference ref =
+            mko::test::adaptive_reference(p, layout, c->options.extra, rv);
+        ASSERT_FALSE(ref.r2.empty()) << c->name << ": Status bei keiner Schrittweite stabil";
+        const auto d = mko::test::adjoint_deviation(mko::test::row_block(ja, P, 0, rv),
+                                                    mko::test::row_block(ref.r2, P, 0, rv), p);
+        mko::test::print_deviation("Richardson, Trace-Zeilen", c->name, p, d);
+        std::printf("    weich versagte Strahlen: %zu, hart: %zu\n",
+                    j.status.size() -
+                        static_cast<std::size_t>(std::count(j.status.begin(), j.status.end(),
+                                                            static_cast<std::uint8_t>(0))),
+                    j.hard_failed_count());
+        for (int k = 0; k < P; ++k) {
+            EXPECT_LT(d.plain.column[static_cast<std::size_t>(k)], mko::test::kAdjointJacobian)
+                << c->name << ", " << p.set[k].name;
+        }
+        const double fd_error =
+            mko::test::adjoint_deviation(mko::test::row_block(jf, P, 0, rv),
+                                         mko::test::row_block(ref.r2, P, 0, rv), p)
+                .scaled.frobenius;
+        const auto dfd = mko::test::adjoint_deviation(ja, jf, p);
+        std::printf("    gegen FD-Jacobi (skaliert) %.3e, FD gegen Richardson %.3e\n",
+                    dfd.scaled.frobenius, fd_error);
+        EXPECT_LT(dfd.scaled.frobenius, mko::test::kAdjointJacobian + fd_error) << c->name;
     }
 }
 

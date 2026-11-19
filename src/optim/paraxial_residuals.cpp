@@ -55,36 +55,8 @@ double apply_mode(ConstraintMode mode, double q) {
 
 // ---- Paraxialtrace über Batch-Varianten ------------------------------------------------------
 
-ParaxialData batch_paraxial(const SystemBatchHost& batch, int v) {
-    check_variant(batch, v);
-    const SystemBatchView<double> b = batch.view();
-    const BatchShape& sh = b.shape;
-    const int S = sh.surfaces;
-    // Feste Felder auf dem Stack (S <= kMaxSurfaces); Layout wie eine Variante im Batch.
-    std::array<double, kMaxSurfaces> c{}, t{}, n{}, power{}, petzval{};
-    for (int s = 0; s < S; ++s) {
-        c[to_size(s)] = b.curvature[sh.surface_at(v, s)];
-        t[to_size(s)] = b.thickness[sh.surface_at(v, s)];
-        n[to_size(s)] = b.paraxial_index[sh.surface_at(v, s)];
-    }
-    // Geisterplatten: dünne Elemente im Medium des Spalts (Brechzahl nach der Geisterfläche),
-    // wie compute_paraxial(system, …) über die Tabellenflächen.
-    for (int g = 0; g < sh.ghost_plates; ++g) {
-        const int s = b.ghost_surface[g];
-        const double n_medium = n[to_size(s)];
-        const double n_glass = b.paraxial_ghost_index[sh.ghost_at(v, g)];
-        const double* coeff = b.ghost_coeff + sh.ghost_coeff_at(v, g, 0);
-        const double r = b.ghost_norm_radius[g];
-        power[to_size(s)] = ghost_plate_power(coeff, sh.ghost_terms, r, n_glass, n_medium);
-        petzval[to_size(s)] = ghost_plate_petzval(coeff, sh.ghost_terms, r, n_glass, n_medium);
-    }
-    const std::size_t count = to_size(S);
-    return compute_paraxial(std::span<const double>(c.data(), count),
-                            std::span<const double>(t.data(), count),
-                            std::span<const double>(n.data(), count), b.pupil_radius[v],
-                            std::span<const double>(power.data(), count),
-                            std::span<const double>(petzval.data(), count));
-}
+// batch_paraxial ist in src/batch/system_batch.cpp definiert (ADR-0017: κ der Referenzsphäre
+// beim Aufbau des Batches).
 
 std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int threads) {
     std::vector<ParaxialData> out(to_size(batch.variants()));

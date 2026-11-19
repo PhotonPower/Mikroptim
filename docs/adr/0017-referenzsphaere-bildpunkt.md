@@ -1,0 +1,35 @@
+# ADR-0017: Referenzsphäre unabhängig von der letzten Fläche
+
+- **Status:** angenommen (Konventionsänderung nach AGENTS.md §9, freigegeben vom Maintainer am 2026-11-19)
+- **Datum:** 2026-11-19
+
+## Kontext
+
+Seit M1-T7 misst die Merit (RESIDUALS, MERIT, FD- und adjungierte Jacobi, df64, FP32-Vorfilter, `mikroptim trace`) die OPD auf der Sphäre um den idealen Bildpunkt **M**_f = (0, h_f, w) **durch den Scheitel der letzten Fläche** (Radius |**M**_f|, numerik.md §7). Der Radius hängt damit an einer Fläche, die optisch nichts bedeuten muss. In M6-T6 (Befunde F11, F12) und M11-T4 nutzte der Optimierer das aus: Ist die letzte Fläche eine Hilfsebene im Abstand w vor dem Objekt, kann er den Fokus in ihren Scheitel legen. Alle Strahlen treffen die Sphäre dann praktisch im selben Punkt, die Merit ist klein (0,08 Wellen), das reale System um w defokussiert (151,7 Wellen RMS). Die Hilfsbedingung `paraxial_focus` im Skript verhindert die Falle, hält die Synthese aber bei NA 0,37 fest; ohne sie erreicht sie hohe NA nur über die Falle. Die Lage der Referenzsphäre ist damit der Engpass auf dem Weg zu hoher NA.
+
+## Entscheidung
+
+1. **Neue Konvention „Bildpunkt“.** Die Referenzsphäre hat ihren Mittelpunkt im idealen Bildpunkt **M**_f = (0, h_f, w) in der Bildebene (w = `thickness[S−1]`, h_f = f_soll·tan θ_f wie bisher) und einen Radius, der nicht von der letzten Fläche abhängt. Zwei Radien:
+   - `image_exit_pupil`: R = |**M**_f − **E**| bis zur Mitte der paraxialen Austrittspupille **E** = (0, 0, z_AP) bei λ_ref, Vorzeichen σ = +1 für M_z ≥ z_AP; bildseitig telezentrisch κ = 0;
+   - `image_infinite`: unendlicher Radius (κ = 0), also die OPD als Funktion der Strahlrichtung (Debye-Näherung, dieselbe Größe wie die Pupillenfunktion der vektoriellen PSF).
+2. **Formel** (numerik.md §7): mit **q** = **p** − **M**_f, b = −**q**·**d**, t = −|**q** × **d**|² und der vorzeichenbehafteten Krümmung κ = σ/R wird OPL += n_B·(b − κt/(√(1 + κ²t) + 1)) addiert, also die OPL bis zur Sphäre ohne den für alle Strahlen eines Feldes gleichen Anteil −σ n_B R (derselbe Schritt wie EVAL seit M8-T1). Kippung und Defokus bleiben in der OPD (Verzeichnung, Brennweitenfehler und Fokuslage werden bestraft, wie bisher). Eine eingefügte Hilfsebene oder Planplatte in Luft hinter dem System ändert die OPD nicht mehr.
+3. **Mittelpunkt im idealen Bildpunkt**, nicht im Durchstoßpunkt des Hauptstrahls oder im Schwerpunkt: Beide unterscheiden sich vom idealen Punkt nur um eine Verschiebung in der Bildebene, die als Kippung der OPD erscheint; die Merit soll diese Kippung (Verzeichnung, Brennweitenfehler) aber bestrafen. Der ideale Punkt hängt außerdem nicht von einem einzelnen, möglicherweise versagenden Strahl ab und braucht keine weitere Ableitung.
+4. **κ ist eine feste Größe des Batches** wie das Feldziel h_f: `make_system_batch` berechnet sie beim Aufbau aus der paraxialen Austrittspupille jeder Variante (`update_reference_curvature`), `VariableSet::apply` ändert sie nicht, FD- und adjungierte Jacobi setzen ∂κ/∂x = 0. Der Unterschied zur „mitlaufenden“ Austrittspupille ist von zweiter Ordnung in der Queraberration; die Ableitungen bleiben exakt konsistent, und jeder neue Aufbau (nächster LM-Lauf, nächste Stufe der Synthese) nimmt die aktuelle Pupille.
+5. **Bildlage** ist die eigenständige Größe w = `thickness[S−1]` (Abstand der Bildebene von der letzten Fläche), die wie bisher eine Variable sein kann; mit einer eingefügten Hilfsebene verschiebt sich w um deren Abstand, die Bildebene bleibt im Raum fest. Der zweite vorgeschlagene Modus (Bildlage = paraxialer Fokus) wird **zurückgestellt**: Er nimmt dem Optimierer den Defokus, den er bei hoher NA zum Ausgleich der Restsphärik braucht, und bräuchte in der adjungierten Jacobi die Ableitung der paraxialen Schnittweite; die vorhandene Bedingung `paraxial_focus` deckt den Bedarf weich ab.
+6. **Kompatibilität:** Das optionale Feld `reference_sphere` der Systemdatei (`"last_surface"`, `"image_exit_pupil"`, `"image_infinite"`) wählt die Konvention, die Hauptversion `mikroptim.system/1` bleibt. **Dateien ohne Feld rechnen mit der alten Konvention `last_surface`**, bitgleich zu den Ergebnissen vor dieser Änderung (keine stillen Ergebnisänderungen bestehender Dateien). Neue Läufe und Skripte setzen die neue Konvention ausdrücklich; die CLI-Befehle `trace`, `optimize` und `synth` überschreiben sie mit `--reference-sphere`. Der Schreiber gibt das Feld nur aus, wenn es gesetzt ist.
+7. **Empfehlung:** `image_infinite` für die Synthese mit Geisterplatten. Die paraxiale Austrittspupille eines Systems mit Geisterplatten liegt oft weit von der realen (M6-T6, F11: z_AP = 0,73 mm bei w ≈ 0,5 mm), und jede endliche Sphäre hat ihre „Falle“ im Punkt **E** (alle Strahlen durch **E** treffen die Sphäre dort). Bei κ = 0 gibt es keinen solchen Punkt und kein Verfehlen der Sphäre. `image_exit_pupil` entspricht der Endbewertung in EVAL (Standard `--reference exit-pupil`).
+
+## Konsequenzen
+
+- Die Kernel lesen pro Batch die Art (`BatchTopology::reference_sphere`) und pro Variante und Feld κ (`reference_curvature[v][f]`, nur bei den neuen Arten im Speicher). Alte Batches haben dasselbe Speicherlayout und dieselben Ergebnisse (Fingerabdrücke aller 16 koaxialen Testsysteme bitgleich).
+- Der adjungierte Rückwärtsschritt hat einen zweiten Zweig (`image_step_backward`), Ableitung nach **p**, **d**, **M**_f (h_f fest, M_z = Arbeitsabstand) und n_B.
+- EVAL bekommt `--reference infinite`; ohne Angabe folgt EVAL der Datei (`image_infinite` → `infinite`, sonst wie bisher `exit-pupil`).
+- Ergebnisse mit der neuen Konvention sind nicht mit Merits alter Läufe vergleichbar; Protokolle und Berichte nennen die Konvention.
+- Messung ([Bericht M6-T7](../ergebnisse/m6-t7-referenzsphaere.md)): Der Versuch „Apertur zuerst auf der Achse“ erreicht mit beiden Radien NA 0,95 ohne die Hilfsbedingung `paraxial_focus` und ohne Falle (Fokus ≤ 4 µm neben der Bildebene); bisher NA 0,37 mit Hilfsbedingung.
+
+## Verworfene Alternativen
+
+- **Hilfsebenen als letzte Fläche verbieten** (F12, erste Empfehlung): beseitigt die Ursache nicht (jede letzte Fläche nahe am Bild hat das Problem) und verbietet Geisterplatten im Arbeitsabstand.
+- **Radius bis zum Achsschnittpunkt des realen Hauptstrahls:** auf der Achse nicht definiert, hängt an einem einzelnen Strahl und braucht dessen Ableitung.
+- **Mitlaufende paraxiale Austrittspupille** (κ aus der Variante in jedem Aufruf): Die adjungierte Jacobi bräuchte die Ableitung der paraxialen Pupillenlage nach allen Variablen; der Nutzen ist von zweiter Ordnung.
+- **Neue Konvention als Standard auch für Dateien ohne Feld:** hätte alle bestehenden Systemdateien, Tests und Ergebnisberichte still verändert.

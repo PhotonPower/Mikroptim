@@ -12,7 +12,8 @@ Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
                                            [--farbe-frueh] [--farbe-von-anfang zwei|voll]
                                            [--farb-achromat]
-                                           [--osc-versuch [--osc-gewicht W]]
+                                           [--osc-versuch [--osc-gewicht W] [--referenzsphaere K]
+                                            [--ohne-f12-schutz]]
                                            [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
@@ -659,7 +660,7 @@ def evaluate(runner, name, src, grid=256):
     skalare und vektorielle PSF (JSON)."""
     sub = 'e' + 'val'
     variants = {
-        'pupille': [],
+        'pupille': ['--reference', 'exit-pupil'],
         'scheitel': ['--reference', 'vertex'],
         'psf': ['--psf'],
         'vektor': ['--vector', '--polarization', 'unpolarized'],
@@ -810,6 +811,8 @@ def aperture_branch(args):
     relax = ['--max-iterations', '1000', '-q'] + rings
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    if args.referenzsphaere:
+        s['reference_sphere'] = args.referenzsphaere  # M6-T7 (ADR-0017)
     start = r.path('a0_start.json')
     save(s, start)
 
@@ -837,7 +840,8 @@ def aperture_branch(args):
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
     full = r.path('a3_vollfeld_in.json')
     save(s, full)
-    summary = {'start': args.start, 'rounds': ra, 'point': pt, 'final': a2,
+    summary = {'start': args.start, 'reference_sphere': args.referenzsphaere or 'last_surface',
+               'rounds': ra, 'point': pt, 'final': a2,
                'eval': evaluate(r, 'a3', a2), 'eval_full_field': evaluate(r, 'a3_vollfeld', full),
                'times': r.times, 'seconds_total': time.time() - t0}
     with open(r.path('m6t6_apertur_zweig.json'), 'w', encoding='utf-8') as f:
@@ -892,18 +896,26 @@ def osc_branch(args):
     Zyklen, Residuum wie in der Synthese). Gewicht 0: ohne Residuum."""
     w = args.osc_gewicht
     tag = ('mit' if w > 0 else 'ohne') + ('_strahlsuche' if args.osc_strahlsuche else '')
+    if args.referenzsphaere:
+        tag += '_' + args.referenzsphaere
+    if args.ohne_f12_schutz:
+        tag += '_ohne_f12'
     out = os.path.join(os.path.abspath(args.out), tag)
     r = Runner(os.path.abspath(args.exe), out, gpu=args.gpu, synth_options=synth_options(args))
     rings = ['--rings', '16']
     relax = ['--max-iterations', '1000', '-q'] + rings
     s = load(args.start)
     set_field(s, [0.0], [1.0])
+    if args.referenzsphaere:
+        # M6-T7 (ADR-0017): Referenzsphäre unabhängig von der letzten Fläche
+        s['reference_sphere'] = args.referenzsphaere
     # Gegen die Falle F12 (Fokus im Scheitel der Hilfsebene vor dem Objekt, Merit klein, reales
     # System defokussiert): Bildebene im paraxialen Fokus, schwach (0,1 mm Randstrahlhöhe kostet
     # eine Welle², die Falle mit 2,7 mm Defokus rund 700 Wellen²; die Fokuslage für den Ausgleich
     # der Restsphärik, einige µm, bleibt praktisch frei)
-    set_constraint(s, {'type': 'paraxial_focus', 'weight': 100.0,
-                       'comment': 'M11-T4-Versuch: gegen F12 (Fokus in der Hilfsebene)'})
+    if not args.ohne_f12_schutz:
+        set_constraint(s, {'type': 'paraxial_focus', 'weight': 100.0,
+                           'comment': 'M11-T4-Versuch: gegen F12 (Fokus in der Hilfsebene)'})
     if w > 0:
         set_constraint(s, {'type': 'sine_condition', 'weight': w,
                            'comment': 'M11-T4: OSC in Zone 1/√2 und am Rand, Gewicht wie die '
@@ -927,7 +939,9 @@ def osc_branch(args):
     save(s, prep)
     o2 = r.optimize('o2', prep, ['--max-iterations', '2000', '-q'] + rings)
     polished = osc_evaluate(r, 'o3', o2)
-    summary = {'start': args.start, 'osc_weight': w, 'beam': bool(beam), 'rounds': ro,
+    summary = {'start': args.start, 'osc_weight': w, 'beam': bool(beam),
+               'reference_sphere': args.referenzsphaere or 'last_surface',
+               'f12_guard': not args.ohne_f12_schutz, 'rounds': ro,
                'point': pt, 'synth_result': o1, 'elements_synth': glass_elements(load(o1)),
                'endpoint': endpoint, 'final': o2, 'elements': glass_elements(load(o2)),
                'polished': polished, 'times': r.times, 'seconds_total': time.time() - t0}
@@ -1024,6 +1038,12 @@ def main():
                          'Ausgabe in OUT/mit bzw. OUT/ohne')
     ap.add_argument('--osc-strahlsuche', action='store_true',
                     help='OSC-Versuch mit Strahlsuche (synth --beam 2 --alternatives 2)')
+    ap.add_argument('--referenzsphaere', default=None,
+                    choices=['last_surface', 'image_exit_pupil', 'image_infinite'],
+                    help='M6-T7: Referenzsphäre der Merit (Feld reference_sphere der Startdatei; '
+                         'ohne Angabe wie die Datei, also last_surface)')
+    ap.add_argument('--ohne-f12-schutz', action='store_true',
+                    help='OSC-Versuch ohne die Hilfsbedingung paraxial_focus gegen die Falle F12')
     ap.add_argument('--osc-gewicht', type=float, default=None,
                     help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
                          'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')

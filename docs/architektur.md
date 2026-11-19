@@ -197,7 +197,7 @@ Ein Batch enthält V Varianten mit derselben Topologie (Flächenzahl und Fläche
 
 ### Topologie und Felder (M2-T1)
 
-Die Topologie `BatchTopology` umfasst S (Flächen, 2 … `kMaxSurfaces`), L (Wellenlängen), F (Felder), G (Geisterplatten), K (Koeffizienten pro Geisterplatte), die Quellenart (`SourceKind::Collimated` oder `Point`), `type[s]` und seit M8-T3 das Flag `non_coaxial` (Dezentrierung und Verkippung, dann volle Pupille für alle Felder). Regeln (`validate_topology`, sonst `std::invalid_argument`): L, F ≥ 1; G = Anzahl der Flächen vom Typ `GhostPlate`; G > 0 ⇒ K ≥ 1, G = 0 ⇒ K = 0; Punktquelle ⇒ F = 1; `pupil_mode` leer oder mit F gültigen Einträgen.
+Die Topologie `BatchTopology` umfasst S (Flächen, 2 … `kMaxSurfaces`), L (Wellenlängen), F (Felder), G (Geisterplatten), K (Koeffizienten pro Geisterplatte), die Quellenart (`SourceKind::Collimated` oder `Point`), `type[s]`, seit M8-T3 das Flag `non_coaxial` (Dezentrierung und Verkippung, dann volle Pupille für alle Felder) und seit M6-T7 die Art der Referenzsphäre `reference_sphere` (`ReferenceSphereKind`, [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md); `topology_of` übernimmt sie aus der Datei, ohne Feld `LastSurface`). Regeln (`validate_topology`, sonst `std::invalid_argument`): L, F ≥ 1; G = Anzahl der Flächen vom Typ `GhostPlate`; G > 0 ⇒ K ≥ 1, G = 0 ⇒ K = 0; Punktquelle ⇒ F = 1; `pupil_mode` leer oder mit F gültigen Einträgen.
 
 **Pupillenart pro Feld** (`pupil_mode[f]`, ab M2-T2): eine Eigenschaft des Batches, nicht der Variante, weil sie Zahl und Ablage der Residuen festlegt (`ResidualLayout`). `topology_of` setzt sie beim Aufbau aus dem Ausgangssystem mit derselben Regel wie `wavefront_pupil_mode`: kollimiert θ_f = 0 → `Axis` (N Stützstellen), sonst `Half` (N·M); Punktquelle auf der Achse → `Axis`, mit x = 0 → `Half`, sonst `Full`. Leer heißt „nicht festgelegt“ (erlaubt für reine Speicherrechnungen; der Residuen-Kernel verlangt die Festlegung). Varianten dürfen ein Achsfeld nicht verlassen: `check_pupil_modes(batch, first, count)` verlangt bei `Axis` den Feldwinkel 0 in jeder Variante (bei der Punktquelle x = y = 0, bei `Half` x = 0); `Half` und `Full` gelten für jeden Winkel, auch 0 (eine Feld-Homotopie darf also bei θ = 0 beginnen, ohne die Ablage zu ändern). Geprüft wird in `validate_values`, beim Upload (`DeviceSystemBatch::upload`) und in `residuals_cpu`.
 
@@ -224,6 +224,7 @@ Structure of Arrays, alle Werte FP64 (außer `type` und `ghost_surface`), Varian
 | `paraxial_index[v][s]` | R | pro Variante | Brechzahl nach Fläche s bei λ_ref (Paraxialrechnung, ab M3-T3) |
 | `paraxial_ghost_index[v][g]` | R | pro Variante | Brechzahl des Glases der Geisterplatte g bei λ_ref (ab M3-T3) |
 | `buchdahl_coeff[v][s][j]` | FP64 | pro Variante, **nur Host** | Buchdahl-Koeffizienten (n₀, ν₁, ν₂, ν₃) des Mediums nach Fläche s (Glasvariablen, ab M6-T1) |
+| `reference_curvature[v][f]` | R | pro Variante, **nur Referenzsphäre am Bildpunkt** | Krümmung κ_f = σ/R der Sphäre um den Bildpunkt (ab M6-T7, ADR-0017; `update_reference_curvature`, feste Größe wie `field_target`, `VariableSet::apply` ändert sie nicht); bei `LastSurface` kein Speicher, `view().reference_curvature` = nullptr, die Kernel lesen nichts |
 | `decenter_tilt[v][s][k]` | R | pro Variante, **nur nicht koaxial** | Dezentrierung (Δx, Δy) [mm] und Verkippung (α, β) [rad] der Fläche s (ab M8-T3, [Abschnitt unten](#dezentrierung-und-verkippung-m8-t3)) |
 
 Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
@@ -240,6 +241,7 @@ Indexformeln (`BatchShape`, header-only, `MKO_HD`; Element-, nicht Byteindizes):
 | `paraxial_ghost_index` | v·G + g (`ghost_at`) | G |
 | `buchdahl_coeff` (nur Host) | (v·S + s)·4 + j | 4·S |
 | `decenter_tilt` (nur nicht koaxial) | (v·S + s)·4 + k (`transform_at`) | 4·S |
+| `reference_curvature` (nur Bildpunkt-Sphäre) | v·F + f (`field_at`) | F |
 
 Die Daten einer Variante liegen in jedem Feld zusammenhängend; Variante v der Flächentabelle ist daher eine `SurfaceTableView` mit um v·S bzw. v·S·L versetzten Zeigern (`SystemBatchView::surface_table(v)`), `type` ist für alle Varianten derselbe Zeiger. `index` hat für eine Variante dasselbe Layout wie `IndexTable::n`.
 
@@ -464,6 +466,26 @@ SystemBatchHost make_non_coaxial(const SystemBatchHost&);  // Transformation 0, 
 **Adjungierter Modus.** Der Vorwärtsdurchlauf mit Aufzeichnung (M5-T1) speichert die Zustände im nominellen System; `recompute_surface_step` meldet `transformed`, die Transformation und den Eingang im gekippten System (`p_local`, `d_local`), alle Zwischengrößen gelten dort. `backward_ray` dreht die Adjungierten an jeder transformierten Fläche (numerik.md, Abschnitt 2); `adjoint_jacobian_cpu` und `adjoint_jacobian_gpu` sind damit für dezentrierte Systeme korrekt (Abnahme gegen Richardson). Ableitungen nach den Transformationsparametern gibt es nicht.
 
 **Nicht berücksichtigt** (dokumentierte Grenzen): Paraxialoptik, Feldziele, Austrittspupille der Referenzsphäre in EVAL und die paraxialen und geometrischen mechanischen Nebenbedingungen rechnen mit dem nominellen, koaxialen System. Die sagittale Brennlinie in EVAL (Durchstoß durch die Meridionalebene x = 0) setzt die Spiegelsymmetrie voraus und ist bei Dezentrierung in x nur eine Näherung.
+
+## Referenzsphäre um den Bildpunkt (M6-T7)
+
+Festlegung und Formeln: [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md), [numerik.md, Abschnitt 7](numerik.md#referenzsphäre-um-den-bildpunkt-m6-t7-adr-0017).
+
+```cpp
+enum class ReferenceSphereKind : std::uint8_t { LastSurface = 0, ImageExitPupil = 1, ImageInfinite = 2 }; // trace/reference_kind.hpp
+template <class R> struct ReferenceSphere { Vec3<R> center; R kappa; ReferenceSphereKind kind; };      // trace/reference_sphere.hpp
+TraceStatus image_sphere_step(Ray<R>&, Vec3<R> center, R kappa, R n_image, R* s_out = nullptr, SoftFailure<R>* soft = nullptr);
+TraceStatus reference_step(Ray<R>&, const ReferenceSphere<R>&, R n_image, …);   // Verteiler nach der Art
+trace_to_reference_sphere(sys, l, ray, const ReferenceSphere<R>& ref, …);        // alte Form mit Vec3 center = LastSurface
+ReferenceSphere<R> batch_reference(const SystemBatchView<B>&, table, v, f);      // merit/ray_residual.hpp
+void update_reference_curvature(SystemBatchHost&, int first = 0, int count = -1); // batch/system_batch.hpp
+ParaxialData batch_paraxial(const SystemBatchHost&, int v);                       // jetzt in Mikroptim::batch
+```
+
+- **Datenfluss.** `SystemDescription::reference_sphere` (optional) → `topology_of` → `BatchTopology::reference_sphere` → `SystemBatchView::reference_sphere` und `reference_curvature` (nur bei den Arten am Bildpunkt). `make_system_batch` ruft am Ende `update_reference_curvature`. Alle Pro-Strahl-Pfade holen die Sphäre mit `batch_reference` (statt `batch_image_point`) und reichen sie an `batch_ray_opl`, `prefilter_ray` und `ray_gradient_rows`/`backward_ray` weiter; die alten Formen mit `Vec3 center` bleiben als `LastSurface` erhalten (Tests, CPU-Wellenfront mit eigenen Bildpunkten).
+- **Kernel.** Die Art ist für den ganzen Batch gleich (kein divergenter Zweig im Warp); κ liest jeder Thread einmal pro Tupel aus dem globalen Speicher. Keine eigene Kernel-Instanz: Für `LastSurface` laufen genau die bisherigen Operationen, Ergebnisse bitgleich (568 von 568 Fingerabdrücken aus `CoaxialFingerprint.*`/`CudaCoaxialFingerprint.*` gleich wie auf main).
+- **Gerätespeicher.** `SystemBatchLayout::reference_curvature` (V·F·8 Byte) liegt hinter `decenter_tilt` am Ende des Puffers und ist bei `LastSurface` leer; Upload, Download und `view()` behandeln es wie `decenter_tilt`.
+- **CPU-Wellenfront und CLI.** `evaluate_wavefront(LoadedSystem)` folgt der Datei (κ aus `make_system_batch`, also dieselbe Zahl wie in der Merit); `evaluate_wavefront(system, table, std::span<const ReferenceSphere<double>>, options)` nimmt die Sphären direkt. `trace`, `optimize` und `synth` überschreiben die Art mit `--reference-sphere`; EVAL hat `EvalReference::Infinite` (κ = 0) und folgt ohne `--reference` der Datei.
 
 ## Kernel-Abbildung
 

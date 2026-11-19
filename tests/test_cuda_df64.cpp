@@ -344,6 +344,19 @@ TEST(CudaDf64, MatchesFp64ForPerturbedVariants) {
              {}});
     }
     cases.push_back({"64 Flächen", mko::test::many_surface_batch(200, 6006), {}});
+    // Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017)
+    for (const mko::ReferenceSphereKind kind :
+         {mko::ReferenceSphereKind::ImageExitPupil, mko::ReferenceSphereKind::ImageInfinite}) {
+        mko::SystemDescription d = multi.system;
+        d.reference_sphere = kind;
+        SystemBatchHost b = mko::test::perturbed_batch(
+            mko::prepare_system(d, std::filesystem::path(mko::test::kResidualSystems)), 500,
+            7007 + static_cast<int>(kind));
+        mko::update_reference_curvature(b);
+        cases.push_back({std::string("testsystem_mehrlinser ") + mko::reference_sphere_name(kind),
+                         std::move(b),
+                         {}});
+    }
     for (const Case& cs : cases) {
         SCOPED_TRACE(cs.name);
         ASSERT_NO_THROW(cs.batch.validate_values());

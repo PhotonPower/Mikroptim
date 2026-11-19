@@ -10,6 +10,7 @@
 #include "mikroptim/math/vec3.hpp"
 #include "mikroptim/model/system.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
+#include "mikroptim/trace/reference_sphere.hpp"
 #include "mikroptim/trace/surface_ops.hpp"
 
 #include <cstddef>
@@ -101,8 +102,15 @@ WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSu
                                    std::span<const Vec3<double>> image_points,
                                    const WavefrontOptions& options = {});
 
+// Wie oben mit vorgegebenen Referenzsphären pro Feld (ADR-0017: Art, Mittelpunkt, κ).
+WavefrontResult evaluate_wavefront(const SystemDescription& system, const HostSurfaceTable& table,
+                                   std::span<const ReferenceSphere<double>> references,
+                                   const WavefrontOptions& options = {});
+
 // Wellenfront eines geladenen Systems mit den idealen Bildpunkten: f_soll nach
-// target_focal_length (nur bei kollimierter Quelle), M_f nach ideal_image_points.
+// target_focal_length (nur bei kollimierter Quelle), M_f nach ideal_image_points. Die Art der
+// Referenzsphäre folgt system.reference_sphere (ADR-0017); bei den Arten am Bildpunkt kommt κ
+// aus make_system_batch (update_reference_curvature), also dieselbe Zahl wie in der Merit.
 WavefrontResult evaluate_wavefront(const LoadedSystem& system,
                                    const WavefrontOptions& options = {});
 

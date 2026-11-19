@@ -8,8 +8,10 @@
 #include "mikroptim/glass/index_table.hpp"
 #include "mikroptim/model/system.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/trace/ghost_plate.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -54,6 +56,11 @@ void copy_slice(const std::vector<double>& src, int from, std::vector<double>& d
 // Elemente der Transformationsdaten pro Variante (0 bei koaxialer Topologie).
 std::size_t transform_stride(const BatchTopology& t) {
     return t.non_coaxial ? to_size(t.surfaces) * to_size(kSurfaceTransformValues) : 0;
+}
+
+// Elemente der Krümmungen der Referenzsphäre pro Variante (0 bei LastSurface, ADR-0017).
+std::size_t reference_stride(const BatchTopology& t) {
+    return is_image_reference(t.reference_sphere) ? to_size(t.fields) : 0;
 }
 
 // Ablage der Buchdahl-Koeffizienten [V][S][4] (nur Host).
@@ -177,6 +184,7 @@ void SystemBatchHost::resize(int variants) {
     paraxial_ghost_index_.resize(v * sh.ghost_stride(), 0.0);
     buchdahl_coeff_.resize(v * buchdahl_stride(sh), 0.0);
     decenter_tilt_.resize(v * transform_stride(topology_), 0.0);
+    reference_curvature_.resize(v * reference_stride(topology_), 0.0);
 }
 
 int SystemBatchHost::add_variant_copy(int from) {
@@ -210,6 +218,8 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.paraxial_ghost_index_, from, paraxial_ghost_index_, to, sh.ghost_stride());
     copy_slice(other.buchdahl_coeff_, from, buchdahl_coeff_, to, buchdahl_stride(sh));
     copy_slice(other.decenter_tilt_, from, decenter_tilt_, to, transform_stride(topology_));
+    copy_slice(other.reference_curvature_, from, reference_curvature_, to,
+               reference_stride(topology_));
 }
 
 void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, int count) {
@@ -251,6 +261,7 @@ void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, i
     range(other.paraxial_ghost_index_, paraxial_ghost_index_, sh.ghost_stride());
     range(other.buchdahl_coeff_, buchdahl_coeff_, buchdahl_stride(sh));
     range(other.decenter_tilt_, decenter_tilt_, transform_stride(topology_));
+    range(other.reference_curvature_, reference_curvature_, reference_stride(topology_));
 }
 
 void SystemBatchHost::check(int i, int count, const char* what) {
@@ -432,6 +443,23 @@ double& SystemBatchHost::decenter_tilt(int v, int s, int k) {
     check(k, kTransformValues, "Transformationswert");
     return decenter_tilt_[shape().transform_at(v, s, k)];
 }
+double& SystemBatchHost::reference_curvature(int v, int f) {
+    if (!is_image_reference(topology_.reference_sphere)) {
+        throw std::invalid_argument("SystemBatch: Referenzsphäre durch die letzte Fläche hat "
+                                    "keine Krümmung pro Feld (ADR-0017)");
+    }
+    check(v, variants_, "Variante");
+    check(f, topology_.fields, "Feld");
+    return reference_curvature_[shape().field_at(v, f)];
+}
+double SystemBatchHost::reference_curvature(int v, int f) const {
+    check(v, variants_, "Variante");
+    check(f, topology_.fields, "Feld");
+    return is_image_reference(topology_.reference_sphere)
+               ? reference_curvature_[shape().field_at(v, f)]
+               : 0.0;
+}
+
 double SystemBatchHost::decenter_tilt(int v, int s, int k) const {
     check(v, variants_, "Variante");
     check(s, topology_.surfaces, "Fläche");
@@ -472,6 +500,9 @@ SystemBatchView<double> SystemBatchHost::view() const {
     b.paraxial_index = paraxial_index_.data();
     b.paraxial_ghost_index = paraxial_ghost_index_.data();
     b.decenter_tilt = topology_.non_coaxial ? decenter_tilt_.data() : nullptr;
+    b.reference_sphere = topology_.reference_sphere;
+    b.reference_curvature =
+        is_image_reference(topology_.reference_sphere) ? reference_curvature_.data() : nullptr;
     return b;
 }
 
@@ -518,6 +549,7 @@ void SystemBatchHost::validate_values() const {
     finite(paraxial_ghost_index_, "paraxial_ghost_index");
     finite(buchdahl_coeff_, "buchdahl_coeff");
     finite(decenter_tilt_, "decenter_tilt");
+    finite(reference_curvature_, "reference_curvature");
     for (std::size_t i = 2; i < decenter_tilt_.size(); i += 4) {
         for (std::size_t k = i; k < i + 2; ++k) {
             if (!(std::abs(decenter_tilt_[k]) < std::numbers::pi / 2)) {
@@ -640,7 +672,8 @@ bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
            same_bits(a.paraxial_index_, b.paraxial_index_) &&
            same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_) &&
            same_bits(a.buchdahl_coeff_, b.buchdahl_coeff_) &&
-           same_bits(a.decenter_tilt_, b.decenter_tilt_);
+           same_bits(a.decenter_tilt_, b.decenter_tilt_) &&
+           same_bits(a.reference_curvature_, b.reference_curvature_);
 }
 
 // ---- Aufbau aus einem System -------------------------------------------------------------
@@ -656,6 +689,7 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
     t.ghost_plates = table.ghost_plates;
     t.ghost_terms = table.ghost_terms;
     t.non_coaxial = !table.coaxial();
+    t.reference_sphere = system.reference_sphere.value_or(ReferenceSphereKind::LastSurface);
     // Pupillenart pro Feld, gleiche Regel wie wavefront_pupil_mode (merit/wavefront.cpp)
     for (int f = 0; f < t.fields; ++f) {
         if (t.non_coaxial) {
@@ -843,6 +877,7 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
         std::copy(table.decenter_tilt.begin(), table.decenter_tilt.end(),
                   b.decenter_tilt_data().begin());
     }
+    update_reference_curvature(b);
     b.resize(variants);
     for (int v = 1; v < variants; ++v) {
         b.copy_variant(0, v);
@@ -876,6 +911,88 @@ SystemBatchHost make_system_batch(const SystemDescription& system, const IndexTa
     return build_batch(system, index, variants, focal_length);
 }
 
+// Paraxialtrace einer Variante (Deklaration in mikroptim/optim/paraxial_residuals.hpp und
+// mikroptim/batch/system_batch.hpp; hier definiert, weil der Aufbau des Batches ihn für κ
+// braucht, ADR-0017).
+ParaxialData batch_paraxial(const SystemBatchHost& batch, int v) {
+    if (v < 0 || v >= batch.variants()) {
+        throw std::out_of_range("Paraxial-Nebenbedingung: Variante " + std::to_string(v) +
+                                " außerhalb von [0, " + std::to_string(batch.variants()) + ")");
+    }
+    const SystemBatchView<double> b = batch.view();
+    const BatchShape& sh = b.shape;
+    const int S = sh.surfaces;
+    // Feste Felder auf dem Stack (S <= kMaxSurfaces); Layout wie eine Variante im Batch.
+    std::array<double, kMaxSurfaces> c{}, t{}, n{}, power{}, petzval{};
+    for (int s = 0; s < S; ++s) {
+        c[to_size(s)] = b.curvature[sh.surface_at(v, s)];
+        t[to_size(s)] = b.thickness[sh.surface_at(v, s)];
+        n[to_size(s)] = b.paraxial_index[sh.surface_at(v, s)];
+    }
+    // Geisterplatten: dünne Elemente im Medium des Spalts (Brechzahl nach der Geisterfläche),
+    // wie compute_paraxial(system, …) über die Tabellenflächen.
+    for (int g = 0; g < sh.ghost_plates; ++g) {
+        const int s = b.ghost_surface[g];
+        const double n_medium = n[to_size(s)];
+        const double n_glass = b.paraxial_ghost_index[sh.ghost_at(v, g)];
+        const double* coeff = b.ghost_coeff + sh.ghost_coeff_at(v, g, 0);
+        const double r = b.ghost_norm_radius[g];
+        power[to_size(s)] = ghost_plate_power(coeff, sh.ghost_terms, r, n_glass, n_medium);
+        petzval[to_size(s)] = ghost_plate_petzval(coeff, sh.ghost_terms, r, n_glass, n_medium);
+    }
+    const std::size_t count = to_size(S);
+    return compute_paraxial(std::span<const double>(c.data(), count),
+                            std::span<const double>(t.data(), count),
+                            std::span<const double>(n.data(), count), b.pupil_radius[v],
+                            std::span<const double>(power.data(), count),
+                            std::span<const double>(petzval.data(), count));
+}
+
+void update_reference_curvature(SystemBatchHost& batch, int first, int count) {
+    const BatchTopology& top = batch.topology();
+    if (!is_image_reference(top.reference_sphere)) {
+        return;
+    }
+    if (count < 0) {
+        count = batch.variants() - first;
+    }
+    if (first < 0 || count < 0 || first > batch.variants() - count) {
+        throw std::out_of_range("update_reference_curvature: ungültiger Variantenbereich");
+    }
+    const int S = batch.surfaces();
+    for (int v = first; v < first + count; ++v) {
+        if (top.reference_sphere == ReferenceSphereKind::ImageInfinite) {
+            for (int f = 0; f < batch.fields(); ++f) {
+                batch.reference_curvature(v, f) = 0.0;
+            }
+            continue;
+        }
+        // Wie eval_reference_geometry (Modus ExitPupil), dieselben Ausdrücke
+        const ParaxialData p = batch_paraxial(batch, v);
+        const bool infinite = p.exit_pupil_at_infinity;
+        const double z_ap = p.exit_pupil_position;
+        if (!infinite && !std::isfinite(z_ap)) {
+            throw std::invalid_argument("Referenzsphäre: Lage der Austrittspupille in Variante " +
+                                        std::to_string(v) + " nicht endlich");
+        }
+        const double w = batch.thickness(v, S - 1);
+        for (int f = 0; f < batch.fields(); ++f) {
+            double kappa = 0.0;
+            if (!infinite) {
+                const double dz = w - z_ap;
+                const double radius = std::hypot(batch.field_target(v, f), dz);
+                if (!(radius > 0.0) || !std::isfinite(radius)) {
+                    throw std::invalid_argument(
+                        "Referenzsphäre: Bildpunkt liegt in der Austrittspupille (Variante " +
+                        std::to_string(v) + ", Feld " + std::to_string(f) + ")");
+                }
+                kappa = (dz >= 0.0 ? 1.0 : -1.0) / radius;
+            }
+            batch.reference_curvature(v, f) = kappa;
+        }
+    }
+}
+
 SystemBatchHost make_non_coaxial(const SystemBatchHost& batch) {
     if (batch.topology().non_coaxial) {
         return batch;
@@ -907,6 +1024,7 @@ SystemBatchHost make_non_coaxial(const SystemBatchHost& batch) {
     copy(batch.paraxial_index_data(), out.paraxial_index_data());
     copy(batch.paraxial_ghost_index_data(), out.paraxial_ghost_index_data());
     copy(batch.buchdahl_coeff_data(), out.buchdahl_coeff_data());
+    copy(batch.reference_curvature_data(), out.reference_curvature_data());
     return out;
 }
 

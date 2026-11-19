@@ -4,6 +4,8 @@
 // Zahlen aus Argumenten und die plattformunabhängige Textformatierung (printf-artig in der
 // C-Locale, nicht endliche Werte ausgeschrieben). Interner Header der Bibliothek mikroptim_cli.
 
+#include "mikroptim/trace/reference_kind.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -82,6 +84,13 @@ void apply_sine_condition_option(SystemDescription& system, double weight);
 // `index`, `type`, `shift`. Wirft std::runtime_error, wenn die Datei fehlt, kein JSON ist oder
 // das Feld fehlt bzw. nicht passt (Entscheidung des Maintainers 2026-11-19).
 std::vector<ShiftValue> read_shift_file(const std::filesystem::path& path);
+
+// ---- Referenzsphäre (trace, optimize, synth; ADR-0017) ---------------------------------------
+
+// Wert der Option --reference-sphere: last_surface, image_exit_pupil oder image_infinite, sonst
+// UsageError. Die Option setzt das Feld reference_sphere der geladenen Systemdatei (auch in der
+// Ergebnisdatei).
+ReferenceSphereKind parse_reference_sphere(std::string_view option, std::string_view text);
 
 // ---- Dateien (optimize, snap) ------------------------------------------------------------
 

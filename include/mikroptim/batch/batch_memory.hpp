@@ -49,6 +49,7 @@ struct SystemBatchLayout {
     BufferRegion paraxial_index;       // V · S · 8 (Brechzahlen bei λ_ref, M3-T3)
     BufferRegion paraxial_ghost_index; // V · G · 8
     BufferRegion decenter_tilt;        // V · S · 4 · 8, nur nicht koaxial (M8-T3), sonst leer
+    BufferRegion reference_curvature;  // V · F · 8, nur Referenzsphäre am Bildpunkt (ADR-0017)
     std::size_t total_bytes = 0;
 };
 

@@ -28,6 +28,9 @@ enum class EvalReference : std::uint8_t {
     // Sphäre um M_f durch den Scheitel der letzten Fläche, Radius |M_f| (wie MERIT und
     // RESIDUALS, M1-T7).
     Vertex = 1,
+    // Sphäre um M_f mit unendlichem Radius (κ = 0, ADR-0017; wie die Merit-Konvention
+    // image_infinite): OPD als Funktion der Strahlrichtung.
+    Infinite = 2,
 };
 
 // Zahl der Feldstrahlen pro Tupel (Hauptstrahl und Nachbarstrahlen für die Fokuslagen) und

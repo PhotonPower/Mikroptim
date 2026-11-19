@@ -131,7 +131,8 @@ TEST(CudaEval, MatchesCpu) {
         cases.push_back({"Punktquelle neben der Achse", std::move(b)});
     }
     for (const Case& c : cases) {
-        for (const EvalReference ref : {EvalReference::ExitPupil, EvalReference::Vertex}) {
+        for (const EvalReference ref :
+             {EvalReference::ExitPupil, EvalReference::Vertex, EvalReference::Infinite}) {
             for (const bool half : {false, true}) {
                 EvalSettings s;
                 s.grid = 33;
@@ -183,7 +184,9 @@ TEST(CudaEval, MatchesCpu) {
                             "Toleranz %.3f, max |ΔRMS| = %.3e mm, max |ΔBrennlinie| = %.3e mm, "
                             "versagt %zu von %zu\n",
                             c.name.c_str(),
-                            ref == EvalReference::Vertex ? "Scheitel" : "Austrittspupille",
+                            ref == EvalReference::Vertex     ? "Scheitel"
+                            : ref == EvalReference::Infinite ? "unendlich"
+                                                             : "Austrittspupille",
                             half ? ", halbe Pupille" : "", cmp.max_opd, cmp.max_spot, cmp.max_field,
                             cmp.ratio, max_rms, max_focus, cpu.failed_count(), cpu.status.size());
             }

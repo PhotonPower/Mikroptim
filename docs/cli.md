@@ -8,7 +8,7 @@ mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet] [--max-
                    [--tolerance-aware A [--tolerance-samples S] [--tolerance-seed n]
                     [--tolerance-set file|default] [--tolerance-tilt keep|remove]]
                    [--gpu [--device N]]
-mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex] [--json]
+mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex|infinite] [--json]
                [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]] [--gpu [--device N]]
 mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--max-combinations N]
                [--max-iterations N] [--rings N] [--spokes M] [--gpu [--device N]]
@@ -67,6 +67,7 @@ Gerechnet wird in FP64, die Wellenfront standardmäßig auf der CPU, mit `--gpu`
 | `--spokes M` | Speichen der Pupillenquadratur, M ≥ 1 (Achsfeld immer 1) | 8 |
 | `--gpu` | Wellenfront auf der GPU rechnen (Kernel `RESIDUALS` über `mko::cuda::TraceEngine`) | aus (CPU) |
 | `--device N` | CUDA-Gerät für `--gpu`, N ≥ 0 (Liste: `mikroptim --devices`); nur zusammen mit `--gpu` | 0 |
+| `--reference-sphere K` | Referenzsphäre (ab M6-T7, [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md)): `last_surface`, `image_exit_pupil` oder `image_infinite`; überschreibt das Feld `reference_sphere` der Datei (CPU und `--gpu`) | wie die Datei (ohne Feld `last_surface`) |
 | `--precision P` | Rechentyp der Wellenfront: `fp64` oder `df64` (Paar aus zwei float, M7-T1; auf GeForce-Karten wie der RTX 3090 im Kernel etwa 4× schneller, Abweichung zu FP64 ≤ 10⁻⁹ mm). `df64` nur zusammen mit `--gpu`, die CPU rechnet immer in FP64 | `fp64` |
 | `--help`, `-h` | Hilfe | – |
 
@@ -506,6 +507,7 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--fail-weight w` | Start-Strafgewicht w_fail des weichen Strahlversagens in Wellen², endlich und > 0 (`ResidualSettings::fail_weight`, siehe [Strahlversagen](#strahlversagen-ab-m4-t2)); nicht mit `--hard-failure` | 10⁶ (`kDefaultFailWeight`) |
 | `--hard-failure` | hartes Strahlversagen wie vor M4-T2: versagte Strahlen maskiert (r = 0), keine Strafresiduen, kein Strafverfahren (`FailureMode::Hard`) | aus (weich) |
 | `--jacobian V` | Verfahren der Jacobi-Matrix (ab M5-T3, `LmOptions::jacobian_method`): `fd` zentrale finite Differenzen, `adjoint` adjungiert (Strahl- und Strafzeilen aus dem Rückwärtsdurchlauf; Zusatzzeilen weiter per zentraler FD), [optimierung.md, „Jacobi-Verfahren im LM“](optimierung.md#jacobi-verfahren-im-lm-ab-m5-t3) | `fd` |
+| `--reference-sphere K` | Referenzsphäre der Merit (ab M6-T7, [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md), [numerik.md, Abschnitt 7](numerik.md#referenzsphäre-um-den-bildpunkt-m6-t7-adr-0017)): `last_surface`, `image_exit_pupil` oder `image_infinite`; setzt das Feld `reference_sphere`, die Ergebnisdatei enthält es | wie die Datei (ohne Feld `last_surface`) |
 | `--sine-condition w` | Verletzung der Sinusbedingung als Residuum (ab M11-T4, [optimierung.md, Abschnitt 2.7](optimierung.md#27-sinusbedingung-ab-m11-t4)): setzt das Gewicht w ≥ 0 [Wellen²] des Eintrags `sine_condition` der Datei (Zonen bleiben) oder hängt ihn mit den Standardzonen 1/√2 und 1 an; nur kollimierte Quelle. Die Ergebnisdatei enthält den Eintrag | aus (wie die Datei) |
 | `--tolerance-aware A` | toleranzbewusste Optimierung (M11-T6, siehe [unten](#toleranzbewusste-optimierung-ab-m11-t6)): Merit (1 − A)·F + A·Mittel der Merits fest gestörter Systeme, 0 < A ≤ 1 | aus |
 | `--tolerance-samples S` | S ≥ 1 feste Stichproben des Toleranzsatzes statt ±δ je Zufallsgröße; 0 = ±δ; nur mit `--tolerance-aware` | 0 |
@@ -922,7 +924,7 @@ Wertet ein System im Modus EVAL aus (M8-T1): dichtes kartesisches N×N-Raster ü
 | `<system.json>` | Systemdatei | – |
 | `--grid N` | Raster N×N über das Quadrat der normierten Pupille, 1 ≤ N ≤ 2048 | 64 |
 | `--half` | nur die Hälfte x ≥ 0 rechnen (Symmetrie x → −x; nicht bei einer Punktquelle mit x ≠ 0) | aus |
-| `--reference R` | Referenzsphäre durch die Austrittspupille (`exit-pupil`) oder durch den Scheitel der letzten Fläche (`vertex`, wie `trace`) | `exit-pupil` |
+| `--reference R` | Referenzsphäre durch die Austrittspupille (`exit-pupil`), durch den Scheitel der letzten Fläche (`vertex`, wie `trace` ohne `reference_sphere`) oder um den Bildpunkt mit unendlichem Radius (`infinite`, ab M6-T7, wie die Merit mit `reference_sphere: "image_infinite"`) | `infinite`, wenn die Datei `reference_sphere: "image_infinite"` setzt, sonst `exit-pupil` |
 | `--json` | maschinenlesbare Ausgabe `mikroptim.eval/1` | aus |
 | `--map F,L` | OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben; verlangt `--map-file` | – |
 | `--map-file D` | Zieldatei der Karte (CSV) | – |
@@ -1231,6 +1233,7 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--predictor` | Start jedes Apertur-/Feldschritts aus der Sekante der beiden letzten angenommenen Zustände (M11-T3; nicht mit `--beam`, Standard aus) |
 | `--augmented-lagrangian K[,T[,S]]` | Augmented Lagrangian statt Penalty-Fortsetzung (M11-T2, [optimierung.md, Abschnitt 2.6](optimierung.md#26-augmented-lagrangian-für-einseitige-bedingungen-m11-t2)): am Start und nach jedem Einfügen höchstens K Optimierungen (Schrittart `penalty`) mit dem festen Faktor S auf die Gewichte der einseitigen Bedingungen (Standard 1) bis max √w\|Δθ\| ≤ T (Standard 10⁻⁶); nach jeder Optimierung werden die Verschiebungen θ fortgeschrieben, auch in den stetigen Schritten. Im Protokoll `lm.shift_change` (nur mit der Option), in den Optionen `augmented_lagrangian` (sonst `null`); als Neustartzustand die Verschiebungen am Endpunkt in `augmented_lagrangian.shifts` (`item`, `index`, `type`, `shift`; Entscheidung Maintainer 2026-11-19). Nicht mit `--beam`; Standard aus |
 | `--shifts-from DATEI` | Neustart: θ aus dem Protokoll (`--log`) bzw. der JSON-Ausgabe eines früheren Laufs (`synth` oder `optimize`, Feld `augmented_lagrangian.shifts`) in die Startdatei schreiben, etwa um mit der Ergebnisdatei (`-o`) weiterzulaufen; verlangt `--augmented-lagrangian` | – |
+| `--reference-sphere K` | Referenzsphäre der Merit in allen Läufen (ab M6-T7, ADR-0017): `last_surface`, `image_exit_pupil` oder `image_infinite`; setzt das Feld `reference_sphere` der Startdatei (steht in allen Ergebnisdateien) | wie die Datei |
 | `--sine-condition W` | Verletzung der Sinusbedingung als Residuum mit Gewicht W ≥ 0 [Wellen²] in jedem LM-Lauf (Eintrag `sine_condition` wie bei `optimize` gesetzt oder angehängt, M11-T4); steht in der Ergebnisdatei und im Protokoll (`options.sine_condition`, sonst `null`). Standard: wie die Datei |
 | `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |
 | `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |

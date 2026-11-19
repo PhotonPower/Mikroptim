@@ -70,8 +70,12 @@ EvalReference parse_reference(const std::string& reference) {
     if (reference == "vertex") {
         return EvalReference::Vertex;
     }
-    throw std::invalid_argument("reference erwartet \"exit-pupil\" oder \"vertex\", nicht \"" +
-                                reference + "\"");
+    if (reference == "infinite") {
+        return EvalReference::Infinite;
+    }
+    throw std::invalid_argument(
+        "reference erwartet \"exit-pupil\", \"vertex\" oder \"infinite\", nicht \"" + reference +
+        "\"");
 }
 
 PyEvaluation evaluate_system(const PySystem& s, int grid, bool half, const std::string& reference,

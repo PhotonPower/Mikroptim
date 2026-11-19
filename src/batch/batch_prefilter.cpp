@@ -162,7 +162,7 @@ VariantStats variant_stats(const SystemBatchHost& batch, int v, const ResidualLa
     for (int f = 0; f < layout.fields(); ++f) {
         const PupilQuadrature<float> q = to_float(layout.quadrature(f));
         const int n = sample_count(q);
-        const Vec3<float> center = batch_image_point(view, table.view, v, f);
+        const ReferenceSphere<float> ref = batch_reference(view, table.view, v, f);
         opl.assign(static_cast<std::size_t>(n), 0.0f);
         cls.assign(static_cast<std::size_t>(n), 0);
         for (int l = 0; l < layout.wavelengths(); ++l) {
@@ -174,7 +174,7 @@ VariantStats variant_stats(const SystemBatchHost& batch, int v, const ResidualLa
                 const auto ku = static_cast<std::size_t>(k);
                 const PupilSample<float> s = sample(q, k);
                 const PrefilterRay<float> r =
-                    prefilter_ray(view, table.view, l, v, f, l, s, center, offset);
+                    prefilter_ray(view, table.view, l, v, f, l, s, ref, offset);
                 const bool ok = r.status == TraceStatus::Ok;
                 const bool certain = r.margin > eta;
                 cls[ku] = static_cast<std::uint8_t>(ok ? (certain ? 0 : 2) : (certain ? 1 : 3));

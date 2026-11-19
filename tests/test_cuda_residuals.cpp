@@ -296,6 +296,76 @@ TEST(CudaResiduals, MatchCpuForPerturbedVariants) {
     }
 }
 
+// Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017): GPU gegen CPU wie oben für beide Radien,
+// weich und hart, mit Geisterplatten; dazu Varianten mit kleinem Radius (κ von Hand), in denen
+// Strahlen die Sphäre verfehlen.
+TEST(CudaResiduals, MatchCpuWithImageReference) {
+    MKO_REQUIRE_GPU();
+    struct Case {
+        const char* file;
+        mko::ReferenceSphereKind kind;
+        std::uint64_t seed;
+        ResidualSettings settings;
+        bool small_radius;
+    };
+    const Case cases[] = {
+        {"einzellinse_bk7.json", mko::ReferenceSphereKind::ImageInfinite, 1101, {}, false},
+        {"testsystem_mehrlinser.json", mko::ReferenceSphereKind::ImageExitPupil, 1202, {}, false},
+        {"testsystem_mehrlinser.json",
+         mko::ReferenceSphereKind::ImageExitPupil,
+         1303,
+         {6, 5, mko::FailureMode::Hard},
+         false},
+        {"einzellinse_geisterplatte.json",
+         mko::ReferenceSphereKind::ImageExitPupil,
+         1404,
+         {},
+         false},
+        {"einzellinse_bk7.json", mko::ReferenceSphereKind::ImageExitPupil, 1505, {}, true},
+        {"einzellinse_bk7.json",
+         mko::ReferenceSphereKind::ImageExitPupil,
+         1606,
+         {10, 8, mko::FailureMode::Hard},
+         true}};
+    for (const Case& cs : cases) {
+        SCOPED_TRACE(cs.file);
+        SCOPED_TRACE(mko::reference_sphere_name(cs.kind));
+        mko::SystemDescription d = mko::test::load_residual_system(cs.file).system;
+        d.reference_sphere = cs.kind;
+        const mko::LoadedSystem ls =
+            mko::prepare_system(d, std::filesystem::path(mko::test::kResidualSystems));
+        SystemBatchHost batch = mko::test::perturbed_batch(ls, 500, cs.seed);
+        mko::update_reference_curvature(batch);
+        if (cs.small_radius) {
+            std::mt19937_64 rng(cs.seed);
+            std::uniform_real_distribution<double> u(0.5, 20.0);
+            for (int v = 1; v < batch.variants(); ++v) {
+                for (int f = 0; f < batch.fields(); ++f) {
+                    batch.reference_curvature(v, f) = (v % 2 == 0 ? 1.0 : -1.0) / u(rng);
+                }
+            }
+        }
+        const ResidualLayout layout(batch.topology(), cs.settings);
+        const ResidualResult gpu = gpu_residuals(batch, cs.settings);
+        const ResidualResult cpu = mko::residuals_cpu(batch, layout);
+        const Comparison c = compare(gpu, cpu, batch, layout);
+        EXPECT_GT(c.failed, 0u);
+        std::size_t sphere_failures = 0;
+        for (std::size_t i = 0; i < cpu.status.size(); ++i) {
+            const auto st = static_cast<TraceStatus>(cpu.status[i]);
+            sphere_failures += st == TraceStatus::Missed || st == TraceStatus::SoftMissed ? 1 : 0;
+        }
+        if (cs.small_radius) {
+            EXPECT_GT(sphere_failures, 0u);
+        }
+        std::printf("[ Info     ] %s (%s, %s): %zu Strahlen, %zu versagt (%zu weich, %zu "
+                    "verfehlt), max |dr| = %.3e mm, max |dOPD| = %.3e mm, max |dπ| = %.3e\n",
+                    cs.file, mko::reference_sphere_name(cs.kind),
+                    mko::failure_mode_name(cs.settings.failure), c.rays, c.failed, c.soft,
+                    sphere_failures, c.max_residual, c.max_opd, c.max_penalty);
+    }
+}
+
 // Geisterplatten (M4-T5): Geisterdaten im Shared Memory des Kernels gegen die CPU-Referenz für
 // gestörte Varianten, auch mit gestörten Koeffizienten und Brechzahlen der virtuellen Gläser.
 // Systeme: einzellinse_geisterplatte.json (zwei Platten in einem Spalt) und der Mehrlinser mit

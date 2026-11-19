@@ -30,8 +30,23 @@ MKO_HD inline auto batch_image_point(const SystemBatchView<B>& b, const SurfaceT
                    table.thickness[table.surfaces - 1]};
 }
 
-// Optische Weglänge eines Strahls (v, f, l, Stützstelle `s`) bis zur Referenzsphäre um
-// `center`: batch_source_ray, dann trace_to_reference_sphere über `table` mit
+// Referenzsphäre der Variante v für Feld f (ADR-0017): Mittelpunkt batch_image_point, Art aus
+// dem Batch, bei den Arten am Bildpunkt κ = reference_curvature[v][f] (sonst 0, unbenutzt).
+// Rechentyp wie batch_image_point.
+template <class B, class SurfaceTable>
+MKO_HD inline auto batch_reference(const SystemBatchView<B>& b, const SurfaceTable& table, int v,
+                                   int f) {
+    using R = std::remove_cv_t<std::remove_reference_t<decltype(table.thickness[0])>>;
+    ReferenceSphere<R> ref{batch_image_point(b, table, v, f), R(0), b.reference_sphere};
+    if (is_image_reference(b.reference_sphere)) {
+        ref.kappa = R(b.reference_curvature[b.shape.field_at(v, f)]);
+    }
+    return ref;
+}
+
+// Optische Weglänge eines Strahls (v, f, l, Stützstelle `s`) bis zur Referenzsphäre `ref`
+// (batch_reference; die Form mit `center` ist die Sphäre durch den Scheitel der letzten
+// Fläche): batch_source_ray, dann trace_to_reference_sphere über `table` mit
 // Wellenlängenindex `table_l`. `table` ist die Flächentabelle der Variante v: auf der CPU
 // view.surface_table(v) mit table_l = l, im Kernel die Kopie im Shared Memory, die nur die
 // Brechzahlen der Wellenlänge l enthält (wavelengths = 1, table_l = 0). Beide liefern
@@ -51,14 +66,26 @@ template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserv
           class Recorder = NoTraceRecorder>
 MKO_HD inline TraceStatus
 batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table, int table_l, int v, int f,
-              int l, const PupilSample<R>& s, Vec3<R> center, R* opl, Observer* observer = nullptr,
+              int l, const PupilSample<R>& s, const ReferenceSphere<R>& ref, R* opl,
+              Observer* observer = nullptr,
               typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
               Recorder* recorder = nullptr) {
     Ray<R> ray = batch_source_ray(b, v, f, l, s);
     const TraceStatus st =
-        trace_to_reference_sphere(table, table_l, ray, center, nullptr, observer, soft, recorder);
+        trace_to_reference_sphere(table, table_l, ray, ref, nullptr, observer, soft, recorder);
     *opl = ray.opl;
     return st;
+}
+
+template <class R, class B, class SurfaceTable, class Observer = NoSurfaceObserver,
+          class Recorder = NoTraceRecorder>
+MKO_HD inline TraceStatus
+batch_ray_opl(const SystemBatchView<B>& b, const SurfaceTable& table, int table_l, int v, int f,
+              int l, const PupilSample<R>& s, Vec3<R> center, R* opl, Observer* observer = nullptr,
+              typename detail::NonDeduced<SoftFailure<R>>::type* soft = nullptr,
+              Recorder* recorder = nullptr) {
+    const ReferenceSphere<R> ref{center, R(0), ReferenceSphereKind::LastSurface};
+    return batch_ray_opl(b, table, table_l, v, f, l, s, ref, opl, observer, soft, recorder);
 }
 
 // Normiertes Gewicht ŵ_f · ŵ_λ = (w_f / Σ w_f') · (w_λ / Σ w_λ') eines Tupels (0, wenn w_f = 0

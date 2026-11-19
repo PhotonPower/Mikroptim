@@ -112,6 +112,8 @@ struct OptimizeArgs {
     bool have_max_iterations = false;
     // Globale Suche (M11-T7): --global cma|starts[,schlüssel=wert…], Standard aus
     std::optional<MemeticOptions> global;
+    // Referenzsphäre (ADR-0017): überschreibt das Feld reference_sphere der Datei
+    std::optional<ReferenceSphereKind> reference_sphere;
 };
 
 // --global METHODE[,population=N][,generations=G][,iterations=L][,budget=B][,sigma=s][,seed=n]
@@ -281,6 +283,8 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             a.have_seed = true;
         } else if (arg == "--sine-condition") {
             a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
+        } else if (arg == "--reference-sphere") {
+            a.reference_sphere = parse_reference_sphere(arg, next_value(args, i, arg));
         } else if (arg == "--fail-weight") {
             a.fail_weight = parse_double(arg, next_value(args, i, arg));
             if (!(a.fail_weight > 0.0) || !std::isfinite(a.fail_weight)) {
@@ -1350,6 +1354,8 @@ void print_optimize_usage(std::ostream& out) {
            "  --hard-failure     hartes Strahlversagen wie in M3 (ohne Strafresiduen)\n"
            "  --sine-condition w Verletzung der Sinusbedingung (OSC) als Residuum mit Gewicht w\n"
            "                     (Eintrag sine_condition setzen oder anhängen, M11-T4)\n"
+           "  --reference-sphere K Referenzsphäre der Merit: last_surface, image_exit_pupil\n"
+           "                     oder image_infinite (setzt reference_sphere, ADR-0017)\n"
            "  --jacobian V       Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
            "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --tolerance-aware A\n"
@@ -1443,6 +1449,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         // im Ergebnis des früheren Laufs, nicht in der Systemdatei
         if (!a.shifts_from.empty()) {
             set_shift_values(r.loaded.system, read_shift_file(fs::path(a.shifts_from)));
+        }
+        if (a.reference_sphere) {
+            r.loaded.system.reference_sphere = *a.reference_sphere;
         }
         std::error_code ec;
         fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();

@@ -98,6 +98,18 @@ inline std::vector<PrefilterTestSet> prefilter_test_sets(int variants, std::uint
     out.push_back({"einzellinse_geisterplatte",
                    multistart_batch(load_residual_system("einzellinse_geisterplatte.json"),
                                     variants, seed + 3)});
+    // Referenzsphäre um den Bildpunkt (M6-T7, ADR-0017)
+    for (const auto& [file, kind] :
+         {std::pair<const char*, ReferenceSphereKind>{"testsystem_mehrlinser.json",
+                                                      ReferenceSphereKind::ImageExitPupil},
+          std::pair<const char*, ReferenceSphereKind>{"einzellinse_geisterplatte.json",
+                                                      ReferenceSphereKind::ImageInfinite}}) {
+        SystemDescription d = load_residual_system(file).system;
+        d.reference_sphere = kind;
+        out.push_back({std::string(file) + " " + reference_sphere_name(kind),
+                       multistart_batch(prepare_system(d, std::filesystem::path(kResidualSystems)),
+                                        variants, seed + 4 + static_cast<std::uint64_t>(kind))});
+    }
     return out;
 }
 
