@@ -49,7 +49,7 @@ ctest --preset release-cuda
 ./build/release-cpu/mikroptim trace data/systems/einzellinse_bk7.json
 ```
 
-Mit Visual Studio liegen die Programme unter `build/<preset>/Release/` bzw. `Debug/`. Sind unter Windows mehrere CUDA-Toolkits installiert, wählt `-T "cuda=<Pfad zum CUDA-Toolkit>"` beim Konfigurieren das richtige (siehe [docs/hardware.md](docs/hardware.md)).
+Mit Visual Studio liegen die Programme unter `build/<preset>/Release/` bzw. `Debug/`. Sind unter Windows mehrere CUDA-Toolkits installiert, wählt `-T "cuda=<Pfad zum CUDA-Toolkit>"` beim Konfigurieren das richtige (siehe [docs/hardware.md](docs/hardware.md)). **Nie während eines laufenden Builds rebasen, auschecken oder Header ändern:** MSBuild übersetzt Dateien, die sich während ihrer Übersetzung geändert haben, später nicht mehr neu (veraltete Objektdateien, scheinbare Testfehler). `tools/bauen.ps1` (statt `cmake --build`) erkennt das und baut die betroffenen Dateien nach; Einzelheiten und Prüfskript in [docs/hardware.md, „Bauen unter Windows“](docs/hardware.md#bauen-unter-windows).
 
 Ein System auswerten (Paraxialdaten, RMS-Wellenfront pro Feld und Wellenlänge, versagte Strahlen; mit `--json` maschinenlesbar, siehe [docs/cli.md](docs/cli.md)):
 
