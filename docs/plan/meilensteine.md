@@ -431,7 +431,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abnahme:** OSC = 0 für aplanatische Orakel; M6-T6-Versuch „Apertur zuerst“ mit deutlich kleinerem RMS bei 7 % und 10 % Feld.
 - **Stand:** umgesetzt als Nebenbedingung `sine_condition` (ein Residuum √w · OSC pro Zone, eigener Zonenstrahl auf dem Host; `optimize`/`synth --sine-condition w`). Orakel: zur Blende konzentrische Systeme |OSC| ≤ 4,4·10⁻¹⁶. Versuch „Apertur zuerst auf der Achse“: am Endpunkt der Synthese RMS bei 7/10 % Feld 14,6/20,9 → 0,80/0,80 Wellen; die hohe NA erreicht der Versuch ohne die Falle F12 aber nicht (Stillstand bei NA 0,37 mit und ohne Residuum), nachoptimiert ohne Geisterplatten ist der Unterschied dort klein ([Bericht](../ergebnisse/m11-t4-sinusbedingung.md)).
 
-### M11-T5 – Algebraische Glasvorauswahl ✅
+### M11-T5 – Algebraische Glasvorauswahl ✅ (#101)
 - **Abhängig von:** M6-T2
 - **Inhalt:** Bewertung von Glaspaaren und -tripeln über Buchdahl-Koeffizienten und Randstrahlhöhen, Anbindung an Operator B.
 - **Abnahme:** Zwei Gläser entsprechen dem dünnen Achromat; konstruiertes Tripel gefunden; bester Vorschlag unter den besten fünf nach Raytrace.
