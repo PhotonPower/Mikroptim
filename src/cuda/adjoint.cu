@@ -313,6 +313,8 @@ AdjointKernelInfo adjoint_kernel_info(RecordStorage storage, int capacity, Preci
     info.local_bytes = attr.localSizeBytes;
     info.shared_bytes = attr.sharedSizeBytes;
     info.max_threads_per_block = attr.maxThreadsPerBlock;
+    MKO_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&info.blocks_per_sm, fn, kBlockThreads, 0));
     return info;
 }
 

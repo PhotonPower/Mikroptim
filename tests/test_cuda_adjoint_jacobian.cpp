@@ -212,10 +212,13 @@ TEST(CudaAdjointJacobian, KernelResources) {
              {mko::kRecordCapacitySmall, mko::kRecordCapacityMedium, mko::kRecordCapacityLarge}) {
             const mko::cuda::AdjointKernelInfo info =
                 mko::cuda::adjoint_jacobian_kernel_info(cap, prec);
-            std::printf("adjoint_jacobian_kernel<%s, %d>: %d Register, Stack %zu B, Shared %zu B\n",
+            std::printf("adjoint_jacobian_kernel<%s, %d>: %d Register, Stack %zu B, Shared %zu B, "
+                        "%d Blöcke/SM\n",
                         mko::cuda::to_string(prec), cap, info.registers, info.local_bytes,
-                        info.shared_bytes);
+                        info.shared_bytes, info.blocks_per_sm);
             EXPECT_GE(info.max_threads_per_block, mko::cuda::kAdjointJacobianThreads);
+            // Startgrenzen (M7-T4): FP64 3, df64 5 Blöcke pro SM (höchstens 96 Register)
+            EXPECT_GE(info.blocks_per_sm, prec == Precision::Df64 ? 5 : 3);
             EXPECT_LE(info.shared_bytes + 17 * 1024, 48u * 1024u);
         }
     }

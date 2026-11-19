@@ -94,9 +94,29 @@ __device__ inline void block_piston_weight(PistonWeightShared<R>& sh, R weight_o
     w_ok = sh.weight_ok;
 }
 
+// Mindestzahl residenter Blöcke à 128 Threads pro SM (__launch_bounds__, M7-T4,
+// docs/benchmarks.md, "Profiling und Tuning, Teil 2"). Ohne Grenze belegt der Kernel 158–168
+// Register, also 3 Blöcke pro SM. df64 ist latenzbegrenzt: 5 Blöcke (höchstens 96 Register,
+// Stack +150 B) machen ihn auf der RTX 3090 bis 1,4-mal so schnell. FP64 begrenzt die
+// FP64-Einheit: eine Grenze von 3, 4 oder 5 Blöcken ändert die Zeit je nach Fall um −13 … +15 %,
+// daher 0 = keine Grenze (derselbe SASS wie vor M7-T4, verglichen). Gemessen nur auf sm_86; sm_89
+// hat dieselbe Registerdatei (64 K pro SM) und Warp-Grenze (48 pro SM), dort ungeprüft.
+// Messschalter: -DMKO_ADJOINT_MIN_BLOCKS_FP64=N bzw. -DMKO_ADJOINT_MIN_BLOCKS_DF64=N in
+// CMAKE_CUDA_FLAGS.
+#ifndef MKO_ADJOINT_MIN_BLOCKS_FP64
+#define MKO_ADJOINT_MIN_BLOCKS_FP64 0
+#endif
+#ifndef MKO_ADJOINT_MIN_BLOCKS_DF64
+#define MKO_ADJOINT_MIN_BLOCKS_DF64 5
+#endif
+template <class R>
+constexpr int kAdjointMinBlocks = MKO_ADJOINT_MIN_BLOCKS_FP64;
+template <>
+constexpr int kAdjointMinBlocks<df64> = MKO_ADJOINT_MIN_BLOCKS_DF64;
+
 // Block b = (v · F + f) · L + l.
 template <class R, int kCapacity, bool kTransforms>
-__global__ void __launch_bounds__(kBlockThreads)
+__global__ void __launch_bounds__(kBlockThreads, kAdjointMinBlocks<R>)
     adjoint_jacobian_kernel(const JacobianKernelArgs a) {
     __shared__ detail::BlockTable<R> sh_table;
     __shared__ PistonWeightShared<R> sh_piston;
@@ -297,6 +317,8 @@ AdjointKernelInfo adjoint_jacobian_kernel_info(int capacity, Precision precision
     info.local_bytes = attr.localSizeBytes;
     info.shared_bytes = attr.sharedSizeBytes;
     info.max_threads_per_block = attr.maxThreadsPerBlock;
+    MKO_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&info.blocks_per_sm, fn, kBlockThreads, 0));
     return info;
 }
 

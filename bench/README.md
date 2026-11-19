@@ -109,6 +109,7 @@ cmake --build --preset release-cuda --target jacobian_throughput
 | `--rings N`, `--spokes M` | Pupillenquadratur | 10 × 8 |
 | `--hard-failure` | hartes Strahlversagen (ohne Strafzeilen) | weich |
 | `--extra-threads N` | Host-Threads der Zusatzresiduen | wie im LM (`lm_host_threads`) |
+| `--no-fd` | nur die adjungierte Jacobi messen (M7-T4); FD-Spalten, Faktoren und `|ΔA|` bleiben leer (`nan`) | – |
 | `--repeat R`, `--warmup W` | gemessene Läufe, Aufwärmläufe | 5, 1 |
 | `--csv DATEI` | Ergebnisse als CSV (`-` = Standardausgabe) | – |
 | `--quiet` | keine Tabelle | – |

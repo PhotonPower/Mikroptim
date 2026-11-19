@@ -93,6 +93,9 @@ struct AdjointKernelInfo {
     std::size_t local_bytes = 0;
     std::size_t shared_bytes = 0;
     int max_threads_per_block = 0;
+    // Residente Blöcke pro SM bei der Blockgröße des Kernels ohne dynamischen Shared Memory
+    // (cudaOccupancyMaxActiveBlocksPerMultiprocessor; M7-T4).
+    int blocks_per_sm = 0;
 };
 
 // Ressourcen der Kernel-Variante für (storage, capacity, precision) auf `device` (< 0: aktuelles

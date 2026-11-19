@@ -116,6 +116,7 @@ struct Options {
     int spokes = 8;
     bool hard_failure = false;
     int extra_threads = 0; // <= 0: wie das GPU-Backend des LM (lm_host_threads)
+    bool no_fd = false; // FD-Jacobi nicht messen (M7-T4)
     int repeat = 5;
     int warmup = 1;
     std::string csv;
@@ -216,6 +217,8 @@ Options parse_args(int argc, char** argv) {
             o.hard_failure = true;
         } else if (arg == "--extra-threads") {
             o.extra_threads = parse_number<int>(arg, value());
+        } else if (arg == "--no-fd") {
+            o.no_fd = true;
         } else if (arg == "--repeat") {
             o.repeat = parse_number<int>(arg, value());
         } else if (arg == "--warmup") {
@@ -259,6 +262,7 @@ void print_usage() {
         "  --rings N, --spokes M  Pupillenquadratur (Standard 10 x 8)\n"
         "  --hard-failure      hartes Strahlversagen (ohne Strafzeilen; Standard weich)\n"
         "  --extra-threads N   Host-Threads der Zusatzresiduen (Standard wie im LM)\n"
+        "  --no-fd             nur die adjungierte Jacobi messen (FD-Spalten leer)\n"
         "  --repeat R          gemessene Läufe pro Fall (Standard 5)\n"
         "  --warmup W          Aufwärmläufe pro Fall (Standard 1)\n"
         "  --csv DATEI         Ergebnisse als CSV ('-' = Standardausgabe)\n"
@@ -408,9 +412,14 @@ struct Timing {
 };
 
 Timing summarize(std::vector<double> t) {
+    Timing r;
+    if (t.empty()) { // nicht gemessen (--no-fd)
+        r.median_s = std::numeric_limits<double>::quiet_NaN();
+        r.min_s = r.median_s;
+        return r;
+    }
     std::sort(t.begin(), t.end());
     const std::size_t n = t.size();
-    Timing r;
     r.median_s = n % 2 == 1 ? t[n / 2] : 0.5 * (t[n / 2 - 1] + t[n / 2]);
     r.min_s = t.front();
     return r;
@@ -472,12 +481,16 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, Precision type
     for (int i = 0; i < o.warmup + o.repeat; ++i) {
         const bool record = i >= o.warmup;
         auto t0 = std::chrono::steady_clock::now();
-        fd.compute(engine, set, base, starts, fo, type);
-        auto t1 = std::chrono::steady_clock::now();
-        normal.compute(fd);
-        normal.download(a, g);
-        auto t2 = std::chrono::steady_clock::now();
-        if (record) {
+        auto t1 = t0;
+        auto t2 = t0;
+        if (!o.no_fd) {
+            fd.compute(engine, set, base, starts, fo, type);
+            t1 = std::chrono::steady_clock::now();
+            normal.compute(fd);
+            normal.download(a, g);
+            t2 = std::chrono::steady_clock::now();
+        }
+        if (record && !o.no_fd) {
             fd_j.push_back(seconds(t0, t1));
             fd_total.push_back(seconds(t0, t2));
         }
@@ -496,13 +509,15 @@ Result run_case(mko::cuda::TraceEngine& engine, const Options& o, Precision type
     }
     // Kontrolle: A aus beiden Verfahren (Fehler der FD-Jacobi)
     std::vector<double> a_fd;
-    normal.compute(fd);
-    normal.download(a_fd, g);
+    if (!o.no_fd) {
+        normal.compute(fd);
+        normal.download(a_fd, g);
+    }
     normal.compute(ad);
     normal.download(a, g);
     double a_max = 0.0;
     double d_max = 0.0;
-    for (std::size_t k = 0; k < a.size(); ++k) {
+    for (std::size_t k = 0; k < a_fd.size(); ++k) {
         a_max = std::max(a_max, std::abs(a_fd[k]));
         d_max = std::max(d_max, std::abs(a[k] - a_fd[k]));
     }
