@@ -157,6 +157,15 @@ ReferenceSphereKind parse_reference_sphere(std::string_view option, std::string_
                      std::string(text) + "'");
 }
 
+bool warn_missing_reference_sphere(std::ostream& err, std::string_view command,
+                                   const SystemDescription& system, bool suppressed) {
+    if (suppressed || system.reference_sphere) {
+        return false;
+    }
+    err << "mikroptim " << command << ": Warnung: " << kReferenceSphereWarning << '\n';
+    return true;
+}
+
 double parse_sine_condition_weight(std::string_view option, std::string_view text) {
     const double w = parse_double(option, text);
     if (!(w >= 0.0)) {

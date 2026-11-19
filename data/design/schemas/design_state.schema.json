@@ -402,6 +402,26 @@
       "type": "object",
       "description": "Wellenlängen, Feldwinkel und Vorzeichen des Aberrationsberichts"
     },
+    "reference_sphere": {
+      "type": "object",
+      "description": "Referenzsphäre der Merit (ADR-0017): Feld reference_sphere der Systemdatei, ohne Feld die alte Konvention last_surface (explicit = false)",
+      "required": [
+        "kind",
+        "explicit"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "last_surface",
+            "image_exit_pupil",
+            "image_infinite"
+          ]
+        },
+        "explicit": {
+          "type": "boolean"
+        }
+      }
+    },
     "sine_condition": {
       "type": "object",
       "properties": {

@@ -42,6 +42,7 @@ struct ToleranceArgs {
     std::string file;
     bool json = false;
     bool help = false;
+    bool no_reference_warning = false; // --no-reference-warning (ADR-0017)
     bool gpu = false;
     bool have_device = false;
     int device = 0;
@@ -69,6 +70,8 @@ ToleranceArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--gpu") {
             a.gpu = true;
         } else if (arg == "--device") {
@@ -477,6 +480,8 @@ void print_tolerance_usage(std::ostream& out) {
            "                    (Standard: Datei, sonst wd)\n"
            "  --threshold S     Strehl-Schwelle der Ausbeute (Standard 0.8)\n"
            "  --json            maschinenlesbare Ausgabe (Format mikroptim.tolerance/1)\n"
+           "  --no-reference-warning  keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                    reference_sphere hat (dann gilt last_surface)\n"
            "  --histogram D     Histogramm von kleinstem Strehl und RMS gesamt als CSV nach D\n"
            "  --bins K          Klassen des Histogramms (Standard 20)\n"
            "  --samples-file D  Werte pro Stichprobe als CSV nach D\n"
@@ -542,6 +547,7 @@ int run_tolerance_command(std::span<const std::string_view> args, std::ostream& 
         for (const std::string& w : r.loaded.warnings) {
             err << "mikroptim tolerance: Warnung: " << w << '\n';
         }
+        warn_missing_reference_sphere(err, "tolerance", r.loaded.system, a.no_reference_warning);
         if (!r.loaded.system.tolerances) {
             throw std::invalid_argument("keine Toleranzen: die Systemdatei hat keinen Abschnitt "
                                         "\"tolerances\" (docs/dateiformat.md)");

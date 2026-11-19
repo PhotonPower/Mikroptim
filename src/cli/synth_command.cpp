@@ -70,6 +70,7 @@ struct SynthArgs {
     bool predictor = false;               // M11-T3
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
+    bool no_reference_warning = false;                   // --no-reference-warning
     // Augmented Lagrangian (M11-T2): Läufe K, Toleranz T, Faktor S auf die Gewichte (K = 0: aus)
     int al_rounds = 0;
     double al_tolerance = kDefaultShiftTolerance;
@@ -112,7 +113,8 @@ struct SynthArgs {
     double tol_alpha = 0.0;
     int tol_samples = 0;
     std::uint64_t tol_seed = 0;
-    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Keep;
+    // Standard remove (Entscheidung des Maintainers 2026-11-19, ADR-0018, Nachtrag)
+    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Remove;
     bool have_tol_detail = false;
     bool have_tol_seed = false;
 };
@@ -200,6 +202,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
         } else if (arg == "--reference-sphere") {
             a.reference_sphere = parse_reference_sphere(arg, next_value(args, i, arg));
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--extrema-beta") {
             a.extrema_beta = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--extrema-stages") {
@@ -431,7 +435,10 @@ void print_synth_usage(std::ostream& out) {
            "  --sine-condition W        Verletzung der Sinusbedingung (OSC) als Residuum mit\n"
            "                            Gewicht W (Eintrag sine_condition setzen, M11-T4)\n"
            "  --reference-sphere K      Referenzsphäre der Merit: last_surface,\n"
-           "                            image_exit_pupil oder image_infinite (ADR-0017)\n"
+           "                            image_exit_pupil oder image_infinite (ADR-0017;\n"
+           "                            für Geisterplatten empfohlen: image_infinite)\n"
+           "  --no-reference-warning    keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                            reference_sphere hat (dann gilt last_surface)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
            "bis 1\n"
            "                            mit adaptiver Schrittweite (M11-T5f)\n"
@@ -471,8 +478,9 @@ void print_synth_usage(std::ostream& out) {
            "                            die Strahlsuche ordnet nach dieser Merit (Standard aus)\n"
            "  --tolerance-samples S     S feste Stichproben statt +-delta (Standard 0)\n"
            "  --tolerance-seed n        Startwert der Stichproben (Standard 0)\n"
-           "  --tolerance-tilt K        keep (Standard) oder remove: gestörte Systeme nach\n"
-           "                            Abzug von Kolben und Kippung wie die Tolerierung\n"
+           "  --tolerance-tilt K        remove (Standard): gestörte Systeme nach Abzug von\n"
+           "                            Kolben und Kippung wie die Tolerierung; keep: volle\n"
+           "                            Merit\n"
            "  -o, --output <datei>      Ergebnis am Endpunkt als Systemdatei\n"
            "  --log <datei>             Protokoll als JSON (mikroptim.synth/1) in eine Datei\n"
            "  --json                    Ausgabe als JSON statt Text\n"
@@ -550,6 +558,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         for (const std::string& w : start.warnings) {
             err << "mikroptim synth: Warnung: " << w << '\n';
         }
+        warn_missing_reference_sphere(err, "synth", start.system, a.no_reference_warning);
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
         o.split.preselect = a.split_preselect;

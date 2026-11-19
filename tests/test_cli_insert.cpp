@@ -299,7 +299,7 @@ TEST(CliInsert, RemovalWarnsAboutRaisedBound) {
     EXPECT_NE(r.out.find("Warnung: obere Schranke der Dicke nach Fläche 5"), std::string::npos)
         << r.out;
     // ohne Anhebung: leere Liste
-    r = insert({in, "--collapse", "4,0.1", "-o", out, "--json"});
+    r = insert({in, "--collapse", "4,0.1", "-o", out, "--json", "--no-reference-warning"});
     ASSERT_EQ(r.code, cli::kExitOk) << r.err;
     EXPECT_NE(r.out.find("\"warnings\": []"), std::string::npos);
     EXPECT_TRUE(r.err.empty());

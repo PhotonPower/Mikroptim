@@ -106,14 +106,16 @@ struct OptimizeArgs {
     bool have_tol_seed = false;
     enum class TolSet { Auto, File, Default } tol_set = TolSet::Auto;
     bool have_tol_set = false;
-    // M11-T6b: Bewertung der gestörten Systeme mit (keep, Standard) bzw. ohne Kippung (remove)
-    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Keep;
+    // M11-T6b: Bewertung der gestörten Systeme mit (keep) bzw. ohne Kippung (remove); Standard
+    // remove seit der Entscheidung des Maintainers vom 2026-11-19 (ADR-0018, Nachtrag)
+    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Remove;
     bool have_tol_tilt = false;
     bool have_max_iterations = false;
     // Globale Suche (M11-T7): --global cma|starts[,schlüssel=wert…], Standard aus
     std::optional<MemeticOptions> global;
     // Referenzsphäre (ADR-0017): überschreibt das Feld reference_sphere der Datei
     std::optional<ReferenceSphereKind> reference_sphere;
+    bool no_reference_warning = false; // --no-reference-warning
 };
 
 // --global METHODE[,population=N][,generations=G][,iterations=L][,budget=B][,sigma=s][,seed=n]
@@ -285,6 +287,8 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
         } else if (arg == "--reference-sphere") {
             a.reference_sphere = parse_reference_sphere(arg, next_value(args, i, arg));
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--fail-weight") {
             a.fail_weight = parse_double(arg, next_value(args, i, arg));
             if (!(a.fail_weight > 0.0) || !std::isfinite(a.fail_weight)) {
@@ -1356,7 +1360,10 @@ void print_optimize_usage(std::ostream& out) {
            "                     (Eintrag sine_condition setzen oder anhängen, M11-T4)\n"
            "  --reference-sphere K Referenzsphäre der Merit: last_surface, image_exit_pupil\n"
            "                     oder image_infinite (setzt reference_sphere, ADR-0017)\n"
-           "  --jacobian V       Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
+           "  --no-reference-warning\n"
+           "                     keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                     reference_sphere hat (dann gilt last_surface)\n"
+           "  --jacobian V      Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
            "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --tolerance-aware A\n"
            "                     toleranzbewusst: Merit (1-A)·F + A·Mittel F(gestört) über\n"
@@ -1366,8 +1373,8 @@ void print_optimize_usage(std::ostream& out) {
            "  --tolerance-seed n Startwert der Stichproben (Standard 0)\n"
            "  --tolerance-set T  file: Toleranzsatz der Datei; default: Mikroptim-Standardsatz\n"
            "                     (Standard: Datei, sonst Standardsatz)\n"
-           "  --tolerance-tilt K keep: gestörte Systeme mit voller Merit (Standard); remove:\n"
-           "                     nach Abzug von Kolben und Kippung wie die Tolerierung\n"
+           "  --tolerance-tilt K remove: gestörte Systeme nach Abzug von Kolben und Kippung\n"
+           "                     wie die Tolerierung (Standard); keep: mit voller Merit\n"
            "  --global M[,...]   globale Suche in fester Topologie (M11-T7): cma (CMA-ES mit\n"
            "                     kurzem LM pro Individuum) oder starts (gestörte Starts zum\n"
            "                     Vergleich); Einträge population=N (Standard 4 + 3 ln P),\n"
@@ -1453,6 +1460,7 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         if (a.reference_sphere) {
             r.loaded.system.reference_sphere = *a.reference_sphere;
         }
+        warn_missing_reference_sphere(err, "optimize", r.loaded.system, a.no_reference_warning);
         std::error_code ec;
         fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();
         if (ec) {

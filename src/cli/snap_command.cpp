@@ -55,6 +55,7 @@ struct SnapArgs {
     std::string output; // leer: keine Ergebnisdatei
     bool json = false;
     bool help = false;
+    bool no_reference_warning = false; // --no-reference-warning (ADR-0017)
     bool gpu = false;
     bool have_device = false;
     int device = 0;
@@ -87,6 +88,8 @@ SnapArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--gpu") {
             a.gpu = true;
         } else if (arg == "-o" || arg == "--output") {
@@ -490,6 +493,8 @@ void print_snap_usage(std::ostream& out) {
            "  die beste Kombination wird das Ergebnis. Beschreibung: docs/cli.md.\n"
            "  -o DATEI             Ergebnis als neue Systemdatei (nie die Eingabedatei)\n"
            "  --json               maschinenlesbare Ausgabe (Format mikroptim.snap/1)\n"
+           "  --no-reference-warning  keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                       reference_sphere hat (dann gilt last_surface)\n"
            "  --neighbors k        Katalog-Gläser pro Element, >= 1 (Standard "
         << kDefaultNeighbors
         << ")\n"
@@ -576,6 +581,7 @@ int run_snap_command(std::span<const std::string_view> args, std::ostream& out, 
             err << "mikroptim snap: Warnung: " << w << '\n';
             r.warnings.push_back(w);
         }
+        warn_missing_reference_sphere(err, "snap", loaded.system, a.no_reference_warning);
         const SystemDescription& sys = loaded.system;
         r.system_name = sys.name;
         const GlassHull hull = make_glass_hull(loaded.catalog);

@@ -26,6 +26,7 @@ add_executable(mikroptim_tests
     test_cli_eval.cpp
     test_cli_insert.cpp
     test_cli_optimize.cpp
+    test_cli_reference_warning.cpp
     test_cli_sensitivity.cpp
     test_cli_snap.cpp
     test_cli_synth.cpp
@@ -215,7 +216,7 @@ set_tests_properties(cli_optimize_no_variables PROPERTIES
 add_test(NAME cli_optimize_tolerance_aware
     COMMAND $<TARGET_FILE:mikroptim> optimize
             ${PROJECT_SOURCE_DIR}/data/systems/kittblock_toleranzbewusst.json
-            --tolerance-aware 0.5 --quiet)
+            --tolerance-aware 0.5 --tolerance-tilt keep --quiet)
 set_tests_properties(cli_optimize_tolerance_aware PROPERTIES
     PASS_REGULAR_EXPRESSION "Toleranzbewusst +alpha = 0\\.5000, S = 2.*Status +converged.*c\\[2\\] +1/mm +-1\\.0+e-01 +5\\.0+e-02 +-?[0-9.]+e-0[5-9]")
 if(MIKROPTIM_ENABLE_CUDA)

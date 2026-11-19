@@ -53,6 +53,7 @@ struct InsertArgs {
     std::string file;
     std::string output;
     bool help = false;
+    bool no_reference_warning = false; // --no-reference-warning (ADR-0017)
     std::optional<MeniscusInsertion> meniscus;
     std::optional<LensSplit> split;
     bool free_glass = false;
@@ -202,6 +203,8 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
             a.doublet = d;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--thickness") {
             a.thickness = parse_double(arg, next_value(args, i, arg));
         } else if (arg == "--free-glass") {
@@ -337,6 +340,8 @@ void print_insert_usage(std::ostream& out) {
            "                            Kittglied ohne Wirkung (drei Flächen C0, Dicke 0)\n"
            "  --no-variables            keine Krümmungsvariablen für die neuen Flächen\n"
            "  --json                    Bericht als JSON (mikroptim.insert/1)\n"
+           "  --no-reference-warning    keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                            reference_sphere hat (dann gilt last_surface)\n"
            "  -o, --output <datei>      neues System (Pflicht)\n";
 }
 
@@ -424,6 +429,7 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
     }
     try {
         const LoadedSystem before = load_system(a.file);
+        warn_missing_reference_sphere(err, "insert", before.system, a.no_reference_warning);
         SystemDescription result;
         // Eingefügte bzw. entfernte Flächen für den Bericht
         int first_new = -1;

@@ -85,12 +85,28 @@ void apply_sine_condition_option(SystemDescription& system, double weight);
 // das Feld fehlt bzw. nicht passt (Entscheidung des Maintainers 2026-11-19).
 std::vector<ShiftValue> read_shift_file(const std::filesystem::path& path);
 
-// ---- Referenzsphäre (trace, optimize, synth; ADR-0017) ---------------------------------------
+// ---- Referenzsphäre (ADR-0017) ------------------------------------------------------------
 
 // Wert der Option --reference-sphere: last_surface, image_exit_pupil oder image_infinite, sonst
 // UsageError. Die Option setzt das Feld reference_sphere der geladenen Systemdatei (auch in der
 // Ergebnisdatei).
 ReferenceSphereKind parse_reference_sphere(std::string_view option, std::string_view text);
+
+// Option, die die Warnung ohne Feld reference_sphere abschaltet (Entscheidung Maintainer
+// 2026-11-19).
+inline constexpr std::string_view kNoReferenceWarningOption = "--no-reference-warning";
+
+// Text der Warnung für Systemdateien ohne Feld reference_sphere.
+inline constexpr std::string_view kReferenceSphereWarning =
+    "Systemdatei ohne reference_sphere: es gilt die alte Konvention last_surface (ADR-0017); "
+    "für neue Systeme image_infinite oder image_exit_pupil setzen";
+
+// Einmalige Warnung "mikroptim <command>: Warnung: <kReferenceSphereWarning>" auf `err`, wenn
+// das (gegebenenfalls schon mit --reference-sphere überschriebene) System kein Feld
+// reference_sphere hat und `suppressed` (--no-reference-warning) falsch ist. Ergebnisse und
+// stdout (auch JSON) bleiben unverändert. Rückgabe: ob gewarnt wurde.
+bool warn_missing_reference_sphere(std::ostream& err, std::string_view command,
+                                   const SystemDescription& system, bool suppressed);
 
 // ---- Dateien (optimize, snap) ------------------------------------------------------------
 

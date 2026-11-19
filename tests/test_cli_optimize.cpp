@@ -187,7 +187,7 @@ double shape_factor(const std::vector<double>& x) {
 TEST(CliOptimize, MeritDecreasesAndResultReproducesMerit) {
     const TempDir dir("reload");
     const std::string out_file = dir.file("ergebnis.json");
-    const RunResult r = optimize({kBiegung, "-o", out_file, "--json"});
+    const RunResult r = optimize({kBiegung, "-o", out_file, "--json", "--no-reference-warning"});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     EXPECT_EQ(r.err, "");
     const json j = json::parse(r.out);
@@ -1032,7 +1032,10 @@ TEST(CliOptimize, ToleranceAware) {
     const std::string block = kSystems + "kittblock_toleranzbewusst.json";
     TempDir dir("tolerance_aware");
     const std::string out = dir.file("ergebnis.json");
-    RunResult r = optimize({block, "--tolerance-aware", "0.5", "--json", "--quiet", "-o", out});
+    // Erwartungen von M11-T6 (volle Merit der gestörten Systeme): seit dem Standard remove
+    // (Entscheidung Maintainer 2026-11-19) ausdrücklich mit --tolerance-tilt keep
+    RunResult r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "keep", "--json",
+                            "--quiet", "-o", out});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     const json j = json::parse(r.out);
     ASSERT_TRUE(j.contains("tolerance_aware"));
@@ -1089,16 +1092,21 @@ TEST(CliOptimize, ToleranceAware) {
     }
 }
 
-// --tolerance-tilt (M11-T6b): Standard keep (JSON wie bisher plus "tilt"), remove bewertet die
-// gestörten Systeme ohne Kippung; Ergebnis gleich der Bibliothek.
+// --tolerance-tilt (M11-T6b): keep bewertet die gestörten Systeme mit voller Merit (JSON wie
+// M11-T6 plus "tilt"), remove ohne Kippung; Ergebnis gleich der Bibliothek. Standard ist remove
+// (Entscheidung Maintainer 2026-11-19): ohne Option bitgleich zu --tolerance-tilt remove.
 TEST(CliOptimize, ToleranceAwareTilt) {
     const std::string block = kSystems + "kittblock_toleranzbewusst.json";
-    RunResult r =
-        optimize({block, "--tolerance-aware", "0.5", "--json", "--quiet", "--max-iterations", "3"});
+    RunResult r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "keep", "--json",
+                            "--quiet", "--max-iterations", "3"});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     EXPECT_EQ(json::parse(r.out)["tolerance_aware"]["tilt"], "keep");
+    const RunResult standard = optimize({block, "--tolerance-aware", "0.5", "--tolerance-set",
+                                         "default", "--json", "--quiet", "--max-iterations", "3"});
+    ASSERT_EQ(standard.code, mko::cli::kExitOk) << standard.err;
     r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "remove",
                   "--tolerance-set", "default", "--json", "--quiet", "--max-iterations", "3"});
+    EXPECT_EQ(standard.out, r.out);
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     const json j = json::parse(r.out);
     EXPECT_EQ(j["tolerance_aware"]["tilt"], "remove");

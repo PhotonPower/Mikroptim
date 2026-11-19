@@ -21,6 +21,14 @@ MIDDLE_FRACTION = 0.8
 ZONE_LIMITS = (0.051, 0.086, 0.95)
 
 
+def reference_sphere_state(data) -> dict:
+    """Konvention der Referenzsphäre, mit der Merit und RMS des Zustands gerechnet sind
+    (ADR-0017): ``kind`` aus dem Feld ``reference_sphere`` der Systemdatei, ohne Feld die alte
+    Konvention ``last_surface`` (``explicit`` = False; die CLI warnt dann auf stderr)."""
+    kind = data.get("reference_sphere")
+    return {"kind": kind or "last_surface", "explicit": kind is not None}
+
+
 def etendue_zone(G, magnification, na):
     """Etendue-Zone 1–6 (Zhang, Dissertation 2019, Abschnitt 4.2.2; Näherung)."""
     if magnification is not None and magnification < 4:
@@ -209,6 +217,7 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
         "sensitivity": sensitivity, "glasses": glasses,
         "aberration_settings": {k: ab[k] for k in ("reference_nm", "short_nm", "long_nm",
                                                    "field_angle_deg", "sign_convention")},
+        "reference_sphere": reference_sphere_state(data),
         "budget": budget or {}, "history": list(history or [])[-10:],
         "last_errors": list(last_errors or []),
     }
@@ -263,6 +272,13 @@ def _ghost_summary(diag):
     return {"active": active, "recommendation": diag.get("recommendation")}
 
 
+def _reference_line(ref) -> str:
+    if not ref:
+        return "  Referenzsphäre: –"
+    note = "" if ref["explicit"] else " (ohne Feld in der Datei: alte Konvention, ADR-0017)"
+    return f"  Referenzsphäre: {ref['kind']}{note}"
+
+
 def format_state(state: dict) -> str:
     """Kurze Textansicht des Zustands (für den Menschen auf der Kommandozeile)."""
     sp, m, p = state["spec"], state["merit"], state["paraxial"]
@@ -277,6 +293,7 @@ def format_state(state: dict) -> str:
         f"Feld {(state.get('classes') or {}).get('field', '–')} (Zhang)",
         f"  RMS max {_n(m['rms_max_waves'])} Wellen, Merit F {_n(m['F'])}, "
         f"versagte Strahlen {m['failed_rays']}",
+        _reference_line(state.get("reference_sphere")),
         f"  OSC Rand {_n(state['sine_condition']['osc'])}, Zone {_n(state['sine_condition']['osc_zone'])}",
         "  Gruppenbilanzen [Wellen]:  " + "  ".join(f"{k:>7}" for k in TEXT_KEYS),
     ]

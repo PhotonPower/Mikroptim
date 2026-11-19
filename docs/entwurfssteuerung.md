@@ -218,7 +218,7 @@ Ursprünglicher Entwurf:
 
 Schema: `data/design/schemas/design_state.schema.json`.
 
-Derselbe Zustand ist Grundlage der GUI-Ansicht eines Kandidaten und der Eingabe für das Sprachmodell. Für das Modell gilt ein Budget von etwa 4.000 Tokens. Pro Fläche werden nur die acht größten Beiträge jeder Aberrationsart gemeldet; die vollständige Tabelle liefert die Lese-Aktion `get_surface_table`. Beispiel (gekürzt, Zahlen erfunden):
+Derselbe Zustand ist Grundlage der GUI-Ansicht eines Kandidaten und der Eingabe für das Sprachmodell. Für das Modell gilt ein Budget von etwa 4.000 Tokens. Pro Fläche werden nur die acht größten Beiträge jeder Aberrationsart gemeldet; die vollständige Tabelle liefert die Lese-Aktion `get_surface_table`. Das Feld `reference_sphere` (`kind`, `explicit`) nennt die Konvention der Referenzsphäre, mit der Merit und RMS gerechnet sind (ADR-0017; ohne Feld in der Datei `last_surface` mit `explicit` = false, Entscheidung Maintainer 2026-11-19). Beispiel (gekürzt, Zahlen erfunden):
 
 ```json
 {

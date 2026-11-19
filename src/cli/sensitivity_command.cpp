@@ -48,6 +48,7 @@ struct SensitivityArgs {
     std::string file;
     bool json = false;
     bool help = false;
+    bool no_reference_warning = false; // --no-reference-warning (ADR-0017)
     bool gpu = false;
     bool have_device = false;
     int device = 0;
@@ -85,6 +86,8 @@ SensitivityArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--gpu") {
             a.gpu = true;
         } else if (arg == "--device") {
@@ -518,6 +521,8 @@ void print_sensitivity_usage(std::ostream& out) {
            "                    ungeeignet (Standard 0.1)\n"
            "  --manufacturability-only  nur die Herstellbarkeit, ohne Trace\n"
            "  --json            maschinenlesbare Ausgabe (Format mikroptim.sensitivity/1)\n"
+           "  --no-reference-warning  keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "                    reference_sphere hat (dann gilt last_surface)\n"
            "  --gpu             Trace auf der GPU (RESIDUALS) statt auf der CPU\n"
            "  --device N        CUDA-Gerät für --gpu (Standard 0)\n"
            "  --help            diese Hilfe\n"
@@ -576,6 +581,9 @@ int run_sensitivity_command(std::span<const std::string_view> args, std::ostream
         for (const std::string& w : r.loaded.warnings) {
             err << "mikroptim sensitivity: Warnung: " << w << '\n';
         }
+        // ohne Trace (nur Herstellbarkeit) hängt nichts an der Referenzsphäre
+        warn_missing_reference_sphere(err, "sensitivity", r.loaded.system,
+                                      a.no_reference_warning || a.manufacturability_only);
         r.manufacturability = check_manufacturability(r.loaded.system, a.limits);
         if (!a.manufacturability_only) {
             SystemDescription system = r.loaded.system;

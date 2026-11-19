@@ -134,7 +134,8 @@ TEST(CliSnap, OptimizeThenSnapReproducesMerit) {
     const TempDir dir("reload");
     const std::string cont = continuous_file(dir);
     const std::string out_file = dir.file("eingerastet.json");
-    const RunResult r = snap({cont, "-o", out_file, "--json", "--max-iterations", "500"});
+    const RunResult r =
+        snap({cont, "-o", out_file, "--json", "--max-iterations", "500", "--no-reference-warning"});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     EXPECT_EQ(r.err, "");
     const json j = json::parse(r.out);

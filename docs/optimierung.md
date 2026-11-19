@@ -602,6 +602,10 @@ Normalgleichungen adjungiert gegen FD (Fehler der FD-Jacobi, `kAdjointLmNormalEq
 
 ## 5. Geisterplatten
 
+### Referenzsphäre für die Synthese mit Geisterplatten
+
+**Empfehlung (Entscheidung Maintainer 2026-11-19, [ADR-0017](adr/0017-referenzsphaere-bildpunkt.md), Punkt 7 und Nachtrag):** Systeme, die mit Geisterplatten wachsen, rechnen mit `reference_sphere: "image_infinite"` ([numerik.md, Abschnitt 7](numerik.md#referenzsphäre-um-den-bildpunkt-m6-t7-adr-0017)). Bei `image_exit_pupil` kann die paraxiale Austrittspupille eines Systems mit Geisterplatten nahe am Bild liegen (M6-T7: 0,43 mm hinter dem Bild, Radius R ≈ 0,43 mm); die Sphäre ist dann winzig, und ihre Falle im Punkt **E** liegt in der Nähe der Bildebene. Bei unendlichem Radius gibt es weder Falle noch Verfehlen der Sphäre. Werkzeuge, die neue Systeme anlegen (`start_from_skeleton` in `mikroptim.design`), setzen das Feld deshalb auf `image_infinite`; bestehende Dateien ohne Feld rechnen unverändert mit `last_surface` (die CLI warnt, [cli.md](cli.md#warnung-ohne-reference_sphere-entscheidung-maintainer-2026-11-19)).
+
 ### Platzierung
 
 Mehrere Kandidatenpositionen in Luftspalten: mindestens eine nahe der Blende (feldunabhängige Fehler: sphärische Aberration, Farblängsfehler), eine in der Mitte und eine im Frontbereich (großes Verhältnis Hauptstrahl- zu Randstrahlhöhe: Koma, Astigmatismus, Petzval, Farbquerfehler).
@@ -1184,7 +1188,7 @@ Erwartet ist auf der CPU etwa (1 + S) × Faktor der vollen Pupille = 37 × 3,2 (
 
 ### Kippungsabzug (M11-T6b)
 
-Mit `ToleranceAwareSettings::tilt = Remove` (`optimize`/`synth --tolerance-tilt remove`) werden die gestörten Teilsysteme s ≥ 1 wie in der Tolerierung und den Empfindlichkeiten bewertet: Strahlresiduen nach Abzug von Kolben und Kippung pro Tupel. Das nominelle Teilsystem s = 0 behält die volle Merit (Bildlage und Verzeichnung sind dort Entwurfsziel, Abschnitt 2). Standard ist `keep` (M11-T6, bitgleich).
+Mit `ToleranceAwareSettings::tilt = Remove` (`optimize`/`synth --tolerance-tilt remove`) werden die gestörten Teilsysteme s ≥ 1 wie in der Tolerierung und den Empfindlichkeiten bewertet: Strahlresiduen nach Abzug von Kolben und Kippung pro Tupel. Das nominelle Teilsystem s = 0 behält die volle Merit (Bildlage und Verzeichnung sind dort Entwurfsziel, Abschnitt 2). **Standard der CLI ist `remove`** (Entscheidung Maintainer 2026-11-19, [ADR-0018](adr/0018-optionale-merit-terme.md), Nachtrag): `optimize --tolerance-aware` und `synth --tolerance-aware` ohne `--tolerance-tilt` bewerten die gestörten Systeme ohne Kippung, weil sonst eine reine Bildverschiebung (Dezentrierung einer Linse mit Brechkraft) als Verschlechterung zählt, die Tolerierung und Empfindlichkeiten nicht so bewerten. `keep` (volle Merit, bitgleich zu M11-T6 und zum früheren Standard) bleibt als `--tolerance-tilt keep`. In der Bibliothek bleibt `ToleranceAwareSettings::tilt` mit Standard `Keep` (Aufrufer setzen die Art ausdrücklich).
 
 **Definition.** Eine Anpassung für alle drei Verwendungen (`PistonTiltFit`, `include/mikroptim/tolerance/piston_tilt.hpp`; `tuple_quality` nutzt sie seit M11-T6b, bitgleich wie vorher): gewichtete kleinste Quadrate v_k ≈ c₀ + t_x x_k + t_y y_k über die Stützstellen K des Tupels mit x = ρ sin φ, y = ρ cos φ und den Quadraturgewichten W_k, 3 × 3-Normalgleichungen mit Summen in aufsteigender Reihenfolge, Cholesky, bei einem Pivot ≤ 10⁻¹²·Σ_K W nur der Kolben ([numerik.md, Abschnitt 16](numerik.md#16-tolerierung-rms-und-strehl-aus-der-quadratur-m8-t4)). In der Merit sind die Strahlresiduen r_k = s_{f,l}√W_k OPD_k mit der OPD nach Kolbenabzug über die Strahlen in_piston; der Kippungsabzug (`TiltProjection`) ist mit K = {k : in_piston} und b = Σ_K √W_k (1, x_k, y_k) r_k
 
