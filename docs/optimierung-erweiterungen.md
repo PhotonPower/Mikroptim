@@ -15,7 +15,7 @@ Dieses Dokument ändert nichts am vorhandenen Verhalten. Alle Erweiterungen sind
 | M11-T3 | Tangentenprädiktor in der Homotopie (Sekante umgesetzt, ohne Zyklengewinn) | LM-Zyklen pro Schritt, Δ < Δ_min | klein | 3 |
 | M11-T4 | Verletzung der Sinusbedingung (OSC) als Residuum | F4, F5 (Koma bei kleinem Feld unsichtbar) | klein | 4 |
 | M11-T5 | algebraische Glasvorauswahl für Achromasie und Apochromasie | F9, F13 (Farbstufen scheitern) | mittel | 5 |
-| M11-T6 | toleranzbewusste Optimierung | Baubarkeit, Vorgriff auf M8-T4 | mittel | 6 |
+| M11-T6 | toleranzbewusste Optimierung (umgesetzt, `optimize --tolerance-aware`) | Baubarkeit, Vorgriff auf M8-T4 | mittel | 6 |
 | M11-T7 | memetische globale Suche (CMA-ES mit LM) | Multistart in fester Topologie | mittel | 7.1 |
 | M11-T8 | Netz der Minima (Sattelsuche in fester Topologie), Escape-Funktion | F3 (Stillstand ohne Bedarf) | groß, Forschung | 7.2, 7.3 |
 
@@ -223,6 +223,8 @@ x ⊕ δ_s ist das System mit der Störung s: Dezentrierung und Verkippung nach 
 **Abnahme.**
 - Ein frei erfundenes System mit zwei bekannten Lösungen ähnlicher nominaler Merit und unterschiedlicher Dezentrierempfindlichkeit: Die toleranzbewusste Optimierung wählt die unempfindlichere.
 - Die Monte-Carlo-Auswertung (M8-T4, sobald vorhanden) bestätigt die bessere Verteilung.
+
+**Stand M11-T6:** umgesetzt ([optimierung.md, Abschnitt 14](optimierung.md#14-toleranzbewusste-optimierung-m11-t6)): `ToleranceAwareBackend` als LM-Backend über dem CPU- bzw. GPU-Backend, pro Lauf 1 + S innere Läufe in einem Batch, Zusammensetzung A = Σ w_s D_s A_s D_s, g = Σ w_s D_s g_s, F = Σ w_s F_s in fester Reihenfolge; Störungen ±δ je Zufallsgröße (S = 2D, Standard) oder S feste Stichproben mit Startwert; Störungen von Variablen über x′_s = extract(apply_s(x)) und D_s (relative Radien). `optimize --tolerance-aware α [--tolerance-samples S] [--tolerance-seed n] [--tolerance-set file|default]`, Standard aus. Abnahme am Kittblock (Kittfläche zwischen gleichen Gläsern, Brechzahltoleranz): nominal gleichwertige Lösungen A (c = 0,05/mm) und B (c = 0), die toleranzbewusste Optimierung läuft von A nach B, die gewöhnliche bleibt; die Monte-Carlo-Tolerierung bestätigt (RMS Mittel 0,0958 → 0,0728 Wellen). Abweichend vom Vorschlag oben ist das Orakel eine Brechzahl- statt einer Dezentrierempfindlichkeit: Nur so sind beide Lösungen analytisch exakt gleichwertig (eine dezentrierte Fläche zwischen gleichen Gläsern wirkt nicht), und die Bewertung der Tolerierung nach Abzug der Kippung stimmt mit der Merit überein. Offen: Kompensatoren pro Störung, Bewertung ohne Bildverschiebung, `synth` und Strahlsuche.
 
 ## 7. Globale Suche in fester Topologie (M11-T7, M11-T8)
 

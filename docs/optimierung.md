@@ -1113,3 +1113,68 @@ Tests `tests/test_design_operators.cpp`, `tests/test_cli_insert.cpp` (`CliInsert
 | aplanatische Vorlage: Gruppensumme der sphärischen Aberration beim Einfügen (Plan: < 10⁻³) | Σ S_FSPH der Frontgruppe (Element 6–7 des Mehrlinsers) vor und nach dem Einfügen der Schale vor dem Objekt; N-BK7 und CaF₂, zwei Lagen | größte relative Änderung 1,5·10⁻¹³ (`kAplanaticGroupSpherical` = 10⁻³); Gegenprobe mit Krümmungen der Schale ×1,1: ≥ 0,40 (`DesignOperators.AplanaticShellKeepsFrontGroupSphericalSum`); im Inneren (Spalt 3 und 5) Beiträge der Schalenflächen ≤ 5,9·10⁻¹⁴ des größten Flächenbeitrags, Flächen davor bitgleich (`…InsideSystemAddsNoSphericalAberration`); Python über `insert_module` mit `front.shell_ca` (`test_aplanatic_module_keeps_group_sum`) |
 | `remove_element` ∘ `insert_null_meniscus` = Ausgangssystem | Flächen, Geisterplatten, aufgelöste Variablen, Flächen der mechanischen Bedingungen, Merit; 8 Fälle (Spalte, Lagen, c₀, Gläser; Platten vor, an und hinter der Lage; Krümmungs- und Dickenvariablen mit `"all"` und Listen, Mindestdicke) | alles gleich außer der Spaltdicke p + fl(T − p) (≤ 1 ulp, `kRemovalRoundtripRelative` = 4,5·10⁻¹⁶), Merit ≤ 10⁻¹¹ (`DesignOperators.RemoveAfterNullMeniscusRestoresSystem`); ebenso nach `insert_null_doublet` (`…NullDoubletRestoresSystem`) und über die Aktionen (`test_remove_after_null_meniscus_restores_system`) |
 | Rückbau-Homotopie | 4 Stufen am Kittglied: Null-Element genau erst nach der letzten Stufe, Scheitel dahinter bleiben, Variablen des Blocks fest, Entfernen ändert F nicht | (`DesignOperators.CollapseReachesNullElementAndRemoves`, Python `test_remove_element_homotopy`) |
+
+## 14. Toleranzbewusste Optimierung (M11-T6)
+
+Ziel: von nominal gleichwertigen Lösungen die unempfindlichere wählen, indem die Optimierung die erwartete Merit über feste Störungen eines Toleranzsatzes minimiert ([optimierung-erweiterungen.md, Abschnitt 6](optimierung-erweiterungen.md#6-toleranzbewusste-optimierung-m11-t6)). Bibliothek `Mikroptim::tolerance` (`include/mikroptim/tolerance/tolerance_aware.hpp`, [architektur.md](architektur.md#monte-carlo-tolerierung-m8-t4)), Kommandozeile `mikroptim optimize --tolerance-aware α` ([cli.md](cli.md#toleranzbewusste-optimierung-ab-m11-t6)). Standard aus; ohne die Option laufen alle Pfade unverändert (bitgleich).
+
+### Merit
+
+$$F_{\text{tol}}(x) = (1 - \alpha)\,F(x) + \frac{\alpha}{S}\sum_{s=1}^{S} F(x \oplus \delta_s),\qquad 0 < \alpha \le 1,$$
+
+mit F = ‖r‖² wie in Abschnitt 2 (Strahl-, Straf-, Zusatz- und trace-abhängige Residuen in Wellen², Bildpunkte fest). Gleichwertig ist der Residuenvektor [√(1 − α)·r(x); √(α/S)·r(x ⊕ δ₁); …; √(α/S)·r(x ⊕ δ_S)]. x ⊕ δ_s ist das System mit der Störung s nach `ToleranceModel::apply` (Abschnitt 11: Radius, Dicke, Brechzahl, Abbe-Zahl, Dezentrierung und Verkippung von Flächen und Elementen nach ADR-0011), ohne Kompensator.
+
+**Störungen** (deterministisch, `ToleranceAwareScheme`):
+
+| Schema | Störungen | Bedeutung |
+|---|---|---|
+| `plus_minus` (Standard) | S = 2D: für jede der D Zufallsgrößen ξ_d = +1 und ξ_d = −1, alle übrigen 0 | mit Q(ξ) ≈ Q₀ + a ξ + b ξ² (Abschnitt 12) ist der gestörte Anteil (1/S) Σ F = F₀ + (1/D) Σ_d b_d + O(ξ⁴): das Mittel der quadratischen Terme, also die mittlere Krümmung von F in den Toleranzrichtungen |
+| `samples` | S Stichproben ξ_s = `deviates(seed, s − 1)` mit Verteilung und Abschneiden des Satzes (Abschnitt 11) | Stichprobenmittel der erwarteten Merit unter der Toleranzverteilung (gemeinsame Zufallszahlen: dieselben ξ_s in jedem Zyklus) |
+
+Toleranzsatz: der Abschnitt `tolerances` der Datei, sonst (oder mit `--tolerance-set default`) der Mikroptim-Standardsatz der Empfindlichkeiten (Abschnitt 12).
+
+**Störungen von Variablen.** Ist der gestörte Parameter eine Variable (relativer Radius bzw. Passe an einer variablen Krümmung, Dicke an einem variablen Spalt, axialer Anteil δz einer Elementbewegung an einer variablen Dicke oder am Arbeitsabstand), würde die Variable die Störung beim Schreiben von x überschreiben. Die Störung wirkt deshalb über den Variablenvektor: Das gestörte System an x ist apply_s(x) (nominelles System mit x, darauf `ToleranceModel::apply`), sein Variablenvektor x′_s = extract(apply_s(x)); die Vorlage der Störung s (einmal pro LM-Aufruf gebaut) trägt die übrigen, festen Störungen (Transformationen, Brechzahlen, nicht variable Radien und Dicken). Die Abbildung ist pro Variable affin, x′_k = x_k/(1 + ε) für relative Radien, sonst x_k + konstant, also
+
+$$J_s(x) = J(x'_s)\,D_s,\qquad D_s = \operatorname{diag}\!\Big(\frac{\partial x'_{s,k}}{\partial x_k}\Big),\qquad \frac{\partial x'_{s,k}}{\partial x_k} = \prod \frac{1}{1 + \varepsilon}$$
+
+(Produkt über die relativen Radius-Toleranzen an der Krümmung k, sonst 1). Die inneren Läufe nutzen die Variablen ohne Schranken (x′_s darf außerhalb liegen; zentrale Differenzen). Brechzahl- und Abbe-Toleranzen an einem Glas mit Glasvariablen sind so nicht darstellbar (die Glasvariable schreibt die Brechzahlen aus den Buchdahl-Koordinaten neu) und werden abgelehnt. Elementbewegungen rechnen wie in Abschnitt 11 mit den nominellen Scheitellagen der Datei, nicht mit den aktuellen Dicken; der Fehler ist von der Ordnung Kippwinkel × Dickenänderung.
+
+### Zusammensetzung im gebündelten LM
+
+`ToleranceAwareBackend` ist ein `LmBackend` (Abschnitt 4) über einem inneren Backend (CPU `CpuLmBackend`, GPU `cuda::GpuLmBackend`). Zu jedem Lauf r mit Vorlage b gehören 1 + S innere Läufe mit den Vorlagen b(1 + S) + s (s = 0 nominal), alle Läufe eines Aufrufs in **einem** Aufruf des inneren Backends: ein FD- bzw. adjungierter Batch und ein Merit-Batch, ein Block pro (Variante, Feld, Wellenlänge) (ADR-0004). Die gestörten Systeme sind also gewöhnliche Varianten im Batch, die Jacobi-Matrix entsteht ohne Sonderfall. Pro Lauf in fester Reihenfolge s = 0 … S mit w₀ = 1 − α, w_s = α/S:
+
+$$A = \sum_s w_s\,D_s A_s D_s,\qquad g = \sum_s w_s\,D_s g_s,\qquad F = \sum_s w_s F_s,$$
+
+A_s = J_sᵀJ_s und g_s = J_sᵀr_s aus dem inneren Backend am Punkt x′_s; versagte und hart versagte Strahlen werden über alle Teilsysteme summiert (ein Schritt, der in einem gestörten System einen Strahl hart versagen lässt, wird abgelehnt). Das ist die Gauß-Newton-Matrix des Residuenvektors oben bis auf die Summationsreihenfolge (Teilsumme pro Teilsystem, dann gewichtet). Das äußere Strafverfahren (`optimize_lm_rounds`, M4-T2) und der Augmented Lagrangian (Abschnitt 2.6) laufen unverändert darüber.
+
+**Batch.** Die inneren Batches sind nicht koaxial mit voller Pupille (`make_non_coaxial`), auch für das nominelle Teilsystem: F₀ entspricht bis auf die Rundung der koaxialen Merit (dieselbe Wellenfront über die volle Pupille), ist aber nicht bitgleich dazu. Kosten pro Zyklus etwa (1 + S)-fach in Varianten, dazu der Faktor der vollen Pupille (Achsfelder: M Speichen statt einer, übrige Felder 2) und die Host-Arbeit für x′_s (vernachlässigbar); Messung unten.
+
+**Determinismus.** Störungen hängen nur vom Toleranzsatz, dem Schema und (bei `samples`) dem Startwert ab; die inneren Läufe sind wie im LM unabhängig voneinander (Abschnitt 4), die Zusammensetzung pro Lauf hat eine feste Reihenfolge. Läufe gemeinsam und einzeln sind bitgleich, auf derselben GPU auch dort; keine atomaren Gleitkommaoperationen.
+
+**Grenzen der ersten Version.** Die gestörten Systeme werden mit der vollen Merit bewertet, also einschließlich der Kippung (Bildlage fest, Abschnitt 2). Eine reine Bildverschiebung, wie sie die Dezentrierung einer Linse mit Brechkraft vor allem erzeugt, zählt damit als Verschlechterung, während Tolerierung und Empfindlichkeiten (Abschnitte 11, 12) nach Abzug der Kippung bewerten. Kompensatoren pro Störung (Arbeitsabstand, Bildlage) wären eigene Variablen und fehlen noch; ebenso die Anbindung an `synth` und an die Rangfolge der Strahlsuche.
+
+### Abnahme (M11-T6)
+
+Orakel: `data/systems/kittblock_toleranzbewusst.json` (frei erfunden): Glasblock aus zwei Teilen desselben Glases mit gekrümmter Kittfläche c im kollimierten Strahl vor einer Sammellinse (Achse, 546 nm), Variablen c und Arbeitsabstand, Toleranzsatz Brechzahl des hinteren Teils ±0,002. Nominal ist die Kittfläche unsichtbar (gleiche Brechzahl beidseits: keine Brechung, gleiche optische Weglänge), F(c) = F(0) für jedes c. Gestört hat sie die Brechkraft Δn·c; bei c = 0 bleibt nur die ebene Rückfläche im kollimierten Strahl, deren Wirkung ein Kolben ist, also F(0, ±Δn) = F(0). Lösung A (c = 0,05/mm) und Lösung B (c = 0) sind nominal gleichwertig, B ist unempfindlich. Tests `tests/test_tolerance_aware.cpp`, GPU `CudaToleranceAware.*` in `tests/test_cuda_tolerance.cpp`, CLI `CliOptimize.ToleranceAware` und `cli_optimize_tolerance_aware`.
+
+| Prüfung | Orakel | Ergebnis (Test) |
+|---|---|---|
+| nominal gleichwertig, verschieden empfindlich | F(A) = F(B); F(B ± Δn) = F(B); F(A ± Δn) > 2 F(A) | F(A) = F(B) = 5,294667337·10⁻³ Wellen² bitgleich; B gestört bitgleich wie nominal; A gestört 1,643·10⁻² bzw. 1,648·10⁻² (`ToleranceAware.OracleNominallyEqualDifferentSensitivity`) |
+| Einzelrechnung | gestörte Systemdatei mit n₀ ± Δn, eigener Batch | relativ ≤ 10⁻¹⁰ (`kSensitivitySingleSystem`, ebenda) |
+| Auswahl | F_tol(A) > F_tol(B) bei α = 0,5 | 1,0875·10⁻² gegen 5,2947·10⁻³ (`ToleranceAware.PicksInsensitiveSolution`) |
+| Optimierung ab A | gewöhnlich bleibt c = c_A; toleranzbewusst c → 0 | gewöhnlich c = 0,05 (0 Zyklen, `converged_merit`); toleranzbewusst c = −5,9·10⁻⁸/mm nach 2 Zyklen (`converged_merit`), nominale Merit unverändert, gestörte gleich der nominalen (ebenda) |
+| Monte-Carlo-Tolerierung (M8-T4, 200 Stichproben, gleichverteilt, ohne Kompensator) bestätigt | – | RMS Mittel A 0,0958, Ergebnis 0,0728 Wellen (jede Stichprobe = nominal); 95 % A 0,124, Ergebnis 0,0728 (`ToleranceAware.MonteCarloConfirmsBetterDistribution`) |
+| Störungen von Variablen | Teilsysteme gegen den direkt gestörten Batch; 2Jᵀr gegen die zentrale Differenz von F_tol (relative Radien 5 % an zwei variablen Krümmungen, variabler Luftspalt, Elementverkippung 20′ mit δz in Spalt und Arbeitsabstand; beide Schemata) | bitgleich; Gradient 2,4·10⁻⁷ relativ zur größten skalierten Komponente (ohne D_s: 0,94) (`ToleranceAware.ChainRuleForPerturbedVariables`) |
+| Determinismus | drei Läufe gemeinsam gegen einzeln, beide Schemata | bitgleich (x, Verlauf, Zyklen, Status) (`ToleranceAware.JointRunsBitwiseEqualToSingleRuns`) |
+| GPU (RTX 3090) | Teilmerits und Ergebnis gegen die CPU, zwei Läufe | Teilmerits 1,5·10⁻¹¹ relativ; c = 1,9·10⁻⁷/mm (CPU −5,9·10⁻⁸), F_tol relativ 4·10⁻¹²; zwei GPU-Läufe bitgleich (`CudaToleranceAware.PicksInsensitiveSolutionLikeCpu`) |
+
+### Kosten (M11-T6)
+
+Gemessen mit `mikroptim optimize data/systems/zweilinser_petzval.json --hard-failure --tolerance-aware 0.5 --tolerance-set default` (Standardsatz: 14 Toleranzen, 18 Zufallsgrößen, S = 36; Felder 0° und 2°, 10 × 8 Quadratur), Zeit pro LM-Zyklus nach Abzug des Laufs mit `--max-iterations 0`, Release-Build, bestes von drei:
+
+| Backend | gewöhnlich | toleranzbewusst | Faktor |
+|---|---|---|---|
+| CPU (ein Prozess, Host-Threads nach der Arbeit) | 0,24 ms | 16,7 ms | ≈ 71 |
+| GPU (RTX 3090) | 0,50 ms | 1,3 ms | ≈ 2,7 |
+
+Erwartet ist auf der CPU etwa (1 + S) × Faktor der vollen Pupille = 37 × 3,2 (Achsfeld 10 → 80 Strahlen, Feld 2° 40 → 80) ≈ 118; dass es weniger ist, liegt an der festen Host-Arbeit pro Zyklus, die sich auf mehr Varianten verteilt. Auf der GPU füllen die zusätzlichen Varianten vor allem ein sonst kaum ausgelastetes Gerät. Mit S Stichproben (`--tolerance-samples S`) ist der Faktor entsprechend (1 + S)/(1 + 2D) davon.

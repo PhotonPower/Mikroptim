@@ -440,6 +440,7 @@ Entwurf, noch nicht freigegeben. Begründung, Formeln und Abnahmen: [optimierung
 - **Abhängig von:** M8-T3
 - **Inhalt:** erwartete Merit über feste Störungen als zusätzliche Varianten im Batch.
 - **Abnahme:** wählt von zwei nominal gleichwertigen Lösungen die unempfindlichere.
+- **Stand:** umgesetzt (`optimize --tolerance-aware α`, Standard aus; `ToleranceAwareBackend` in `Mikroptim::tolerance`, CPU und GPU; [optimierung.md, Abschnitt 14](../optimierung.md#14-toleranzbewusste-optimierung-m11-t6)). Abnahme am Kittblock (Kittfläche zwischen gleichen Gläsern, Brechzahltoleranz ±0,002): Lösungen A (c = 0,05/mm) und B (c = 0) nominal bitgleich, F_tol(A) = 1,09·10⁻² > F_tol(B) = 5,29·10⁻³; ab A läuft die toleranzbewusste Optimierung nach c = −5,9·10⁻⁸ (2 Zyklen), die gewöhnliche bleibt bei A; Monte-Carlo-Tolerierung bestätigt. Offen: Kompensatoren pro Störung, Bewertung ohne Bildverschiebung, `synth`.
 
 ### M11-T7 – Memetische globale Suche
 - **Abhängig von:** M7-T2

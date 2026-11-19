@@ -4,7 +4,9 @@
 mikroptim [--version] [--devices]
 mikroptim trace <system.json> [--json] [--rings N] [--spokes M] [--gpu [--device N] [--precision fp64|df64]]
 mikroptim optimize <system.json> [-o <ergebnis.json>] [--json] [--quiet] [--max-iterations N]
-                   [--rings N] [--spokes M] [--runs K [--perturbation s] [--seed n]] [--gpu [--device N]]
+                   [--rings N] [--spokes M] [--runs K [--perturbation s] [--seed n]]
+                   [--tolerance-aware A [--tolerance-samples S] [--tolerance-seed n]
+                    [--tolerance-set file|default]] [--gpu [--device N]]
 mikroptim eval <system.json> [--grid N] [--half] [--reference exit-pupil|vertex] [--json]
                [--map F,L --map-file DATEI.csv [--remove piston|tilt|defocus]] [--gpu [--device N]]
 mikroptim snap <system.json> [-o <ergebnis.json>] [--json] [--neighbors k] [--max-combinations N]
@@ -502,11 +504,39 @@ Die Merit ist dieselbe wie in der Bibliothek (`optimize_lm_cpu` bzw. `cuda::opti
 | `--hard-failure` | hartes Strahlversagen wie vor M4-T2: versagte Strahlen maskiert (r = 0), keine Strafresiduen, kein Strafverfahren (`FailureMode::Hard`) | aus (weich) |
 | `--jacobian V` | Verfahren der Jacobi-Matrix (ab M5-T3, `LmOptions::jacobian_method`): `fd` zentrale finite Differenzen, `adjoint` adjungiert (Strahl- und Strafzeilen aus dem Rückwärtsdurchlauf; Zusatzzeilen weiter per zentraler FD), [optimierung.md, „Jacobi-Verfahren im LM“](optimierung.md#jacobi-verfahren-im-lm-ab-m5-t3) | `fd` |
 | `--sine-condition w` | Verletzung der Sinusbedingung als Residuum (ab M11-T4, [optimierung.md, Abschnitt 2.7](optimierung.md#27-sinusbedingung-ab-m11-t4)): setzt das Gewicht w ≥ 0 [Wellen²] des Eintrags `sine_condition` der Datei (Zonen bleiben) oder hängt ihn mit den Standardzonen 1/√2 und 1 an; nur kollimierte Quelle. Die Ergebnisdatei enthält den Eintrag | aus (wie die Datei) |
+| `--tolerance-aware A` | toleranzbewusste Optimierung (M11-T6, siehe [unten](#toleranzbewusste-optimierung-ab-m11-t6)): Merit (1 − A)·F + A·Mittel der Merits fest gestörter Systeme, 0 < A ≤ 1 | aus |
+| `--tolerance-samples S` | S ≥ 1 feste Stichproben des Toleranzsatzes statt ±δ je Zufallsgröße; 0 = ±δ; nur mit `--tolerance-aware` | 0 |
+| `--tolerance-seed n` | Startwert der Stichproben; nur mit `--tolerance-samples` ≥ 1 | 0 |
+| `--tolerance-set T` | `file`: Abschnitt `tolerances` der Datei (Fehler ohne ihn); `default`: Mikroptim-Standardsatz (wie `mikroptim sensitivity`); nur mit `--tolerance-aware` | Datei, sonst Standardsatz |
 | `--gpu` | auf der GPU rechnen (`cuda::optimize_lm_gpu`: Jacobi-Matrix und Normalgleichungen auf dem Gerät, Merit im Modus MERIT der TraceEngine) | aus (CPU, `optimize_lm_cpu`) |
 | `--device N` | CUDA-Gerät für `--gpu`; nur zusammen mit `--gpu` | 0 |
 | `--help`, `-h` | Hilfe | – |
 
 Die übrigen Einstellungen des Verfahrens (Toleranzen, Dämpfung, zentrales FD-Schema, Ablehnung neuer hart versagter Strahlen, Faktor 10 und Obergrenze 10¹⁴ des Strafverfahrens) sind die Standardwerte von `LmOptions`. Die Zahl der Host-Threads wählt die Bibliothek; das Ergebnis ist davon unabhängig bitgleich.
+
+### Toleranzbewusste Optimierung (ab M11-T6)
+
+Mit `--tolerance-aware A` minimiert der LM die erwartete Merit F_tol = (1 − A)·F + (A/S)·Σ_s F(x ⊕ δ_s) über S feste Störungen des Toleranzsatzes (`optimize_lm_tolerance_aware`, Verfahren und Formeln: [optimierung.md, Abschnitt 14](optimierung.md#14-toleranzbewusste-optimierung-m11-t6)). Störungen: ohne `--tolerance-samples` ±δ jeder Zufallsgröße (S = 2D), sonst S Stichproben mit `--tolerance-seed`. Alle Teilsysteme rechnen mit voller Pupille (nicht koaxial) im Batch des gewählten Backends (CPU oder `--gpu`); die Rechenzeit pro Zyklus wächst etwa mit (1 + S) mal dem Faktor der vollen Pupille. Die Merit im Protokoll und in der Zusammenfassung („Merit vorher/nachher“, `runs`, `result`) ist F_tol; zusätzlich nennt der Kopf α, S, Schema, Zahl der Toleranzen und Zufallsgrößen und den Satz, die Zusammenfassung die nominale Merit, das Mittel und das Maximum der gestörten Merits am Start und am Ergebnis (mit dem w_fail der letzten Runde des besten Laufs), und JSON das Objekt `tolerance_aware` (`alpha`, `scheme` `"plus_minus"`/`"samples"`, `samples`, `seed` (`null` bei ±δ), `set` `"file"`/`"default"`, `tolerances`, `draws`, `start` und `result` mit `nominal`, `perturbed_mean`, `perturbed_max`). Wellenfronttabelle, Nebenbedingungen und Ergebnisdatei beziehen sich wie immer auf das nominelle System. Nicht darstellbar und abgelehnt: Brechzahl- oder Abbe-Toleranzen an einem Glas mit Glasvariablen. Ohne die Option ist alles unverändert.
+
+Beispiel (`mikroptim optimize data/systems/kittblock_toleranzbewusst.json --tolerance-aware 0.5 --quiet`, gekürzt): Die Kittfläche zwischen zwei Teilen desselben Glases ist nominal unsichtbar, mit der Brechzahltoleranz des hinteren Teils hat sie die Brechkraft Δn·c; die Optimierung bringt sie nach c = 0.
+
+```
+  Toleranzbewusst                             alpha = 0.5000, S = 2 (+-delta je Zufallsgröße), 1 Toleranzen, 1 Zufallsgrößen, Satz Datei (tolerances)
+
+Ergebnis
+  Status                                      converged_merit
+  Zyklen                                      2
+  Merit vorher [Wellen²]                      1.087540917e-02
+  Merit nachher [Wellen²]                     5.294667337e-03
+  Nominal vorher/nachher [Wellen²]            5.294667337e-03 / 5.294667337e-03
+  Gestört Mittel vorher/nachher               1.645615100e-02 / 5.294667337e-03
+  Gestört Maximum vorher/nachher              1.647849813e-02 / 5.294667359e-03
+
+Variablen
+  Name    Einheit   untere Schranke           vorher          nachher   obere Schranke
+  c[2]    1/mm     -1.000000000e-01  5.000000000e-02 -5.877748652e-08  1.000000000e-01
+  w       mm              10.000000        17.891807        17.891807        30.000000
+```
 
 **Strahlversagen (ab M4-T2).** <a id="strahlversagen-ab-m4-t2"></a>Standard ist weiches Versagen ([numerik.md, Abschnitt 11](numerik.md#11-weiches-versagen), [optimierung.md, Abschnitt 2](optimierung.md#2-residuenvektor)): Verfehlte Flächen und Totalreflexion werden fortgesetzt, jeder Strahl trägt ein Strafresiduum p = √(w_fail ŵ_f ŵ_λ W)·π bei, F enthält Σp². Endet ein Lauf mit versagten Strahlen, startet die Bibliothek ihn an seinem Endpunkt mit zehnfachem w_fail neu (äußeres Strafverfahren, `optimize_lm_rounds`), bis kein Strahl mehr versagt oder w_fail 10¹⁴ überschritte; `--max-iterations` gilt pro Runde, Zyklen und Protokoll laufen über die Runden fort. Für Systeme ohne versagte Strahlen sind alle Strafresiduen null und die Ergebnisse bitgleich zu `--hard-failure`. Die Spalte `versagt` zählt weich und hart versagte Strahlen, `hart` nur die hart versagten (Strahl läuft rückwärts, Fläche verfehlt bei D ≥ 0, nicht unterstützt); nur diese lehnt LM an einem Versuchspunkt als neu versagt ab. Die Wellenfronttabelle rechnet immer hart wie `mikroptim trace`.
 
@@ -760,6 +790,7 @@ Ein JSON-Objekt am Ende der Rechnung (eingerückt mit zwei Leerzeichen, abschlie
 | `constraints` | object[] | pro paraxialer Nebenbedingung: `item` (Eintrag in `constraints.items`), `type`, `mode`, `weight`, `target` (Soll), `value_start`, `value_result` (Ist: Brennweite 1/φ, Arbeitsabstand, Abgleichlänge; bei `paraxial_focus` die Randstrahlhöhe q in der Bildebene), `residual_start`, `residual_result` (r = √w·q̃ wie im Residuenvektor) |
 | `glass_hull` | object \| null | Glas-Hülle (ab M6-T1; `null` ohne Glasvariablen oder ohne Eintrag `glass_hull`): `glasses` (Zahl der Gläser der Hülle), `dimension` (0–3), `vertices` (Namen der Gläser auf den Ecken), `weight`, `margin`, `elements` (pro Glasfläche `surface`, `excess_start`, `excess_result`: max(0, φ) in normierten Koordinaten am Start und am Ergebnis) |
 | `mechanical_constraints` | object[] | pro mechanischer Bedingung und Fläche (ab M4-T3, leer ohne solche Einträge): `item`, `type`, `surface` (Dateifläche), `next_surface` (bei Dicken i + 1, sonst `null`), `weight`, `unit` (`"mm"` bzw. `"deg"` beim Einfallswinkel), `limit` (Grenze in `unit`), `value_start`, `value_result` (Ist in `unit`), `violation_start`, `violation_result` (g wie in der Residuenformel: mm bzw. Differenz von cos I; > 0 verletzt), `residual_start`, `residual_result` (r = √w·max(0, g)), `height_start`, `height_result` (Halbdurchmesser h der Randdicke einschließlich `clearance`, sonst `null`), `satisfied` (g ≤ 0 am Ergebnis) |
+| `tolerance_aware` | object | nur mit `--tolerance-aware` (M11-T6): `alpha`, `scheme`, `samples`, `seed`, `set`, `tolerances`, `draws`, `start` und `result` mit `nominal`, `perturbed_mean`, `perturbed_max` ([oben](#toleranzbewusste-optimierung-ab-m11-t6)) |
 | `ghost_diagnosis` | object \| null | Diagnosebericht der Geisterplatten (ab M4-T6; `null` ohne Geisterplatten), Objekt aus `ghost_diagnosis_json`: `merit`, `reference_nm`, `merit_wavelengths`, `short_nm`, `long_nm`; `plates` (pro Platte `plate`, `after_surface`, `distance`, `table_surface`, `norm_radius`, `order`, `glass` {`name`, `n_ref`, `dispersion`, `n_d`, `abbe`, `partial_gf`, `delta_partial_gf`}, `coefficients`, `sum_abs`, `max_abs`, `activity_threshold`, `active`, `dominant_orders`, `power`, `petzval`, `marginal_height`, `chief_height_per_rad`, `penalized`, `penalty`, `merit_without`, `merit_gain`); `positions` (pro Lage `after_surface`, `distance`, `plates`, `active_plates`, `chromatic_ratio`, `single_glass_ratio`, `merit_gain`, `sum_abs`, `recommendation`, `finding`, `reason`); `recommended_position` (Index in `positions` oder `null`), `recommendation` (`"none"`, `"A"`, `"B"`, `"B_anomalous"`), `recommendation_text` |
 | `iterations` | object[] \| null | Protokoll in der Reihenfolge der Rückrufe: `run`, `iteration`, `status`, `evaluated`, `accepted`, `merit`, `trial_merit`, `gain_ratio`, `damping`, `step_norm`, `failed_rays`, `hard_failed_rays` (wie `LmIterationInfo`; `iteration` läuft über die Runden des Strafverfahrens fort); `null` mit `--quiet` |
 | `runs` | object[] | pro Lauf: `run`, `status`, `iterations`, `accepted`, `jacobians`, `start_merit` (F am Startpunkt), `merit`, `failed_rays`, `hard_failed_rays`, `penalty_rounds` (Runden des Strafverfahrens, 1 ohne Neustart), `fail_weight` (w_fail der letzten Runde, `null` bei hartem Versagen), `start` (Startpunkt), `x` (Endpunkt) |
