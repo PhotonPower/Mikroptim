@@ -29,11 +29,13 @@ import hashlib
 import json
 import pathlib
 
+from . import knowledge
 from .actions import ActionError, read_action, validate_response
 from .deciders import Decider, DecisionError
 from .files import read_system
 from .prompt import SYSTEM_PROMPT
-from .schema import ACTION_DEFS, TOOL_ACTIONS
+from .schema import (ACTION_DEFS, GLASS_QUERY_DESCRIPTION, MODULE_LOOKUP_DESCRIPTION,
+                     TOOL_ACTIONS)
 
 DEFAULT_MODEL = "claude-opus-5-5"
 SUBMIT_TOOL = "submit_decision"
@@ -212,6 +214,10 @@ def tool_definitions(strict: bool = True) -> list[dict]:
                        "(Randdicken, Halbkugelgrad, Zentrierbarkeit). Aufrufen, wenn die "
                        "Kurzfassung im Zustand für eine Abwägung zwischen Korrektur und "
                        "Empfindlichkeit nicht reicht.",
+        "glass_query": GLASS_QUERY_DESCRIPTION + ". Aufrufen vor einer Glaswahl nach einer "
+                       "Regel der Wissensbasis (z. B. Merte-Partner, Autofluoreszenz).",
+        "module_lookup": MODULE_LOOKUP_DESCRIPTION + ". Aufrufen, bevor insert_module, "
+                         "replace_group oder start_from_skeleton ein Modul wählt.",
         SUBMIT_TOOL: "Gibt die Entscheidung für den aktuellen Kandidaten ab (Format "
                      "mikroptim.design.action/1 ohne format und candidate): 1 bis 4 Aktionen, "
                      "die nacheinander ausgeführt werden, und eine kurze Einschätzung. Genau "
@@ -331,6 +337,7 @@ class ClaudeDecider(Decider):
                 "max_tokens": self.max_tokens,
                 "sdk_version": getattr(sdk, "__version__", None) if sdk else None,
                 "prompt_sha256": hashlib.sha256(self.system_prompt.encode("utf-8")).hexdigest(),
+                "knowledge_sha256": knowledge.digest(),
                 "tools_sha256": hashlib.sha256(json.dumps(self.tools, sort_keys=True)
                                                .encode("utf-8")).hexdigest(),
                 "usage": t.get("usage"), "cost_usd": t.get("cost_usd"),

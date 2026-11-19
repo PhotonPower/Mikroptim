@@ -455,7 +455,7 @@ Regeln des Lesers (Fehler als `mko::GlassError`, Meldung mit Datei und JSON-Pfad
 - Namen sind eindeutig, nicht leer und nicht `AIR` (Schlüsselwort der Systemdatei). Der Vergleich beachtet Groß-/Kleinschreibung. Doppelte Namen werden in einer Datei und beim Zusammenführen (`merge`) abgelehnt.
 - Ein Sellmeier-Pol (λ² = C_i) innerhalb von `range_nm` wird abgelehnt.
 - Beispiele (ab M9-T4): `{"name": "X", "model": "sellmeier", "A": 0.05, "B": [0.9, 0.2, 0.05, 0.8], "C": [0.005, 0.02, 0.04, 90.0], "range_nm": [300, 2500]}`; Schott-Formel als `{"name": "Y", "model": "polynomial", "terms": [[2.27, 0], [-0.0094, 2], [0.011, -2], [0.00015, -4], [-1.1e-5, -6], [8e-7, -8]], "range_nm": [365, 1100]}`.
-- Optional: `reference.n_d` (wird gespeichert), `source` (wird gespeichert), `transmission` und `comment` (werden ignoriert). Unbekannte Felder werden ignoriert und in `GlassCatalog::warnings()` gemeldet.
+- Optional: `reference.n_d` (wird gespeichert), `source` (wird gespeichert), `transmission` und `comment` (werden vom C++-Leser ignoriert; `transmission` wertet die Glasabfrage `glass_query` der Entwurfssteuerung aus, M10-T5). Unbekannte Felder werden ignoriert und in `GlassCatalog::warnings()` gemeldet.
 
 Die Brechzahltabelle für ein System beschreibt [architektur.md](architektur.md#brechzahltabelle).
 

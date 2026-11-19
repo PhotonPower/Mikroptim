@@ -58,6 +58,7 @@
     "glass_filter": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Glasfilter der Glasabfrage (M10-T5, docs/entwurfssteuerung.md, Abschnitt 5.3); alle Angaben müssen gelten",
       "properties": {
         "rule": {
           "enum": [
@@ -65,23 +66,82 @@
             "merte_pair",
             "front_medium_n_medium_vd",
             "low_n_low_dispersion",
+            "af_forbidden",
+            "not_af_forbidden",
             "dense_flint_for_lca",
             "buried_surface",
-            "not_af_forbidden"
-          ]
+            "anomalous_pgf"
+          ],
+          "description": "Glasregel der Wissensbasis (data/design/knowledge/glass_rules.json)"
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "enum": [
+              "selectable_pgf",
+              "merte_pair",
+              "front_medium_n_medium_vd",
+              "low_n_low_dispersion",
+              "af_forbidden",
+              "not_af_forbidden",
+              "dense_flint_for_lca",
+              "buried_surface",
+              "anomalous_pgf"
+            ]
+          }
         },
         "partner_of_element": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Bezugsglas = Glas dieses Elements; Kandidaten = seine Partner aus der Glasvorauswahl (M11-T5)"
+        },
+        "partner": {
+          "type": "string",
+          "description": "Bezugsglas (Name) der Paarregeln"
         },
         "nd": {
-          "$ref": "#/$defs/range"
+          "$ref": "#/$defs/open_range"
         },
         "vd": {
-          "$ref": "#/$defs/range"
+          "$ref": "#/$defs/open_range"
+        },
+        "pgf": {
+          "$ref": "#/$defs/open_range"
         },
         "dPgF": {
-          "$ref": "#/$defs/range"
+          "$ref": "#/$defs/open_range"
+        },
+        "transmission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nm",
+            "min"
+          ],
+          "description": "Reintransmission aus dem Katalog bei nm, auf thickness_mm umgerechnet, mindestens min",
+          "properties": {
+            "nm": {
+              "type": "number",
+              "minimum": 200,
+              "maximum": 2500
+            },
+            "min": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "thickness_mm": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "max_results": {
           "type": "integer",
@@ -343,6 +403,12 @@
         "filter": {
           "$ref": "#/$defs/glass_filter"
         },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "höchstens so viele Gläser im Ergebnis (Standard 20); count nennt alle Treffer"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
@@ -375,6 +441,22 @@
               "SPHCRM"
             ]
           }
+        },
+        "zone": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "na": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.6
+        },
+        "immersion": {
+          "type": "boolean"
+        },
+        "insertable_only": {
+          "type": "boolean"
         },
         "reason": {
           "$ref": "#/$defs/reason"
@@ -619,7 +701,8 @@
             "min_edge_thickness",
             "min_center_thickness",
             "max_incidence_angle",
-            "max_semi_diameter"
+            "max_semi_diameter",
+            "sine_condition"
           ]
         },
         "limit": {
@@ -869,7 +952,7 @@
         },
         "module": {
           "type": "string",
-          "description": "Modul-ID, z. B. front.shell_ca oder generic.null_meniscus (mikroptim/design/modules.py, Wissensbasis M10-T5)"
+          "description": "Modul-ID der Wissensbasis (data/design/knowledge/modules.json, module_lookup), z. B. front.shell_ca oder middle.strong_doublet"
         },
         "after_surface": {
           "$ref": "#/$defs/surface"
@@ -893,6 +976,18 @@
           "exclusiveMinimum": 0,
           "maximum": 50,
           "description": "Schale: Mittendicke; Vorlagen mit Dicke 0: Ziel der Dicken-Homotopie (M10-T4)"
+        },
+        "incidence_deg": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 70,
+          "description": "strong_doublet: Einfallswinkel des Randstrahls an der Kittfläche (Standard 40°, M10-T5)"
+        },
+        "power": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5,
+          "description": "petzval_group: Brechkraft des ersten Glieds in Einheiten 1/f (Standard 0,5, M10-T5)"
         },
         "stages": {
           "type": "integer",
@@ -971,7 +1066,7 @@
           "$ref": "#/$defs/reason"
         }
       },
-      "description": "Glas tauschen; mit Filter (partner_of_element) mehrere Kandidaten, nachoptimiert (M10-T4)"
+      "description": "Glas tauschen; mit Filter (glass_query, M10-T5) mehrere Kandidaten ohne das bisherige Glas, nachoptimiert (M10-T4)"
     },
     "replace_group": {
       "type": "object",
@@ -1187,6 +1282,26 @@
           "$ref": "#/$defs/reason"
         }
       }
+    },
+    "open_range": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "geschlossener Bereich [min, max], null = offen (M10-T5)"
     }
   }
 }

@@ -1,6 +1,9 @@
 """Strukturelle Aktionen der Entwurfssteuerung (M10-T4; docs/entwurfssteuerung.md, Abschnitte
 4.3–4.5): ``place_ghost_dictionary``, ``insert_module``, ``remove_element``, ``replace_glass``,
-``replace_group`` und ``start_from_skeleton``.
+``replace_group`` und ``start_from_skeleton``. Seit M10-T5 kommen Module und
+Brechkraftverteilungen aus der Wissensbasis (``knowledge.py``), Glasangaben dürfen Filter der
+Glasabfrage sein, und ``insert_module`` kennt die Vorlagen ``strong_doublet`` und
+``petzval_group``.
 
 Die Geometrie bauen die Operatoren des C++-Kerns (``mikroptim insert``, docs/optimierung.md,
 Abschnitt 13); hier werden Vorbedingungen geprüft, Vorlagen ausgewählt, Homotopien in Stufen
@@ -15,8 +18,9 @@ import math
 import pathlib
 
 from .. import aberrations
+from . import knowledge
 from ._cli import ToolError, cli_json
-from .actions import ActionError, _require, _tmp_out, read_action
+from .actions import ActionError, _require, _tmp_out, resolve_filter
 from .files import elements, is_air, read_system, write_system
 from .modules import NULL_TEMPLATES, module
 from .state import assign_groups
@@ -70,11 +74,11 @@ def _drop(paths, keep):
             p.unlink(missing_ok=True)
 
 
-def _glass_name(glass) -> str:
+def _glass_name(glass, system_path=None) -> str:
     if isinstance(glass, dict) and "name" in glass:
         return glass["name"]
     if isinstance(glass, dict) and "filter" in glass:
-        raise ActionError("not_implemented", "Glasfilter hier noch nicht (glass_query, M10-T5)")
+        return resolve_filter(glass["filter"], system_path)
     if isinstance(glass, str):
         return glass
     raise ActionError("invalid_parameter", f"Glas {glass!r}: erwartet {{'name': ...}}")
@@ -189,7 +193,7 @@ def insert_module(a, system_path, workdir):
     data = read_system(system_path)
     s = int(a["after_surface"])
     gap = _air_gap(data, s, allow_last=(kind == "aplanatic_shell"))
-    glasses = [_glass_name(g) for g in a.get("glasses", [])]
+    glasses = [_glass_name(g, system_path) for g in a.get("glasses", [])]
     report = {"module": a["module"], "template": kind, "after_surface": s,
               "group": a.get("group", mod["group"])}
     files = []
@@ -207,6 +211,8 @@ def insert_module(a, system_path, workdir):
                                                           "working_distance")},
                        "merit_before": rep["merit_before"], "merit_after": rep["merit_after"]})
         return [(out, report)]
+    if kind == "petzval_group":
+        return _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report)
     if kind not in NULL_TEMPLATES:
         raise ActionError("invalid_parameter", f"Vorlage {kind} nicht für insert_module")
     if not glasses:
@@ -221,8 +227,14 @@ def insert_module(a, system_path, workdir):
         first, glass_gaps, air_after = rep["first_new_surface"], [rep["first_new_surface"]], \
             rep["first_new_surface"] + 1
         report["glasses"] = glasses[:1]
-    elif kind == "null_doublet":
-        g2 = glasses[1] if len(glasses) > 1 else _partner_glass(system_path, glasses[0])
+    elif kind in ("null_doublet", "strong_doublet"):
+        if kind == "strong_doublet":
+            g2 = glasses[1] if len(glasses) > 1 else _merte_partner(system_path, glasses[0])
+            target = float(a.get("incidence_deg", mod["template_params"].get("incidence_deg", 40)))
+            c0, info = _strong_curvature(system_path, data, s, pos, target)
+            report.update(info)
+        else:
+            g2 = glasses[1] if len(glasses) > 1 else _partner_glass(system_path, glasses[0])
         out, rep = _insert(system_path, workdir,
                            ["--null-doublet", f"{s},{pos!r},{c0!r},{glasses[0]},{g2}"])
         first = rep["first_new_surface"]
@@ -268,6 +280,156 @@ def insert_module(a, system_path, workdir):
         return [(pathlib.Path(cur), report)]
     _drop(files, out)
     return [(out, report)]
+
+
+def _merte_partner(system_path, glass: str) -> str:
+    """Partner nach der Glasregel ``merte_pair`` mit dem größten |Δν_d| (Glasabfrage, M10-T5)."""
+    from .glass_query import QueryError, glass_query
+    try:
+        res = glass_query(system_path, {"rule": "merte_pair", "partner": glass}, limit=None)
+    except QueryError as e:
+        raise ActionError(e.code, str(e)) from None
+    if not res["glasses"]:
+        raise ActionError("precondition", f"kein Partner nach merte_pair für {glass}; "
+                          "glasses mit zwei Gläsern angeben")
+    ref = res["reference"]["vd"]
+    return max(res["glasses"], key=lambda g: (abs(g["vd"] - ref), g["name"]))["name"]
+
+
+def incidence_angle_deg(y: float, u: float, c: float) -> float | None:
+    """Einfallswinkel [°] eines meridionalen Strahls (Höhe y in der Scheitelebene, Steigung u)
+    auf eine Kugelfläche der Krümmung c mit Scheitel in dieser Ebene; None ohne Schnitt."""
+    norm = math.hypot(1.0, u)
+    dz, dy = 1.0 / norm, u / norm
+    if c == 0.0:
+        return math.degrees(math.acos(min(1.0, abs(dz))))
+    # Kugel: (z − 1/c)² + y² = 1/c², Strahl (t dz, y + t dy)
+    r = 1.0 / c
+    b = -r * dz + y * dy
+    disc = b * b - y * y
+    if disc < 0.0:
+        return None
+    # Schnitt nahe am Scheitel: kleinere Wurzel von t² + 2 b t + y² = 0 (für |t| klein)
+    t = -b - math.copysign(math.sqrt(disc), b) if b != 0.0 else math.sqrt(disc)
+    t = y * y / t if t != 0.0 else 0.0
+    pz, py = t * dz, y + t * dy
+    nz, ny = (pz - r) * c, py * c
+    cosi = abs(dz * nz + dy * ny) / math.hypot(nz, ny)
+    return math.degrees(math.acos(min(1.0, cosi)))
+
+
+def _strong_curvature(system_path, data, s, pos, target_deg):
+    """Krümmung der Kittfläche des starken Kittglieds: der paraxiale Randstrahl (Höhe und
+    Steigung hinter Fläche s, an der Lage pos) trifft sie unter ``target_deg``. Von beiden
+    Biegungen die mit kleinerem |c|; Halbkugelgrad höchstens MAX_HEMISPHERE."""
+    surf = aberrations(system_path)["surfaces"][s]
+    u = float(surf["u_after"])
+    y = float(surf["y"]) + pos * u
+    semi = max(data["surfaces"][s].get("semi_diameter", 0.0),
+               data["surfaces"][s + 1].get("semi_diameter", 0.0), abs(y))
+    c_max = MAX_HEMISPHERE / semi
+    best = None
+    for sign in (1.0, -1.0):
+        lo, hi = 0.0, c_max
+        f = lambda c: (incidence_angle_deg(y, u, sign * c) or 90.0) - target_deg  # noqa: E731
+        # Winkel wächst auf dem Ast, der den Strahl stärker ablenkt; Vorzeichenwechsel suchen
+        grid = [c_max * k / 200 for k in range(201)]
+        for c1, c2 in zip(grid, grid[1:]):
+            if f(c1) <= 0.0 <= f(c2) or f(c1) >= 0.0 >= f(c2):
+                lo, hi = c1, c2
+                break
+        else:
+            continue
+        for _ in range(100):
+            mid = 0.5 * (lo + hi)
+            if (f(lo) <= 0.0) == (f(mid) <= 0.0):
+                lo = mid
+            else:
+                hi = mid
+        c = sign * 0.5 * (lo + hi)
+        if best is None or abs(c) < abs(best):
+            best = c
+    if best is None:
+        reach = max(incidence_angle_deg(y, u, k * c_max) or 0.0 for k in (-1.0, 1.0))
+        raise ActionError("precondition", f"Einfallswinkel {target_deg}° an der Kittfläche nicht "
+                          f"erreichbar (höchstens {reach:.1f}° bei Halbkugelgrad "
+                          f"{MAX_HEMISPHERE})")
+    return best, {"incidence_deg": incidence_angle_deg(y, u, best), "marginal_height": y,
+                  "marginal_slope": u, "cement_curvature": best}
+
+
+def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report):
+    """Petzval-Gruppe: zwei Null-Menisken einfügen, dann Dicke ``thickness`` geben und die
+    Brechkräfte so setzen, dass das erste Glied (Tracerichtung) die Brechkraft
+    ``power``/f hat und das Paar in Dünnlinsennäherung afokal ist: φ₂ = −φ₁/(1 − d φ₁),
+    d = Scheitelabstand. Vorderflächen behalten die Krümmung c₀ von Fläche s; die Rückflächen
+    folgen aus der Formel der dicken Linse. Ändert die Merit; Nachoptimierung mit ``cycles``."""
+    if not glasses:
+        raise ActionError("missing_parameter", "petzval_group: glasses fehlt")
+    pos = float(a.get("position", gap / 2))
+    if not 0 < pos < gap:
+        raise ActionError("precondition", f"Lage {pos} mm liegt nicht im Spalt (0, {gap})")
+    spacing = GAUSS_SPACING * min(pos, gap - pos) * 2
+    p1 = pos - spacing / 2
+    t = float(a.get("thickness", 0.25 * spacing))
+    if not 0 < t < spacing:
+        raise ActionError("precondition", f"Dicke {t} mm passt nicht zwischen die Glieder "
+                          f"(Abstand {spacing:.4g} mm)")
+    g2 = glasses[1] if len(glasses) > 1 else glasses[0]
+    c0 = float(data["surfaces"][s].get("curvature", 0.0))
+    files = []
+    mid, rep1 = _insert(system_path, workdir, ["--meniscus", f"{s},{p1!r},{c0!r},{glasses[0]}"])
+    files.append(mid)
+    nul, _ = _insert(mid, workdir, ["--meniscus", f"{s + 2},{spacing!r},{c0!r},{g2}"])
+    files.append(nul)
+    f = cli_json(["trace", system_path])["paraxial"]["focal_length"]
+    if not (f and math.isfinite(f) and f != 0):
+        raise ActionError("precondition", "keine endliche Brennweite für die Petzval-Gruppe")
+    ns = [x["n_after"] for x in aberrations(nul)["surfaces"]]
+    phi1 = float(a.get("power", mod["template_params"].get("power", 0.5))) / abs(f)
+    if spacing * phi1 >= 1.0:
+        raise ActionError("precondition", "Petzval-Gruppe: Abstand · Brechkraft ≥ 1 (power kleiner)")
+    phi2 = -phi1 / (1.0 - spacing * phi1)
+    new = read_system(nul)
+    sf = new["surfaces"]
+    curv = []
+    for front, phi in ((s + 1, phi1), (s + 3, phi2)):
+        n = ns[front]
+        # φ = (n−1)(c₁ − c₂) + t (n−1)² c₁ c₂ / n  →  c₂
+        c2 = ((n - 1.0) * c0 - phi) / ((n - 1.0) * (1.0 - t * (n - 1.0) * c0 / n))
+        sf[front]["thickness"] = t
+        sf[front + 1]["curvature"] = c2
+        sf[front + 1]["thickness"] -= t
+        semi = max(sf[front].get("semi_diameter", 0.0), sf[front + 1].get("semi_diameter", 0.0))
+        if semi and abs(c2) * semi > MAX_HEMISPHERE:
+            raise ActionError("precondition", f"Petzval-Gruppe: Halbkugelgrad {abs(c2) * semi:.3g}"
+                              f" > {MAX_HEMISPHERE} (power kleiner)")
+        curv.append(c2)
+    if min(sf[s + 2]["thickness"], sf[s + 4]["thickness"]) <= 0:
+        raise ActionError("precondition", "Petzval-Gruppe: kein Luftspalt hinter den Gliedern")
+    # Dickenvariablen der verkürzten Luftspalte: untere Schranke höchstens der neue Wert
+    for it in (new.get("variables") or {}).get("items", []):
+        if it.get("type") == "thickness" and it.get("surface") in (s + 2, s + 4):
+            it["min"] = min(it.get("min", 0.0), sf[it["surface"]]["thickness"])
+    out = _tmp_out(pathlib.Path(workdir))
+    write_system(new, out)
+    try:
+        after = cli_json(["trace", out])
+    except ToolError as e:
+        out.unlink(missing_ok=True)
+        _drop(files, out)
+        raise ActionError("precondition", f"Petzval-Gruppe ungültig: {e}") from None
+    files.append(out)
+    final, opt = _optimize(out, workdir, int(a.get("cycles", DEFAULT_CYCLES)))
+    _drop(files, final)
+    report.update({"glasses": [glasses[0], g2], "positions": [p1, p1 + spacing],
+                   "thickness": t, "powers": [phi1, phi2], "back_curvatures": curv,
+                   "surfaces": list(range(s + 1, s + 5)),
+                   "merit_before": rep1["merit_before"],
+                   "focal_length_before": f,
+                   "focal_length_after": after["paraxial"]["focal_length"],
+                   "failed_rays": after["failed_rays"], "optimize": opt})
+    return [(pathlib.Path(final), report)]
 
 
 # --- remove_element ---------------------------------------------------------------------------
@@ -339,21 +501,25 @@ def replace_glass(a, system_path, workdir):
     surface = elems[k]["front"]
     glass = a["glass"]
     if isinstance(glass, dict) and "filter" in glass:
+        # Glasabfrage (M10-T5): mit partner_of_element die Partner der Glasvorauswahl in deren
+        # Rangfolge, sonst Katalogreihenfolge; das bisherige Glas des Elements fällt heraus
+        from .glass_query import QueryError, glass_query
         flt = dict(glass["filter"])
-        partner = flt.pop("partner_of_element", None)
         limit = int(flt.pop("max_results", 4))
-        if flt or partner is None:
-            raise ActionError("not_implemented",
-                              f"Glasfilter {sorted(flt) or ['ohne partner_of_element']}: "
-                              "glass_query folgt in M10-T5")
-        pre = read_action({"action": "glass_preselect", "order": 1, "element": int(partner),
-                           "top": 50}, system_path)["results"]
-        names = list(dict.fromkeys(r["glasses"][1] for r in pre))[:limit]
+        current = data["surfaces"][surface].get("material")
+        if isinstance(current, str):
+            flt["exclude"] = list(flt.get("exclude", [])) + [current]
+        try:
+            res = glass_query(system_path, flt, limit=limit)
+        except QueryError as e:
+            raise ActionError(e.code, str(e)) from None
+        names = [g["name"] for g in res["glasses"]]
         if not names:
-            raise ActionError("precondition", "Glasfilter: keine passenden Gläser (leer)")
+            raise ActionError("precondition", f"Glasfilter {glass['filter']}: keine passenden "
+                              "Gläser (leer)")
         cycles = int(a.get("cycles", DEFAULT_CYCLES))
     else:
-        names = [_glass_name(glass)]
+        names = [_glass_name(glass, system_path)]
         cycles = int(a.get("cycles", 0))
     outs = []
     for name in names:
@@ -407,7 +573,7 @@ def replace_group(a, system_path, workdir):
         raise ActionError("precondition", f"Gruppe {group} hat keine Elemente")
     elems = elements(data)
     firsts = sorted({_block_start(data, k)[0] for k in members}, reverse=True)
-    glasses = [_glass_name(g) for g in a.get("glasses", [])]
+    glasses = [_glass_name(g, system_path) for g in a.get("glasses", [])]
     if not glasses:
         m = data["surfaces"][elems[members[0]]["front"]].get("material")
         glasses = [m] if isinstance(m, str) else []
@@ -445,25 +611,16 @@ def replace_group(a, system_path, workdir):
 # --- start_from_skeleton ----------------------------------------------------------------------
 
 #: Vorzeichen der Brechkräfte pro Gruppe (Frontgruppe, Mittelgruppe, Hintergruppe), innerhalb
-#: einer Gruppe von der Objektseite aus; Typen nach Zhang 2019, Tab. 6.2
-SKELETONS = {
-    "PPN": ("P", "P", "N"),
-    "PPN_strong_retrofocus": ("P", "P", "N"),
-    "PP(NP)": ("P", "P", "NP"),
-    "P(PN)0": ("P", "PN", "0"),
-    "P(P0)N": ("P", "P0", "N"),
-    "(P0)PN": ("P0", "P", "N"),
-    "P(P0P)N": ("P", "P0P", "N"),
-    "PNP": ("P", "N", "P"),
-}
-#: relative Brechkraft der Zeichen (N: Hintergruppe als Retrofokus-Glied)
-SIGN_WEIGHT = {"P": 1.0, "N": -0.5, "0": 0.0}
-STRONG_RETROFOCUS_N = -1.0
+#: einer Gruppe von der Objektseite aus; aus der Wissensbasis (power_distributions.json)
+SKELETONS = {k: (d["groups"]["front"], d["groups"]["middle"], d["groups"]["rear"])
+             for k, d in knowledge.distributions().items()}
 #: Geometrie des Gerüsts in Einheiten der Brennweite f
 SKELETON_THICKNESS = 0.3   # Mittendicke einer Linse (Kittglied: je Teil 0,6 davon)
 SKELETON_GAP = 0.15        # Luftspalt zwischen Elementen
 SKELETON_STOP_GAP = 0.1    # Blende → erstes Element
 SKELETON_SEMI = 1.5        # Halbdurchmesser in Einheiten des Pupillenradius
+#: Faktoren für Dicken und Abstände, falls das Gerüst die Brennweite sonst nicht erreicht (M10-T5)
+SKELETON_SHRINK = (1.0, 0.5, 0.25)
 
 
 def _paraxial(curv, thick, ns):
@@ -490,8 +647,10 @@ def _skeleton_elements(a, distribution):
                 tpl = module(m)["template"]
             except KeyError as e:
                 raise ActionError("invalid_parameter", str(e.args[0])) from None
-            kinds += ["lens", "lens"] if tpl == "gauss_pair" else [
-                "doublet" if tpl == "null_doublet" else "lens"]
+            if tpl not in knowledge.SKELETON_ELEMENTS:
+                raise ActionError("invalid_parameter",
+                                  f"Modul {m}: Vorlage {tpl} nicht für Gerüste")
+            kinds += list(knowledge.SKELETON_ELEMENTS[tpl])
         letters = signs[group]
         if len(letters) == 1:
             letters = letters * len(kinds)
@@ -523,7 +682,7 @@ def start_from_skeleton(a, system_path, workdir):
         raise ActionError("precondition", "keine positive Brennweite für das Gerüst")
     na = float(a.get("start_aperture", data["surfaces"][0]["semi_diameter"] / f))
     pupil = f * na
-    glasses = [_glass_name(g) for g in a.get("glasses", [])]
+    glasses = [_glass_name(g, system_path) for g in a.get("glasses", [])]
     if not glasses:
         first = next((s.get("material") for s in data["surfaces"]
                       if isinstance(s.get("material"), str) and not is_air(s.get("material"))),
@@ -534,9 +693,7 @@ def start_from_skeleton(a, system_path, workdir):
     partner = glasses[1] if len(glasses) > 1 else None
     if partner is None and any(k == "doublet" for k, _, _ in els):
         partner = _partner_glass(system_path, glasses[0])
-    weight = dict(SIGN_WEIGHT)
-    if dist == "PPN_strong_retrofocus":
-        weight["N"] = STRONG_RETROFOCUS_N
+    weight = knowledge.sign_weights(dist)
 
     # Gerüst mit Brechkräften s · w: Flächen (Krümmungsfaktor, Dicke, Glas) bei s = 1
     t_lens = SKELETON_THICKNESS * f
@@ -592,22 +749,42 @@ def start_from_skeleton(a, system_path, workdir):
     total = sum(weight[s] for _, s, _ in els)
     if total <= 0:
         raise ActionError("precondition", f"Verteilung {dist}: Summe der Brechkräfte ≤ 0")
-    s0, s1 = target / total, 1.1 * target / total
-    p0 = _paraxial(curvatures(s0), thick, ns)[0] - target
-    p1 = _paraxial(curvatures(s1), thick, ns)[0] - target
-    for _ in range(60):
-        if p1 == p0:
-            break
-        s0, s1, p0 = s1, s1 - p1 * (s1 - s0) / (p1 - p0), p1
+
+    def solve(thick):
+        """Gemeinsamer Faktor der Brechkräfte für φ = 1/f (Sekantenverfahren); None ohne
+        Lösung mit positivem Faktor und positivem Arbeitsabstand."""
+        s0, s1 = target / total, 1.1 * target / total
+        p0 = _paraxial(curvatures(s0), thick, ns)[0] - target
         p1 = _paraxial(curvatures(s1), thick, ns)[0] - target
-        if abs(p1) <= 1e-14 * target:
+        for _ in range(60):
+            if p1 == p0:
+                break
+            s0, s1, p0 = s1, s1 - p1 * (s1 - s0) / (p1 - p0), p1
+            p1 = _paraxial(curvatures(s1), thick, ns)[0] - target
+            if abs(p1) <= 1e-14 * target:
+                break
+        phi, bfd = _paraxial(curvatures(s1), thick, ns)
+        if not (math.isfinite(phi) and abs(phi - target) <= 1e-9 * target and s1 > 0):
+            return None, "Brennweite"
+        if not bfd > 0:
+            return None, f"Arbeitsabstand {bfd:.4g} mm"
+        return (s1, bfd), None
+
+    # Zu lange Gerüste (viele dicke Glieder, z. B. double_gauss) erreichen die Brennweite nicht:
+    # Dicken und Abstände dann halbieren (höchstens zweimal)
+    for shrink in SKELETON_SHRINK:
+        thick_k = [t * shrink for t in thick]
+        sol, why = solve(thick_k)
+        if sol is not None:
             break
-    phi, bfd = _paraxial(curvatures(s1), thick, ns)
-    if not (math.isfinite(phi) and abs(phi - target) <= 1e-9 * target):
-        raise ActionError("precondition", f"Verteilung {dist}: Brennweite {f} mm nicht erreichbar")
-    if not bfd > 0:
+    if sol is None:
+        if why == "Brennweite":
+            raise ActionError("precondition", f"Verteilung {dist}: Brennweite {f} mm nicht erreichbar")
         raise ActionError("precondition",
-                          f"Verteilung {dist}: kein positiver Arbeitsabstand ({bfd:.4g} mm)")
+                          f"Verteilung {dist}: kein positiver Arbeitsabstand ({why})")
+    s1, bfd = sol
+    for p, t in zip(proto, thick_k):
+        p["thickness"] = t
     curv = curvatures(s1)
     surfaces = []
     for p, c in zip(proto, curv):
@@ -652,5 +829,5 @@ def start_from_skeleton(a, system_path, workdir):
                               ("front", "middle", "rear")},
                    "glasses": [glasses[0]] + ([partner] if partner else []),
                    "focal_length": check["paraxial"]["focal_length"], "start_aperture": na,
-                   "working_distance": bfd, "power_scale": s1,
+                   "working_distance": bfd, "power_scale": s1, "length_scale": shrink,
                    "failed_rays": check["failed_rays"]})]

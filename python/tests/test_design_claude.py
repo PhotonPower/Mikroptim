@@ -152,15 +152,16 @@ def test_refusal_and_max_tokens(session):
 
 def test_budget_aborts_before_request(session, tmp_path):
     path = tmp_path / "kosten.json"
-    ledger = design.CostLedger(0.10, path)
+    ledger = design.CostLedger(0.15, path)
     fake = FakeClient([message(submit({"action": "free_gaps"}))])
-    # Reserve einer Anfrage (volle max_tokens zu Opus-Preisen) übersteigt 0,10 $
+    # Reserve einer Anfrage (volle max_tokens zu Opus-Preisen) übersteigt 0,15 $ (Prompt mit
+    # Kurzfassung der Wissensbasis, M10-T5)
     with pytest.raises(design.BudgetExceeded):
         session.step(design.ClaudeDecider(client=fake, ledger=ledger), 0)
     assert fake.requests == [] and ledger.spent_usd == 0.0
     # mit kleinem max_tokens passt es; Summe wird in der Datei fortgeschrieben
     session.step(design.ClaudeDecider(client=fake, ledger=ledger, max_tokens=500), 0)
-    again = design.CostLedger(0.10, path)
+    again = design.CostLedger(0.15, path)
     assert again.spent_usd == pytest.approx(8.6e-3) and again.requests == 1
     assert "claude-opus-5-5" in json.loads(path.read_text(encoding="utf-8"))["by_model"]
     # BudgetExceeded ist kein DecisionError: kein stiller Rückfall auf die Regel

@@ -118,6 +118,7 @@ add_library(mikroptim_glass STATIC
     src/glass/convex_hull.cpp
     src/glass/glass_hull.cpp
     src/glass/glass_preselection.cpp
+    src/glass/glass_properties.cpp
     src/glass/index_table.cpp)
 add_library(Mikroptim::glass ALIAS mikroptim_glass)
 target_link_libraries(mikroptim_glass

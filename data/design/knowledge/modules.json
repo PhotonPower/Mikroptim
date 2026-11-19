@@ -1,0 +1,194 @@
+{
+  "format": "mikroptim.design.knowledge/1",
+  "kind": "modules",
+  "description": "Linsenmodule der Entwurfssteuerung (M10-T5, docs/entwurfssteuerung.md, Abschnitte 5.1 und 5.2), in eigenen Worten mit Quellenangabe; keine Linsendaten realer Objektive (AGENTS.md, Abschnitt 8). effect: Wirkung auf SA (sphärische Aberration 3. Ordnung), ZSA (Zonenfehler, höhere Ordnung), coma, AST, FC (Bildfeldwölbung), ACA (Farblängsfehler), LCA (Farbquerfehler), SPHCRM (Sphärochromasie) in −2 … +2; fehlend = kein nennenswerter Beitrag. Bei Modulen nach Zhang übernimmt der Vektor dessen qualitative Bewertung (Tab. 6.4, 6.6, 6.8, in der Notation von docs/entwurfssteuerung.md), sonst ist er eine Mikroptim-Annahme (Feld assumption). template.kind ist die Vorlage für insert_module; Module ohne umgesetzte Vorlage dienen nur dem Nachschlagen (module_lookup) und dem Gerüst.",
+  "references": {
+    "Zhang 2019": "Y. Zhang, Systematic Design of Microscope Objectives, Dissertation, Friedrich-Schiller-Universität Jena, 2019",
+    "Welford 1986": "W. T. Welford, Aberrations of Optical Systems, Adam Hilger, 1986",
+    "Bociort": "F. Bociort u. a., Arbeiten zu Sattelpunkten und Nullelementen im Linsenentwurf (Einfügen ohne Merit-Änderung; docs/optimierung.md, Abschnitt 6)",
+    "Kingslake & Johnson 2010": "R. Kingslake, R. B. Johnson, Lens Design Fundamentals, 2. Aufl., Academic Press/SPIE Press, 2010",
+    "Smith 2008": "W. J. Smith, Modern Optical Engineering, 4. Aufl., McGraw-Hill, 2008",
+    "Schott TIE-29": "Schott AG, Technical Information TIE-29: Refractive Index and Dispersion"
+  },
+  "modules": [
+    {
+      "id": "generic.aplanatic_shell",
+      "group": null,
+      "title": "aplanatisch-konzentrische Schale",
+      "effect": {},
+      "template": {"kind": "aplanatic_shell"},
+      "notes": "Erste Fläche aplanatisch zum Bildpunkt des realen Randstrahls, zweite konzentrisch: erhöht die Apertur um den Faktor n, ohne sphärische Aberration aller Ordnungen hinzuzufügen.",
+      "source": "Welford 1986 (aplanatische Punkte einer Kugelfläche); Zhang 2019, §3.2"
+    },
+    {
+      "id": "generic.null_meniscus",
+      "group": null,
+      "title": "Null-Meniskus",
+      "effect": {},
+      "template": {"kind": "null_meniscus"},
+      "notes": "Meniskus ohne Brechkraft und Dicke (Operator A): die Merit bleibt beim Einfügen gleich, die Wirkung entsteht über die Dicken-Homotopie und die Nachoptimierung.",
+      "source": "Bociort (Nullelemente); docs/optimierung.md, Abschnitt 6"
+    },
+    {
+      "id": "generic.null_doublet",
+      "group": null,
+      "title": "Null-Kittglied",
+      "effect": {},
+      "template": {"kind": "null_doublet"},
+      "glass_preselect_order": 1,
+      "notes": "Kittglied aus zwei Gläsern ohne Wirkung (drei Flächen gleicher Krümmung, Dicke 0); Ausgangspunkt für Farbkorrektur. Partnerglas aus der Glasvorauswahl.",
+      "source": "docs/optimierung.md, Abschnitt 13 (Erweiterung der Nullelemente nach Bociort)"
+    },
+    {
+      "id": "generic.gauss_pair",
+      "group": null,
+      "title": "Gauss-Paar",
+      "effect": {},
+      "template": {"kind": "gauss_pair"},
+      "notes": "Zwei Menisken ohne Brechkraft, Hohlseiten einander zugewandt; wachsen über die Dicken-Homotopie.",
+      "source": "Zhang 2019, Tab. 6.2 (Typ d), Abb. 6.13b"
+    },
+    {
+      "id": "generic.strong_doublet",
+      "group": null,
+      "title": "starkes Kittglied",
+      "effect": {"SA": 1, "ZSA": 2, "SPHCRM": 2},
+      "template": {"kind": "strong_doublet", "incidence_deg": 40},
+      "glass_rule": "merte_pair",
+      "notes": "Null-Kittglied, dessen Flächen so gekrümmt sind, dass der Randstrahl die Kittfläche unter 35–50° trifft; die Merit bleibt beim Einfügen gleich. Mit kleinem Brechzahlsprung eine Merte-Fläche.",
+      "source": "Prinzip der Merte-Fläche: Zhang 2019, Tab. 6.7; Winkelbereich: docs/entwurfssteuerung.md, Abschnitt 5.2",
+      "assumption": "Mikroptim-Annahme: Startwinkel 40° aus dem paraxialen Randstrahl (Höhe und Neigung an der Einfügestelle); Wirkungsvektor qualitativ."
+    },
+    {
+      "id": "generic.petzval_group",
+      "group": null,
+      "title": "Petzval-Gruppe (ungefähr afokal)",
+      "effect": {"FC": 2, "AST": 1},
+      "template": {"kind": "petzval_group", "power": 0.5},
+      "notes": "Sammelndes und zerstreuendes Glied mit Abstand, zusammen ungefähr afokal: ändert die Brennweite kaum, trennt aber die Brechkräfte nach Randstrahlhöhe und gibt so Freiheitsgrade für die Petzvalsumme. Das zerstreuende Glied sitzt bei kleinerer Randstrahlhöhe.",
+      "source": "docs/entwurfssteuerung.md, Abschnitt 5.2 (nach Zhang 2019, Tab. 6.2, Typ d); Petzvalsumme: Welford 1986",
+      "assumption": "Mikroptim-Annahme: Startbrechkraft des sammelnden Glieds 0,5/f, Afokalität in Dünnlinsennäherung; Wirkungsvektor qualitativ."
+    },
+    {
+      "id": "generic.lens",
+      "group": null,
+      "title": "Einzellinse (Gerüst)",
+      "effect": {},
+      "template": {"kind": "lens"},
+      "notes": "Linse mit der Brechkraft aus der Verteilung; nur als Baustein von start_from_skeleton.",
+      "source": "Mikroptim-Annahme (Gerüstbaustein, M10-T4)"
+    },
+    {
+      "id": "front.amici_lens",
+      "group": "front",
+      "title": "Amici-Frontlinse",
+      "effect": {},
+      "requires": {"na_min": 0.5},
+      "template": {"kind": "amici_front"},
+      "notes": "Fast halbkugelige Frontlinse, deren objektseitige Fläche das Objekt im aplanatischen Punkt abbildet: sammelt große NA ohne sphärische Aberration und Koma, liefert aber Bildfeldwölbung und Farblängsfehler, die die übrigen Gruppen tragen. Halbkugelgrad begrenzt die Fassbarkeit.",
+      "side_effects": {"sensitivity": "hoch", "notes": "Halbkugelgrad nahe 1, Arbeitsabstand klein"},
+      "source": "Welford 1986 (aplanatische Punkte); Zhang 2019, §3.2",
+      "assumption": "Mikroptim-Annahme: na_min 0,5 als Einsatzbereich."
+    },
+    {
+      "id": "front.shell_ca",
+      "group": "front",
+      "title": "konzentrisch-aplanatische Schalenlinse",
+      "effect": {"SA": 2, "coma": 2, "ACA": -1, "FC": -1},
+      "requires": {"na_min": 0.6},
+      "template": {"kind": "aplanatic_shell", "front": "concentric", "back": "aplanatic"},
+      "glass_rule": "low_n_low_dispersion",
+      "notes": "Schale hinter der Frontlinse: verteilt die Brechkraft und senkt die Dezentrierempfindlichkeit; eine axiale Verschiebung ändert vor allem die sphärische Aberration und eignet sich als Korrekturfassung.",
+      "side_effects": {"sensitivity": "niedrig"},
+      "source": "Zhang 2019, Tab. 6.4 Nr. 3, Abb. 6.7"
+    },
+    {
+      "id": "front.thick_meniscus_dry",
+      "group": "front",
+      "title": "dicker Frontmeniskus (trocken)",
+      "effect": {"SA": -2, "FC": 2},
+      "requires": {"immersion": false, "na_min": 0.9},
+      "template": {"kind": "thick_meniscus", "concave_to": "object"},
+      "glass_rule": "front_medium_n_medium_vd",
+      "notes": "Hohle Frontfläche für Arbeitsabstand, nicht aplanatisch: große sphärische Aberration höherer Ordnung, die die Mittelgruppe ausgleichen muss; nahezu ohne Petzvalkrümmung, entlastet die Hintergruppe.",
+      "source": "Zhang 2019, Tab. 6.4 Nr. 4, Anh. VII"
+    },
+    {
+      "id": "middle.merte_doublet",
+      "group": "middle",
+      "title": "Kittglied mit Merte-Fläche",
+      "effect": {"SA": 1, "ZSA": 2, "ACA": 1, "SPHCRM": 2},
+      "template": {"kind": "null_doublet", "cement": "strong"},
+      "glass_rule": "merte_pair",
+      "notes": "Stark gekrümmte Kittfläche mit kleinem Brechzahlsprung: viel sphärische Aberration höherer Ordnung bei geringer Brechkraftwirkung. Start als Null-Kittglied, die Kittfläche krümmt der Optimierer; für einen gekrümmten Start middle.strong_doublet.",
+      "source": "Zhang 2019, Tab. 6.6 Nr. 3, Tab. 6.7"
+    },
+    {
+      "id": "middle.strong_doublet",
+      "group": "middle",
+      "title": "starkes Kittglied der Mittelgruppe",
+      "effect": {"SA": 1, "ZSA": 2, "ACA": 1, "SPHCRM": 2},
+      "template": {"kind": "strong_doublet", "incidence_deg": 40},
+      "glass_rule": "merte_pair",
+      "notes": "Wie middle.merte_doublet, aber mit gekrümmter Kittfläche (Randstrahl unter 35–50°) schon beim Einfügen; die Merit bleibt gleich (Dicke 0).",
+      "source": "Zhang 2019, Tab. 6.6 Nr. 3, Tab. 6.7; Winkelbereich: docs/entwurfssteuerung.md, Abschnitt 5.2",
+      "assumption": "Mikroptim-Annahme: Startwinkel 40°."
+    },
+    {
+      "id": "middle.achromat_doublet",
+      "group": "middle",
+      "title": "achromatisches Kittglied",
+      "effect": {"ACA": 2, "SA": 1},
+      "template": {"kind": "null_doublet"},
+      "glass_preselect_order": 1,
+      "notes": "Sammelnde Linse aus wenig dispersivem und zerstreuende aus stark dispersivem Glas, Brechkräfte im Verhältnis der Abbezahlen (φ₁/ν₁ + φ₂/ν₂ = 0): korrigiert den Farblängsfehler der Gruppe, die Kittfläche zusätzlich sphärische Aberration. Partner über glass_preselect.",
+      "source": "Achromasiebedingung dünner Linsen: Kingslake & Johnson 2010; Partnerwahl: docs/numerik.md, Abschnitt 15",
+      "assumption": "Mikroptim-Annahme: Wirkungsvektor qualitativ."
+    },
+    {
+      "id": "middle.apo_triplet",
+      "group": "middle",
+      "title": "Apochromat-Kitttriplet",
+      "effect": {"ACA": 2, "SPHCRM": 1},
+      "template": {"kind": "cemented_triplet"},
+      "glass_rule": "anomalous_pgf",
+      "glass_preselect_order": 2,
+      "notes": "Drei Gläser, davon mindestens eines mit anomaler Teildispersion, korrigieren Farblängsfehler und sekundäres Spektrum (Apochromasie). Tripel über glass_preselect mit order 2. Heute einfügen als zwei Kittglieder (split_lens) bzw. middle.achromat_doublet mit anomalem Glas.",
+      "source": "Schott TIE-29 (anomale Teildispersion); Tripel: docs/numerik.md, Abschnitt 15",
+      "assumption": "Mikroptim-Annahme: Bauform als Kitttriplet, Wirkungsvektor qualitativ."
+    },
+    {
+      "id": "rear.gauss_pair",
+      "group": "rear",
+      "title": "Gauss-Paar der Hintergruppe",
+      "effect": {"coma": 2, "AST": 2, "FC": 2, "LCA": 1},
+      "template": {"kind": "gauss_pair"},
+      "glass_rule": "dense_flint_for_lca",
+      "notes": "Zwei dicke Menisken mit stark gekrümmten Außenflächen, quasisymmetrisch: korrigieren Koma, Astigmatismus und Bildfeldwölbung; dezentrierempfindlich.",
+      "side_effects": {"sensitivity": "hoch"},
+      "source": "Zhang 2019, Tab. 6.8 Nr. 2, Abb. 6.13b"
+    },
+    {
+      "id": "rear.petzval_group",
+      "group": "rear",
+      "title": "Petzval-Gruppe der Hintergruppe",
+      "effect": {"FC": 2, "AST": 1, "LCA": 1},
+      "template": {"kind": "petzval_group", "power": 0.5},
+      "glass_rule": "dense_flint_for_lca",
+      "notes": "Ungefähr afokales Paar aus sammelndem und zerstreuendem Glied als Alternative zum Gauss-Paar, wenn dessen Empfindlichkeit stört (replace_group).",
+      "side_effects": {"sensitivity": "mittel"},
+      "source": "docs/entwurfssteuerung.md, Abschnitte 5.2 und 6 (nach Zhang 2019, Tab. 6.2, Typ d, und §6.4.3)",
+      "assumption": "Mikroptim-Annahme: Startbrechkraft 0,5/f; Wirkungsvektor qualitativ."
+    },
+    {
+      "id": "rear.thick_negative_meniscus",
+      "group": "rear",
+      "title": "dicker Meniskus zur Feldebnung",
+      "effect": {"FC": 2, "AST": 1},
+      "template": {"kind": "null_meniscus"},
+      "notes": "Dicker Meniskus, beide Flächen ähnlich gekrümmt: zerstreut etwas und trägt eine negative Petzvalsumme bei, weil die Randstrahlhöhe an den beiden Flächen verschieden ist. Start als Null-Meniskus mit Dicken-Homotopie (thickness).",
+      "source": "Petzvalkrümmung und Feldebnung mit dicken Menisken: Smith 2008",
+      "assumption": "Mikroptim-Annahme: Einordnung in die Hintergruppe, Wirkungsvektor qualitativ."
+    }
+  ]
+}

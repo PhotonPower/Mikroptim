@@ -363,6 +363,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T5 – Wissensbasis und Glasabfrage
 - **Abhängig von:** M10-T4, M11-T5
+- **Stand:** umgesetzt (`data/design/knowledge/`: 17 Module, 9 Brechkraftverteilungen, 9 Glasregeln; `mikroptim/design/knowledge.py`, `glass_query.py`; Kennzahlen `include/mikroptim/glass/glass_properties.hpp`, `mikroptim glasses --list`; [entwurfssteuerung.md, Abschnitt 5](../entwurfssteuerung.md#5-wissensbasis)). Abnahme: jede Regel, jedes Modul, jede Verteilung mit Quelle (Zahlenschwellen ohne Beleg als Mikroptim-Annahme gekennzeichnet); `glass_query` gegen Bruteforce auf `synthetisch.json` und `basis.json` – alle Einzelregeln, beide Paarregeln mit jedem der 39 Gläser als Bezug, 40 zufällige Filter, Partner der Glasvorauswahl, Transmission – gleiche Listen; Bereichsfilter des Kerns in 400 Zufallsfällen gleich. Dazu die Vorlagen `strong_doublet` und `petzval_group`, `double_gauss` und Glasfilter in allen Glasangaben.
 - **Inhalt:** Linsenmodule, Brechkraftverteilungen und Glasregeln als JSON in eigenen Worten mit Quellenangabe; `glass_query`.
 - **Abnahme:** Filter gegen Bruteforce auf den Testkatalogen; jede Regel mit Quelle.
 

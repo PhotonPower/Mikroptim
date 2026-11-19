@@ -46,6 +46,14 @@ file(GLOB_RECURSE MKO_PY_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOUR
 foreach(rel IN LISTS MKO_PY_SOURCES)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mikroptim/${rel} ${MKO_PY_PACKAGE_DIR}/${rel} COPYONLY)
 endforeach()
+# Wissensbasis der Entwurfssteuerung (M10-T5): data/design/knowledge/*.json ins Paket
+# (mikroptim/design/knowledge), im Build-Baum und im Wheel
+file(GLOB MKO_PY_KNOWLEDGE CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/data/design/knowledge/*.json)
+foreach(f IN LISTS MKO_PY_KNOWLEDGE)
+    get_filename_component(name ${f} NAME)
+    configure_file(${f} ${MKO_PY_PACKAGE_DIR}/design/knowledge/${name} COPYONLY)
+endforeach()
+install(FILES ${MKO_PY_KNOWLEDGE} DESTINATION mikroptim/design/knowledge)
 
 # Angaben zum Build für das Paket: CUDA-Build und (Windows) Verzeichnis der CUDA-DLLs, das
 # mikroptim/__init__.py vor dem Laden des Moduls mit os.add_dll_directory einträgt.

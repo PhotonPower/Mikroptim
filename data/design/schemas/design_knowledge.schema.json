@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mikroptim.design.knowledge/1",
+  "title": "Wissensbasis der Entwurfssteuerung (M10-T5): Linsenmodule, Brechkraftverteilungen, Glasregeln",
+  "type": "object",
+  "required": ["format", "kind", "description"],
+  "properties": {
+    "format": {"const": "mikroptim.design.knowledge/1"},
+    "kind": {"enum": ["modules", "power_distributions", "glass_rules"]},
+    "description": {"type": "string", "minLength": 1},
+    "references": {
+      "type": "object",
+      "description": "Kurzzeichen der Quellen → vollständige Angabe",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {"kind": {"const": "modules"}, "modules": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/module"}}},
+      "required": ["modules"]
+    },
+    {
+      "properties": {
+        "kind": {"const": "power_distributions"},
+        "sign_weights": {
+          "type": "object", "additionalProperties": false, "required": ["P", "N", "0"],
+          "properties": {"P": {"type": "number"}, "N": {"type": "number"}, "0": {"type": "number"}}
+        },
+        "sign_weights_source": {"$ref": "#/$defs/source"},
+        "distributions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/distribution"}}
+      },
+      "required": ["sign_weights", "sign_weights_source", "distributions"]
+    },
+    {
+      "properties": {"kind": {"const": "glass_rules"}, "rules": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rule"}}},
+      "required": ["rules"]
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "string", "minLength": 3,
+      "description": "Quelle (Lehrbuch, Kapitel/Seite, öffentlich zugängliche Quelle) oder „Mikroptim-Annahme …“"
+    },
+    "assumption": {
+      "type": "string", "minLength": 3,
+      "description": "Teile des Eintrags, die keine Quelle belegt (Mikroptim-Annahme)"
+    },
+    "aberration": {"enum": ["SA", "ZSA", "coma", "AST", "FC", "ACA", "LCA", "SPHCRM"]},
+    "module": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "group", "title", "effect", "template", "notes", "source"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^(generic|front|middle|rear)\\.[a-z0-9_]+$"},
+        "group": {"enum": [null, "front", "middle", "rear"]},
+        "title": {"type": "string", "minLength": 1},
+        "effect": {
+          "type": "object", "additionalProperties": false,
+          "propertyNames": {"$ref": "#/$defs/aberration"},
+          "patternProperties": {".*": {"type": "integer", "minimum": -2, "maximum": 2}}
+        },
+        "requires": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "immersion": {"type": "boolean"},
+            "na_min": {"type": "number", "minimum": 0},
+            "na_max": {"type": "number", "minimum": 0},
+            "zones": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 6}}
+          }
+        },
+        "template": {
+          "type": "object", "required": ["kind"],
+          "properties": {"kind": {"type": "string", "minLength": 1}}
+        },
+        "glass_rule": {"type": "string"},
+        "glass_preselect_order": {"enum": [1, 2]},
+        "side_effects": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "sensitivity": {"enum": ["niedrig", "mittel", "hoch"]},
+            "cost": {"enum": ["niedrig", "mittel", "hoch"]},
+            "autofluorescence": {"type": "string"},
+            "notes": {"type": "string"}
+          }
+        },
+        "notes": {"type": "string", "minLength": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "assumption": {"$ref": "#/$defs/assumption"}
+      }
+    },
+    "signs": {"type": "string", "pattern": "^[PN0]+$"},
+    "distribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "groups", "notes", "source"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "groups": {
+          "type": "object", "additionalProperties": false, "required": ["front", "middle", "rear"],
+          "properties": {"front": {"$ref": "#/$defs/signs"}, "middle": {"$ref": "#/$defs/signs"},
+                         "rear": {"$ref": "#/$defs/signs"}}
+        },
+        "weights": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"P": {"type": "number"}, "N": {"type": "number"}, "0": {"type": "number"}}
+        },
+        "notes": {"type": "string", "minLength": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "assumption": {"$ref": "#/$defs/assumption"}
+      }
+    },
+    "range": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [{"type": ["number", "null"]}, {"type": ["number", "null"]}]
+    },
+    "condition": {
+      "type": "object", "minProperties": 1, "additionalProperties": false,
+      "properties": {
+        "nd": {"$ref": "#/$defs/range"},
+        "vd": {"$ref": "#/$defs/range"},
+        "pgf": {"$ref": "#/$defs/range"},
+        "dpgf": {"$ref": "#/$defs/range"},
+        "abs_delta_nd": {"$ref": "#/$defs/range"},
+        "abs_delta_vd": {"$ref": "#/$defs/range"},
+        "abs_delta_pgf": {"$ref": "#/$defs/range"},
+        "abs_delta_dpgf": {"$ref": "#/$defs/range"},
+        "all": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/condition"}},
+        "any": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/condition"}},
+        "not": {"$ref": "#/$defs/condition"},
+        "rule": {"type": "string"}
+      }
+    },
+    "rule": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "condition", "notes", "source"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "needs_partner": {"type": "boolean"},
+        "condition": {"$ref": "#/$defs/condition"},
+        "notes": {"type": "string", "minLength": 1},
+        "source": {"$ref": "#/$defs/source"},
+        "assumption": {"$ref": "#/$defs/assumption"}
+      }
+    }
+  }
+}

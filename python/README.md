@@ -148,12 +148,23 @@ python -m mikroptim.design replay sitzung sitzung_neu                           
  "actions": [{"action": "free_gaps"}, {"action": "optimize", "cycles": 50}]}
 ```
 
-Strukturelle Aktionen (M10-T4, `mikroptim/design/operators.py`; Geometrie über `mikroptim insert`, Verfahren in [docs/optimierung.md, Abschnitt 13](../docs/optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4)): `place_ghost_dictionary` (Geisterplatten mit Koeffizienten 0, Merit unverändert), `insert_module` mit den Modulen aus `mikroptim/design/modules.py` (aplanatische Schale `front.shell_ca`, Null-Meniskus, Null-Kittglied `middle.merte_doublet`, Gauss-Paar `rear.gauss_pair`; mit `thickness` Dicken-Homotopie), `remove_element` (Rückbau-Homotopie in `stages` Stufen mit `cycles` LM-Zyklen, Null-Elemente sofort), `replace_glass` (Name oder Filter `partner_of_element`), `replace_group` und `start_from_skeleton` (neuer Wurzelkandidat aus einer Brechkraftverteilung), z. B.:
+Strukturelle Aktionen (M10-T4, `mikroptim/design/operators.py`; Geometrie über `mikroptim insert`, Verfahren in [docs/optimierung.md, Abschnitt 13](../docs/optimierung.md#13-operatoren-der-entwurfssteuerung-m10-t4)): `place_ghost_dictionary` (Geisterplatten mit Koeffizienten 0, Merit unverändert), `insert_module` mit den Modulen der Wissensbasis (aplanatische Schale `front.shell_ca`, Null-Meniskus, Null-Kittglied `middle.merte_doublet`, starkes Kittglied `middle.strong_doublet`, Gauss-Paar `rear.gauss_pair`, Petzval-Gruppe `rear.petzval_group`, …; mit `thickness` Dicken-Homotopie), `remove_element` (Rückbau-Homotopie in `stages` Stufen mit `cycles` LM-Zyklen, Null-Elemente sofort), `replace_glass` (Name oder Filter der Glasabfrage), `replace_group` und `start_from_skeleton` (neuer Wurzelkandidat aus einer Brechkraftverteilung), z. B.:
 
 ```json
 {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "Apertur der Frontgruppe erhöhen",
  "actions": [{"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
               "position": 1.0, "thickness": 1.5, "glasses": [{"name": "N-BK7"}]}]}
+```
+
+Wissensbasis (M10-T5, [docs/entwurfssteuerung.md, Abschnitt 5](../docs/entwurfssteuerung.md#5-wissensbasis)): Linsenmodule, Brechkraftverteilungen und Glasregeln in eigenen Worten mit Quelle unter `data/design/knowledge/` (im Paket als `mikroptim/design/knowledge/`, andere Stelle mit `MIKROPTIM_KNOWLEDGE_DIR`). Lese-Aktionen `module_lookup` (Module nach Gruppe, korrigierbarer Aberration, Zone, NA) und `glass_query` (Gläser der Kataloge nach Glasregeln, n_d, ν_d, P_g,F, ΔP_g,F, Transmission, Partner); Glasangaben in Aktionen dürfen statt `{"name": …}` ein `{"filter": …}` sein (erstes Glas der Abfrage):
+
+```python
+from mikroptim.design import knowledge
+from mikroptim.design.glass_query import glass_query
+
+knowledge.module_lookup(group="middle", corrects=["ZSA"])          # Liste der Module, sortiert
+r = glass_query("system.json", {"rule": "merte_pair", "partner": "N-BK7", "vd": [None, 60]})
+print(r["count"], [g["name"] for g in r["glasses"]], r["rules"]["merte_pair"]["source"])
 ```
 
 Entscheider (M10-T6b): `--decider rule` (feste Vergleichsstrategie), `--decider ollama --model <modell>` (lokales Sprachmodell über Ollama auf `--host`, Standard `http://localhost:11434`; `--think`/`--no-think` für Thinking-Modelle), `--confirm` (Mensch bestätigt jeden Vorschlag), `--fallback rule|human` bei ungültigen Modellantworten:
