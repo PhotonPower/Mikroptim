@@ -10,6 +10,7 @@
 #include "cli/optimize_command.hpp"
 #include "cli/snap_command.hpp"
 #include "cli/synth_command.hpp"
+#include "cli/tolerance_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
@@ -35,8 +36,8 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
     {
         nb::gil_scoped_release release;
         if (argv.empty()) {
-            err << "Aufruf: mikroptim <trace|optimize|eval|snap|insert|synth|aberrations|glasses> "
-                   "... "
+            err << "Aufruf: mikroptim "
+                   "<trace|optimize|eval|snap|insert|synth|aberrations|glasses|tolerance> ... "
                    "(Hilfe: <befehl> --help)\n";
         } else if (argv[0] == "--version") {
             out << "mikroptim " << kVersion << '\n';
@@ -60,6 +61,8 @@ std::tuple<int, std::string, std::string> run_cli(const std::vector<std::string>
                 code = cli::run_glasses_command(args, out, err);
             } else if (command == "aberrations") {
                 code = cli::run_aberrations_command(args, out, err);
+            } else if (command == "tolerance") {
+                code = cli::run_tolerance_command(args, out, err);
             } else {
                 err << "mikroptim: unbekannter Befehl " << command << '\n';
             }

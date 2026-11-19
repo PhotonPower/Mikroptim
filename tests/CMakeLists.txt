@@ -26,6 +26,7 @@ add_executable(mikroptim_tests
     test_cli_optimize.cpp
     test_cli_snap.cpp
     test_cli_synth.cpp
+    test_cli_tolerance.cpp
     test_cli_trace.cpp
     test_constraints_schema.cpp
     test_convex_hull.cpp
@@ -66,6 +67,9 @@ add_executable(mikroptim_tests
     test_surface_ops.cpp
     test_system_batch.cpp
     test_system_io.cpp
+    test_tolerance_analysis.cpp
+    test_tolerance_model.cpp
+    test_tolerances_schema.cpp
     test_trace.cpp
     test_trace_engine_header.cpp
     test_tuple_packs.cpp
@@ -76,7 +80,7 @@ add_executable(mikroptim_tests
     test_wavefront.cpp)
 target_link_libraries(mikroptim_tests PRIVATE
     mikroptim_core mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-    mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
+    mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth mikroptim_tolerance mikroptim_cli nlohmann_json::nlohmann_json mikroptim_warnings GTest::gtest_main)
 # Testdaten unter data/ (z. B. data/systems/)
 target_compile_definitions(mikroptim_tests PRIVATE MKO_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
@@ -109,6 +113,7 @@ if(MIKROPTIM_ENABLE_CUDA)
         test_cuda_smoke.cpp
         test_cuda_soft_failure.cpp
         test_cuda_system_batch.cpp
+        test_cuda_tolerance.cpp
         test_cuda_trace.cpp
         test_cuda_trace_engine.cpp
         test_cuda_tuple_packs.cpp
@@ -231,6 +236,24 @@ add_test(NAME cli_snap_result_trace
 set_tests_properties(cli_snap_result_trace PROPERTIES
     FIXTURES_REQUIRED cli_snap_result
     PASS_REGULAR_EXPRESSION "Brennweite f' +50\\.0.*Versagte Strahlen: 0 von 30")
+
+# `mikroptim tolerance` (M8-T4): Testsystem mit allen Toleranzarten, kurzer Lauf
+set(MKO_TOLERANZ ${PROJECT_SOURCE_DIR}/data/systems/testsystem_toleranz.json)
+add_test(NAME cli_tolerance_json
+    COMMAND $<TARGET_FILE:mikroptim> tolerance ${MKO_TOLERANZ} --json --samples 50)
+set_tests_properties(cli_tolerance_json PROPERTIES
+    PASS_REGULAR_EXPRESSION "\"format\": \"mikroptim\\.tolerance/1\".*\"draws\": 26.*\"failed_samples\": 0")
+add_test(NAME cli_tolerance_no_tolerances
+    COMMAND $<TARGET_FILE:mikroptim> tolerance ${MKO_EINZELLINSE})
+set_tests_properties(cli_tolerance_no_tolerances PROPERTIES
+    PASS_REGULAR_EXPRESSION "keine Toleranzen")
+if(MIKROPTIM_ENABLE_CUDA)
+    add_test(NAME cli_tolerance_gpu_json
+        COMMAND $<TARGET_FILE:mikroptim> tolerance ${MKO_TOLERANZ} --json --samples 50 --gpu)
+    set_tests_properties(cli_tolerance_gpu_json PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"failed_samples\": 0")
+endif()
 
 # Benchmark trace_throughput (M2-T6) als kurzer Smoke-Lauf: 10 Varianten, ein Lauf. Exit-Code 3 =
 # kein CUDA-Gerät (übersprungen); die Synthesesysteme dürfen keine versagten Strahlen haben.

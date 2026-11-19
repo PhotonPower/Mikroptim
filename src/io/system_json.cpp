@@ -106,9 +106,13 @@ public:
         if (const Json* c = member(root, "constraints")) {
             sys.constraints = read_constraints(*c, "constraints");
         }
+        if (const Json* t = member(root, "tolerances")) {
+            sys.tolerances = read_tolerances(*t, "tolerances");
+        }
         warn_unknown(root, "",
                      {"format", "name", "description", "units", "glass_catalogs", "spectrum",
-                      "source", "target", "surfaces", "ghost_plates", "variables", "constraints"});
+                      "source", "target", "surfaces", "ghost_plates", "variables", "constraints",
+                      "tolerances"});
 
         validate_system(sys);
         return sys;
@@ -655,6 +659,143 @@ private:
         return c;
     }
 
+    // ---- Abschnitt `tolerances` (M8-T4) ------------------------------------------------
+
+    Tolerances read_tolerances(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        Tolerances tol;
+        if (const Json* d = member(j, "distribution")) {
+            tol.distribution = read_distribution(*d, join(path, "distribution"));
+        }
+        if (const Json* c = member(j, "cutoff_sigma")) {
+            tol.cutoff_sigma = as_number(*c, join(path, "cutoff_sigma"));
+        }
+        if (const Json* c = member(j, "compensator")) {
+            const std::string comp_path = join(path, "compensator");
+            const std::string name = as_string(*c, comp_path);
+            const std::optional<CompensatorType> ct = compensator_from_string(name);
+            if (!ct) {
+                fail(comp_path,
+                     "unbekannter Kompensator \"" + name + "\" (erlaubt: working_distance, none)");
+            }
+            tol.compensator = *ct;
+        }
+        const std::string items_path = join(path, "items");
+        const Json& items = required(j, path, "items");
+        if (!items.is_array()) {
+            fail_type(items_path, "Liste von Objekten", items);
+        }
+        tol.items.reserve(items.size());
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            tol.items.push_back(read_tolerance(items[i], at(items_path, i)));
+        }
+        warn_unknown(j, path, {"distribution", "cutoff_sigma", "compensator", "items"});
+        return tol;
+    }
+
+    static ToleranceDistribution read_distribution(const Json& j, const std::string& path) {
+        const std::string name = as_string(j, path);
+        const std::optional<ToleranceDistribution> d = tolerance_distribution_from_string(name);
+        if (!d) {
+            fail(path, "unbekannte Verteilung \"" + name + "\" (erlaubt: uniform, normal)");
+        }
+        return *d;
+    }
+
+    // Element [erste, letzte Fläche] als Liste aus zwei nichtnegativen ganzen Zahlen.
+    static std::array<int, 2> read_element(const Json& j, const std::string& path) {
+        if (!j.is_array() || j.size() != 2) {
+            fail(path, "Element als [erste, letzte Fläche] erwartet");
+        }
+        return {as_count(j[0], at(path, 0)), as_count(j[1], at(path, 1))};
+    }
+
+    ToleranceSpec read_tolerance(const Json& j, const std::string& path) {
+        expect_object(j, path);
+        ToleranceSpec t;
+        const std::string type_path = join(path, "type");
+        const std::string type = as_string(required(j, path, "type"), type_path);
+        const std::optional<ToleranceType> tt = tolerance_type_from_string(type);
+        if (!tt) {
+            fail(type_path, "unbekannter Toleranztyp \"" + type +
+                                "\" (erlaubt: radius, thickness, index, abbe, decenter, tilt, "
+                                "element_decenter, element_tilt)");
+        }
+        t.type = *tt;
+        t.selection = read_selection(j, path, "surface", "surfaces", "Flächenindizes", t.surfaces);
+        const Json* one = member(j, "element");
+        const Json* many = member(j, "elements");
+        if (one != nullptr && many != nullptr) {
+            fail(join(path, "elements"), "nur eines der Felder \"element\" und \"elements\" "
+                                         "angeben");
+        }
+        if (one != nullptr) {
+            t.elements.push_back(read_element(*one, join(path, "element")));
+            t.element_selection = SurfaceSelection::One;
+        } else if (many != nullptr) {
+            const std::string many_path = join(path, "elements");
+            if (many->is_string() && many->get<std::string>() == "all") {
+                t.element_selection = SurfaceSelection::All;
+            } else if (many->is_array()) {
+                for (std::size_t k = 0; k < many->size(); ++k) {
+                    t.elements.push_back(read_element((*many)[k], at(many_path, k)));
+                }
+                t.element_selection = SurfaceSelection::List;
+            } else {
+                fail_type(many_path, "Liste von Elementen [erste, letzte] oder \"all\"", *many);
+            }
+        }
+        if (const Json* v = member(j, "delta")) {
+            t.delta = as_number(*v, join(path, "delta"));
+        }
+        if (const Json* v = member(j, "relative")) {
+            t.relative = as_number(*v, join(path, "relative"));
+        }
+        if (const Json* v = member(j, "fringes")) {
+            t.fringes = as_number(*v, join(path, "fringes"));
+        }
+        if (const Json* v = member(j, "test_wavelength_nm")) {
+            t.test_wavelength_nm = as_number(*v, join(path, "test_wavelength_nm"));
+        }
+        if (const Json* v = member(j, "arcmin")) {
+            t.arcmin = as_number(*v, join(path, "arcmin"));
+        }
+        if (const Json* v = member(j, "deg")) {
+            t.deg = as_number(*v, join(path, "deg"));
+        }
+        if (const Json* v = member(j, "pivot")) {
+            const std::string pivot_path = join(path, "pivot");
+            if (v->is_number()) {
+                t.pivot = ElementPivot::Offset;
+                t.pivot_offset = as_number(*v, pivot_path);
+            } else if (v->is_string()) {
+                const std::string name = v->get<std::string>();
+                const std::optional<ElementPivot> p = element_pivot_from_string(name);
+                if (!p) {
+                    fail(pivot_path, "unbekannter Drehpunkt \"" + name +
+                                         "\" (erlaubt: first, center, last oder eine Zahl)");
+                }
+                t.pivot = *p;
+            } else {
+                fail_type(pivot_path, "Zeichenkette (first, center, last) oder Zahl", *v);
+            }
+        }
+        if (const Json* d = member(j, "distribution")) {
+            t.distribution = read_distribution(*d, join(path, "distribution"));
+        }
+        if (const Json* c = member(j, "cutoff_sigma")) {
+            t.cutoff_sigma = as_number(*c, join(path, "cutoff_sigma"));
+        }
+        if (const Json* c = member(j, "comment")) {
+            t.comment = as_string(*c, join(path, "comment"));
+        }
+        warn_unknown(j, path,
+                     {"type", "surface", "surfaces", "element", "elements", "delta", "relative",
+                      "fringes", "test_wavelength_nm", "arcmin", "deg", "pivot", "distribution",
+                      "cutoff_sigma", "comment"});
+        return t;
+    }
+
     std::vector<std::string>* warnings_;
 };
 
@@ -800,6 +941,84 @@ Json constraints_to_json(const Constraints& cons) {
     return root;
 }
 
+Json element_to_json(const std::array<int, 2>& e) {
+    return Json::array({e[0], e[1]});
+}
+
+Json tolerances_to_json(const Tolerances& tol) {
+    Json root;
+    if (tol.distribution) {
+        root["distribution"] = std::string(to_string(*tol.distribution));
+    }
+    if (tol.cutoff_sigma) {
+        root["cutoff_sigma"] = *tol.cutoff_sigma;
+    }
+    if (tol.compensator) {
+        root["compensator"] = std::string(to_string(*tol.compensator));
+    }
+    Json items = Json::array();
+    for (const ToleranceSpec& t : tol.items) {
+        Json j;
+        j["type"] = std::string(to_string(t.type));
+        selection_to_json(j, t.selection, t.surfaces, "surface", "surfaces");
+        switch (t.element_selection) {
+        case SurfaceSelection::None:
+            break;
+        case SurfaceSelection::One:
+            j["element"] = element_to_json(t.elements.at(0));
+            break;
+        case SurfaceSelection::List: {
+            Json list = Json::array();
+            for (const std::array<int, 2>& e : t.elements) {
+                list.push_back(element_to_json(e));
+            }
+            j["elements"] = std::move(list);
+            break;
+        }
+        case SurfaceSelection::All:
+            j["elements"] = "all";
+            break;
+        }
+        if (t.delta) {
+            j["delta"] = *t.delta;
+        }
+        if (t.relative) {
+            j["relative"] = *t.relative;
+        }
+        if (t.fringes) {
+            j["fringes"] = *t.fringes;
+        }
+        if (t.test_wavelength_nm) {
+            j["test_wavelength_nm"] = *t.test_wavelength_nm;
+        }
+        if (t.arcmin) {
+            j["arcmin"] = *t.arcmin;
+        }
+        if (t.deg) {
+            j["deg"] = *t.deg;
+        }
+        if (t.pivot) {
+            if (*t.pivot == ElementPivot::Offset) {
+                j["pivot"] = t.pivot_offset;
+            } else {
+                j["pivot"] = std::string(to_string(*t.pivot));
+            }
+        }
+        if (t.distribution) {
+            j["distribution"] = std::string(to_string(*t.distribution));
+        }
+        if (t.cutoff_sigma) {
+            j["cutoff_sigma"] = *t.cutoff_sigma;
+        }
+        if (t.comment) {
+            j["comment"] = *t.comment;
+        }
+        items.push_back(std::move(j));
+    }
+    root["items"] = std::move(items);
+    return root;
+}
+
 Json to_json(const SystemDescription& sys) {
     Json root;
     root["format"] = sys.format;
@@ -883,6 +1102,9 @@ Json to_json(const SystemDescription& sys) {
     }
     if (sys.constraints) {
         root["constraints"] = constraints_to_json(*sys.constraints);
+    }
+    if (sys.tolerances) {
+        root["tolerances"] = tolerances_to_json(*sys.tolerances);
     }
     return root;
 }

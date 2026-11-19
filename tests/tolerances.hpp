@@ -443,4 +443,33 @@ inline constexpr double kGlassPreselectionAlgebra = 1e-12;
 // Einzellinse gleicher Brechkraft (gemessen 1,62e-2 / 2,359 = 6,9e-3).
 inline constexpr double kGlassPreselectionAchromatRatio = 0.05;
 
+// M8-T4 Monte-Carlo-Tolerierung: Stichprobenmittel und -varianz der Zufallsgrößen gegen die
+// exakten Momente höchstens so viele Standardfehler entfernt (bei 200.000 Ziehungen; fünf
+// Standardfehler werden bei richtigem Modell mit Wahrscheinlichkeit < 10⁻⁶ überschritten, und
+// der Startwert ist fest, das Ergebnis also reproduzierbar).
+inline constexpr double kMonteCarloSigmas = 5.0;
+// Passen: zentrale Differenz der Pfeilhöhe bei c ± Δc gegen N·λ/2, relativ. Restglied
+// s'''Δc²/(6 s') ≈ (h Δc)²/4, bei 4 Passen (Δc ≈ 2,7·10⁻⁴/mm, h = 3 mm) etwa 1,6·10⁻⁷; dazu
+// Auslöschung in der Differenz der Pfeilhöhen (≈ 10⁻¹⁶ mm / 10⁻³ mm).
+inline constexpr double kFringeSag = 1e-6;
+// Kompensator Arbeitsabstand gegen die exakte Kompensation einer verschobenen planparallelen
+// Platte [mm]. Grenze ist die Konvergenz des LM mit den Standardkriterien (ftol = xtol = gtol =
+// 10⁻¹⁰) am flachen Minimum der Merit; gemessen 1,08·10⁻⁶ mm über 300 Stichproben (Schärfentiefe
+// λ/NA² ≈ 0,1 mm).
+inline constexpr double kToleranceCompensator = 5e-6;
+// RMS der kompensierten Stichprobe gegen nominal, relativ. Die Merit (OPD zur Referenzsphäre
+// durch den Hauptstrahl) und der bewertete RMS (nach Abzug der Kippung) haben verschiedene
+// Minima; der Restfehler des Arbeitsabstands wirkt deshalb linear. Gemessen 2,0·10⁻⁵.
+inline constexpr double kToleranceCompensatedRms = 1e-4;
+// Strehl der Quadratur (Standard 10 Ringe × 8 Speichen, Stützstellen in der Eintrittspupille)
+// gegen die direkte Summe der PSF über das EVAL-Raster 256 × 256 (M8-T2, Rasterfehler am Rand),
+// beide nach Abzug der Kippung, Strehl-Einheiten. Gemessen 1,7·10⁻³ an zwölf Stichproben mit
+// dreifachen Toleranzen (Strehl 0,14 … 0,98), 4,4·10⁻⁴ mit einfachen (Strehl ≥ 0,79).
+inline constexpr double kToleranceStrehlVsPsf = 5e-3;
+// GPU gegen CPU ohne Kompensator: RMS [Wellen] und Strehl pro Tupel, absolut. Die OPD
+// unterscheidet sich um ≤ 10⁻¹² mm (kCpuGpuFp64), also ≤ 2·10⁻⁹ Wellen; gemessen (RTX 3090,
+// 500 Stichproben) 3,3·10⁻¹². Mit Kompensator gelten kToleranceCompensator und
+// kToleranceCompensatedRms (gemessen 1,6·10⁻¹⁰ mm bzw. 5,2·10⁻⁹ relativ).
+inline constexpr double kToleranceCpuGpuQuality = 1e-10;
+
 } // namespace mko::test

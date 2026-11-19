@@ -5,6 +5,7 @@
 #include "cli/optimize_command.hpp"
 #include "cli/snap_command.hpp"
 #include "cli/synth_command.hpp"
+#include "cli/tolerance_command.hpp"
 #include "cli/trace_command.hpp"
 #include "mikroptim/version.hpp"
 
@@ -34,6 +35,8 @@ void print_usage() {
         "                        [--log <protokoll.json>] [--gpu [--device N]]\n"
         "        mikroptim aberrations <system.json> [--json] [--field-deg θ]\n"
         "        mikroptim glasses <katalog.json>... [--order 1|2] [--fixed GLAS] [--json]\n"
+        "        mikroptim tolerance <system.json> [--samples N] [--seed n] [--json]\n"
+        "                        [--compensator wd|none] [--gpu [--device N]]\n"
         "  --version   Version ausgeben\n"
         "  --devices   CUDA-Geräte auflisten\n"
         "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
@@ -43,7 +46,8 @@ void print_usage() {
         "  insert      Einfüge-Operator A oder B anwenden (Hilfe: mikroptim insert --help)\n"
         "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)\n"
         "  aberrations Aberrationsbericht pro Fläche (Hilfe: mikroptim aberrations --help)\n"
-        "  glasses     Glasvorauswahl für Farbkorrektur (Hilfe: mikroptim glasses --help)");
+        "  glasses     Glasvorauswahl für Farbkorrektur (Hilfe: mikroptim glasses --help)\n"
+        "  tolerance   Monte-Carlo-Tolerierung (Hilfe: mikroptim tolerance --help)");
 }
 
 } // namespace
@@ -93,6 +97,10 @@ int main(int argc, char** argv) {
     if (arg == "glasses") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_glasses_command(args, std::cout, std::cerr);
+    }
+    if (arg == "tolerance") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_tolerance_command(args, std::cout, std::cerr);
     }
     if (arg == "insert") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

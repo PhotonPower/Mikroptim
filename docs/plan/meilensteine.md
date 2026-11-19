@@ -295,7 +295,7 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 ### M8-T3 – Dezentrierung und Verkippung
 - **Inhalt:** allgemeine Flächentransformationen, volle Pupille (Symmetrie entfällt). Erfordert eine ADR für die Erweiterung der Konventionen.
 
-### M8-T4 – Monte-Carlo-Tolerierung
+### M8-T4 – Monte-Carlo-Tolerierung ✅ (#84)
 - **Abhängig von:** M8-T2, M8-T3
 - **Inhalt:** Toleranzsatz (Radien, Dicken, Brechzahlen, Dezentrierung, Verkippung), Stichproben als Varianten im Batch, Kompensatoren (z. B. Arbeitsabstand).
 - **Abnahme:** Verteilung von Strehl und RMS-Wellenfront über 10.000 Stichproben; Ergebnis reproduzierbar mit festem Seed.

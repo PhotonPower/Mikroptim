@@ -100,6 +100,7 @@ target_compile_features(mikroptim_core INTERFACE cxx_std_20)
 add_library(mikroptim_model STATIC
     src/model/constraints.cpp
     src/model/system.cpp
+    src/model/tolerances.cpp
     src/model/variables.cpp
     src/io/system_json.cpp)
 add_library(Mikroptim::model ALIAS mikroptim_model)
@@ -210,6 +211,19 @@ target_link_libraries(mikroptim_synth
     PRIVATE mikroptim_glass nlohmann_json::nlohmann_json mikroptim_warnings)
 
 # --------------------------------------------------------------------------
+# Monte-Carlo-Tolerierung (Host, M8-T4): Stichproben eines Toleranzsatzes als Varianten,
+# Kompensator über den gebündelten LM, Bewertung aus der Quadratur; GPU über austauschbare
+# Funktionen (mikroptim/cuda/tolerance.hpp, ohne CUDA-Abhängigkeit der Bibliothek)
+# --------------------------------------------------------------------------
+add_library(mikroptim_tolerance STATIC
+    src/tolerance/tolerance_analysis.cpp
+    src/tolerance/tolerance_model.cpp)
+add_library(Mikroptim::tolerance ALIAS mikroptim_tolerance)
+target_link_libraries(mikroptim_tolerance
+    PUBLIC mikroptim_core mikroptim_model mikroptim_batch mikroptim_optim
+    PRIVATE Threads::Threads mikroptim_warnings)
+
+# --------------------------------------------------------------------------
 # Auswertung (Host): Modus EVAL auf dem dichten Pupillenraster, CPU-Referenz, Kennzahlen
 # (M8-T1); skalare PSF, MTF und Strehl mit eigener Radix-2-FFT (M8-T2), vektorielle PSF
 # (M8-T5); die Kernel liegen in Mikroptim::cuda
@@ -280,13 +294,14 @@ add_library(mikroptim_cli STATIC
     src/cli/optimize_command.cpp
     src/cli/snap_command.cpp
     src/cli/synth_command.cpp
+    src/cli/tolerance_command.cpp
     src/cli/trace_command.cpp)
 target_include_directories(mikroptim_cli PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mikroptim_cli
     PUBLIC mikroptim_core
     PRIVATE mikroptim_model mikroptim_glass mikroptim_paraxial mikroptim_cpu mikroptim_merit
-            mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth nlohmann_json::nlohmann_json
-            mikroptim_warnings)
+            mikroptim_batch mikroptim_eval mikroptim_optim mikroptim_synth mikroptim_tolerance
+            nlohmann_json::nlohmann_json mikroptim_warnings)
 if(MIKROPTIM_ENABLE_CUDA)
     # `mikroptim trace --gpu` (M2-T5) über die TraceEngine und `mikroptim optimize --gpu`
     # (M3-T5) über optimize_lm_gpu; setzt MIKROPTIM_HAS_CUDA

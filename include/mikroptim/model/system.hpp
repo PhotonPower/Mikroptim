@@ -5,6 +5,7 @@
 
 #include "mikroptim/model/constraints.hpp"
 #include "mikroptim/model/material.hpp"
+#include "mikroptim/model/tolerances.hpp"
 #include "mikroptim/model/variables.hpp"
 
 #include <array>
@@ -116,6 +117,9 @@ struct SystemDescription {
     // Nebenbedingungen (ab M3-T3, mikroptim/model/constraints.hpp)
     std::optional<Constraints> constraints;
 
+    // Toleranzsatz der Monte-Carlo-Tolerierung (ab M8-T4, mikroptim/model/tolerances.hpp)
+    std::optional<Tolerances> tolerances;
+
     friend bool operator==(const SystemDescription&, const SystemDescription&) = default;
 };
 
@@ -126,7 +130,7 @@ bool is_coaxial(const SystemDescription& system);
 // Prüft die inhaltlichen Regeln (docs/dateiformat.md, „Einlesen und Validierung“) und wirft
 // FormatError mit dem JSON-Pfad der ersten verletzten Regel. Glasnamen werden nicht geprüft.
 // Der Abschnitt `variables` wird mit resolve_variables geprüft, `constraints` mit
-// check_constraints.
+// check_constraints, `tolerances` mit resolve_tolerances.
 void validate_system(const SystemDescription& system);
 
 // Prüft für jede Fläche und Geisterplatte mit Katalogmaterial, ob das Glas existiert; wirft
