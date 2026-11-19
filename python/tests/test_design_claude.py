@@ -180,6 +180,54 @@ def test_private_data_not_sent(session, tmp_path):
     assert fake.requests == []
 
 
+def test_private_start_system_not_sent(tmp_path):
+    """B4 (Entscheidung Maintainer 2026-11-19): ein Startsystem aus data/systems/private/ geht
+    nicht an die Claude-API, auch wenn seine Glaskataloge öffentlich sind."""
+    private = tmp_path / "data" / "systems" / "private"
+    private.mkdir(parents=True)
+    data = json.loads(START.read_text(encoding="utf-8"))
+    root = SYSTEMS.parents[1]
+    data["glass_catalogs"] = [str((root / c).resolve()) for c in data["glass_catalogs"]]
+    start = private / "patent.json"
+    start.write_text(json.dumps(data), encoding="utf-8")
+    s = design.Session.create(start, tmp_path / "s", spec={"tube_focal_length": 164.5})
+    fake = FakeClient([])
+    with pytest.raises(design.PrivacyError):
+        design.ClaudeDecider(client=fake).decide({"candidate": 0}, s)
+    assert fake.requests == []
+
+
+def test_b4_benchmarks_from_private_manifest(tmp_path, capsys):
+    """tools/m10t7_bewertung.py lädt B4 aus der privaten Liste und überspringt ohne Liste."""
+    import importlib.util
+
+    from conftest import ROOT
+
+    spec = importlib.util.spec_from_file_location("m10t7", ROOT / "tools" / "m10t7_bewertung.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    assert tool.PRIVATE_SYSTEMS == ROOT / "data" / "systems" / "private"
+    missing = tmp_path / "fehlt" / "b4.json"
+    assert tool.private_benchmarks(missing) == {}
+    assert [b for b, _ in tool.expand_benchmarks(["B1", "B4"], missing)] == ["B1"]
+    assert "übersprungen" in capsys.readouterr().out
+    manifest = tmp_path / "private" / "b4.json"
+    manifest.parent.mkdir()
+    manifest.write_text(json.dumps({"benchmarks": [
+        {"name": "B4a", "start": "a.json", "na": 0.95, "field_scale": 0.1},
+        {"name": "B4b", "start": "b.json", "na": 0.9, "max_elements": 9, "steps": 3}]}),
+        encoding="utf-8")
+    b4 = tool.private_benchmarks(manifest)
+    assert list(b4) == ["B4a", "B4b"]
+    assert b4["B4a"]["start"] == manifest.parent / "a.json"
+    assert b4["B4a"]["private"] and b4["B4a"]["field_scale"] == 0.1
+    assert b4["B4a"]["spec"] == {"na": 0.95} and b4["B4a"]["max_elements"] == 15
+    assert b4["B4b"]["max_elements"] == 9 and b4["B4b"]["steps"] == 3
+    assert [b for b, _ in tool.expand_benchmarks(["B4b"], manifest)] == ["B4b"]
+    with pytest.raises(SystemExit):
+        tool.expand_benchmarks(["B4c"], manifest)
+
+
 def test_replay_of_claude_run_without_api(session, tmp_path):
     fake = FakeClient([message(submit({"action": "free_gaps", "surfaces": [3]}))])
     session.step(design.ClaudeDecider(client=fake), 0)

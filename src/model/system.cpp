@@ -188,6 +188,11 @@ void check_surfaces(const std::vector<Surface>& surfaces) {
             fail(p, "die Blende (Fläche 0) ist das Bezugssystem und darf nicht dezentriert oder "
                     "verkippt werden");
         }
+        // Gruppe (Entscheidung des Maintainers 2026-11-19): front, middle oder rear
+        if (s.group && !is_surface_group(*s.group)) {
+            fail(p + ".group",
+                 "unbekannte Gruppe \"" + *s.group + "\" (erlaubt: front, middle, rear)");
+        }
     }
 }
 
@@ -250,6 +255,10 @@ void check_ghost_plates(const std::vector<GhostPlate>& plates,
 }
 
 } // namespace
+
+bool is_surface_group(std::string_view name) {
+    return name == "front" || name == "middle" || name == "rear";
+}
 
 bool is_transformed(const Surface& surface) {
     return surface.decenter[0] != 0.0 || surface.decenter[1] != 0.0 || surface.tilt_deg[0] != 0.0 ||

@@ -63,6 +63,11 @@ struct Surface {
     // (koaxial); in der Datei optional `decenter` und `tilt_deg`.
     std::array<double, 2> decenter{0.0, 0.0};
     std::array<double, 2> tilt_deg{0.0, 0.0};
+    // Gruppe der Fläche ("front", "middle" oder "rear"; Entscheidung des Maintainers
+    // 2026-11-19, docs/entwurfssteuerung.md, Abschnitt 3.3): überschreibt die automatische
+    // Zuordnung nach der Randstrahlhöhe. Nur Diagnose (Gruppensummen im Aberrationsbericht),
+    // ohne Einfluss auf Trace und Optimierung. In der Datei optional `group`.
+    std::optional<std::string> group;
     std::optional<std::string> comment;
 
     // Vergleicht alle Felder, auch die des Materials (MaterialSpec selbst hat kein operator==).
@@ -71,12 +76,16 @@ struct Surface {
                a.material.kind == b.material.kind && a.material.name == b.material.name &&
                a.material.n == b.material.n && a.material.n0 == b.material.n0 &&
                a.material.nu == b.material.nu && a.semi_diameter == b.semi_diameter &&
-               a.decenter == b.decenter && a.tilt_deg == b.tilt_deg && a.comment == b.comment;
+               a.decenter == b.decenter && a.tilt_deg == b.tilt_deg && a.group == b.group &&
+               a.comment == b.comment;
     }
 };
 
 // Fläche dezentriert oder verkippt (ein Wert von decenter, tilt_deg ≠ 0).
 bool is_transformed(const Surface& surface);
+
+// Erlaubter Name einer Gruppe (Surface::group): "front", "middle", "rear".
+bool is_surface_group(std::string_view name);
 
 // Geisterplatte (docs/dateiformat.md, „Geisterplatten“; Physik: docs/numerik.md, Abschnitt 6):
 // virtuelle dünne Glasplatte im Luftspalt nach Fläche `after_surface`, im Abstand `distance`

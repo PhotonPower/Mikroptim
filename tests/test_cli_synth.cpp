@@ -369,6 +369,30 @@ TEST(CliSynth, AugmentedLagrangian) {
     }
     EXPECT_EQ(synth({kStart, "--augmented-lagrangian", "3", "--beam", "2"}).code, cli::kExitUsage);
     EXPECT_NE(synth({"--help"}).out.find("--augmented-lagrangian"), std::string::npos);
+
+    // Neustartzustand (Entscheidung Maintainer 2026-11-19): θ am Endpunkt im Protokoll
+    // (augmented_lagrangian.shifts), nicht in der Ergebnisdatei; --shifts-from liest es ein
+    EXPECT_FALSE(off.contains("augmented_lagrangian"));
+    const nlohmann::json& shifts = j["augmented_lagrangian"]["shifts"];
+    ASSERT_TRUE(shifts.is_array());
+    EXPECT_TRUE(j["augmented_lagrangian"]["shifts_from"].is_null());
+    const SynthTempDir dir("al_neustart");
+    const std::string log = dir.file("protokoll.json");
+    const std::string out = dir.file("ergebnis.json");
+    std::vector<std::string> first = on;
+    first.insert(first.end(), {"--log", log, "-o", out});
+    ASSERT_EQ(synth(first).code, cli::kExitOk);
+    const nlohmann::json logged = nlohmann::json::parse(read_file(log));
+    EXPECT_EQ(logged["augmented_lagrangian"]["shifts"], shifts);
+    EXPECT_EQ(read_file(out).find("\"shift\""), std::string::npos);
+    std::vector<std::string> again = on;
+    again.insert(again.end(), {"--shifts-from", log});
+    const SynthCliResult r2 = synth(again);
+    ASSERT_EQ(r2.code, cli::kExitOk) << r2.err;
+    EXPECT_EQ(nlohmann::json::parse(r2.out)["augmented_lagrangian"]["shifts_from"], log);
+    EXPECT_EQ(synth({kStart, "--shifts-from", log}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--augmented-lagrangian", "1", "--shifts-from", out}).code,
+              cli::kExitError);
 }
 
 } // namespace

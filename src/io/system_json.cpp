@@ -336,12 +336,17 @@ private:
         if (const Json* t = member(j, "tilt_deg")) {
             s.tilt_deg = read_pair(*t, join(path, "tilt_deg"));
         }
+        // Gruppe (Entscheidung des Maintainers 2026-11-19), optional; Werte prüft
+        // validate_system
+        if (const Json* g = member(j, "group")) {
+            s.group = as_string(*g, join(path, "group"));
+        }
         if (const Json* c = member(j, "comment")) {
             s.comment = as_string(*c, join(path, "comment"));
         }
         warn_unknown(j, path,
                      {"type", "curvature", "thickness", "material", "semi_diameter", "decenter",
-                      "tilt_deg", "comment"});
+                      "tilt_deg", "group", "comment"});
         return s;
     }
 
@@ -1087,6 +1092,9 @@ Json to_json(const SystemDescription& sys) {
         }
         if (s.tilt_deg[0] != 0.0 || s.tilt_deg[1] != 0.0) {
             js["tilt_deg"] = Json::array({s.tilt_deg[0], s.tilt_deg[1]});
+        }
+        if (s.group) {
+            js["group"] = *s.group;
         }
         if (s.comment) {
             js["comment"] = *s.comment;

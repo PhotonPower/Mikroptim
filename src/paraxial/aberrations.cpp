@@ -216,6 +216,7 @@ AberrationReport compute_aberrations(const SystemDescription& system, const Glas
         out.ybar = r.ybar[s];
         out.ubar_before = r.ubar_before[s];
         out.ubar_after = r.ubar_after[s];
+        out.group = system.surfaces[s].group.value_or(std::string());
         out.A = n * (out.u_before + out.y * c);
         out.Abar = n * (out.ubar_before + out.ybar * c);
         const double du_n = out.u_after / np - out.u_before / n;
@@ -280,6 +281,33 @@ AberrationReport compute_aberrations(const SystemDescription& system, const Glas
         rep.full_order_spherical = rep.higher_order_spherical = rep.full_order_spherical_zone = nan;
     }
     rep.real_rays_valid = valid;
+
+    // Gruppensummen (Entscheidung des Maintainers 2026-11-19), feste Reihenfolge der Summanden
+    for (const char* name : {"front", "middle", "rear"}) {
+        GroupAberration g;
+        g.name = name;
+        g.sum.surface = -1;
+        for (const SurfaceAberration& s : rep.surfaces) {
+            if (s.group != g.name) {
+                continue;
+            }
+            g.surfaces.push_back(s.surface);
+            for (int k = 0; k < 5; ++k) {
+                g.sum.S[k] += s.S[k];
+            }
+            g.sum.C[0] += s.C[0];
+            g.sum.C[1] += s.C[1];
+            g.sum.spherochromatism += s.spherochromatism;
+            g.sum.full_order_spherical += s.full_order_spherical;
+            g.sum.higher_order_spherical += s.higher_order_spherical;
+            g.sum.full_order_spherical_zone += s.full_order_spherical_zone;
+            g.sum.distortion_defined = g.sum.distortion_defined && s.distortion_defined;
+        }
+        if (!g.surfaces.empty()) {
+            g.sum.group = g.name;
+            rep.groups.push_back(std::move(g));
+        }
+    }
 
     // M10-T2: chromatischer Fokusverlauf (paraxiale hintere Schnittweite gegen λ_ref)
     if (options.focal_shift) {

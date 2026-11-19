@@ -115,8 +115,9 @@ void map_plates(std::vector<int>& plates, const std::vector<int>& plate_new_of_o
 
 // Obere Schranke der Dickenvariable des Spalts `gap` (bzw. des Arbeitsabstands, wenn `gap` die
 // letzte Fläche ist) auf dessen Dicke anheben, falls sie darunter liegt: Rückbau und
-// Rückbau-Homotopie verlängern Spalte (vereinigter Spalt, abgezogene Glasdicke).
-void widen_upper_bound(SystemDescription& system, int gap) {
+// Rückbau-Homotopie verlängern Spalte (vereinigter Spalt, abgezogene Glasdicke). Jede Anhebung
+// wird in `widened` gemeldet (Warnung, Entscheidung des Maintainers 2026-11-19).
+void widen_upper_bound(SystemDescription& system, int gap, std::vector<BoundWidening>* widened) {
     if (!system.variables) {
         return;
     }
@@ -129,6 +130,9 @@ void widen_upper_bound(SystemDescription& system, int gap) {
                                         std::find(spec.surfaces.begin(), spec.surfaces.end(),
                                                   gap) != spec.surfaces.end());
         if (covers && spec.max && *spec.max < t) {
+            if (widened != nullptr) {
+                widened->push_back(BoundWidening{gap, last, *spec.max, t});
+            }
             spec.max = t;
         }
     }
@@ -349,12 +353,28 @@ RemovalResult remove_element(const SystemDescription& system, int first) {
             r.system.ghost_plates[g].distance = before_last + system.ghost_plates[g].distance;
         }
     }
-    widen_upper_bound(r.system, first - 1);
+    widen_upper_bound(r.system, first - 1, &r.widened);
     validate_system(r.system);
     return r;
 }
 
-SystemDescription collapse_element(const SystemDescription& system, int first, double fraction) {
+std::string bound_widening_warning(const BoundWidening& w) {
+    const auto mm = [](double v) {
+        std::ostringstream os;
+        os.precision(6);
+        os << v;
+        std::string s = os.str();
+        std::replace(s.begin(), s.end(), '.', ',');
+        return s;
+    };
+    return std::string(w.working_distance
+                           ? "obere Schranke des Arbeitsabstands"
+                           : "obere Schranke der Dicke nach Fläche " + std::to_string(w.gap)) +
+           " von " + mm(w.old_max) + " auf " + mm(w.new_max) + " mm angehoben";
+}
+
+SystemDescription collapse_element(const SystemDescription& system, int first, double fraction,
+                                   std::vector<BoundWidening>* widened) {
     const int last = glass_block_end(system, first);
     if (!(fraction > 0.0 && fraction <= 1.0)) {
         invalid("collapse_element: Anteil " + num(fraction) + " außerhalb von (0, 1]");
@@ -389,7 +409,7 @@ SystemDescription collapse_element(const SystemDescription& system, int first, d
         }
     }
     out.surfaces[sz(last)].thickness += taken;
-    widen_upper_bound(out, last);
+    widen_upper_bound(out, last, widened);
     validate_system(out);
     return out;
 }

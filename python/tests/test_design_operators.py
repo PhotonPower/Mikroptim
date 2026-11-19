@@ -117,6 +117,42 @@ def test_aplanatic_module_keeps_group_sum(session):
     after = front_sum(session.system_path(res["new_candidates"][0]))
     assert abs(after - before) < tol("kAplanaticGroupSpherical") * abs(before)
     assert rep["image_intercept"] == pytest.approx(rep["intercept"] / 1.5187, rel=2e-3)
+    # Feld group (Entscheidung Maintainer 2026-11-19): Gruppe des Moduls an den neuen Flächen,
+    # Gruppensumme im Aberrationsbericht
+    data = load(session, res["new_candidates"][0])
+    assert [s.get("group") for s in data["surfaces"]] == [None] * 8 + ["front", "front"]
+    groups = mikroptim.aberrations(session.system_path(res["new_candidates"][0]))["groups"]
+    assert [(g["group"], g["surfaces"]) for g in groups] == [("front", [8, 9])]
+
+
+def test_group_field_overrides_automatic_groups(session):
+    """Feld group: insert_module mit Parameter group setzt es an den neuen Flächen, der Zustand
+    ordnet die Elemente danach statt nach der Randstrahlhöhe zu (Entscheidung Maintainer
+    2026-11-19)."""
+    st0 = session.state(0)
+    auto = {g["element"]: g["group"] for g in st0["glasses"]}
+    [res] = apply_ok(session, 0, {"action": "insert_module", "module": "generic.null_meniscus",
+                                  "after_surface": 5, "position": 1.0, "group": "rear",
+                                  "glasses": [{"name": "N-BK7"}]})
+    assert res["reports"][0]["group"] == "rear"
+    c = res["new_candidates"][0]
+    data = load(session, c)
+    assert [s.get("group") for s in data["surfaces"][6:8]] == ["rear", "rear"]
+    st = session.state(c)
+    new = next(g for g in st["glasses"] if g["surface"] == 6)
+    assert new["group"] == "rear"
+    # ausdrückliche Gruppe an einem bestehenden Element überschreibt die Automatik (hier ordnet
+    # die Automatik alle Elemente der Mittelgruppe zu)
+    first = st0["glasses"][0]
+    assert auto[first["element"]] == "middle"
+    surface = first["surface"]
+    data["surfaces"][surface]["group"] = "front"
+    session.system_path(c).write_text(json.dumps(data), encoding="utf-8")
+    st2 = design.build_state(session.system_path(c), with_merit=False,
+                             with_sensitivity=False)
+    assert next(g for g in st2["glasses"] if g["surface"] == surface)["group"] == "front"
+    lo, hi = st2["groups"]["front"]["surfaces"]
+    assert lo <= surface <= hi
 
 
 @pytest.mark.parametrize("mod,glasses,added", [
@@ -167,6 +203,26 @@ def test_remove_element_homotopy(session):
                                    "cycles": 0})
     assert res2["reports"][0]["removed_elements"] == [0, 1]
     assert len(load(session, res2["new_candidates"][0])["surfaces"]) == n0 - 3
+
+
+def test_remove_element_reports_raised_bounds(tmp_path):
+    """Rückbau über die obere Schranke einer Dickenvariable hinaus: Schranke angehoben, Warnung
+    im Bericht der Aktion und damit im Sitzungsprotokoll (Entscheidung Maintainer 2026-11-19)."""
+    data = json.loads(START.read_text(encoding="utf-8"))
+    data["glass_catalogs"] = [str(ROOT / c) for c in data["glass_catalogs"]]
+    data["variables"] = {"items": [{"type": "thickness", "surfaces": [3, 5], "min": 0.1,
+                                    "max": 3.0}]}
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(data), encoding="utf-8")
+    s = design.Session.create(start, tmp_path / "s", spec={"tube_focal_length": 164.5})
+    [res] = apply_ok(s, 0, {"action": "remove_element", "element": 2, "stages": 1, "cycles": 0})
+    warnings = res["reports"][0]["warnings"]
+    assert warnings == ["obere Schranke der Dicke nach Fläche 5 von 3 auf 5 mm angehoben",
+                        "obere Schranke der Dicke nach Fläche 3 von 5 auf 6 mm angehoben"]
+    out = load(s, res["new_candidates"][0])
+    assert out["variables"]["items"][0]["max"] == 6.0
+    logged = [r for e in s.log() for r in e["results"]]
+    assert logged[-1]["reports"][0]["warnings"] == warnings
 
 
 def test_replace_glass(session):

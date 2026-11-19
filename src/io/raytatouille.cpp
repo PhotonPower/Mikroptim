@@ -1245,6 +1245,9 @@ private:
                 error(p + ".tilt_deg", "Verkippung nicht abbildbar (der Adapter übernimmt nur "
                                        "koaxiale Systeme)");
             }
+            if (s.group) {
+                warn(p + ".group", "Gruppe entfällt (Raytatouille hat kein Feld dafür)");
+            }
             switch (s.material.kind) {
             case MaterialKind::Buchdahl:
                 error(p + ".material", "Buchdahl-Modellglas nicht abbildbar (Raytatouille kennt "

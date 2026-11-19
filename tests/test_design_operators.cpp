@@ -229,9 +229,53 @@ TEST(DesignOperators, RemovalRaisesUpperBoundOfMergedGap) {
             EXPECT_EQ(r.upper, 6.0);
         }
     }
-    const SystemDescription c = collapse_element(d, 4, 1.0);
+    // Warnung (Entscheidung Maintainer 2026-11-19): Schranke angehoben und gemeldet
+    ASSERT_EQ(rem.widened.size(), 1u);
+    EXPECT_EQ(rem.widened[0].gap, 3);
+    EXPECT_FALSE(rem.widened[0].working_distance);
+    EXPECT_EQ(rem.widened[0].old_max, 3.0);
+    EXPECT_EQ(rem.widened[0].new_max, 6.0);
+    EXPECT_EQ(mko::bound_widening_warning(rem.widened[0]),
+              "obere Schranke der Dicke nach Fläche 3 von 3 auf 6 mm angehoben");
+    std::vector<mko::BoundWidening> widened;
+    const SystemDescription c = collapse_element(d, 4, 1.0, &widened);
     EXPECT_EQ(c.surfaces[5].thickness, 5.0);
     EXPECT_EQ(c.variables->items[1].max, 5.0);
+    ASSERT_EQ(widened.size(), 1u);
+    EXPECT_EQ(widened[0].gap, 5);
+    EXPECT_EQ(widened[0].new_max, 5.0);
+    // ohne Anhebung keine Warnung
+    widened.clear();
+    (void)collapse_element(d, 4, 0.1, &widened);
+    EXPECT_TRUE(widened.empty());
+    EXPECT_TRUE(remove_element(mehrlinser_with_variables(), 4).widened.empty());
+}
+
+// Rückbau der Frontgruppe in den Arbeitsabstand: Schranke des Arbeitsabstands angehoben und als
+// Warnung gemeldet (Entscheidung Maintainer 2026-11-19).
+TEST(DesignOperators, RemovalWarnsAboutWorkingDistanceBound) {
+    SystemDescription d = mehrlinser_with_variables();
+    bool found = false;
+    for (mko::VariableSpec& v : d.variables->items) {
+        if (v.type == VariableType::WorkingDistance) {
+            v.max = 15.0;
+            found = true;
+        }
+    }
+    if (!found) {
+        mko::VariableSpec v;
+        v.type = VariableType::WorkingDistance;
+        v.max = 15.0;
+        d.variables->items.push_back(v);
+    }
+    const RemovalResult rem = remove_element(d, 6);
+    ASSERT_EQ(rem.widened.size(), 1u);
+    EXPECT_TRUE(rem.widened[0].working_distance);
+    EXPECT_EQ(rem.widened[0].old_max, 15.0);
+    EXPECT_EQ(rem.widened[0].new_max, 2.0 + 4.0 + 14.45);
+    EXPECT_EQ(mko::bound_widening_warning(rem.widened[0])
+                  .rfind("obere Schranke des Arbeitsabstands von 15 auf ", 0),
+              0u);
 }
 
 TEST(DesignOperators, RemoveFrontElementMergesIntoWorkingDistance) {

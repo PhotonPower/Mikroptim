@@ -31,3 +31,21 @@ Geplante Start- und Referenzsysteme (Linsendaten trägt der Maintainer ein, Agen
 - US 6,504,653 (100x/1,45 Öl)
 
 Format: [docs/dateiformat.md](../../docs/dateiformat.md).
+
+## Private Patentsysteme (Benchmark B4)
+
+Systeme aus Patentschriften trägt nur der Maintainer ein, und zwar ausschließlich im Verzeichnis `data/systems/private/` (in `.gitignore`, wie `data/glass/private/`; Entscheidung Maintainer 2026-11-19). Agenten erfinden keine Linsendaten realer Objektive und committen nichts aus diesem Verzeichnis.
+
+- **Format:** `mikroptim.system/1` wie alle Systeme. Die Quelle (Patentnummer, Beispiel, Tabelle) steht im Feld `description`, z. B. `"description": "Quelle: DE 103 16 415, Ausführungsbeispiel 1 (vereinfacht: Frontgruppe entfernt, Gläser vergröbert)"`. Gläser aus lizenzierten Katalogen verweisen auf `data/glass/private/`.
+- **Benchmark-Liste:** `data/systems/private/b4.json` beschreibt die Läufe von `tools/m10t7_bewertung.py` (Bewertung der Entwurfssteuerung, [entwurfssteuerung.md, Abschnitt 8](../../docs/entwurfssteuerung.md)):
+
+  ```json
+  {"benchmarks": [
+    {"name": "B4a", "start": "de10316415_vereinfacht.json", "na": 0.95, "max_elements": 15,
+     "spec": {"tube_focal_length": 164.5, "na": 0.95, "magnification": 100}, "steps": 12,
+     "field_scale": 0.1}
+  ]}
+  ```
+
+  `start` ist relativ zu `data/systems/private/`; `max_elements` (Standard 15), `spec` (Standard `{"na": …}`), `steps` (12) und `field_scale` (1) sind optional. Fehlt die Liste, überspringt das Skript B4 mit einem Hinweis.
+- **Läufe nur lokal:** `python tools/m10t7_bewertung.py --benchmarks B4 --varianten V0,V3,LM --decider ollama --model …`. Sitzungen liegen unter `<work>/private/`, Ergebnisse unter `docs/ergebnisse/m10-t7/private/` (beides nicht im Repository). Der `ClaudeDecider` sendet keine Daten aus einem Pfad mit dem Bestandteil `private` (Startsystem der Sitzung oder Glaskatalog; Fehler `PrivacyError`, Tests `test_private_data_not_sent`, `test_private_start_system_not_sent`), und das Skript überspringt `--decider claude` für B4.

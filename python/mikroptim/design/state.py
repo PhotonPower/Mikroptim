@@ -53,7 +53,21 @@ def assign_groups(elems, heights):
             for i, e in enumerate(elems)}
 
 
-def _surface_groups(n_surfaces, elems, groups):
+def element_groups(data, elems, heights):
+    """Gruppe pro Element: das Feld ``group`` der Vorderfläche (sonst der Rückfläche) der
+    Systemdatei überschreibt die automatische Zuordnung nach der Randstrahlhöhe
+    (``assign_groups``; Entscheidung Maintainer 2026-11-19, docs/entwurfssteuerung.md,
+    Abschnitt 3.3)."""
+    groups = assign_groups(elems, heights)
+    surfs = data["surfaces"]
+    for e in elems:
+        g = surfs[e["front"]].get("group") or surfs[e["back"]].get("group")
+        if g:
+            groups[e["element"]] = g
+    return groups
+
+
+def _surface_groups(n_surfaces, elems, groups, data=None):
     out = ["rear"] * n_surfaces
     for e in elems:
         g = groups[e["element"]]
@@ -63,6 +77,11 @@ def _surface_groups(n_surfaces, elems, groups):
     if elems:
         for s in range(elems[-1]["back"] + 1, n_surfaces):
             out[s] = "front"
+    # ausdrückliche Gruppen der Datei haben Vorrang (auch an Flächen ohne Element)
+    if data is not None:
+        for s, surf in enumerate(data["surfaces"][:n_surfaces]):
+            if surf.get("group"):
+                out[s] = surf["group"]
     return out
 
 
@@ -122,8 +141,8 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
     # Gruppen und Bilanzen aus dem Aberrationsbericht
     elems = elements(data)
     heights = [s["y"] for s in ab["surfaces"]]
-    groups = assign_groups(elems, heights)
-    sgroups = _surface_groups(len(ab["surfaces"]), elems, groups)
+    groups = element_groups(data, elems, heights)
+    sgroups = _surface_groups(len(ab["surfaces"]), elems, groups, data)
     balance = {}
     for name in ("front", "middle", "rear"):
         surfs = [i for i, g in enumerate(sgroups) if g == name]
@@ -228,7 +247,8 @@ def sensitivity_summary(system_path):
     }
     man = rep["manufacturability"]
     manufacturability = {"warnings": man["warnings"], "errors": man["errors"],
-                         "findings": [[c["check"], c["surface"], c["value"], c["severity"]]
+                         "findings": [[c["check"], c["surface"], c["value"], c["severity"],
+                                      c.get("message", "")]
                                       for c in man["checks"] if c["severity"] != "ok"]}
     return summary, manufacturability
 

@@ -23,7 +23,7 @@ Diese ADR hält die Grundsatzentscheidung für beide nachträglich fest.
 
 ## Konsequenzen
 
-- **θ-Persistenz:** Damit ein Lauf mit Augmented Lagrangian fortgesetzt oder reproduziert werden kann, muss θ im Ergebnis- bzw. Neustartzustand stehen. Das setzt ein eigener Folge-PR um; das Systemformat bleibt unverändert.
+- **θ-Persistenz:** Damit ein Lauf mit Augmented Lagrangian fortgesetzt oder reproduziert werden kann, muss θ im Ergebnis- bzw. Neustartzustand stehen. Das setzt ein eigener Folge-PR um; das Systemformat bleibt unverändert. *Nachtrag:* umgesetzt (Entscheidung Maintainer 2026-11-19): `augmented_lagrangian.shifts` im JSON von `optimize` und im Protokoll von `synth`, Einlesen mit `--shifts-from` (optimierung.md §2.6).
 - **Kosten F_tol** pro LM-Zyklus (optimierung.md §14, Kosten; Zweilinser, Standardsatz, S = 36): GPU (RTX 3090) etwa **2,7-fach**, CPU etwa **71-fach**. Mit S Stichproben skaliert der Faktor etwa mit (1 + S)/(1 + 2D). Die Option ist deshalb für späte Stufen gedacht.
 - **Kosten Augmented Lagrangian** (optimierung.md §2.6, Messungen): Petzval 391 statt 546 LM-Zyklen, Mechanik 56 statt 104 bei moderatem festem Gewicht (Datei · 10⁻⁴ bzw. · 10⁻¹; das kleinste Gewicht der Fortsetzung ist zu klein). Am System von M6-T3 allein kein Gewinn (28.637 statt 21.038 Zyklen), mit `--stall 20,1e-3` 1.785 statt 4.931 Zyklen bei kleinerem RMS.
 - **Mit F_tol** ist die nominelle Teilmerit F₀ (nicht koaxialer Batch, volle Pupille) bis auf Rundung, aber nicht bitgleich gleich der gewöhnlichen Merit. Augmented Lagrangian und äußeres Strafverfahren laufen unverändert über `ToleranceAwareBackend`.

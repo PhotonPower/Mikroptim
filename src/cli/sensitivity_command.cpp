@@ -161,6 +161,8 @@ SensitivityArgs parse_args(std::span<const std::string_view> args) {
             a.limits.min_center_thickness = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--min-edge") {
             a.limits.min_edge_thickness = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--min-edge-relative") {
+            a.limits.min_edge_thickness_relative = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--min-air-edge") {
             a.limits.min_air_edge = non_negative(arg, next_value(args, i, arg));
         } else if (arg == "--max-aspect") {
@@ -313,6 +315,7 @@ Json manufacturability_json(const ManufacturabilityReport& m) {
     j["limits"] = Json{{"max_hemisphere", m.limits.max_hemisphere},
                        {"min_center_thickness_mm", m.limits.min_center_thickness},
                        {"min_edge_thickness_mm", m.limits.min_edge_thickness},
+                       {"min_edge_thickness_relative", m.limits.min_edge_thickness_relative},
                        {"min_air_edge_mm", m.limits.min_air_edge},
                        {"max_aspect_ratio", m.limits.max_aspect_ratio},
                        {"min_centering", m.limits.min_centering}};
@@ -322,7 +325,8 @@ Json manufacturability_json(const ManufacturabilityReport& m) {
                               {"surface", c.surface},
                               {"value", number(c.value)},
                               {"limit", c.limit},
-                              {"severity", std::string(to_string(c.severity))}});
+                              {"severity", std::string(to_string(c.severity))},
+                              {"message", finding_message(c)}});
     }
     j["checks"] = std::move(checks);
     j["warnings"] = m.warnings;
@@ -457,12 +461,13 @@ void write_text(const SensitivityReport& r, int top, std::ostream& out) {
                "x/y bzw. α/β)\n\n";
     }
     const ManufacturabilityReport& m = r.manufacturability;
-    out << "  Herstellbarkeit: " << m.checks.size() << " Prüfungen, " << m.warnings
-        << " Warnungen, " << m.errors << " Fehler\n";
+    out << "  Herstellbarkeit (nur Hinweise, keine Nebenbedingungen): " << m.checks.size()
+        << " Prüfungen, " << m.warnings << " Warnungen, " << m.errors << " Fehler\n";
     out << "  Grenzen: h/|R| <= " << format_number("%.3g", m.limits.max_hemisphere)
         << ", Mittendicke >= " << format_number("%.3g", m.limits.min_center_thickness)
-        << " mm, Randdicke >= " << format_number("%.3g", m.limits.min_edge_thickness)
-        << " mm, Luftrand >= " << format_number("%.3g", m.limits.min_air_edge)
+        << " mm, Randdicke >= max(" << format_number("%.3g", m.limits.min_edge_thickness) << " mm; "
+        << format_number("%.3g", m.limits.min_edge_thickness_relative)
+        << " D), Luftrand >= " << format_number("%.3g", m.limits.min_air_edge)
         << " mm, 2h/t <= " << format_number("%.3g", m.limits.max_aspect_ratio)
         << ", Z >= " << format_number("%.3g", m.limits.min_centering) << '\n';
     for (const ManufacturabilityCheck& c : m.checks) {
@@ -471,7 +476,8 @@ void write_text(const SensitivityReport& r, int top, std::ostream& out) {
         }
         out << "  " << pad_right(c.severity == CheckSeverity::Error ? "FEHLER" : "Warnung", 9)
             << pad_right("Fläche " + std::to_string(c.surface), 11)
-            << pad_right(check_text(c.type), 25) << format_number("%.4g", c.value) << '\n';
+            << pad_right(check_text(c.type), 25) << pad_right(format_number("%.4g", c.value), 11)
+            << finding_message(c) << '\n';
     }
 }
 
@@ -483,6 +489,7 @@ void print_sensitivity_usage(std::ostream& out) {
            "                             [--radius rel] [--thickness mm] [--index dn]\n"
            "                             [--step h] [--rings N] [--spokes M]\n"
            "                             [--max-hemisphere v] [--min-center mm] [--min-edge mm]\n"
+           "                             [--min-edge-relative v]\n"
            "                             [--min-air-edge mm] [--max-aspect v] [--min-centering "
            "Z]\n"
            "                             [--manufacturability-only] [--gpu [--device N]]\n"
@@ -503,10 +510,12 @@ void print_sensitivity_usage(std::ostream& out) {
            "  --top N           Zeilen der Rangliste im Text (Standard 10)\n"
            "  --max-hemisphere v  Warnung bei h/|R| > v (Standard 0.95)\n"
            "  --min-center mm   Warnung bei Mittendicke des Glases < mm (Standard 0.5)\n"
-           "  --min-edge mm     Warnung bei Randdicke des Glases < mm (Standard 0.5)\n"
+           "  --min-edge mm     Warnung bei Randdicke des Glases < max(mm, v D) (Standard 0.5)\n"
+           "  --min-edge-relative v  Anteil v des Elementdurchmessers D (Standard 0.05)\n"
            "  --min-air-edge mm Warnung bei Luftrand < mm (Standard 0; < 0 ist immer ein Fehler)\n"
            "  --max-aspect v    Warnung bei Durchmesser/Mittendicke > v (Standard 10)\n"
-           "  --min-centering Z Warnung bei Zentrierkoeffizient < Z (Standard 0.1)\n"
+           "  --min-centering Z Warnung bei Zentrierkoeffizient < Z: Glockenzentrierung\n"
+           "                    ungeeignet (Standard 0.1)\n"
            "  --manufacturability-only  nur die Herstellbarkeit, ohne Trace\n"
            "  --json            maschinenlesbare Ausgabe (Format mikroptim.sensitivity/1)\n"
            "  --gpu             Trace auf der GPU (RESIDUALS) statt auf der CPU\n"

@@ -318,3 +318,55 @@ TEST(Aberrations, FocalShiftsMatchParaxialFoci) {
     o.focal_shift = false;
     EXPECT_TRUE(mko::compute_aberrations(l.system, l.catalog, o).focal_shifts.empty());
 }
+
+// Gruppensummen über das Feld group der Flächen (Entscheidung Maintainer 2026-11-19): jede
+// Gruppe summiert genau ihre Flächen (bitgleich zur Summe in derselben Reihenfolge); hat jede
+// Fläche eine Gruppe, ist die Summe der Gruppen die Gesamtsumme. Ohne Feld keine Gruppen.
+TEST(Aberrations, GroupSumsFromSurfaceField) {
+    mko::LoadedSystem l = mko::load_system(system_path("testsystem_mehrlinser.json"));
+    EXPECT_TRUE(mko::compute_aberrations(l.system, l.catalog).groups.empty());
+    // Blende und Kittglied hinten, Einzellinse Mitte, Frontlinse vorn (frei gewählt)
+    const std::vector<std::string> names = {"rear",   "rear",   "rear",  "rear",
+                                            "middle", "middle", "front", "front"};
+    ASSERT_EQ(l.system.surfaces.size(), names.size());
+    for (std::size_t s = 0; s < names.size(); ++s) {
+        l.system.surfaces[s].group = names[s];
+    }
+    const mko::AberrationReport rep = mko::compute_aberrations(l.system, l.catalog);
+    ASSERT_EQ(rep.groups.size(), 3u);
+    EXPECT_EQ(rep.groups[0].name, "front");
+    EXPECT_EQ(rep.groups[1].name, "middle");
+    EXPECT_EQ(rep.groups[2].name, "rear");
+    EXPECT_EQ(rep.groups[1].surfaces, (std::vector<int>{4, 5}));
+    std::array<double, 5> total{};
+    double w040 = 0.0;
+    for (const mko::GroupAberration& g : rep.groups) {
+        std::array<double, 5> expected{};
+        double full = 0.0;
+        for (const int s : g.surfaces) {
+            const mko::SurfaceAberration& sa = rep.surfaces[static_cast<std::size_t>(s)];
+            EXPECT_EQ(sa.group, g.name);
+            for (std::size_t k = 0; k < 5; ++k) {
+                expected[k] += sa.S[k];
+            }
+            full += sa.full_order_spherical;
+        }
+        for (std::size_t k = 0; k < 5; ++k) {
+            EXPECT_EQ(g.sum.S[k], expected[k]) << g.name << " S" << k;
+            total[k] += g.sum.S[k];
+        }
+        EXPECT_EQ(g.sum.full_order_spherical, full);
+        w040 += rep.waves(g.sum).W040;
+    }
+    for (std::size_t k = 0; k < 4; ++k) {
+        expect_relative(total[k], rep.S[k], kSeidelIdentity,
+                        "Summe der Gruppen S" + std::to_string(k));
+    }
+    expect_relative(w040, rep.waves().W040, kSeidelIdentity, "W040 der Gruppen");
+    // Fläche ohne Gruppe zählt nur zur Gesamtsumme
+    l.system.surfaces[7].group.reset();
+    const mko::AberrationReport part = mko::compute_aberrations(l.system, l.catalog);
+    ASSERT_EQ(part.groups.size(), 3u);
+    EXPECT_EQ(part.groups[0].surfaces, (std::vector<int>{6}));
+    EXPECT_EQ(part.surfaces[7].group, "");
+}
