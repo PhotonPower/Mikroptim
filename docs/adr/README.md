@@ -15,7 +15,8 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0009](0009-ableitungen.md) | Erst finite Differenzen, dann Adjungierte | angenommen |
 | [0010](0010-normalgleichungen-ohne-cublas.md) | Normalgleichungen mit eigenem Kernel, Cholesky auf dem Host | vorgeschlagen |
 | [0011](0011-dezentrierung-verkippung.md) | Dezentrierung und Verkippung einzelner Flächen | angenommen |
-| [0012](0012-entwurfswerkzeuge-und-entscheider.md) | Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider | angenommen |
+| [0012](0012-entwurfswerkzeuge-und-entscheider.md) | Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider | angenommen, geändert durch ADR-0016 |
 | [0013](0013-glattes-maximum-und-mehrere-gpus.md) | Glattes Maximum im Kernel; keine Bitgleichheit bei Verteilung auf mehrere GPUs | angenommen |
 | [0014](0014-glasmodelle-sellmeier-polynom.md) | Glasmodelle Sellmeier mit mehr Termen und Polynom | angenommen |
 | [0015](0015-cuda13-ohne-p100.md) | CUDA 13 erlaubt, Tesla P100 entfällt | angenommen |
+| [0016](0016-claude-als-entscheider.md) | Claude-API als zusätzlicher Entscheider (optionales Extra) | angenommen |

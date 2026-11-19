@@ -23,6 +23,8 @@ classifiers = [
 [project.optional-dependencies]
 test = ["pytest>=7", "pyyaml>=5"]
 glass = ["pyyaml>=5"]  # Glasimport aus YAML-Dateien von refractiveindex.info (M9-T3)
+# Entscheider über die Claude-API (M10-T6c, ADR-0016); nur dort geladen, Kern und Tests ohne
+claude = ["anthropic>=2.10"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

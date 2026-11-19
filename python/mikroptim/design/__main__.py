@@ -7,7 +7,8 @@ Befehle::
     act <dir> <antwort.json|-> [-c N]            Antwort (mikroptim.design.action/1) ausführen
     tree <dir>                                   Kandidatenbaum
     replay <dir> <neues_dir>                     Protokoll in einer neuen Sitzung abspielen
-    run <dir> --decider rule|ollama|human [--confirm] [--model M] [--host URL] [--think|--no-think]
+    run <dir> --decider rule|ollama|claude|human [--confirm] [--model M] [--host URL]
+        [--think|--no-think] [--effort E] [--max-usd X] [--cost-file F] [--no-fallbacks]
         [--steps N] [-c N] [--fallback rule|human|none]   Folge von Entscheidungen
 """
 
@@ -17,6 +18,8 @@ import argparse
 import json
 import sys
 
+from .claude import (DEFAULT_MODEL, BudgetExceeded, ClaudeDecider, ClaudeUnavailableError,
+                     CostLedger, PrivacyError)
 from .deciders import ConfirmDecider, HumanDecider, RuleDecider, replay
 from .ollama import OllamaDecider
 from .session import Session
@@ -45,13 +48,24 @@ def main(argv=None) -> int:
     rp.add_argument("new_dir")
     ru = sub.add_parser("run")
     ru.add_argument("dir")
-    ru.add_argument("--decider", choices=["rule", "ollama", "human"], required=True)
+    ru.add_argument("--decider", choices=["rule", "ollama", "claude", "human"], required=True)
     ru.add_argument("--confirm", action="store_true", help="Mensch bestätigt jeden Vorschlag")
-    ru.add_argument("--model", help="Ollama-Modell, z. B. qwen3:30b")
+    ru.add_argument("--model", help="Ollama-Modell (z. B. qwen3:14b) bzw. Claude-Modell "
+                    f"(Standard {DEFAULT_MODEL}; claude-sonnet-5-5, claude-haiku-5-5)")
     ru.add_argument("--host", default="http://localhost:11434")
     th = ru.add_mutually_exclusive_group()
     th.add_argument("--think", dest="think", action="store_true", default=None)
     th.add_argument("--no-think", dest="think", action="store_false")
+    ru.add_argument("--effort", default="medium",
+                    choices=["low", "medium", "high", "xhigh", "max"], help="Claude: Aufwand")
+    ru.add_argument("--max-usd", type=float, default=20.0,
+                    help="Claude: Kostenobergrenze in US-$ (Summe in --cost-file)")
+    ru.add_argument("--cost-file", help="Claude: laufende Kostensumme (JSON), Standard "
+                    "<dir>/claude_cost.json")
+    ru.add_argument("--no-fallbacks", action="store_true",
+                    help="Claude: keine server-seitigen Rückfälle bei Ablehnung")
+    ru.add_argument("--no-strict", action="store_true",
+                    help="Claude: Werkzeuge ohne strict (falls die API das Schema ablehnt)")
     ru.add_argument("--steps", type=int, default=10)
     ru.add_argument("-c", "--candidate", type=int, default=None)
     ru.add_argument("--fallback", choices=["rule", "human", "none"], default="none")
@@ -82,6 +96,11 @@ def main(argv=None) -> int:
                     print("Fehler: --model fehlt", file=sys.stderr)
                     return 2
                 decider = OllamaDecider(a.model, host=a.host, think=a.think)
+            elif a.decider == "claude":
+                ledger = CostLedger(a.max_usd, a.cost_file or s.dir / "claude_cost.json")
+                decider = ClaudeDecider(a.model or DEFAULT_MODEL, effort=a.effort,
+                                        fallbacks=False if a.no_fallbacks else None,
+                                        strict=not a.no_strict, ledger=ledger)
             elif a.decider == "rule":
                 decider = RuleDecider()
             else:
@@ -90,7 +109,15 @@ def main(argv=None) -> int:
                 decider = ConfirmDecider(decider)
             fallback = {"rule": RuleDecider(), "human": HumanDecider(), "none": None}[a.fallback]
             c = a.candidate if a.candidate is not None else max(s.open_candidates() or [0])
-            last = s.run(decider, c, max_steps=a.steps, fallback=fallback)
+            try:
+                last = s.run(decider, c, max_steps=a.steps, fallback=fallback)
+            except (BudgetExceeded, ClaudeUnavailableError, PrivacyError) as e:
+                print(f"Abbruch: {e}", file=sys.stderr)
+                return 3
+            finally:
+                if a.decider == "claude":
+                    print(f"Claude-Kosten bisher {ledger.spent_usd:.4f} $ von "
+                          f"{ledger.limit_usd:.2f} $ ({ledger.requests} Anfragen)")
             print(f"letzter Kandidat {last}; {len(s.candidates())} Kandidaten")
         elif a.cmd == "replay":
             r = replay(s.log(), s.meta["start"], a.new_dir, spec=s.meta["spec"],

@@ -1,6 +1,6 @@
 # ADR-0012: Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider
 
-- **Status:** angenommen
+- **Status:** angenommen; Punkt 4 geändert durch [ADR-0016](0016-claude-als-entscheider.md) (Claude-API als zusätzlicher Entscheider für Daten ohne Schutzbedarf)
 - **Datum:** 2026-10-28
 
 ## Kontext

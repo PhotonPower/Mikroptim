@@ -1,6 +1,7 @@
 """Entwurfswerkzeuge mit Mensch oder Sprachmodell als Entscheider (M10, ADR-0012).
 
-Grundgerüst (M10-T6a), Ollama, Regel und Bestätigung (M10-T6b): Zustand ``mikroptim.design.state/1``, Aktionen
+Grundgerüst (M10-T6a), Ollama, Regel und Bestätigung (M10-T6b), Claude-API (M10-T6c,
+optionales Extra ``mikroptim[claude]``): Zustand ``mikroptim.design.state/1``, Aktionen
 ``mikroptim.design.action/1`` über die Kommandozeile von Mikroptim, Kandidatenbaum,
 Protokoll ``mikroptim.design.log/1`` und Wiedereinspielen. Beschreibung:
 docs/entwurfssteuerung.md; Kommandozeile: ``python -m mikroptim.design --help``.
@@ -16,12 +17,14 @@ Beispiel::
 """
 
 from .actions import ActionError, SCHEMA_ACTIONS
+from .claude import BudgetExceeded, ClaudeDecider, ClaudeUnavailableError, CostLedger, PrivacyError
 from .deciders import (ConfirmDecider, Decider, DecisionError, HumanDecider, ReplayDecider,
                        RuleDecider, replay)
 from .ollama import OllamaDecider
 from .session import Session
 from .state import build_state, format_state
 
-__all__ = ["ActionError", "ConfirmDecider", "Decider", "DecisionError", "HumanDecider",
-           "OllamaDecider", "ReplayDecider", "RuleDecider", "SCHEMA_ACTIONS", "Session",
+__all__ = ["ActionError", "BudgetExceeded", "ClaudeDecider", "ClaudeUnavailableError",
+           "ConfirmDecider", "CostLedger", "Decider", "DecisionError", "HumanDecider",
+           "OllamaDecider", "PrivacyError", "ReplayDecider", "RuleDecider", "SCHEMA_ACTIONS", "Session",
            "build_state", "format_state", "replay"]

@@ -375,6 +375,12 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 - **Inhalt:** `OllamaDecider` (Instruktions- und Thinking-Modelle, Lese-Werkzeuge als Tool-Calls, schema-beschränkte Antwort, Protokoll von Denktext und Prüfsummen), `RuleDecider` (Vergleichsstrategie V3), `ConfirmDecider` (Modell schlägt vor, Mensch bestätigt), Rückfall-Entscheider.
 - **Abnahme:** Modellwechsel allein über die Konfiguration; ungültige Modellausgaben werden abgefangen; Wiedereinspielen eines Laufs mit Modell ohne Ollama.
 
+### M10-T6c – Claude-Entscheider
+- **Abhängig von:** M10-T6b
+- **Stand:** umgesetzt ([ADR-0016](../adr/0016-claude-als-entscheider.md)); echte Läufe in M10-T7.
+- **Inhalt:** `ClaudeDecider` über die Claude-API als optionales Extra `mikroptim[claude]`, Modell per Option, Kosten mit Obergrenze, Schutz privater Daten.
+- **Abnahme:** Tests mit Attrappe ohne Netz, ohne Schlüssel und ohne installiertes SDK; Wiedereinspielen ohne API; ungültige Antworten, Ablehnung und Budget werden abgefangen.
+
 ### M10-T7 – Bewertung
 - **Abhängig von:** M10-T6
 - **Inhalt:** Benchmarks B1–B3 (und lokal B4) gegen V0–V4, mehrere Ollama-Modelle (Instruktion und Thinking), insbesondere gegen die regelbasierte Strategie ohne Modell und gegen den Menschen mit denselben Werkzeugen.
