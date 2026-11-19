@@ -3,6 +3,7 @@
 #include "mikroptim/glass/catalog.hpp"
 #include "mikroptim/io/raytatouille.hpp"
 #include "mikroptim/io/system_json.hpp"
+#include "mikroptim/paraxial/aberrations.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -31,8 +32,16 @@ struct ConvertArgs {
     std::vector<std::string> glass_catalogs;
     std::string rtt_catalog;
     std::optional<double> semi_diameter;
+    // Umrechnung der Brechzahlen (Entscheidung des Maintainers 2026-11-19)
+    bool air_conversion = true;
+    std::optional<std::string> rtt_environment; // "air" oder "vacuum"
+    bool estimate_apertures = false;
+    std::optional<double> aperture_margin;
     bool help = false;
 };
+
+// Standardzuschlag der geschätzten Aperturen (Mikroptim-Annahme): 10 % auf |y| + |ȳ|.
+constexpr double kDefaultApertureMargin = 0.1;
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
                             std::string_view option) {
@@ -62,6 +71,20 @@ ConvertArgs parse_args(std::span<const std::string_view> args) {
             if (!(*a.semi_diameter > 0.0)) {
                 throw UsageError("--semi-diameter muss > 0 sein");
             }
+        } else if (arg == "--no-air-conversion") {
+            a.air_conversion = false;
+        } else if (arg == "--rtt-environment") {
+            a.rtt_environment = std::string(next_value(args, i, arg));
+            if (*a.rtt_environment != "air" && *a.rtt_environment != "vacuum") {
+                throw UsageError("--rtt-environment erwartet air oder vacuum");
+            }
+        } else if (arg == "--estimate-apertures") {
+            a.estimate_apertures = true;
+        } else if (arg == "--aperture-margin") {
+            a.aperture_margin = parse_double(arg, next_value(args, i, arg));
+            if (!(*a.aperture_margin >= 0.0)) {
+                throw UsageError("--aperture-margin muss >= 0 sein");
+            }
         } else if (!arg.empty() && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (a.input.empty()) {
@@ -81,6 +104,16 @@ ConvertArgs parse_args(std::span<const std::string_view> args) {
     }
     if (same_file(a.input, a.output)) {
         throw UsageError("Ausgabedatei ist die Eingabedatei");
+    }
+    if (a.estimate_apertures && a.semi_diameter) {
+        throw UsageError("--estimate-apertures und --semi-diameter schließen sich aus");
+    }
+    if (a.aperture_margin && !a.estimate_apertures) {
+        throw UsageError("--aperture-margin verlangt --estimate-apertures");
+    }
+    if (a.rtt_environment && !a.air_conversion) {
+        throw UsageError("--rtt-environment gilt nur mit Umrechnung (nicht mit "
+                         "--no-air-conversion)");
     }
     return a;
 }
@@ -147,6 +180,10 @@ void print_warnings(std::ostream& err, const std::vector<std::string>& warnings)
 
 int rtt_to_mikroptim(const ConvertArgs& a, const std::string& text, std::ostream& out,
                      std::ostream& err) {
+    if (a.rtt_environment) {
+        throw UsageError("--rtt-environment nur für Mikroptim → Raytatouille (beim Import gilt "
+                         "die Umgebung der Datei)");
+    }
     std::vector<fs::path> files;
     SystemDescription probe;
     for (const std::string& c : a.glass_catalogs) {
@@ -171,6 +208,17 @@ int rtt_to_mikroptim(const ConvertArgs& a, const std::string& text, std::ostream
         };
     }
     options.default_semi_diameter = a.semi_diameter;
+    options.air_conversion = a.air_conversion;
+    GlassCatalog merged;
+    for (const auto& f : catalogs.files) {
+        merged.merge(f.second);
+    }
+    if (a.estimate_apertures) {
+        const double margin = a.aperture_margin.value_or(kDefaultApertureMargin);
+        options.aperture_estimate = [&merged, margin](const SystemDescription& s) {
+            return estimate_clear_semi_diameters(s, merged, margin);
+        };
+    }
     options.fallback_name = utf8(fs::path(a.input).stem().stem());
     std::vector<std::string> warnings;
     const SystemDescription sys = system_from_rtt_json(text, options, &warnings);
@@ -189,12 +237,17 @@ int mikroptim_to_rtt(const ConvertArgs& a, std::ostream& out, std::ostream& err)
     if (a.semi_diameter) {
         throw UsageError("--semi-diameter nur für Raytatouille → Mikroptim");
     }
+    if (a.estimate_apertures) {
+        throw UsageError("--estimate-apertures nur für Raytatouille → Mikroptim");
+    }
     std::vector<std::string> warnings;
     const SystemDescription sys = read_system_file(a.input, &warnings);
     const std::vector<fs::path> files =
         resolve_glass_catalogs(sys, fs::path(a.input).parent_path());
     const Catalogs catalogs = load_catalogs(files);
     RttExportOptions options;
+    options.air_conversion = a.air_conversion;
+    options.environment.vacuum = a.rtt_environment && *a.rtt_environment == "vacuum";
     const std::string fixed = a.rtt_catalog;
     options.glass_catalog_name = [&catalogs, fixed](std::string_view g) {
         const std::string own = catalogs.name_of(g);
@@ -212,7 +265,9 @@ int mikroptim_to_rtt(const ConvertArgs& a, std::ostream& out, std::ostream& err)
 
 void print_convert_usage(std::ostream& out) {
     out << "Aufruf: mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]...\n"
-           "                          [--semi-diameter MM] [--rtt-catalog NAME]\n"
+           "                          [--semi-diameter MM | --estimate-apertures\n"
+           "                          [--aperture-margin Z]] [--rtt-catalog NAME]\n"
+           "                          [--rtt-environment air|vacuum] [--no-air-conversion]\n"
            "Umwandlung zwischen Raytatouille (*.rtt.json, Schema 0.11) und mikroptim.system/1\n"
            "für sequenzielle, koaxiale, sphärische Systeme (M9-T2, docs/dateiformat.md,\n"
            "Abschnitt „Raytatouille-Adapter“). Die Richtung ergibt sich aus der Eingabe\n"
@@ -224,8 +279,15 @@ void print_convert_usage(std::ostream& out) {
            "                       eingetragen)\n"
            "  --semi-diameter MM   nur Raytatouille → Mikroptim: Halbdurchmesser für Flächen\n"
            "                       ohne Apertur (sonst Fehler)\n"
+           "  --estimate-apertures nur Raytatouille → Mikroptim: fehlende Aperturen aus\n"
+           "                       paraxialer Rand- und Hauptstrahlhöhe (volles Feld) schätzen\n"
+           "  --aperture-margin Z  Zuschlag der Schätzung: h = (|y| + |ȳ|)(1 + Z), Standard 0.1\n"
            "  --rtt-catalog NAME   nur Mikroptim → Raytatouille: Katalogname aller Gläser\n"
            "                       (Standard: Dateistamm des Glaskatalogs in Großbuchstaben)\n"
+           "  --rtt-environment U  nur Mikroptim → Raytatouille: Umgebung air (Standard, Luft\n"
+           "                       nach Ciddor bei 20 °C, 1 atm) oder vacuum\n"
+           "  --no-air-conversion  Wellenlängen und Brechzahlen nicht über die Luft (Ciddor)\n"
+           "                       umrechnen (Verhalten vor 2026-11-19, zum Vergleich)\n"
            "Exit-Code: 0 Erfolg, 1 Fehler (nicht abbildbar, Datei, Format), 2 ungültige\n"
            "Kommandozeile.\n";
 }

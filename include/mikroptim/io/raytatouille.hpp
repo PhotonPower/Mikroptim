@@ -41,6 +41,24 @@ private:
     std::vector<RttIssue> issues_;
 };
 
+// Umgebung einer Raytatouille-Datei (`environment`): Luft nach Ciddor bei Temperatur und Druck
+// (Standard 20 °C, 1 atm) oder Vakuum. Raytatouille rechnet Brechzahlen absolut, Mikroptim
+// relativ zur Luft; der Adapter rechnet über die Brechzahl der Umgebung um (docs/numerik.md,
+// Abschnitt 18; Entscheidung des Maintainers 2026-11-19).
+struct RttEnvironment {
+    bool vacuum = false;
+    double temperature_c = 20.0;
+    double pressure_atm = 1.0;
+};
+
+// Brechzahl des Umgebungsmediums (absolut) bei der Vakuumwellenlänge [µm]: 1 im Vakuum, sonst
+// ciddor_air_index (mikroptim/glass/air_index.hpp).
+double rtt_environment_index(const RttEnvironment& environment, double wavelength_um);
+
+// Wellenlänge in der Luft der Umgebung [nm] zur Vakuumwellenlänge [µm]: λ = 1000 λ_vac/n_U(λ_vac);
+// im Vakuum rtt_um_to_nm (Dezimalkomma verschoben, kurze Zahlen exakt).
+double rtt_air_wavelength_nm(const RttEnvironment& environment, double wavelength_um);
+
 struct RttImportOptions {
     // Einträge von `glass_catalogs` der erzeugten Systembeschreibung (unverändert übernommen).
     std::vector<std::string> glass_catalogs;
@@ -55,12 +73,25 @@ struct RttImportOptions {
     std::optional<double> default_semi_diameter;
     // Name des Systems, wenn die Datei keinen `name` hat.
     std::string fallback_name = "Raytatouille-System";
+    // Brechzahlen und Wellenlängen physikalisch umrechnen (Standard): λ = λ_vac/n_U(λ_vac),
+    // CONST n_rel = n/n_U(λ_vac,ref). false: Zahlen unverändert (Verhalten vor 2026-11-19).
+    bool air_conversion = true;
+    // Fehlende Aperturen schätzen (statt Fehler): Flächen ohne Apertur bekommen den
+    // Halbdurchmesser aus dieser Funktion (Index = Dateifläche der fertigen Beschreibung, z. B.
+    // estimate_clear_semi_diameters aus mikroptim/paraxial/aberrations.hpp). Nicht zusammen mit
+    // default_semi_diameter.
+    std::function<std::vector<double>(const SystemDescription&)> aperture_estimate;
 };
 
 struct RttExportOptions {
     // Katalogname KATALOG für das Mikroptim-Glas NAME (Referenz `KATALOG:NAME`); leer oder ohne
     // Abfrage ist das Glas ein Fehler.
     std::function<std::string(std::string_view)> glass_catalog_name;
+    // Umgebung der erzeugten Datei (Standard: Luft bei 20 °C, 1 atm, nicht geschrieben).
+    RttEnvironment environment;
+    // Wie RttImportOptions::air_conversion; false: Zahlen unverändert, Umgebung VACUUM ohne
+    // Katalogglas, sonst Luft (Verhalten vor 2026-11-19; `environment` wird dann nicht benutzt).
+    bool air_conversion = true;
 };
 
 // Raytatouille → Mikroptim. Die Beschreibung wird validiert (validate_system), Glasnamen über

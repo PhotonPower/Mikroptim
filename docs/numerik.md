@@ -1078,3 +1078,43 @@ $$\nu_d = \frac{n_d - 1}{n_F - n_C},\qquad P_{g,F} = \frac{n_g - n_F}{n_F - n_C}
 Die Normalgerade P_g,F = 0,6438 − 0,001682 ν_d (durch die Normalgläser K7 und F2) folgt Schott, *Technical Information TIE-29*. Gläser, deren `range_nm` die Linien g bis C nicht abdeckt, fehlen in der Liste (`skipped`). Bereichsfilter sind geschlossen [min, max], eine fehlende Grenze ist offen.
 
 **Prüfungen** (`tests/test_glass_properties.cpp`): Polynomglas n² = a + b/λ² gegen die unabhängig ausgerechnete geschlossene Form (relativ ≤ 10⁻¹², `kGlassPropertiesFormula`); N-BK7 gegen das Datenblatt (ν_d 64,17, P_g,F 0,5349, ΔP_g,F −0,0009; Rundung des Datenblatts, `kGlassDatasheetAbbe`, `kGlassDatasheetPartial`); 400 zufällige Bereichsfilter auf den Testkatalogen (`synthetisch.json`, `basis.json`) gegen Bruteforce aus `Glass::index` (gleiche Listen).
+
+## 18. Brechzahl der Luft (Raytatouille-Adapter)
+
+Mikroptim rechnet relativ zu Luft (Abschnitt 2: n_Luft = 1, Katalogbrechzahlen relativ zu Luft, Wellenlängen in Luft). Raytatouille rechnet absolut: Wellenlängen im Vakuum, das Medium `AIR` ist trockene Luft nach Ciddor bei der Temperatur und dem Druck der Umgebung, Katalogglas n_abs = n_rel(λ_vac/n_L,ref) · n_L,ref mit n_L,ref = n_L(λ_vac; 20 °C, 1 atm), `CONST:n` und `VACUUM` absolut. Der Adapter (`mikroptim convert`, Entscheidung Maintainer 2026-11-19) rechnet beim Import und Export physikalisch um.
+
+**Formel** (Ciddor 1996, P. E. Ciddor: „Refractive index of air: new equations for the visible and near infrared“, Appl. Opt. 35, 1566–1573; in der Form der NIST-Dokumentation, Engineering Metrology Toolbox, „Refractive Index of Air – Documentation“, Appendix A-III, Gl. (A21)–(A41)). Wie in Raytatouille trockene Luft (Wasserdampf-Molenbruch x_v = 0, alle Wasserdampfterme entfallen) mit x_CO₂ = 450 µmol/mol, Vakuumwellenlänge λ in µm, Temperatur t in °C, Druck p in Pa (p = p_atm · 101 325 Pa):
+
+| Größe | Formel |
+|---|---|
+| S | 1/λ² [µm⁻²] (A31) |
+| Refraktivität der Standardluft | r_as = 10⁻⁸ [k₁/(k₀ − S) + k₃/(k₂ − S)], k₀ = 238,0185, k₁ = 5 792 105, k₂ = 57,362, k₃ = 167 917 (A22, A32) |
+| CO₂ | M_a = 0,0289635 + 1,2011·10⁻⁸ (x_CO₂ − 400) kg/mol, r_axs = r_as [1 + 5,34·10⁻⁷ (x_CO₂ − 450)] (A34, A35) |
+| Kompressibilität | Z_m = 1 − (p/T)(a₀ + a₁ t + a₂ t²) + (p/T)² d, T = t + 273,15 K, a₀ = 1,58123·10⁻⁶, a₁ = −2,9331·10⁻⁸, a₂ = 1,1043·10⁻¹⁰, d = 1,83·10⁻¹¹ (A23, A26, A37) |
+| Dichten | ρ_axs = p_R1 M_a/(Z_a R T_R1) mit p_R1 = 101 325 Pa, T_R1 = 288,15 K, Z_a = 0,9995922115, R = 8,314472; ρ_a = p M_a/(Z_m R T) (A27–A30, A38, A40) |
+| Brechzahl | n_L = 1 + (ρ_a/ρ_axs) r_axs (A41 ohne Wasserdampf) |
+
+Umsetzung `ciddor_air_index` in `include/mikroptim/glass/air_index.hpp` (eigener Code). Gültig laut NIST-Rechner 0,3–1,7 µm, −40 … 100 °C, 10–140 kPa; außerhalb extrapoliert.
+
+**Umrechnung.** n_U(λ_vac) ist die Brechzahl der Umgebung der Raytatouille-Datei: n_L(λ_vac; t, p) für `AIR` (Standard 20 °C, 1 atm), 1 für `VACUUM`.
+
+| | Import (Raytatouille → Mikroptim) | Export (Mikroptim → Raytatouille) |
+|---|---|---|
+| Wellenlänge | λ = λ_vac/n_U(λ_vac) | λ_vac mit λ_vac/n_U(λ_vac) = λ (bitgleich, kürzeste Darstellung) |
+| `CONST:n` | n_rel = n/n_U(λ_vac,ref) | n = n_rel · n_U(λ_vac,ref) (bitgleich zurück) |
+| Katalogglas | Name unverändert | Name unverändert |
+
+Bei Luft mit 20 °C und 1 atm ist die Umrechnung für Katalogglas exakt: Raytatouille rechnet relativ zur Umgebung n_rel(λ_vac/n_L,ref)·n_L,ref/n_U = n_rel(λ) mit λ = λ_vac/n_L, also genau die Mikroptim-Brechzahl bei der umgerechneten Wellenlänge. Bisher (ohne Umrechnung der Wellenlänge) blieb die Abweichung n_rel(λ_vac) − n_rel(λ_vac/n_L) ≈ 5·10⁻⁶. Nicht exakt (Warnung mit der Größenordnung): Katalogglas bei anderer Temperatur, anderem Druck oder im Vakuum (Raytatouille bezieht Katalogdaten auf Luft bei 20 °C, 1 atm; Mikroptim kennt kein Temperaturmodell) und `CONST:` bei mehreren Wellenlängen in Luft (die Dispersion der Luft, im Sichtbaren ≈ 10⁻⁵ relativ, hat im Modell `constant` keinen Platz; umgerechnet wird bei λ_ref).
+
+`--no-air-conversion` schaltet die Umrechnung ab (alle Zahlen unverändert, Umgebungswahl wie vor 2026-11-19: Export ohne Katalogglas in `VACUUM`), etwa für den Vergleich mit älteren Ergebnissen.
+
+**Prüfungen.**
+
+| Prüfung | Orakel | Ergebnis (Test) |
+|---|---|---|
+| `ciddor_air_index` | 12 veröffentlichte Werte des NIST-Ciddor-Rechners (0,3–1,7 µm, −20 … 40 °C, 50–120 kPa, 0 % Feuchte, 450 ppm; 9 Nachkommastellen) | größte Abweichung 4,4·10⁻¹⁰ (Toleranz `kCiddorPublished` = 10⁻⁹) (`AirIndex.MatchesPublishedCiddorValues`); p = 0 ergibt 1, normale Dispersion, n − 1 ∝ p/T bis 2·10⁻³ (`AirIndex.LimitsAndMonotonicity`) |
+| Katalogglas in Bezugsluft | Raytatouille-Formel n_rel(λ_vac/n_L)·n_L/n_L gegen die Mikroptim-Brechzahl bei der umgerechneten Wellenlänge (N-BK7, CaF₂, Quarzglas; F, d, C) | 0 (bitgleich); ohne Umrechnung 9,7·10⁻⁶ (`RttAir.CatalogGlassMatchesRaytatouilleRelativeIndex`) |
+| Querabgleich mit der Raytatouille-Doku | Plankonvex-Singlet (`CONST:1.5168`, R = 51,68 mm): EFL 100,0527 mm, Bildfläche bei z = 106,442 mm; Skript-Singlet (R₁ = 100, R₂ = −100): EFL 97,631 mm | Abweichung 4,3·10⁻⁵, 1,5·10⁻⁴ bzw. 4,3·10⁻⁴ mm, innerhalb der Rundung der veröffentlichten Zahlen (`kRttPublishedLength` = 6·10⁻⁴; `RttImport.CrossCheckWithPublishedRaytatouilleValues`); n_L jetzt aus Ciddor statt aus der EFL zurückgerechnet |
+| Roundtrip | rtt → mko → rtt (Luft und Vakuum), mko → rtt → mko für alle abbildbaren Systeme unter `data/systems/`, Temperatur und Druck ≠ Standard | Wellenlängen, CONST und Paraxialdaten bitgleich (`RttRoundtrip.*`, `RttAir.ExportConvertsAndRoundtrips`) |
+
+Die Wellenlänge in Luft wird als 1000 λ_vac/n_U (ein Produkt, eine Division) gebildet und nicht über das Verschieben des Dezimalkommas (`rtt_um_to_nm`), weil dieses bei 17-stelligen Werten Lücken lässt und der Export dann keine bitgleich umkehrbare Vakuumwellenlänge fände. Der Export sucht λ_vac per Fixpunkt λ_vac = λ n_U(λ_vac) und `exact_preimage` (bis 64 ulp, kürzeste Darstellung).

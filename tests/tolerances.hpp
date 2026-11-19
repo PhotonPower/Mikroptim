@@ -78,6 +78,12 @@ inline constexpr double kDocumentedValue = 1e-2;
 // ±5e-4 plus die Unsicherheit von n_Luft, das aus der veröffentlichten EFL 100,0527 mm (vier
 // Nachkommastellen, ±5e-5) bestimmt wird (Wirkung ≤ 6e-5 mm). Kein Maß für die Rechengenauigkeit.
 inline constexpr double kRttPublishedLength = 6e-4;
+// Brechzahl der Luft nach Ciddor gegen die veröffentlichten Werte des NIST-Rechners (9
+// Nachkommastellen, Rundung ±5e-10; die eigene Rechnung trifft sie auf ≤ 4,4e-10).
+inline constexpr double kCiddorPublished = 1e-9;
+// Relative Katalogbrechzahl in Raytatouille (n_rel(λ_vac/n_L)·n_L/n_L) gegen Mikroptim bei der
+// umgerechneten Wellenlänge λ_vac/n_L: gleiche Formel, nur Rundung der Wellenlänge (≈ 1e-16).
+inline constexpr double kRttAirConversion = 1e-14;
 // Grenzwert realer Strahlen h -> 0 gegen die paraxiale Schnittweite [mm] (M1-T6): bei
 // h = 1e-4 mm ist die sphärische Längsaberration der Testlinse ~1.6e-10 mm.
 inline constexpr double kParaxialLimit = 1e-8;

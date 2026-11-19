@@ -3,10 +3,12 @@
 
 #include "mikroptim/io/raytatouille.hpp"
 
+#include "mikroptim/glass/air_index.hpp"
 #include "mikroptim/io/system_json.hpp"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -88,8 +90,8 @@ double shift_decimal(double x, int e) {
 // Sucht y in wenigen ulp um y0, für das back(y) == x gilt; unter mehreren das mit der
 // kürzesten Dezimaldarstellung, bei Gleichstand das nächste an y0. Ohne Treffer y0.
 template <class Back>
-double exact_preimage(double x, double y0, Back back) {
-    constexpr int kSteps = 4;
+double exact_preimage(double x, double y0, Back back, int steps = 4) {
+    const int kSteps = steps;
     double best = y0;
     bool found = false;
     std::size_t best_digits = 0;
@@ -173,7 +175,8 @@ struct SurfaceRec {
     Terms frame;     // Lage des Scheitels
     ElementKind kind;
     bool active = true;
-    Surface surface; // Krümmung, Typ, Halbdurchmesser, Medium danach
+    Surface surface;        // Krümmung, Typ, Halbdurchmesser, Medium danach
+    bool estimated = false; // Apertur fehlt, Halbdurchmesser wird geschätzt
 };
 
 class Importer {
@@ -245,7 +248,35 @@ public:
                 throw RttConversionError({{e.json_path(), e.message()}});
             }
         }
+        if (!estimated_.empty()) {
+            estimate_apertures(sys);
+        }
         return sys;
+    }
+
+    // Fehlende Aperturen aus RttImportOptions::aperture_estimate (z. B. Rand- und
+    // Hauptstrahlhöhe mit Zuschlag), mit Warnung pro Fläche.
+    void estimate_apertures(SystemDescription& sys) {
+        std::vector<double> h;
+        try {
+            h = options_.aperture_estimate(sys);
+        } catch (const std::exception& e) {
+            throw RttConversionError({{records_[estimated_.front()].ptr,
+                                       std::string("Apertur nicht schätzbar: ") + e.what()}});
+        }
+        for (const std::size_t i : estimated_) {
+            const std::string& ptr = records_[i].ptr;
+            if (i >= h.size() || !(h[i] > 0.0) || !std::isfinite(h[i])) {
+                error(ptr, "Apertur nicht schätzbar (Strahlhöhe 0 oder ungültig)");
+                continue;
+            }
+            sys.surfaces[i].semi_diameter = h[i];
+            warn(ptr, "ohne Apertur: Halbdurchmesser aus Rand- und Hauptstrahl geschätzt, " +
+                          shortest(h[i]) + " mm");
+        }
+        if (!issues_.empty()) {
+            throw RttConversionError(issues_);
+        }
     }
 
 private:
@@ -395,6 +426,7 @@ private:
             const std::string medium = m->is_string() ? m->get<std::string>() : std::string();
             if (medium == "VACUUM") {
                 vacuum_ = true;
+                env_.vacuum = true;
             } else if (medium != "AIR") {
                 error("/environment/medium",
                       "Umgebung " + m->dump() +
@@ -403,11 +435,45 @@ private:
         }
         const Json* t = find(*env, "temperature_c");
         const Json* p = find(*env, "pressure_atm");
-        if ((t != nullptr && !(t->is_number() && t->get<double>() == 20.0)) ||
-            (p != nullptr && !(p->is_number() && p->get<double>() == 1.0))) {
-            warn("/environment", "Temperatur und Druck entfallen (Mikroptim rechnet ohne "
-                                 "Temperaturmodell, Brechzahlen relativ zu Luft)");
+        if (!options_.air_conversion) {
+            if ((t != nullptr && !(t->is_number() && t->get<double>() == 20.0)) ||
+                (p != nullptr && !(p->is_number() && p->get<double>() == 1.0))) {
+                warn("/environment", "Temperatur und Druck entfallen (Mikroptim rechnet ohne "
+                                     "Temperaturmodell, Brechzahlen relativ zu Luft)");
+            }
+            return;
         }
+        // Umrechnung (docs/numerik.md, Abschnitt 18): Brechzahl der Umgebung bei T, p
+        if (t != nullptr) {
+            if (t->is_number() && std::isfinite(t->get<double>()) && t->get<double>() > -273.15) {
+                env_.temperature_c = t->get<double>();
+            } else {
+                error("/environment/temperature_c", "Temperatur in °C erwartet");
+            }
+        }
+        if (p != nullptr) {
+            if (p->is_number() && std::isfinite(p->get<double>()) && p->get<double>() >= 0.0) {
+                env_.pressure_atm = p->get<double>();
+            } else {
+                error("/environment/pressure_atm", "Druck ≥ 0 in atm erwartet");
+            }
+        }
+    }
+
+    // Brechzahl der Umgebung bei der Vakuumwellenlänge [µm]; 1 ohne Umrechnung.
+    double env_index(double um) const {
+        return options_.air_conversion ? rtt_environment_index(env_, um) : 1.0;
+    }
+
+    // Mikroptim-Wellenlänge [nm] zur Vakuumwellenlänge [µm]: rtt_air_wavelength_nm
+    double air_nm(double um) const {
+        return options_.air_conversion ? rtt_air_wavelength_nm(env_, um) : rtt_um_to_nm(um);
+    }
+
+    // Luft der Umgebung = Bezugsluft der Katalogdaten (20 °C, 1 atm)?
+    bool reference_air() const {
+        return !env_.vacuum && env_.temperature_c == kAirReferenceTemperatureC &&
+               env_.pressure_atm == kAirReferencePressureAtm;
     }
 
     Spectrum read_wavelengths(const Json& root) {
@@ -426,7 +492,9 @@ private:
                 error(pointer(ptr, "um"), "Wellenlänge > 0 in µm erwartet");
                 continue;
             }
-            const double nm = rtt_um_to_nm(um->get<double>());
+            // Mikroptim: Wellenlänge in der Luft der Umgebung, λ = λ_vac/n_U(λ_vac)
+            const double nm = air_nm(um->get<double>());
+            vacuum_um_.push_back(um->get<double>());
             double weight = 1.0;
             if (const Json* g = find(e, "weight")) {
                 if (!g->is_number()) {
@@ -441,6 +509,7 @@ private:
                 r != nullptr && r->is_boolean() && r->get<bool>()) {
                 ++references;
                 s.reference_nm = nm;
+                ref_um_ = um->get<double>();
             }
         }
         if (references != 1) {
@@ -733,9 +802,11 @@ private:
             if (!vacuum_) {
                 constant_in_air_ = true;
             }
+            constant_ = true;
             MaterialSpec m;
             m.kind = MaterialKind::Constant;
-            m.n = n;
+            // absolut → relativ zur Umgebung bei λ_ref (docs/numerik.md, Abschnitt 18)
+            m.n = ref_um_ > 0.0 ? n / env_index(ref_um_) : n;
             return m;
         }
         const std::size_t colon = ref.find(':');
@@ -764,6 +835,7 @@ private:
         if (vacuum_) {
             catalog_in_vacuum_ = true;
         }
+        catalog_ = true;
         MaterialSpec m;
         m.kind = MaterialKind::Catalog;
         m.name = name;
@@ -857,11 +929,15 @@ private:
     }
 
     std::optional<double> read_aperture_radius(const Json& surface, const std::string& ptr,
-                                               bool required) {
+                                               bool required, bool* estimated = nullptr) {
         const Json* a = find(surface, "aperture");
         if (a == nullptr) {
             if (!required) {
                 return std::nullopt;
+            }
+            if (options_.aperture_estimate && estimated != nullptr) {
+                *estimated = true;
+                return 1.0; // Platzhalter, ersetzt nach dem Aufbau (estimate_apertures)
             }
             if (options_.default_semi_diameter) {
                 warn(ptr, "ohne Apertur: Halbdurchmesser " +
@@ -869,7 +945,7 @@ private:
                 return options_.default_semi_diameter;
             }
             error(ptr, "Fläche ohne Apertur: Mikroptim braucht einen Halbdurchmesser "
-                       "(--semi-diameter)");
+                       "(--semi-diameter oder --estimate-apertures)");
             return std::nullopt;
         }
         const std::string ap = pointer(ptr, "aperture");
@@ -1015,7 +1091,7 @@ private:
                 if (find(surface, "aperture") != nullptr) {
                     warn(pointer(sp, "aperture"), "Apertur der Bildfläche entfällt");
                 }
-            } else if (const auto r = read_aperture_radius(surface, sp, true)) {
+            } else if (const auto r = read_aperture_radius(surface, sp, true, &rec.estimated)) {
                 rec.surface.semi_diameter = *r;
             }
             if (kind == ElementKind::Lens && k + 1 < n) {
@@ -1029,6 +1105,54 @@ private:
     }
 
     void build_surfaces(SystemDescription& sys) {
+        if (options_.air_conversion) {
+            conversion_warnings();
+        } else {
+            legacy_warnings();
+        }
+        if (records_.empty()) {
+            error("/root", "keine Flächen");
+            return;
+        }
+        build_records(sys);
+    }
+
+    // Warnungen der Umrechnung (docs/numerik.md, Abschnitt 18): Katalogglas außerhalb der
+    // Bezugsluft und CONST bei mehreren Wellenlängen in Luft sind nicht exakt abbildbar.
+    void conversion_warnings() {
+        double catalog_dev = 0.0;
+        double constant_dev = 0.0;
+        for (const double um : vacuum_um_) {
+            const double ref =
+                ciddor_air_index(um, kAirReferenceTemperatureC, kAirReferencePressureAtm);
+            catalog_dev = std::max(catalog_dev, std::abs(ref / env_index(um) - 1.0));
+            if (ref_um_ > 0.0) {
+                constant_dev =
+                    std::max(constant_dev, std::abs(env_index(ref_um_) / env_index(um) - 1.0));
+            }
+        }
+        if (catalog_ && !reference_air()) {
+            warn("/environment",
+                 "Katalogglas: Raytatouille bezieht Katalogdaten auf Luft bei 20 °C, 1 atm "
+                 "(Ciddor), "
+                 "die Umgebung ist " +
+                     std::string(env_.vacuum ? "Vakuum"
+                                             : shortest(env_.temperature_c) + " °C, " +
+                                                   shortest(env_.pressure_atm) + " atm") +
+                     "; Mikroptim rechnet die Katalogbrechzahl relativ zur Umgebung (Abweichung "
+                     "bis " +
+                     shortest(catalog_dev) + " relativ)");
+        }
+        if (constant_ && constant_dev > 0.0) {
+            warn("/environment", "CONST-Brechzahlen bei der Referenzwellenlänge relativ zur Luft "
+                                 "der Umgebung (Ciddor) umgerechnet; die Dispersion der Luft "
+                                 "(bis " +
+                                     shortest(constant_dev) +
+                                     " relativ) hat im Modell constant keinen Platz");
+        }
+    }
+
+    void legacy_warnings() {
         if (constant_in_air_) {
             warn("/environment", "Raytatouille rechnet Brechzahlen absolut (Luft nach Ciddor, "
                                  "n ≈ 1,0003); CONST-Werte werden als Brechzahl relativ zu Luft "
@@ -1040,10 +1164,9 @@ private:
                  "Katalogglas in der Umgebung VACUUM: Raytatouille rechnet n_rel · n_Luft "
                  "gegen n = 1, Mikroptim n_rel gegen Luft (Abweichung etwa 3·10⁻⁴)");
         }
-        if (records_.empty()) {
-            error("/root", "keine Flächen");
-            return;
-        }
+    }
+
+    void build_records(SystemDescription& sys) {
         if (records_.front().kind != ElementKind::Stop) {
             error(records_.front().ptr,
                   "die erste Fläche ist keine Blende (Mikroptim: Aperturblende als erste "
@@ -1081,6 +1204,9 @@ private:
             if (i == 0) {
                 s.semi_diameter = *pupil_radius_;
             }
+            if (records_[i].estimated) {
+                estimated_.push_back(i);
+            }
             sys.surfaces.push_back(std::move(s));
         }
     }
@@ -1094,6 +1220,12 @@ private:
     bool vacuum_ = false;
     bool constant_in_air_ = false;
     bool catalog_in_vacuum_ = false;
+    RttEnvironment env_;                 // Umgebung der Datei (Umrechnung)
+    double ref_um_ = 0.0;                // Referenzwellenlänge im Vakuum [µm]
+    std::vector<double> vacuum_um_;      // alle Wellenlängen im Vakuum [µm]
+    bool catalog_ = false;               // Katalogglas kommt vor
+    bool constant_ = false;              // CONST kommt vor
+    std::vector<std::size_t> estimated_; // Flächen mit geschätztem Halbdurchmesser
     std::optional<double> pupil_radius_;
     std::optional<double> stop_radius_;
     std::string stop_ptr_;
@@ -1202,6 +1334,14 @@ public:
         root["units"] = Json{{"length", "mm"}, {"wavelength", "um"}};
         if (vacuum_) {
             root["environment"] = Json{{"medium", "VACUUM"}};
+        } else if (options_.air_conversion &&
+                   (options_.environment.temperature_c != kAirReferenceTemperatureC ||
+                    options_.environment.pressure_atm != kAirReferencePressureAtm)) {
+            root["environment"] = Json{{"temperature_c", options_.environment.temperature_c},
+                                       {"pressure_atm", options_.environment.pressure_atm}};
+        }
+        if (options_.air_conversion) {
+            ref_um_ = export_um(sys.spectrum.reference_nm);
         }
         root["wavelengths"] = wavelengths(sys);
         root["aperture"] = Json{{"type", "epd"}, {"value", 2.0 * sys.surfaces[0].semi_diameter}};
@@ -1303,9 +1443,32 @@ private:
             warn("tolerances", "Toleranzsatz entfällt (Raytatouille hat ein eigenes, anders "
                                "aufgebautes Toleranzformat)");
         }
-        // Umgebung: VACUUM, solange kein Katalogglas vorkommt (dann rechnen beide Programme
-        // mit denselben Zahlen); mit Katalogglas Luft (Raytatouille rechnet Katalogbrechzahlen
-        // relativ zur Luft der Umgebung).
+        if (options_.air_conversion) {
+            // Umrechnung (docs/numerik.md, Abschnitt 18): Umgebung aus den Optionen, Wellenlängen
+            // und CONST über ihre Brechzahl
+            const RttEnvironment& env = options_.environment;
+            if (!env.vacuum && (!(env.pressure_atm >= 0.0) || !std::isfinite(env.pressure_atm) ||
+                                !std::isfinite(env.temperature_c))) {
+                error("(Optionen)", "ungültige Umgebung (Temperatur, Druck ≥ 0)");
+            }
+            vacuum_ = env.vacuum;
+            const bool reference = !env.vacuum && env.temperature_c == kAirReferenceTemperatureC &&
+                                   env.pressure_atm == kAirReferencePressureAtm;
+            if (catalog && !reference) {
+                warn("surfaces", "Katalogglas: Raytatouille bezieht Katalogdaten auf Luft bei "
+                                 "20 °C, 1 atm (Ciddor), die Umgebung weicht ab; die relativen "
+                                 "Brechzahlen stimmen nicht exakt überein");
+            }
+            if (constant && !env.vacuum && sys.spectrum.wavelengths_nm.size() > 1) {
+                warn("surfaces", "CONST-Brechzahlen bei der Referenzwellenlänge mit der Luft der "
+                                 "Umgebung (Ciddor) absolut umgerechnet; Raytatouille rechnet sie "
+                                 "bei den übrigen Wellenlängen mit der Dispersion der Luft");
+            }
+            return;
+        }
+        // ohne Umrechnung (Verhalten vor 2026-11-19): VACUUM, solange kein Katalogglas vorkommt
+        // (dann rechnen beide Programme mit denselben Zahlen); mit Katalogglas Luft
+        // (Raytatouille rechnet Katalogbrechzahlen relativ zur Luft der Umgebung).
         vacuum_ = !catalog;
         if (catalog && constant) {
             warn("surfaces", "Katalogglas und konstante Brechzahlen gemischt: Umgebung Luft; "
@@ -1320,7 +1483,7 @@ private:
         for (std::size_t i = 0; i < sys.spectrum.wavelengths_nm.size(); ++i) {
             const double nm = sys.spectrum.wavelengths_nm[i];
             Json w;
-            w["um"] = rtt_nm_to_um(nm);
+            w["um"] = export_um(nm);
             if (sys.spectrum.weights[i] != 1.0) {
                 w["weight"] = sys.spectrum.weights[i];
             }
@@ -1335,7 +1498,7 @@ private:
                  "Referenzwellenlänge " + shortest(sys.spectrum.reference_nm) +
                      " nm nicht unter wavelengths_nm; als Wellenlänge mit Gewicht 0 angehängt "
                      "(Raytatouille verlangt die Referenz in der Liste)");
-            list.push_back(Json{{"um", rtt_nm_to_um(sys.spectrum.reference_nm)},
+            list.push_back(Json{{"um", export_um(sys.spectrum.reference_nm)},
                                 {"weight", 0.0},
                                 {"reference", true}});
         }
@@ -1360,7 +1523,7 @@ private:
     std::string material_ref(const MaterialSpec& m) {
         switch (m.kind) {
         case MaterialKind::Constant:
-            return "CONST:" + shortest(m.n);
+            return "CONST:" + shortest(export_constant(m.n));
         case MaterialKind::Catalog:
             return options_.glass_catalog_name(m.name) + ":" + m.name;
         case MaterialKind::Air:
@@ -1369,6 +1532,46 @@ private:
             break;
         }
         return "";
+    }
+
+    // Brechzahl der Umgebung der erzeugten Datei bei der Vakuumwellenlänge [µm].
+    double env_index(double um) const {
+        return options_.air_conversion ? rtt_environment_index(options_.environment, um) : 1.0;
+    }
+
+    // Vakuumwellenlänge [µm] zur Mikroptim-Wellenlänge [nm]: λ_vac mit λ_vac/n_U(λ_vac) = λ,
+    // bitgleich umkehrbar (Import ergibt nm), unter mehreren die kürzeste Darstellung.
+    double export_um(double nm) {
+        if (!options_.air_conversion || options_.environment.vacuum) {
+            return rtt_nm_to_um(nm);
+        }
+        const auto forward = [this](double um) {
+            return rtt_air_wavelength_nm(options_.environment, um);
+        };
+        double um = rtt_nm_to_um(nm);
+        for (int k = 0; k < 3; ++k) {
+            um = rtt_nm_to_um(nm * env_index(um));
+        }
+        const double best = exact_preimage(nm, um, forward, 64);
+        if (forward(best) != nm) {
+            warn("spectrum", "Wellenlänge " + shortest(nm) +
+                                 " nm: Vakuumwellenlänge nicht bitgleich umkehrbar (1 ulp)");
+        }
+        return best;
+    }
+
+    // Absolute Brechzahl zu CONST n_rel: n = n_rel · n_U(λ_vac,ref), bitgleich umkehrbar.
+    double export_constant(double n_rel) {
+        if (!options_.air_conversion || options_.environment.vacuum) {
+            return n_rel;
+        }
+        const double n_env = env_index(ref_um_);
+        const double best =
+            exact_preimage(n_rel, n_rel * n_env, [n_env](double n) { return n / n_env; }, 64);
+        if (best / n_env != n_rel) {
+            warn("surfaces", "CONST " + shortest(n_rel) + ": nicht bitgleich umkehrbar (1 ulp)");
+        }
+        return best;
     }
 
     std::string unique(std::string id) {
@@ -1532,6 +1735,7 @@ private:
     std::vector<std::string>* warnings_;
     std::vector<RttIssue> issues_;
     bool vacuum_ = false;
+    double ref_um_ = 0.0; // Referenzwellenlänge im Vakuum [µm] (Umrechnung)
     std::set<std::string> ids_;
     std::set<std::string> names_;
 };
@@ -1549,6 +1753,21 @@ std::string compose_issues(const std::vector<RttIssue>& issues) {
 
 RttConversionError::RttConversionError(std::vector<RttIssue> issues)
     : std::runtime_error(compose_issues(issues)), issues_(std::move(issues)) {}
+
+double rtt_environment_index(const RttEnvironment& environment, double wavelength_um) {
+    return environment.vacuum ? 1.0
+                              : ciddor_air_index(wavelength_um, environment.temperature_c,
+                                                 environment.pressure_atm);
+}
+
+double rtt_air_wavelength_nm(const RttEnvironment& environment, double wavelength_um) {
+    if (environment.vacuum) {
+        return rtt_um_to_nm(wavelength_um);
+    }
+    // ein Produkt und eine Division: jede Wellenlänge in nm ist erreichbar (die Verschiebung
+    // des Dezimalkommas in rtt_um_to_nm ließe bei 17-stelligen Werten Lücken)
+    return wavelength_um * 1000.0 / rtt_environment_index(environment, wavelength_um);
+}
 
 double rtt_curvature_from_radius(double radius) {
     return 1.0 / radius;

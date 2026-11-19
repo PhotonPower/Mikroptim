@@ -28,8 +28,9 @@ mikroptim sensitivity <system.json> [--set file|default] [--json] [--top N] [--d
                       [--min-center mm] [--min-edge mm] [--min-edge-relative v]
                       [--min-air-edge mm] [--max-aspect v] [--min-centering Z]
                       [--manufacturability-only] [--gpu [--device N]]
-mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--semi-diameter MM]
-                  [--rtt-catalog NAME]
+mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]...
+                  [--semi-diameter MM | --estimate-apertures [--aperture-margin Z]]
+                  [--rtt-catalog NAME] [--rtt-environment air|vacuum] [--no-air-conversion]
 ```
 
 | Aufruf | Wirkung |
@@ -1706,8 +1707,9 @@ Ohne Kompensator dominieren Radien, Dicken und Brechzahlen über den Defokus; ei
 Umwandlung zwischen Raytatouille (`*.rtt.json`, Schema 0.11) und `mikroptim.system/1` in beide Richtungen (M9-T2). Die Richtung ergibt sich aus dem Inhalt der Eingabe: `schema_version` → Raytatouille nach Mikroptim, `format` `mikroptim.system/…` → Mikroptim nach Raytatouille. Abbildungsregeln, Konventionen (Brechzahlen in Luft, Gläser, Krümmung ↔ Radius) und was nicht abbildbar ist: [dateiformat.md, Abschnitt „Raytatouille-Adapter“](dateiformat.md#raytatouille-adapter).
 
 ```
-mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--semi-diameter MM]
-                  [--rtt-catalog NAME]
+mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]...
+                  [--semi-diameter MM | --estimate-apertures [--aperture-margin Z]]
+                  [--rtt-catalog NAME] [--rtt-environment air|vacuum] [--no-air-conversion]
 ```
 
 | Option | Bedeutung | Richtung |
@@ -1715,6 +1717,10 @@ mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--
 | `-o DATEI` | Ausgabedatei (Pflicht, nicht die Eingabedatei) | beide |
 | `--glass-catalog K` | Mikroptim-Glaskatalog, in dem die Gläser `KATALOG:NAME` gesucht werden (mehrfach möglich); wird als Pfad relativ zur Ausgabedatei (sonst absolut) in `glass_catalogs` eingetragen. Ohne Katalog ist jedes Katalogglas ein Fehler | rtt → mko |
 | `--semi-diameter MM` | Halbdurchmesser für Flächen ohne Apertur (mit Warnung); sonst ist eine solche Fläche ein Fehler | rtt → mko |
+| `--estimate-apertures` | fehlende Aperturen aus der paraxialen Rand- und Hauptstrahlhöhe (größter Feldwinkel, λ_ref) schätzen: h = (\|y\| + \|ȳ\|)(1 + Z), mit Warnung pro Fläche; nicht zusammen mit `--semi-diameter` | rtt → mko |
+| `--aperture-margin Z` | Zuschlag Z ≥ 0 der Schätzung (Standard 0,1; nur mit `--estimate-apertures`) | rtt → mko |
+| `--rtt-environment U` | Umgebung der Raytatouille-Datei: `air` (Standard, Ciddor-Luft bei 20 °C, 1 atm, nicht geschrieben) oder `vacuum` (Zahlen unverändert) | mko → rtt |
+| `--no-air-conversion` | Wellenlängen und Brechzahlen nicht über die Luft umrechnen (Verhalten vor 2026-11-19, zum Vergleich): Zahlen unverändert, Export ohne Katalogglas in `VACUUM` | beide |
 | `--rtt-catalog NAME` | Katalogname aller Gläser in den Referenzen `NAME:GLAS`; Standard: Dateistamm des Mikroptim-Katalogs, der das Glas enthält, in Großbuchstaben (`basis.json` → `BASIS`) | mko → rtt |
 
 Warnungen (entfallende Angaben ohne Wirkung auf die Strahlen) stehen auf stderr als `mikroptim convert: Warnung: <ort>: <meldung>`, die Ausgabedatei wird trotzdem geschrieben. Nicht abbildbare Stellen werden alle gemeldet, es entsteht keine Ausgabedatei:
@@ -1732,4 +1738,6 @@ $ mikroptim convert einzellinse.rtt.json -o einzellinse.json --glass-catalog dat
 Raytatouille → Mikroptim: einzellinse.json (3 Flächen, 0 Warnungen)
 ```
 
-Exit-Codes: 0 Erfolg (auch mit Warnungen), 1 nicht abbildbar, Datei- oder Formatfehler, 2 ungültige Kommandozeile. Tests: `RttCli.*` in `tests/test_raytatouille.cpp`.
+Brechzahlen (Entscheidung Maintainer 2026-11-19): Raytatouille rechnet absolut mit Vakuumwellenlängen und Ciddor-Luft, Mikroptim relativ zu Luft; `convert` rechnet Wellenlängen (λ = λ_vac/n_Luft) und `CONST`-Brechzahlen (n/n_Luft bei λ_ref) um, Katalogglas bleibt beim Namen ([dateiformat.md, Raytatouille-Adapter](dateiformat.md#raytatouille-adapter), [numerik.md, Abschnitt 18](numerik.md#18-brechzahl-der-luft-raytatouille-adapter)).
+
+Exit-Codes: 0 Erfolg (auch mit Warnungen), 1 nicht abbildbar, Datei- oder Formatfehler, 2 ungültige Kommandozeile. Tests: `RttCli.*`, `RttAir.*` in `tests/test_raytatouille.cpp`, `AirIndex.*` in `tests/test_air_index.cpp`.

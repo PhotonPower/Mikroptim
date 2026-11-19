@@ -14,6 +14,7 @@ add_executable(mikroptim_tests
     test_adjoint_jacobian.cpp
     test_adjoint_lm.cpp
     test_adjoint_record.cpp
+    test_air_index.cpp
     test_augmented_lagrangian.cpp
     test_batch_memory.cpp
     test_batch_merit.cpp

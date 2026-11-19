@@ -331,4 +331,21 @@ AberrationReport compute_aberrations(const SystemDescription& system, const Glas
     return rep;
 }
 
+std::vector<double> estimate_clear_semi_diameters(const SystemDescription& system,
+                                                  const GlassCatalog& catalog, double margin) {
+    if (!(margin >= 0.0) || !std::isfinite(margin)) {
+        throw std::invalid_argument("Zuschlag der Apertur muss endlich und >= 0 sein");
+    }
+    AberrationOptions o;
+    o.real_rays = false;
+    o.focal_shift = false;
+    const AberrationReport rep = compute_aberrations(system, catalog, o);
+    std::vector<double> h;
+    h.reserve(rep.surfaces.size());
+    for (const SurfaceAberration& s : rep.surfaces) {
+        h.push_back((std::abs(s.y) + std::abs(s.ybar)) * (1.0 + margin));
+    }
+    return h;
+}
+
 } // namespace mko
