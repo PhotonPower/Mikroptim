@@ -72,6 +72,8 @@ ACTION_DEFS = {
         "type": "object", "additionalProperties": False, "required": ["action"],
         "properties": {"action": {"const": "glass_preselect"}, "order": {"enum": [1, 2]},
                        "element": {"type": "integer", "minimum": 0},
+                       "filter": _GLASS_FILTER, "spectrum": {"type": "boolean"},
+                       "bending": {"enum": ["spherical", "coma"]},
                        "top": {"type": "integer", "minimum": 1, "maximum": 50},
                        "reason": _REASON}},
     "glass_query": {

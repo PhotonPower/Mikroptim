@@ -1,11 +1,16 @@
 // Algebraische Glasvorauswahl (M11-T5): Gleichungen, Orakel dünner Achromat, konstruiertes
-// Tripel, feste Gläser und eine paraxiale Probe an dünnen Gliedern aus Katalog-Gläsern.
+// Tripel, feste Gläser und eine paraxiale Probe an dünnen Gliedern aus Katalog-Gläsern; Filter
+// der Kandidaten und Startradien des ganzen Glieds (M11-T5g). Bruteforce-Abnahme gegen den
+// Raytrace: test_glass_preselection_raytrace.cpp.
 
 #include "cli/glasses_command.hpp"
 #include "mikroptim/glass/catalog.hpp"
+#include "mikroptim/glass/dispersion.hpp"
 #include "mikroptim/glass/glass_preselection.hpp"
+#include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/optim/insertion.hpp"
+#include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "tolerances.hpp"
 
@@ -13,8 +18,10 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -23,6 +30,7 @@
 
 using mko::test::kGlassPreselectionAchromatRatio;
 using mko::test::kGlassPreselectionAlgebra;
+using mko::test::kThinMemberSeidel;
 
 namespace {
 
@@ -242,4 +250,363 @@ TEST(CliGlasses, TextJsonFixedAndErrors) {
     EXPECT_EQ(run({cat, "--order", "3"}, out, err), mko::cli::kExitUsage);
     EXPECT_EQ(run({cat, "--fixed", "GIBT-ES-NICHT"}, out, err), mko::cli::kExitError);
     EXPECT_NE(err.find("GIBT-ES-NICHT"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------------------------
+// M11-T5g: Startradien des ganzen Glieds und Filter der Kandidaten
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+mko::GlassCatalog test_catalog() {
+    mko::GlassCatalog cat =
+        mko::GlassCatalog::from_file(MKO_SOURCE_DIR "/data/glass/synthetisch.json");
+    cat.merge(mko::GlassCatalog::from_file(MKO_SOURCE_DIR "/data/glass/basis.json"));
+    return cat;
+}
+
+// Dünnes Glied (Dicken 0) hinter der Blende (Radius a) mit den Krümmungen c und Gläsern names,
+// λ_ref = 546,074 nm (Bezug des Buchdahl-Fits), Feldwinkel 1°.
+mko::SystemDescription thin_member_system(const std::vector<std::string>& names,
+                                          const std::vector<double>& c, double a) {
+    std::ostringstream s;
+    s.precision(17);
+    s << R"({"format": "mikroptim.system/1", "name": "Glied", "units": "mm", "glass_catalogs": [],)"
+      << R"("spectrum": {"wavelengths_nm": [546.074], "weights": [1.0], "reference_nm": 546.074},)"
+      << R"("source": {"type": "collimated", "field_angles_deg": [1.0], "field_weights": [1.0]},)"
+      << R"("surfaces": [{"type": "stop", "semi_diameter": )" << a
+      << R"(, "thickness": 0.0, "material": "AIR"})";
+    for (std::size_t i = 0; i < c.size(); ++i) {
+        const bool last = i + 1 == c.size();
+        s << R"(, {"type": "sphere", "curvature": )" << c[i] << R"(, "thickness": )"
+          << (last ? 100.0 : 0.0) << R"(, "material": ")" << (last ? "AIR" : names[i])
+          << R"(", "semi_diameter": )" << 2.0 * a << "}";
+    }
+    s << "]}";
+    return mko::read_system_json(s.str());
+}
+
+} // namespace
+
+// Einzellinse: Biegung kleinster sphärischer Aberration für kollimiertes Licht nach Welford,
+// B = 2(n² − 1)/(n + 2) (C = −1); S_I hat dort keine reelle Nullstelle. Komafrei:
+// B = (2n + 1)(n − 1)/(n + 1).
+TEST(GlassPreselection, SingleLensBendingMatchesClassicalFormula) {
+    for (const double n : {1.5, 1.7, 1.9}) {
+        const std::vector<double> idx{n};
+        const std::vector<double> k{0.01};
+        const mko::ThinMemberShape sa = mko::thin_member_shape(idx, k);
+        ASSERT_EQ(sa.curvatures.size(), 2U);
+        const auto shape = [](const mko::ThinMemberShape& m) {
+            return (m.curvatures[0] + m.curvatures[1]) / (m.curvatures[0] - m.curvatures[1]);
+        };
+        EXPECT_FALSE(sa.spherical_zero);
+        EXPECT_NEAR(shape(sa), 2.0 * (n * n - 1.0) / (n + 2.0), kGlassPreselectionAlgebra);
+        EXPECT_NEAR((n - 1.0) * (sa.curvatures[0] - sa.curvatures[1]), 0.01,
+                    kGlassPreselectionAlgebra * 0.01);
+        const mko::ThinMemberShape coma =
+            mko::thin_member_shape(idx, k, mko::MemberBending::ZeroComa);
+        EXPECT_NEAR(shape(coma), (2.0 * n + 1.0) * (n - 1.0) / (n + 1.0),
+                    kGlassPreselectionAlgebra);
+        EXPECT_NEAR(coma.coma, 0.0, kGlassPreselectionAlgebra * 1e-4);
+    }
+    // ungültige Eingaben
+    const std::vector<double> one{1.5};
+    const std::vector<double> two{0.01, 0.02};
+    const std::vector<double> bad_n{1.0};
+    EXPECT_THROW((void)mko::thin_member_shape(one, two), std::invalid_argument);
+    EXPECT_THROW((void)mko::thin_member_shape(bad_n, one), std::invalid_argument);
+    EXPECT_THROW((void)mko::thin_member_seidel(one, one), std::invalid_argument);
+}
+
+// Bestes Paar und Tripel aus Katalog-Gläsern als dünnes Glied mit den Startkrümmungen beider
+// Biegungen: paraxiale Brechkraft gleich φ, Seidel-Summen S_I, S_II des Aberrationsberichts
+// (Flächenbeiträge, numerik.md §14) gleich den Formeln (y = a, H aus dem Bericht); bei der
+// Biegung „spherical“ mit reeller Lösung S_I = 0, bei „coma“ S_II = 0.
+TEST(GlassPreselection, MemberStartRadiiMatchPowerAndSeidelSums) {
+    const mko::GlassCatalog cat = test_catalog();
+    const std::vector<mko::GlassDispersion> g = mko::catalog_dispersions(cat);
+    const double phi = 0.01;
+    const double a = 2.0;
+    for (const int order : {1, 2}) {
+        mko::GlassPreselectionOptions o;
+        o.order = order;
+        o.power = phi;
+        o.max_power_sum = 6.0;
+        o.max_results = 3;
+        const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
+        ASSERT_FALSE(r.empty());
+        for (const mko::PreselectedGlasses& c : r) {
+            std::vector<std::string> names;
+            std::vector<double> n;
+            for (int i : c.glasses) {
+                names.push_back(g[static_cast<std::size_t>(i)].name);
+                n.push_back(cat.at(names.back()).index(546.074));
+            }
+            for (const mko::MemberBending b :
+                 {mko::MemberBending::MinSpherical, mko::MemberBending::ZeroComa}) {
+                const mko::ThinMemberShape m = mko::thin_member_shape(n, c.powers, b);
+                ASSERT_EQ(m.curvatures.size(), n.size() + 1);
+                const mko::SystemDescription sys = thin_member_system(names, m.curvatures, a);
+                EXPECT_NEAR(mko::compute_paraxial(sys, cat, 546.074).power, phi,
+                            kGlassPreselectionAlgebra * phi);
+                const mko::AberrationReport rep = mko::compute_aberrations(sys, cat);
+                // Maßstab: größter Flächenbeitrag
+                double s1 = 0.0;
+                double s2 = 0.0;
+                for (const mko::SurfaceAberration& sa : rep.surfaces) {
+                    s1 = std::max(s1, std::abs(sa.S[0]));
+                    s2 = std::max(s2, std::abs(sa.S[1]));
+                }
+                const double y4 = a * a * a * a;
+                const double y2h = a * a * rep.lagrange;
+                EXPECT_NEAR(rep.S[0], y4 * m.spherical, kThinMemberSeidel * s1);
+                EXPECT_NEAR(rep.S[1], y2h * m.coma, kThinMemberSeidel * s2);
+                if (b == mko::MemberBending::ZeroComa) {
+                    EXPECT_NEAR(rep.S[1], 0.0, kThinMemberSeidel * s2);
+                } else if (m.spherical_zero) {
+                    EXPECT_NEAR(rep.S[0], 0.0, kThinMemberSeidel * s1);
+                }
+                // Koeffizienten der Parabel bzw. Geraden gegen thin_member_seidel
+                std::vector<double> shifted = m.curvatures;
+                for (double& x : shifted) {
+                    x += 0.003;
+                }
+                const auto& [qa, qb, qd] = m.spherical_coefficients;
+                const auto& [ls, lt] = m.coma_coefficients;
+                const double c1 = shifted[0];
+                const std::array<double, 2> direct = mko::thin_member_seidel(n, shifted);
+                EXPECT_NEAR(direct[0], qa * c1 * c1 + qb * c1 + qd, kThinMemberSeidel * s1 / y4);
+                EXPECT_NEAR(direct[1], ls * c1 + lt, kThinMemberSeidel * s2 / std::abs(y2h));
+                std::printf("%s %-9s S_I %+.3e  S_II %+.3e  c =", order == 1 ? "Paar  " : "Tripel",
+                            b == mko::MemberBending::ZeroComa ? "coma" : "spherical", rep.S[0],
+                            rep.S[1]);
+                for (double x : m.curvatures) {
+                    std::printf(" %+.5f", x);
+                }
+                for (const std::string& name : names) {
+                    std::printf(" %s", name.c_str());
+                }
+                std::printf("\n");
+            }
+        }
+    }
+}
+
+// Filter der Kandidaten: Vorauswahl auf den gefilterten Gläsern = ungefilterte Vorauswahl,
+// danach Kombinationen mit einem Glas außerhalb des Filters gestrichen (Bereiche wie
+// list_glass_properties, Namenslisten, festes Glas bleibt auch außerhalb des Filters).
+TEST(GlassPreselection, CandidateFilterEqualsPostFiltering) {
+    const mko::GlassCatalog cat = test_catalog();
+    const std::vector<mko::GlassDispersion> all = mko::catalog_dispersions(cat);
+    const auto names_of = [](const std::vector<mko::GlassDispersion>& g,
+                             const mko::PreselectedGlasses& c) {
+        std::vector<std::string> n;
+        for (int i : c.glasses) {
+            n.push_back(g[static_cast<std::size_t>(i)].name);
+        }
+        return n;
+    };
+    const auto index_of = [](const std::vector<mko::GlassDispersion>& list,
+                             const std::string& name) {
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            if (list[i].name == name) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+    std::vector<mko::GlassCandidateFilter> filters(4);
+    filters[0].properties.v_d = mko::ValueRange{40.0, std::nullopt};
+    filters[1].properties.n_d = mko::ValueRange{1.5, 1.75};
+    filters[1].properties.dp_gF = mko::ValueRange{std::nullopt, 0.01};
+    filters[2].only = {"N-BK7", "CAF2", "SYN-04", "SYN-12", "SYN-20", "SYN-31"};
+    filters[3].exclude = {"CAF2", "SYN-04"};
+    filters[3].properties.p_gF = mko::ValueRange{0.53, 0.6};
+    int nonempty = 0;
+    for (const int order : {1, 2}) {
+        for (const bool fixed : {false, true}) {
+            for (const mko::GlassCandidateFilter& f : filters) {
+                const std::vector<std::string> keep =
+                    fixed ? std::vector<std::string>{"SYN-30"} : std::vector<std::string>{};
+                const std::vector<mko::GlassDispersion> g =
+                    mko::filter_dispersions(all, cat, f, keep);
+                const auto allowed = [&](const std::string& name) {
+                    if (std::find(keep.begin(), keep.end(), name) != keep.end()) {
+                        return true;
+                    }
+                    if (std::find(f.exclude.begin(), f.exclude.end(), name) != f.exclude.end() ||
+                        (!f.only.empty() &&
+                         std::find(f.only.begin(), f.only.end(), name) == f.only.end())) {
+                        return false;
+                    }
+                    return f.properties.matches(mko::glass_properties(cat.at(name)));
+                };
+                std::size_t expect_count = 0;
+                for (const mko::GlassDispersion& d : all) {
+                    expect_count += allowed(d.name) ? 1U : 0U;
+                }
+                ASSERT_EQ(g.size(), expect_count);
+                mko::GlassPreselectionOptions o;
+                o.order = order;
+                o.max_results = 100000;
+                mko::GlassPreselectionOptions of = o;
+                if (fixed) {
+                    o.fixed = {index_of(all, "SYN-30")};
+                    of.fixed = {index_of(g, "SYN-30")};
+                }
+                const std::vector<mko::PreselectedGlasses> full = mko::preselect_glasses(all, o);
+                const std::vector<mko::PreselectedGlasses> filtered = mko::preselect_glasses(g, of);
+                std::vector<std::vector<std::string>> expect;
+                for (const mko::PreselectedGlasses& c : full) {
+                    const std::vector<std::string> n = names_of(all, c);
+                    if (std::all_of(n.begin(), n.end(), allowed)) {
+                        expect.push_back(n);
+                    }
+                }
+                ASSERT_EQ(filtered.size(), expect.size());
+                nonempty += expect.empty() ? 0 : 1;
+                std::printf("Ordnung %d, festes Glas %d: %zu Kandidaten, %zu Kombinationen\n",
+                            order, fixed ? 1 : 0, g.size(), expect.size());
+                for (std::size_t i = 0; i < expect.size(); ++i) {
+                    EXPECT_EQ(names_of(g, filtered[i]), expect[i]) << "Rang " << i;
+                }
+            }
+        }
+    }
+    // leer nur bei Tripeln ohne festes Glas mit den Filtern 1 und 3 (alle Σ|φ|/φ > 10)
+    EXPECT_GE(nonempty, 14);
+}
+
+// Spektraler Rest: gleich der Streuung der Brechkraft des dünnen Glieds K(λ) = Σ (n_i(λ) − 1)
+// φ_i/(n₀,i − 1) über die Wellenlängen (Buchdahl-Brechzahl, unabhängig ausgewertet), relativ zu
+// φ; Rangfolge danach. Bei Tripeln bleibt nur ω³, die Rangfolge ist die des Koeffizienten.
+TEST(GlassPreselection, SpectralResidualMatchesThinMemberPowerSpread) {
+    const mko::GlassCatalog cat = test_catalog();
+    const std::vector<mko::GlassDispersion> g = mko::catalog_dispersions(cat);
+    const std::vector<double> lines{435.835, 486.133, 546.074, 587.562, 656.273};
+    for (const int order : {1, 2}) {
+        mko::GlassPreselectionOptions o;
+        o.order = order;
+        o.power = 0.01;
+        o.max_results = 30;
+        o.wavelengths_nm = lines;
+        const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
+        ASSERT_EQ(r.size(), 30U);
+        for (std::size_t q = 0; q < r.size(); ++q) {
+            const mko::PreselectedGlasses& c = r[q];
+            std::vector<double> k;
+            for (double l : lines) {
+                const double w = mko::buchdahl_omega(l * 1e-3);
+                double sum = 0.0;
+                for (std::size_t i = 0; i < c.glasses.size(); ++i) {
+                    const mko::GlassDispersion& d = g[static_cast<std::size_t>(c.glasses[i])];
+                    const double n = d.n0 + (d.n0 - 1.0) * (d.eta[0] * w + d.eta[1] * w * w +
+                                                            d.eta[2] * w * w * w);
+                    sum += (n - 1.0) * c.powers[i] / (d.n0 - 1.0);
+                }
+                k.push_back(sum / o.power);
+            }
+            double mean = 0.0;
+            for (double x : k) {
+                mean += x;
+            }
+            mean /= static_cast<double>(k.size());
+            double var = 0.0;
+            for (double x : k) {
+                var += (x - mean) * (x - mean);
+            }
+            const double spread = std::sqrt(var / static_cast<double>(k.size()));
+            EXPECT_NEAR(c.spectral_residual, spread, kGlassPreselectionAlgebra * c.power_sum);
+            if (q > 0) {
+                EXPECT_LE(r[q - 1].spectral_residual, c.spectral_residual);
+            }
+        }
+        if (order == 2) {
+            mko::GlassPreselectionOptions plain = o;
+            plain.wavelengths_nm.clear();
+            const std::vector<mko::PreselectedGlasses> p = mko::preselect_glasses(g, plain);
+            for (std::size_t q = 0; q < r.size(); ++q) {
+                EXPECT_EQ(p[q].glasses, r[q].glasses);
+                EXPECT_TRUE(std::isnan(p[q].spectral_residual));
+            }
+        }
+    }
+    mko::GlassPreselectionOptions bad;
+    bad.wavelengths_nm = {546.0};
+    EXPECT_THROW((void)mko::preselect_glasses(g, bad), std::invalid_argument);
+    bad.wavelengths_nm = {546.0, 100.0};
+    EXPECT_THROW((void)mko::preselect_glasses(g, bad), std::invalid_argument);
+}
+
+// Kommandozeile: Bereichsfilter und Namenslisten in der Vorauswahl, Startkrümmungen.
+TEST(CliGlasses, FilterAndStartRadii) {
+    const auto run = [](std::vector<std::string> a, std::string& out, std::string& err) {
+        std::vector<std::string_view> v(a.begin(), a.end());
+        std::ostringstream o;
+        std::ostringstream e;
+        const int code = mko::cli::run_glasses_command(v, o, e);
+        out = o.str();
+        err = e.str();
+        return code;
+    };
+    const std::string cat = MKO_SOURCE_DIR "/data/glass/synthetisch.json";
+    const std::string basis = MKO_SOURCE_DIR "/data/glass/basis.json";
+    std::string out;
+    std::string err;
+    ASSERT_EQ(
+        run({cat, basis, "--vd", "50,", "--fixed", "SYN-30", "--top", "50", "--json"}, out, err),
+        mko::cli::kExitOk)
+        << err;
+    nlohmann::json j = nlohmann::json::parse(out);
+    EXPECT_LT(j["glasses"].get<int>(), j["catalog_glasses"].get<int>());
+    EXPECT_EQ(j["bending"], "spherical");
+    const mko::GlassCatalog c = test_catalog();
+    ASSERT_FALSE(j["results"].empty());
+    for (const auto& r : j["results"]) {
+        EXPECT_EQ(r["glasses"][0], "SYN-30");
+        EXPECT_GE(mko::glass_properties(c.at(r["glasses"][1].get<std::string>())).v_d, 50.0);
+        ASSERT_EQ(r["curvatures"].size(), 3U);
+        // Brechkraft des dünnen Glieds aus den Krümmungen mit n₀
+        double k = 0.0;
+        for (std::size_t i = 0; i < 2; ++i) {
+            k += (r["dispersion"][i]["n0"].get<double>() - 1.0) *
+                 (r["curvatures"][i].get<double>() - r["curvatures"][i + 1].get<double>());
+        }
+        EXPECT_NEAR(k, 1.0, kGlassPreselectionAlgebra);
+    }
+    ASSERT_EQ(
+        run({cat, basis, "--only", "N-BK7,SYN-04,CAF2", "--exclude", "CAF2", "--json"}, out, err),
+        mko::cli::kExitOk)
+        << err;
+    j = nlohmann::json::parse(out);
+    EXPECT_EQ(j["glasses"], 2);
+    ASSERT_EQ(run({cat, basis, "--top", "2", "--radii", "--bending", "coma"}, out, err),
+              mko::cli::kExitOk)
+        << err;
+    EXPECT_NE(out.find("Krümmungen"), std::string::npos);
+    // Gewichte ≠ 1: getrennte Elemente, keine Startkrümmungen
+    ASSERT_EQ(run({cat, basis, "--top", "2", "--weights", "1,0.8", "--json"}, out, err),
+              mko::cli::kExitOk)
+        << err;
+    j = nlohmann::json::parse(out);
+    EXPECT_FALSE(j["results"][0].contains("curvatures"));
+    // Rang nach dem spektralen Rest: Linien explizit bzw. aus der Systemdatei
+    ASSERT_EQ(run({cat, basis, "--wavelengths", "486.133,587.562,656.273", "--top", "3", "--json"},
+                  out, err),
+              mko::cli::kExitOk)
+        << err;
+    j = nlohmann::json::parse(out);
+    EXPECT_EQ(j["wavelengths_nm"].size(), 3U);
+    EXPECT_LE(j["results"][0]["spectral_residual"].get<double>(),
+              j["results"][1]["spectral_residual"].get<double>());
+    const std::string sys = MKO_SOURCE_DIR "/data/systems/einzellinse_achromat_start.json";
+    ASSERT_EQ(run({"--system", sys, "--spectrum", "--top", "3"}, out, err), mko::cli::kExitOk)
+        << err;
+    EXPECT_NE(out.find("Rest (Spektrum)"), std::string::npos);
+    EXPECT_EQ(run({cat, "--spectrum"}, out, err), mko::cli::kExitUsage);
+    EXPECT_EQ(run({cat, "--wavelengths", "500"}, out, err), mko::cli::kExitUsage);
+    EXPECT_EQ(run({cat, "--list", "--only", "N-BK7"}, out, err), mko::cli::kExitUsage);
+    EXPECT_EQ(run({cat, "--bending", "x"}, out, err), mko::cli::kExitUsage);
+    EXPECT_EQ(run({cat, "--only", "A,,B"}, out, err), mko::cli::kExitUsage);
 }

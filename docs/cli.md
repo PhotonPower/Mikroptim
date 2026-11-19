@@ -1549,6 +1549,8 @@ Algebraische Glasvorauswahl (M11-T5, [numerik.md, Abschnitt 15](numerik.md#15-al
 ```
 mikroptim glasses <katalog.json>... [--system <system.json>] [--order 1|2] [--fixed GLAS]...
                   [--weights w1,w2[,w3]] [--power P] [--max-power-sum S] [--top N] [--json]
+                  [--nd|--vd|--pgf|--dpgf MIN,MAX] [--only G1,G2,...] [--exclude G1,...]
+                  [--wavelengths L1,L2,... | --spectrum] [--radii] [--bending spherical|coma]
 ```
 
 | Option | Bedeutung | Standard |
@@ -1560,7 +1562,14 @@ mikroptim glasses <katalog.json>... [--system <system.json>] [--order 1|2] [--fi
 | `--power P` | Gesamtbrechkraft φ [1/mm]; 1 liefert Anteile | 1 |
 | `--max-power-sum S` | verwerfen bei Σ\|wφ\|/\|φ\| > S | 10 |
 | `--top N` | höchstens N Ergebnisse | 20 |
-| `--json` | Format `mikroptim.glasses/1`: `order`, `power`, `glasses` (Zahl mit Fit), `skipped`, `results[]` mit `glasses`, `powers`, `power_sum`, `residual`, `dispersion` (n₀, η) | – |
+| `--nd`, `--vd`, `--pgf`, `--dpgf` `MIN,MAX` | Filter der Kandidaten (M11-T5g): Bereiche wie bei `--list` und der Glasabfrage; feste Gläser sind ausgenommen | – |
+| `--only G1,G2,...` | nur diese Gläser als Kandidaten (so reicht `mikroptim.design` Glasregeln und Transmission durch) | alle |
+| `--exclude G1,...` | diese Gläser nie | – |
+| `--wavelengths L1,L2,...` | Rang nach dem spektralen Rest über diese Wellenlängen [nm] (mindestens zwei): Streuung des Brechkraftrests aller nicht korrigierten Buchdahl-Terme, also Farblängsfehler nach bester Fokussierung ([numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)) | Koeffizient |
+| `--spectrum` | wie `--wavelengths` mit dem Spektrum der `--system`-Datei (monochromatisch: Koeffizient) | – |
+| `--radii` | Startkrümmungen des dünnen Glieds (Kittglied bzw. -tripel) im Text | – |
+| `--bending B` | Biegung der Startkrümmungen: `spherical` (S_I = 0, flachere Lösung, sonst kleinstes \|S_I\|) oder `coma` (S_II = 0) | `spherical` |
+| `--json` | Format `mikroptim.glasses/1`: `order`, `power`, `glasses` (Zahl der Kandidaten), `catalog_glasses` (mit Fit, vor dem Filter), `skipped`, `bending`, `wavelengths_nm`, `results[]` mit `glasses`, `powers`, `power_sum`, `residual`, `spectral_residual` (mit Spektrum), `dispersion` (n₀, η), bei Gewichten 1 `curvatures` (m + 1 Flächen) und `seidel` (`S_I`, `S_II` bei y = 1, H = 1, `spherical_zero`) | – |
 
 Beispiel (synthetischer Katalog und Basis, Paare):
 
@@ -1573,6 +1582,19 @@ Glasvorauswahl Achromat (Paare): 39 Gläser, 2 ohne Buchdahl-Fit übersprungen
     3  SYN-04 + N-BK7                         3.179e-03      6.300  3.650e+00, -2.650e+00
 ```
 
+Mit Spektrum g … C, Filter ν_d ≥ 40 und Startkrümmungen für f = 100 mm (M11-T5g):
+
+```
+$ mikroptim glasses data/glass/synthetisch.json data/glass/basis.json --power 0.01 \
+    --wavelengths 435.835,486.133,546.074,587.562,656.273 --vd 40, --top 2 --radii
+Glasvorauswahl Achromat (Paare): 27 Gläser (von 39 nach dem Filter), 2 ohne Buchdahl-Fit übersprungen
+ Rang  Gläser                               Rest (Spektrum)  Σ|wφ|/|φ|  Brechkräfte
+    1  SYN-11 + CAF2                              3.114e-05      4.701  -1.850e-02, 2.850e-02
+       Krümmungen [1/mm]: 4.6962e-02, 8.1832e-02, 1.6299e-02  (S_I -1.084e-19, S_II 2.758e-04)
+    2  SYN-04 + SYN-12                            3.404e-05      5.709  3.354e-02, -2.354e-02
+       Krümmungen [1/mm]: 2.4345e-02, -4.6295e-02, 1.2785e-03  (S_I -2.711e-20, S_II 1.281e-04)
+```
+
 **Glaskennzahlen** (M10-T5, `--list`; Formeln in [numerik.md, Abschnitt 17](numerik.md#17-glaskennzahlen-für-die-glasabfrage-m10-t5)): statt der Vorauswahl n_d, ν_d, P_g,F und ΔP_g,F aller Gläser der Kataloge (Gläser ohne die Linien g bis C werden übersprungen), wahlweise gefiltert. Grundlage der Glasabfrage `glass_query` in `mikroptim.design` ([entwurfssteuerung.md, Abschnitt 5.3](entwurfssteuerung.md#53-glasregeln-glass_rulesjson)), die darauf die Glasregeln der Wissensbasis und die Reintransmission der Kataloge anwendet.
 
 ```
@@ -1583,7 +1605,7 @@ mikroptim glasses <katalog.json>... [--system <system.json>] --list [--nd MIN,MA
 | Option | Bedeutung |
 |---|---|
 | `--list` | Kennzahlen statt Vorauswahl |
-| `--nd`, `--vd`, `--pgf`, `--dpgf` `MIN,MAX` | nur mit `--list`: geschlossener Bereich, eine Seite darf leer sein (`--vd 60,` heißt ν_d ≥ 60) |
+| `--nd`, `--vd`, `--pgf`, `--dpgf` `MIN,MAX` | geschlossener Bereich, eine Seite darf leer sein (`--vd 60,` heißt ν_d ≥ 60); ohne `--list` Filter der Vorauswahl (M11-T5g) |
 | `--json` | `mikroptim.glasses/1` mit `mode` = `list`, `count`, `skipped`, `list[]` mit `name`, `n_d`, `n_F`, `n_C`, `n_g`, `v_d`, `p_gF`, `dp_gF`, `range_nm` |
 
 ```
@@ -1597,7 +1619,7 @@ SYN-06             1.45333    78.51   0.5243    0.0125
 CAF2               1.43385    95.00   0.5387    0.0546
 ```
 
-Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile (auch Bereichsfilter ohne `--list`).
+Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile (auch `--only`, `--exclude`, `--radii`, `--spectrum`, `--wavelengths` mit `--list`, `--spectrum` ohne `--system`).
 
 ## `mikroptim tolerance`
 

@@ -469,6 +469,13 @@ inline constexpr double kGlassPreselectionAlgebra = 1e-12;
 // Paraxiale Probe: Spanne der Schnittweiten g … C des besten Paars höchstens dieser Anteil der
 // Einzellinse gleicher Brechkraft (gemessen 1,62e-2 / 2,359 = 6,9e-3).
 inline constexpr double kGlassPreselectionAchromatRatio = 0.05;
+// M11-T5g Startradien: Seidel-Summen S_I, S_II des dünnen Glieds (Formeln nach Welford) gegen
+// die Flächenbeiträge des Aberrationsberichts an einem Glied mit Dicken 0, relativ zum größten
+// Flächenbeitrag; nur Rundung (Auslöschung der Flächenbeiträge).
+inline constexpr double kThinMemberSeidel = 1e-10;
+// M11-T5g Abnahme Bruteforce: Rang des besten Vorschlags der Vorauswahl nach Merit des optimierten
+// Kittglieds unter allen lösbaren Paaren (Abnahmekriterium: unter den besten fünf).
+inline constexpr int kGlassPreselectionRaytraceTopRank = 5;
 
 // M10-T5 Glaskennzahlen: ν_d, P_g,F, ΔP_g,F gegen die geschlossene Form eines Polynomglases
 // (dieselben Linien, unabhängig ausgerechnet), relativ; nur Rundung.
