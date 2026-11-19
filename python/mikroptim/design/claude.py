@@ -423,7 +423,7 @@ class ClaudeDecider(Decider):
     def _run_tool(self, name, args, system_path) -> dict:
         try:
             return read_action({"action": name, **args}, system_path)
-        except (ActionError, RuntimeError) as e:
+        except (ActionError, RuntimeError, ValueError, TypeError, LookupError) as e:
             return {"error": str(e)}
 
     def decide(self, state: dict, session) -> dict:

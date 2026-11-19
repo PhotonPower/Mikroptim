@@ -28,6 +28,17 @@ from .schema import TOOL_ACTIONS, response_schema, tool_specs
 DEFAULT_OPTIONS = {"temperature": 0.0, "seed": 0, "num_ctx": 32768}
 
 
+def _usage(reply: dict) -> dict:
+    """Token- und Zeitangaben einer Antwort von /api/chat (Denken und Antwort zusammen in
+    ``eval_count``; Ollama trennt sie nicht)."""
+    msg = reply.get("message") or {}
+    return {"prompt_eval_count": reply.get("prompt_eval_count"),
+            "eval_count": reply.get("eval_count"),
+            "total_duration_ns": reply.get("total_duration"),
+            "thinking_chars": len(msg.get("thinking") or ""),
+            "content_chars": len(msg.get("content") or "")}
+
+
 class OllamaDecider(Decider):
     kind = "ollama"
 
@@ -67,6 +78,11 @@ class OllamaDecider(Decider):
                 self._digest = None
         return self._digest
 
+    def unload(self) -> None:
+        """Modell sofort aus dem Speicher nehmen (``keep_alive: 0``), z. B. nach einer Messreihe,
+        wenn die GPU geteilt wird."""
+        self._post("/api/generate", {"model": self.model, "keep_alive": 0})
+
     def _chat(self, messages, *, tools=None, fmt=None) -> dict:
         body = {"model": self.model, "messages": messages, "stream": False,
                 "options": self.options}
@@ -89,7 +105,7 @@ class OllamaDecider(Decider):
                 "trace": self.last_trace}
 
     def decide(self, state: dict, session) -> dict:
-        trace = {"tool_calls": [], "thinking": [], "raw": [], "rejected": []}
+        trace = {"tool_calls": [], "thinking": [], "raw": [], "rejected": [], "usage": []}
         self.last_trace = trace
         messages = [{"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": "Zustand:\n" + json.dumps(state, ensure_ascii=False)}]
@@ -98,6 +114,7 @@ class OllamaDecider(Decider):
         # 1. Lese-Werkzeuge
         for _ in range(self.max_tool_calls):
             reply = self._chat(messages, tools=tool_specs())
+            trace["usage"].append(_usage(reply))
             msg = reply.get("message", {})
             if msg.get("thinking"):
                 trace["thinking"].append(msg["thinking"])
@@ -119,7 +136,7 @@ class OllamaDecider(Decider):
                 else:
                     try:
                         result = read_action({"action": name, **args}, system_path)
-                    except (ActionError, RuntimeError) as e:
+                    except (ActionError, RuntimeError, ValueError, TypeError, LookupError) as e:
                         result = {"error": str(e)}
                 trace["tool_calls"].append({"name": name, "arguments": args})
                 messages.append({"role": "tool", "tool_name": name,
@@ -131,6 +148,7 @@ class OllamaDecider(Decider):
                          f"Kandidat {state['candidate']}."})
         for attempt in range(self.max_retries + 1):
             reply = self._chat(messages, fmt=response_schema())
+            trace["usage"].append(_usage(reply))
             msg = reply.get("message", {})
             if msg.get("thinking"):
                 trace["thinking"].append(msg["thinking"])

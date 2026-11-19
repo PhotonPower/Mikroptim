@@ -1,0 +1,80 @@
+{
+  "seconds": 601.4873798000008,
+  "aborted": null,
+  "decisions": 4,
+  "actions": 5,
+  "rejected_actions": 1,
+  "rejected_share": 0.2,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 47,
+  "lm_optimize": 1,
+  "candidates": 4,
+  "best_candidate": 1,
+  "best": {
+    "na": 0.4475000000000001,
+    "rms_max_waves": 0.07465274909367228,
+    "rms_eval_exit_pupil": 0.07787354451760722,
+    "failed_rays": 0,
+    "elements": 3,
+    "focal_length": 4.1089165306631665,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 0,
+    "output_tokens": 0,
+    "thinking_chars": 0,
+    "requests": 0,
+    "cache_read_tokens": 0,
+    "cost_usd": 0.0
+  },
+  "session": "B3_V3/",
+  "system": "B3_V3/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "regel",
+      "actions": [
+        "synth_segment"
+      ],
+      "status": [
+        "ok"
+      ]
+    },
+    {
+      "candidate": 1,
+      "decider": "regel",
+      "actions": [
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "regel",
+      "actions": [
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "regel",
+      "actions": [
+        "finish"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "benchmark": "B3",
+  "variant": "V3",
+  "tag": "V3",
+  "target_na": 0.85
+}

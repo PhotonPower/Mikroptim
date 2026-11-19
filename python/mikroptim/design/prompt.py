@@ -29,6 +29,10 @@ Regeln (Zhang 2019, gekürzt):
 - Farbe fehlt in einer Gruppe → dort ein Element mit split_lens teilen und den hinteren Teil als
   Glasvariable freigeben (free_part). Sphärik oder Koma bleiben → insert_null_meniscus an der
   Stelle großer Randstrahl- (Sphärik) oder Hauptstrahlhöhe (Feldfehler), mit saddle_branches.
+- homotopy_point.aperture ist die aktuelle NA, spec.na die Soll-NA. Liegt die aktuelle darunter,
+  öffnet synth_segment (target.aperture, max_new_elements) die Apertur schrittweise und fügt
+  dabei selbst Elemente ein; erreicht ein Abschnitt die Soll-NA nicht, helfen free_gaps und
+  optimize vor dem nächsten Abschnitt.
 - Nach jeder strukturellen Änderung: free_gaps (falls noch nicht geschehen) und optimize.
 - Vermeide Überkonstruktion: Jede strukturelle Aktion nennt in reason die Gruppenbilanz, die sie
   ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon).

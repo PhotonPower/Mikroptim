@@ -85,7 +85,10 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
 
     # Spezifikation: was fehlt, aus dem System
     tube = spec.get("tube_focal_length")
-    na = spec.get("na", a / f if f else None)
+    # aktuelle NA wie synth: Pupillenradius / Soll-Brennweite (sonst paraxiale Brennweite)
+    f_target = (data.get("target") or {}).get("focal_length") or f
+    na_now = a / f_target if f_target else None
+    na = spec.get("na", na_now)    # Soll-NA der Spezifikation
     mag = spec.get("magnification", (tube / f) if (tube and f) else None)
     y_obj = abs(f) * math.tan(math.radians(theta)) if f else None
     G = math.pi * (y_obj * na) ** 2 if (y_obj is not None and na is not None) else None
@@ -179,7 +182,7 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
     return {
         "format": FORMAT, "candidate": candidate, "parent": parent,
         "elements": len(elems), "surfaces": len(data["surfaces"]),
-        "spec": spec_out, "homotopy_point": {"field": 1.0, "aperture": na},
+        "spec": spec_out, "homotopy_point": {"field": 1.0, "aperture": na_now},
         "merit": merit, "classes": classes, "paraxial": paraxial, "groups": balance,
         "top_contributors": top,
         "sine_condition": {"osc": ab["totals"].get("osc"), "osc_zone": ab["totals"].get("osc_zone")},
