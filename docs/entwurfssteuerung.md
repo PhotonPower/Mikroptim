@@ -38,13 +38,14 @@ Die Werkzeuge setzen an den Entscheidungen an, die heute Heuristiken oder das Sk
 
 ## 2. Architektur
 
-**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Seit M11-T5 gibt es die Leseaktion `glass_preselect` (Glaspaare bzw. -tripel für Farbkorrektur, `element` hält dessen Glas fest; auch als Werkzeug für das Sprachmodell). Seit M10-T6b gibt es außerdem `OllamaDecider` (`mikroptim/design/ollama.py`: Lese-Werkzeuge als Tool-Calls, danach Antwort mit `format` = eingebettetes Antwortschema `mikroptim/design/schema.py`, bis zu zwei Nachbesserungen, Protokoll von Modell, Digest, Optionen, Prüfsumme des Prompts, Denktext und Tool-Calls), `RuleDecider` (einfache Vergleichsstrategie V3), `ConfirmDecider` (Vorschlag annehmen, ändern, verwerfen) und einen Rückfall-Entscheider bei ungültigen Modellantworten. Die GUI-Seite folgt in GUI-Mikroptim.
+**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Seit M11-T5 gibt es die Leseaktion `glass_preselect` (Glaspaare bzw. -tripel für Farbkorrektur, `element` hält dessen Glas fest; auch als Werkzeug für das Sprachmodell). Seit M10-T6b gibt es außerdem `OllamaDecider` (`mikroptim/design/ollama.py`: Lese-Werkzeuge als Tool-Calls, danach Antwort mit `format` = eingebettetes Antwortschema `mikroptim/design/schema.py`, bis zu zwei Nachbesserungen, Protokoll von Modell, Digest, Optionen, Prüfsumme des Prompts, Denktext und Tool-Calls), `RuleDecider` (einfache Vergleichsstrategie V3), `ConfirmDecider` (Vorschlag annehmen, ändern, verwerfen) und einen Rückfall-Entscheider bei ungültigen Modellantworten. Seit M10-T6c gibt es `ClaudeDecider` (`mikroptim/design/claude.py`, [ADR-0016](adr/0016-claude-als-entscheider.md), Abschnitt 2.4). Die GUI-Seite folgt in GUI-Mikroptim.
 
 ```bash
 python -m mikroptim.design new start.json sitzung --spec spec.json
 python -m mikroptim.design run sitzung --decider ollama --model <modell> [--think] --steps 10 --fallback rule
 python -m mikroptim.design run sitzung --decider ollama --model <modell> --confirm      # assistiert
 python -m mikroptim.design run sitzung --decider rule --steps 10                          # Vergleich V3
+python -m mikroptim.design run sitzung --decider claude [--model claude-sonnet-5-5] --max-usd 20   # Claude-API
 python -m mikroptim.design replay sitzung sitzung_wieder                                  # ohne Ollama
 ```
 
@@ -106,6 +107,24 @@ Die Kommandozeile bekommt dieselben Werkzeuge als Unterbefehle, etwa `mikroptim 
 - **Prüfsummen** von Modell (Ollama-Digest), System-Prompt und Wissensbasis stehen im Protokoll.
 
 Die genauen Parameternamen der Ollama-API sind bei der Umsetzung gegen die aktuelle Ollama-Dokumentation zu prüfen.
+
+### 2.4 Sprachmodell über die Claude-API (M10-T6c, ADR-0016)
+
+Zusätzlicher Entscheider für Vergleiche; nur für Daten ohne Schutzbedarf (Kandidaten mit Katalogen oder Startsystem unter einem Verzeichnis `private` werden verweigert, `PrivacyError`). Das SDK `anthropic` ist ein optionales Extra (`pip install mikroptim[claude]`), die Zugangsdaten kommen nur aus der Umgebung (`ANTHROPIC_API_KEY` oder `ant auth login`).
+
+| Punkt | Umsetzung |
+|---|---|
+| Modell | `--model`, Standard `claude-opus-5-5`; `claude-sonnet-5-5`, `claude-haiku-5-5` |
+| Lese-Werkzeuge | wie bei Ollama als Tool-Calls, Ergebnisse als `tool_result`; höchstens `max_tool_calls` (6) |
+| Antwort | Werkzeug `submit_decision` mit `strict: true` (Eingabe `assessment`, `actions`); `tool_choice` `auto`, weil erzwungene Werkzeugwahl bei Opus 5.5 und Sonnet 5.5 abgelehnt wird. Die Eingabe wird mit `validate_response` und gegen die Parameter von `schema.ACTION_DEFS` geprüft; Fehler gehen als `tool_result` mit `is_error` zurück (höchstens zwei Nachbesserungen, danach `DecisionError` → Rückfall-Entscheider) |
+| strict-Schemas | aus `ACTION_DEFS` abgeleitet (`claude.strict_schema`): `oneOf` → `anyOf`, `prefixItems` → `items`, ohne Zahl- und Längenschranken (die prüft die Ausführung), jedes Objekt mit `additionalProperties: false` |
+| Thinking, Aufwand | `thinking` adaptiv mit Zusammenfassung (protokolliert, nie ausgeführt); `output_config.effort` ausdrücklich, Standard `medium` (`--effort`) |
+| Ablehnung | `stop_reason` wird vor dem Lesen geprüft; server-seitige Rückfälle `fallbacks="default"` (Beta `server-side-fallback-2026-07-01`) außer bei Haiku; abgelehnte Anfrage → `DecisionError`; `max_tokens` → Nachbesserung |
+| Verlauf | `response.content` wird unverändert (mit Thinking-Blöcken) angehängt, der Verlauf nur verlängert |
+| Caching | fester System-Prompt mit `cache_control`, nach Namen sortierte Werkzeugliste, automatisches Caching des Verlaufs; Treffer stehen pro Anfrage in `usage.cache_read_input_tokens` |
+| Fehler | Ratenlimit, Serverfehler, Verbindung (nach den Wiederholungen des SDK) → `DecisionError`; fehlende oder ungültige Zugangsdaten, unbekanntes Modell, abgelehnte Anfrage (400) → `ClaudeUnavailableError` (Abbruch) |
+| Kosten | pro Anfrage aus `usage` (Input, Output, Cache-Lesen, Cache-Schreiben = 1,25 × Input) mit den Preisen in `claude.PRICES_USD_PER_MTOK` (unbekanntes Rückfallmodell konservativ); Summe in `<sitzung>/claude_cost.json` bzw. `--cost-file` (`mikroptim.design.cost/1`), Obergrenze `--max-usd` (Standard 20 $). Vor jeder Anfrage: bisherige Summe + Schranke der Anfrage (Prompt-Zeichen/2 als Tokens zum Cache-Schreibpreis, volle `max_tokens`) ≤ Obergrenze, sonst `BudgetExceeded` (Abbruch, kein Rückfall) |
+| Protokoll | `decider`: Modell, Aufwand, Rückfälle, SDK-Version, Prüfsummen von Prompt und Werkzeugliste, pro Anfrage Request-ID, bedienendes Modell, `stop_reason`, Usage und Kosten; Summen, Denktext, Tool-Calls, Rohantworten (ohne Thinking-Signaturen). Scheitert der Entscheider und springt der Rückfall ein, steht seine Spur unter `failed_decider` |
 
 ## 3. Diagnose: was der Entscheider sieht
 

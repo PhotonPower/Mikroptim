@@ -202,9 +202,13 @@ class Session:
         except DecisionError as e:
             if fallback is None:
                 raise
+            failed = decider.describe()  # Spur des gescheiterten Entscheiders (z. B. Kosten)
             response = fallback.decide(state, self)
             used = fallback
             state = {**state, "last_errors": state.get("last_errors", []) + [str(e)]}
+            return self.apply(candidate, response,
+                              decider={**fallback.describe(), "failed_decider": failed,
+                                       "failed_reason": str(e)}, state=state)
         return self.apply(candidate, response, decider=used.describe(), state=state)
 
     def run(self, decider, candidate: int, *, max_steps: int = 10, fallback=None) -> int:

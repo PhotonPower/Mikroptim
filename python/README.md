@@ -154,5 +154,12 @@ Entscheider (M10-T6b): `--decider rule` (feste Vergleichsstrategie), `--decider 
 python -m mikroptim.design run sitzung --decider ollama --model qwen3:30b --think --steps 10 --fallback rule
 ```
 
+Claude-API (M10-T6c, [ADR-0016](../docs/adr/0016-claude-als-entscheider.md)): `pip install mikroptim[claude]` (SDK `anthropic`, nur für diesen Entscheider), Zugangsdaten aus der Umgebung (`ANTHROPIC_API_KEY` oder `ant auth login`). Kosten werden pro Anfrage protokolliert und in `<sitzung>/claude_cost.json` summiert; vor Überschreiten von `--max-usd` (Standard 20 $) bricht der Lauf ab. Nur für Daten ohne Schutzbedarf (keine Kataloge oder Systeme unter `private/`).
+
+```bash
+python -m mikroptim.design run sitzung --decider claude --steps 10 --fallback rule            # claude-opus-5-5, Aufwand medium
+python -m mikroptim.design run sitzung --decider claude --model claude-sonnet-5-5 --effort high --max-usd 5
+```
+
 Ollama und Trace teilen sich auf herkules3 die RTX 6000 Ada (48 GB; Speicher für das Modell bei der Batchgröße berücksichtigen, `EngineOptions::memory_limit_bytes`). Läufe mit Modell sind über das Protokoll ohne Ollama wiederholbar (`replay`).
 
