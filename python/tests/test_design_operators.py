@@ -301,8 +301,11 @@ def test_start_from_skeleton_new_root(session):
     assert rep["focal_length"] == pytest.approx(target, rel=1e-9)
     assert len(design.files.elements(data)) == 4  # Linse, Kittglied (2), Linse
     assert data["surfaces"][0]["semi_diameter"] == pytest.approx(0.2 * target)
+    # neues System mit der empfohlenen Referenzsphäre (Entscheidung Maintainer 2026-11-19)
+    assert data["reference_sphere"] == "image_infinite"
     st = session.state(cid)
     assert st["parent"] is None and st["elements"] == 4
+    assert st["reference_sphere"] == {"kind": "image_infinite", "explicit": True}
     # LM kommt vom Gerüst aus voran
     [opt] = apply_ok(session, cid, {"action": "optimize", "cycles": 5})
     assert opt["new_candidates"]

@@ -839,6 +839,10 @@ def start_from_skeleton(a, system_path, workdir):
            "name": f"Gerüst {dist} ({len(els)} Elemente)",
            "description": "Gerüst aus start_from_skeleton (M10-T4): "
                           + ", ".join(f"{g} {a[g]}" for g in ("front", "middle", "rear")),
+           # neues System: Referenzsphäre ausdrücklich, Empfehlung image_infinite für die
+           # Synthese mit Geisterplatten (ADR-0017, Entscheidung Maintainer 2026-11-19); eine
+           # ausdrückliche Wahl des Kandidaten bleibt
+           "reference_sphere": data.get("reference_sphere") or "image_infinite",
            "target": target_block, "surfaces": surfaces,
            "variables": {"items": [
                {"type": "curvature", "surfaces": "all"},

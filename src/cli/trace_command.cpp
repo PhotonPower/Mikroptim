@@ -48,6 +48,7 @@ struct TraceArgs {
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: überschreibt die Datei
+    bool no_reference_warning = false;                   // --no-reference-warning
 };
 
 TraceArgs parse_args(std::span<const std::string_view> args) {
@@ -59,6 +60,8 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == kNoReferenceWarningOption) {
+            a.no_reference_warning = true;
         } else if (arg == "--reference-sphere") {
             if (i + 1 >= args.size()) {
                 throw UsageError("--reference-sphere erwartet einen Wert");
@@ -477,6 +480,8 @@ void print_trace_usage(std::ostream& out) {
            "  --json       maschinenlesbare Ausgabe (Format mikroptim.trace/1)\n"
            "  --reference-sphere K  Referenzsphäre: last_surface (Standard ohne Angabe in der\n"
            "               Datei), image_exit_pupil oder image_infinite (ADR-0017)\n"
+           "  --no-reference-warning  keine Warnung auf stderr, wenn die Datei kein Feld\n"
+           "               reference_sphere hat (dann gilt last_surface)\n"
            "  --rings N    radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -550,6 +555,7 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.reference_sphere) {
             r.loaded.system.reference_sphere = *a.reference_sphere;
         }
+        warn_missing_reference_sphere(err, "trace", r.loaded.system, a.no_reference_warning);
         r.paraxial = compute_paraxial(r.loaded.system, r.loaded.catalog);
         r.options.rings = a.rings;
         r.options.spokes = a.spokes;

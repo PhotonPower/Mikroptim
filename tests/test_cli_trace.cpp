@@ -105,7 +105,7 @@ const char* const kCollimated =
 
 // Abnahmekriterium: JSON-Ausgabe für einzellinse_bk7.json, Werte bitgleich zur Bibliothek.
 TEST(CliTrace, EinzellinseJsonMatchesLibrary) {
-    const RunResult r = run({kEinzellinse, "--json"});
+    const RunResult r = run({kEinzellinse, "--json", "--no-reference-warning"});
     ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
     EXPECT_TRUE(r.err.empty()) << r.err;
     const json j = json::parse(r.out);
@@ -595,7 +595,7 @@ TEST(CliTraceGpu, TextMatchesCpu) {
     for (const std::string& file : {kEinzellinse, kMehrlinser}) {
         SCOPED_TRACE(file);
         const RunResult cpu = run({file});
-        const RunResult gpu = run({file, "--gpu"});
+        const RunResult gpu = run({file, "--gpu", "--no-reference-warning"});
         ASSERT_EQ(cpu.code, mko::cli::kExitOk) << cpu.err;
         ASSERT_EQ(gpu.code, mko::cli::kExitOk) << gpu.err;
         EXPECT_TRUE(gpu.err.empty()) << gpu.err;

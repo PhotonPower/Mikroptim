@@ -246,8 +246,9 @@ TEST(CliSynth, ToleranceAware) {
     ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
     const nlohmann::json jp = nlohmann::json::parse(plain.out);
     EXPECT_TRUE(jp["options"]["tolerance_aware"].is_null());
+    // ohne --tolerance-tilt: Standard remove (Entscheidung Maintainer 2026-11-19)
     std::vector<std::string> args = base;
-    for (const char* a : {"--tolerance-aware", "0.5", "--tolerance-tilt", "remove"}) {
+    for (const char* a : {"--tolerance-aware", "0.5"}) {
         args.emplace_back(a);
     }
     const SynthCliResult tol = synth(args);
@@ -265,8 +266,10 @@ TEST(CliSynth, ToleranceAware) {
     ASSERT_TRUE(lt.is_object());
     ASSERT_TRUE(lp.is_object());
     EXPECT_GT(lt["start_merit"].get<double>(), lp["start_merit"].get<double>());
-    // Strahlsuche: Rangfolge nach F_tol, Text nennt die Option
-    args.back() = "keep";
+    // Strahlsuche: Rangfolge nach F_tol, Text nennt die Option (ausdrücklich keep)
+    for (const char* a : {"--tolerance-tilt", "keep"}) {
+        args.emplace_back(a);
+    }
     args.erase(std::find(args.begin(), args.end(), "--json"));
     for (const char* a : {"--beam", "2", "--quiet"}) {
         args.emplace_back(a);

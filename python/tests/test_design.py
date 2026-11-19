@@ -44,6 +44,22 @@ def test_state_content_and_schema(session):
     assert "Gruppenbilanzen" in design.format_state(st)
 
 
+def test_state_reference_sphere(session, tmp_path):
+    """Der Zustand nennt die Konvention der Referenzsphäre (ADR-0017, Entscheidung Maintainer
+    2026-11-19): ohne Feld die alte Konvention last_surface, sonst das Feld der Datei."""
+    st = session.state(0)
+    assert st["reference_sphere"] == {"kind": "last_surface", "explicit": False}
+    assert "Referenzsphäre: last_surface (ohne Feld" in design.format_state(st)
+    data = json.loads(session.system_path(0).read_text(encoding="utf-8"))
+    data["reference_sphere"] = "image_infinite"
+    path = tmp_path / "unendlich.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    st = design.build_state(path, with_merit=False, with_sensitivity=False)
+    validate(st, "design_state.schema.json")
+    assert st["reference_sphere"] == {"kind": "image_infinite", "explicit": True}
+    assert "Referenzsphäre: image_infinite\n" in design.format_state(st) + "\n"
+
+
 def test_read_actions_do_not_create_candidates(session):
     r = response({"action": "get_surface_table", "surfaces": [1, 2]})
     validate(r, "design_action.schema.json")
