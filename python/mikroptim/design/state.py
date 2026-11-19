@@ -67,7 +67,7 @@ def _surface_groups(n_surfaces, elems, groups):
 
 
 def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None,
-                history=None, last_errors=None, with_merit=True) -> dict:
+                history=None, last_errors=None, with_merit=True, with_sensitivity=True) -> dict:
     """Zustand eines Kandidaten aus seiner Systemdatei.
 
     ``spec``: Sollwerte (u. a. ``tube_focal_length``, ``magnification``, ``na``,
@@ -147,6 +147,13 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
     hemi = [(i, abs(s.get("curvature", 0.0)) * s.get("semi_diameter", 0.0))
             for i, s in enumerate(data["surfaces"]) if s.get("type") == "sphere"]
     mechanics = {"hemisphere_max": list(max(hemi, key=lambda t: t[1])) if hemi else None}
+    sensitivity = None
+    if with_sensitivity:
+        try:
+            sensitivity, manufacturability = sensitivity_summary(system_path)
+            mechanics["manufacturability"] = manufacturability
+        except ToolError:
+            pass
     glasses = [{"element": e["element"], "surface": e["front"], "name": e["material"],
                 "group": groups.get(e["element"])} for e in elems]
 
@@ -177,12 +184,50 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
         "top_contributors": top,
         "sine_condition": {"osc": ab["totals"].get("osc"), "osc_zone": ab["totals"].get("osc_zone")},
         "ghosts": ghosts, "mechanics": mechanics,
-        "sensitivity": None, "glasses": glasses,
+        "sensitivity": sensitivity, "glasses": glasses,
         "aberration_settings": {k: ab[k] for k in ("reference_nm", "short_nm", "long_nm",
                                                    "field_angle_deg", "sign_convention")},
         "budget": budget or {}, "history": list(history or [])[-10:],
         "last_errors": list(last_errors or []),
     }
+
+
+#: Einträge pro Liste in der Zusammenfassung der Empfindlichkeiten
+SENSITIVITY_TOP = 3
+
+
+def sensitivity_summary(system_path):
+    """Kurzfassung von ``mikroptim sensitivity`` für den Zustand (M10-T3): die empfindlichsten
+    Elemente für Dezentrierung und Verkippung und die empfindlichsten übrigen Toleranzen, je mit
+    der Zunahme des RMS bei ±δ [Wellen]; dazu die Befunde der Herstellbarkeit."""
+    rep = cli_json(["sensitivity", system_path])
+    rms0 = rep["nominal"]["rms_waves"]
+
+    def rows(types, key):
+        out = []
+        for i in rep["ranking"]:
+            t = rep["tolerances"][i]
+            if t["type"] in types and t["worst_rms_waves"] is not None and rms0 is not None:
+                out.append([key(t), t["worst_rms_waves"] - rms0])
+            if len(out) == SENSITIVITY_TOP:
+                break
+        return out
+
+    def where(t):
+        return t["element"] or [t["surface"], t["surface"]]
+
+    summary = {
+        "set": rep["settings"]["set"], "rms_nominal_waves": rms0,
+        "decenter_worst": rows({"element_decenter", "decenter"}, where),
+        "tilt_worst": rows({"element_tilt", "tilt"}, where),
+        "parameter_worst": rows({"radius", "thickness", "index", "abbe"},
+                                lambda t: [t["type"], t["surface"]]),
+    }
+    man = rep["manufacturability"]
+    manufacturability = {"warnings": man["warnings"], "errors": man["errors"],
+                         "findings": [[c["check"], c["surface"], c["value"], c["severity"]]
+                                      for c in man["checks"] if c["severity"] != "ok"]}
+    return summary, manufacturability
 
 
 def _ghost_summary(diag):
@@ -217,6 +262,15 @@ def format_state(state: dict) -> str:
         if g:
             lines.append(f"    {name:<8} Fl. {g['surfaces'][0]:>2}–{g['surfaces'][1]:<2}"
                          + "".join(f"{_n(g[k]):>9}" for k in TEXT_KEYS))
+    sens = state.get("sensitivity")
+    if sens:
+        dec = ", ".join(f"Fl. {e[0]}-{e[1]}: +{d:.3g}" for e, d in sens["decenter_worst"])
+        tilt = ", ".join(f"Fl. {e[0]}-{e[1]}: +{d:.3g}" for e, d in sens["tilt_worst"])
+        lines.append(f"  Empfindlichkeit (RMS-Zunahme [Wellen], Satz {sens['set']}): "
+                     f"Dezentrierung {dec or '-'}; Verkippung {tilt or '-'}")
+    man = (state.get("mechanics") or {}).get("manufacturability")
+    if man and (man["warnings"] or man["errors"]):
+        lines.append(f"  Herstellbarkeit: {man['warnings']} Warnungen, {man['errors']} Fehler")
     if state.get("ghosts") and state["ghosts"].get("active"):
         lines.append(f"  aktive Geisterplatten: {len(state['ghosts']['active'])}")
     if state.get("last_errors"):

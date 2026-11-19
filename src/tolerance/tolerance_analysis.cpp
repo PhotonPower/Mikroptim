@@ -26,10 +26,10 @@ std::size_t to_size(std::int64_t i) {
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 const double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-// CPU-Trace: residuals_cpu pro Variante auf Host-Threads (zusammenhängende Blöcke), OPD und
-// Status an die Stelle der Variante; bitgleich für jede Threadzahl.
-void trace_cpu(const SystemBatchHost& batch, const ResidualLayout& layout, ResidualResult& out,
-               int requested_threads) {
+} // namespace
+
+void tolerance_trace_cpu(const SystemBatchHost& batch, const ResidualLayout& layout,
+                         ResidualResult& out, int requested_threads) {
     const int variants = batch.variants();
     const std::int64_t rays = layout.rays_per_variant();
     out = ResidualResult{};
@@ -77,8 +77,7 @@ void trace_cpu(const SystemBatchHost& batch, const ResidualLayout& layout, Resid
     }
 }
 
-// Normierte Gewichte ŵ_f ŵ_λ der Tupel (Summen aufsteigend wie residual_scale).
-std::vector<double> tuple_weights(const SystemBatchHost& batch) {
+std::vector<double> tolerance_tuple_weights(const SystemBatchHost& batch) {
     double wf = 0.0;
     for (int f = 0; f < batch.fields(); ++f) {
         wf += batch.field_weight(f);
@@ -97,6 +96,8 @@ std::vector<double> tuple_weights(const SystemBatchHost& batch) {
     }
     return out;
 }
+
+namespace {
 
 // Gemeinsamer Ablauf einer Tranche.
 class Runner {
@@ -130,7 +131,7 @@ public:
             lm_.jacobian.extra = ExtraResiduals{};
             lm_.jacobian.trace_extra = TraceExtraResiduals{};
         }
-        weights_ = tuple_weights(base_);
+        weights_ = tolerance_tuple_weights(base_);
         lambda_ref_mm_ = base_.reference_wavelength_nm * 1e-6;
     }
 
@@ -175,7 +176,7 @@ public:
         if (settings_.trace) {
             settings_.trace(batch, layout_, rr);
         } else {
-            trace_cpu(batch, layout_, rr, settings_.threads);
+            tolerance_trace_cpu(batch, layout_, rr, settings_.threads);
         }
         const std::size_t need =
             to_size(layout_.rays_per_variant()) * static_cast<std::size_t>(count);
@@ -244,12 +245,15 @@ private:
 } // namespace
 
 TupleQuality tuple_quality(const PupilQuadrature<double>& q, std::span<const double> opd,
-                           std::span<const std::uint8_t> status, double lambda_mm) {
+                           std::span<const std::uint8_t> status, double lambda_mm,
+                           std::span<double> rest) {
     const int n = sample_count(q);
-    if (opd.size() != static_cast<std::size_t>(n) || status.size() != static_cast<std::size_t>(n)) {
+    if (opd.size() != static_cast<std::size_t>(n) || status.size() != static_cast<std::size_t>(n) ||
+        (!rest.empty() && rest.size() != static_cast<std::size_t>(n))) {
         throw std::invalid_argument("tuple_quality: OPD und Status brauchen " + std::to_string(n) +
                                     " Einträge");
     }
+    std::fill(rest.begin(), rest.end(), 0.0);
     if (!(lambda_mm > 0.0)) {
         throw std::invalid_argument("tuple_quality: Wellenlänge muss > 0 sein");
     }
@@ -326,6 +330,9 @@ TupleQuality tuple_quality(const PupilQuadrature<double>& q, std::span<const dou
             continue;
         }
         const double e = opd[ku] - c0 - tx * xs[ku] - ty * ys[ku];
+        if (!rest.empty()) {
+            rest[ku] = e;
+        }
         const double w = ws[ku];
         sum2 += w * (e * e);
         const double phase = kTwoPi * (e / lambda_mm);

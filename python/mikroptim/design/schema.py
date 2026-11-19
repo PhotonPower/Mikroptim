@@ -36,6 +36,13 @@ ACTION_DEFS = {
                        "element": {"type": "integer", "minimum": 0},
                        "top": {"type": "integer", "minimum": 1, "maximum": 50},
                        "reason": _REASON}},
+    "sensitivity": {
+        "type": "object", "additionalProperties": False, "required": ["action"],
+        "properties": {"action": {"const": "sensitivity"},
+                       "kinds": {"type": "array", "items": {"enum": [
+                           "decenter", "tilt", "radius", "thickness", "index"]}},
+                       "elements": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                       "reason": _REASON}},
     "optimize": {
         "type": "object", "additionalProperties": False, "required": ["action"],
         "properties": {"action": {"const": "optimize"},
@@ -95,7 +102,8 @@ ACTION_DEFS = {
 }
 
 #: Lese-Werkzeuge, die das Modell vor seiner Antwort aufrufen darf (Tool-Calls)
-TOOL_ACTIONS = ("get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect")
+TOOL_ACTIONS = ("get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
+                "sensitivity")
 
 
 def response_schema() -> dict:
@@ -123,6 +131,9 @@ def tool_specs() -> list[dict]:
         "evaluate": "Auswertung auf dem dichten Pupillenraster (RMS, Strehl, optional PSF)",
         "glass_preselect": "Glaspaare (order 1, Achromat) bzw. -tripel (order 2, Apochromat) aus "
                            "den Katalogen mit Brechkraftanteilen; element hält dessen Glas fest",
+        "sensitivity": "Empfindlichkeit für Dezentrierung, Verkippung, Radius, Dicke, Brechzahl "
+                       "(RMS-Zunahme bei ±δ, sortiert) und Herstellbarkeit (Randdicken, "
+                       "Halbkugelgrad, Zentrierbarkeit)",
     }
     out = []
     for name in TOOL_ACTIONS:

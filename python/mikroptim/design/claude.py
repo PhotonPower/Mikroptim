@@ -207,6 +207,11 @@ def tool_definitions(strict: bool = True) -> list[dict]:
         "glass_preselect": "Glaspaare (order 1, Achromat) bzw. -tripel (order 2, Apochromat) aus "
                            "den Katalogen mit Brechkraftanteilen; element hält dessen Glas fest. "
                            "Aufrufen vor einer Glaswahl für split_lens oder insert_null_meniscus.",
+        "sensitivity": "Empfindlichkeit für Dezentrierung, Verkippung, Radius, Dicke und "
+                       "Brechzahl (RMS-Zunahme bei ±δ, sortiert) und Befunde der Herstellbarkeit "
+                       "(Randdicken, Halbkugelgrad, Zentrierbarkeit). Aufrufen, wenn die "
+                       "Kurzfassung im Zustand für eine Abwägung zwischen Korrektur und "
+                       "Empfindlichkeit nicht reicht.",
         SUBMIT_TOOL: "Gibt die Entscheidung für den aktuellen Kandidaten ab (Format "
                      "mikroptim.design.action/1 ohne format und candidate): 1 bis 4 Aktionen, "
                      "die nacheinander ausgeführt werden, und eine kurze Einschätzung. Genau "

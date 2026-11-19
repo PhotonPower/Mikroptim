@@ -2,11 +2,13 @@
 // Modus RESIDUALS der TraceEngine und Kompensator über optimize_lm_gpu (mko::cuda::use_gpu).
 // GPU gegen CPU ohne Kompensator (nur Rundung) und mit Kompensator (Konvergenzgrenze des LM),
 // wiederholte Läufe und andere Tranchengrößen bitgleich, Abnahme mit 10.000 Stichproben.
+// Empfindlichkeiten (M10-T3): GPU gegen CPU, wiederholte Läufe bitgleich.
 
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/tolerance.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/tolerance/sensitivity.hpp"
 #include "mikroptim/tolerance/tolerance_analysis.hpp"
 #include "tolerance_test_systems.hpp"
 #include "tolerances.hpp"
@@ -149,4 +151,43 @@ TEST(CudaTolerance, TenThousandSamplesReproducible) {
                 "95 %% %.4f; Ausbeute %.4f\n",
                 r.rms_composite.mean, r.rms_composite.p95, r.strehl_min.mean, r.strehl_min.p95,
                 r.yield);
+}
+
+// Empfindlichkeiten (M10-T3) mit dem Trace auf der GPU: Q bei ±δ und die Jacobi-Terme gegen die
+// CPU (Toleranzsatz der Testdatei), zwei Läufe bitgleich.
+TEST(CudaSensitivity, GpuMatchesCpuAndIsReproducible) {
+    MKO_REQUIRE_GPU();
+    const Analysis a = prepare();
+    mko::SensitivitySettings s;
+    const mko::SensitivityResult cpu = mko::run_sensitivity_analysis(a.loaded.system, a.batch, s);
+    mko::cuda::TraceEngine engine(0);
+    mko::cuda::use_gpu(s, engine);
+    const mko::SensitivityResult gpu = mko::run_sensitivity_analysis(a.loaded.system, a.batch, s);
+    const mko::SensitivityResult again = mko::run_sensitivity_analysis(a.loaded.system, a.batch, s);
+    ASSERT_EQ(gpu.components.size(), cpu.components.size());
+    ASSERT_FALSE(gpu.components.empty());
+    EXPECT_LE(std::abs(gpu.q0 - cpu.q0), mko::test::kSensitivityCpuGpuQuality * cpu.q0);
+    double q_dev = 0.0;
+    double j_dev = 0.0;
+    for (std::size_t k = 0; k < cpu.components.size(); ++k) {
+        const mko::SensitivityComponent& g = gpu.components[k];
+        const mko::SensitivityComponent& c = cpu.components[k];
+        const double scale = std::max({std::abs(c.q_plus - cpu.q0), std::abs(c.q_minus - cpu.q0),
+                                       std::abs(c.jacobian_linear) + c.jacobian_quadratic});
+        const double dq = std::max(std::abs(g.q_plus - c.q_plus), std::abs(g.q_minus - c.q_minus));
+        const double dj = std::max(std::abs(g.jacobian_linear - c.jacobian_linear),
+                                   std::abs(g.jacobian_quadratic - c.jacobian_quadratic));
+        q_dev = std::max(q_dev, dq / cpu.q0);
+        j_dev = std::max(j_dev, dj / scale);
+        EXPECT_LE(dq, mko::test::kSensitivityCpuGpuQuality * cpu.q0) << k;
+        EXPECT_LE(dj, mko::test::kSensitivityCpuGpuJacobian * scale) << k;
+        const mko::SensitivityComponent& r = again.components[k];
+        EXPECT_TRUE(same_double(g.q_plus, r.q_plus) && same_double(g.q_minus, r.q_minus) &&
+                    same_double(g.jacobian_linear, r.jacobian_linear) &&
+                    same_double(g.jacobian_quadratic, r.jacobian_quadratic))
+            << k;
+    }
+    std::printf("[ Messung ] Empfindlichkeit GPU gegen CPU: Q relativ %.3e, Jacobi-Terme relativ "
+                "zu max |ΔQ| %.3e\n",
+                q_dev, j_dev);
 }

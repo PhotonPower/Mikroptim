@@ -213,10 +213,13 @@ target_link_libraries(mikroptim_synth
 
 # --------------------------------------------------------------------------
 # Monte-Carlo-Tolerierung (Host, M8-T4): Stichproben eines Toleranzsatzes als Varianten,
-# Kompensator über den gebündelten LM, Bewertung aus der Quadratur; GPU über austauschbare
+# Kompensator über den gebündelten LM, Bewertung aus der Quadratur; Empfindlichkeiten und
+# Herstellbarkeit (M10-T3); GPU über austauschbare
 # Funktionen (mikroptim/cuda/tolerance.hpp, ohne CUDA-Abhängigkeit der Bibliothek)
 # --------------------------------------------------------------------------
 add_library(mikroptim_tolerance STATIC
+    src/tolerance/manufacturability.cpp
+    src/tolerance/sensitivity.cpp
     src/tolerance/tolerance_analysis.cpp
     src/tolerance/tolerance_model.cpp)
 add_library(Mikroptim::tolerance ALIAS mikroptim_tolerance)
@@ -293,6 +296,7 @@ add_library(mikroptim_cli STATIC
     src/cli/eval_command.cpp
     src/cli/insert_command.cpp
     src/cli/optimize_command.cpp
+    src/cli/sensitivity_command.cpp
     src/cli/snap_command.cpp
     src/cli/synth_command.cpp
     src/cli/tolerance_command.cpp

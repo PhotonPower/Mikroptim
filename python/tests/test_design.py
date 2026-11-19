@@ -162,3 +162,36 @@ def test_split_lens_achromat_with_preselection(tmp_path):
     assert e2["results"][0]["status"] == "ok", e2["results"][0]
     d2 = json.loads(s.system_path(2).read_text(encoding="utf-8"))
     assert d2["surfaces"][2]["material"] != data["surfaces"][2]["material"]
+
+
+def test_sensitivity_action_and_state(session):
+    """M10-T3: Lese-Aktion sensitivity (Filter nach Art und Element) und Kurzfassung im Zustand."""
+    from mikroptim.design import files
+
+    r = response({"action": "sensitivity", "kinds": ["decenter", "tilt"], "elements": [0]})
+    validate(r, "design_action.schema.json")
+    entry = session.apply(0, r, decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    out = res["result"]
+    assert out["set"] == "default"  # Testsystem ohne Toleranzsatz
+    assert out["tolerances"], out
+    assert {t["type"] for t in out["tolerances"]} <= {"element_decenter", "element_tilt"}
+    front = files.elements(files.read_system(session.system_path(0)))[0]["front"]
+    for t in out["tolerances"]:
+        first, last = t["element"]
+        assert first <= front < last
+        assert t["delta_rms_waves"] is not None
+    deltas = [t["worst_delta_q_waves2"] for t in out["tolerances"]]
+    assert deltas == sorted(deltas, reverse=True)
+    assert list(session.candidates()) == [0]
+    bad = session.apply(0, response({"action": "sensitivity", "elements": [99]}), decider={})
+    assert bad["results"][0]["code"] == "precondition"
+
+    st = session.state(0)
+    validate(st, "design_state.schema.json")
+    sens = st["sensitivity"]
+    assert sens["set"] == "default" and len(sens["decenter_worst"]) >= 1
+    assert all(len(e) == 2 and len(e[0]) == 2 for e in sens["decenter_worst"])
+    assert "manufacturability" in st["mechanics"]
+    assert "Empfindlichkeit" in design.format_state(st)

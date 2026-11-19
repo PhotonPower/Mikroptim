@@ -25,6 +25,7 @@ add_executable(mikroptim_tests
     test_cli_eval.cpp
     test_cli_insert.cpp
     test_cli_optimize.cpp
+    test_cli_sensitivity.cpp
     test_cli_snap.cpp
     test_cli_synth.cpp
     test_cli_tolerance.cpp
@@ -54,6 +55,7 @@ add_executable(mikroptim_tests
     test_levenberg_marquardt.cpp
     test_load_system.cpp
     test_mechanical_constraints.cpp
+    test_manufacturability.cpp
     test_mechanical_optimization.cpp
     test_multi_gpu_split.cpp
     test_glass_preselection.cpp
@@ -64,6 +66,7 @@ add_executable(mikroptim_tests
     test_prefilter.cpp
     test_psf.cpp
     test_pupil_quadrature.cpp
+    test_sensitivity.cpp
     test_soft_failure.cpp
     test_surface_ops.cpp
     test_system_batch.cpp
@@ -255,6 +258,23 @@ if(MIKROPTIM_ENABLE_CUDA)
     set_tests_properties(cli_tolerance_gpu_json PROPERTIES
         SKIP_RETURN_CODE 3
         PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"failed_samples\": 0")
+endif()
+
+# `mikroptim sensitivity` (M10-T3): Toleranzsatz der Datei und Standardsatz
+add_test(NAME cli_sensitivity_text
+    COMMAND $<TARGET_FILE:mikroptim> sensitivity ${MKO_TOLERANZ})
+set_tests_properties(cli_sensitivity_text PROPERTIES
+    PASS_REGULAR_EXPRESSION "Datei \\(tolerances\\), 18 Toleranzen.*Empfindlichste.*Herstellbarkeit")
+add_test(NAME cli_sensitivity_default_json
+    COMMAND $<TARGET_FILE:mikroptim> sensitivity ${MKO_EINZELLINSE} --json)
+set_tests_properties(cli_sensitivity_default_json PROPERTIES
+    PASS_REGULAR_EXPRESSION "\"format\": \"mikroptim\\.sensitivity/1\".*\"set\": \"default\".*\"manufacturability\"")
+if(MIKROPTIM_ENABLE_CUDA)
+    add_test(NAME cli_sensitivity_gpu_json
+        COMMAND $<TARGET_FILE:mikroptim> sensitivity ${MKO_TOLERANZ} --json --gpu)
+    set_tests_properties(cli_sensitivity_gpu_json PROPERTIES
+        SKIP_RETURN_CODE 3
+        PASS_REGULAR_EXPRESSION "\"backend\": \"gpu\".*\"ranking\"")
 endif()
 
 # Benchmark trace_throughput (M2-T6) als kurzer Smoke-Lauf: 10 Varianten, ein Lauf. Exit-Code 3 =

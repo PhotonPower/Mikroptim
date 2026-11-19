@@ -41,10 +41,13 @@ struct TupleQuality {
 // Normalgleichungen 3 × 3, Summen in aufsteigender Reihenfolge k, Cholesky; bei singulärer Matrix,
 // z. B. auf der Achse oder mit weniger als drei Strahlen, nur der Kolben), Rest e_k, RMS = √(Σ W e²
 // / Σ_ok W) und Strehl wie oben bei der Vakuumwellenlänge λ [mm] des Tupels. `opd` und `status`
-// haben sample_count(q) Einträge (Ablage wie ResidualResult). Wirft std::invalid_argument bei
-// falschen Längen oder λ ≤ 0.
+// haben sample_count(q) Einträge (Ablage wie ResidualResult). Optional `rest` (leer oder
+// sample_count(q) Einträge): der Rest e_k [mm] pro Stützstelle, 0 für versagte Strahlen und ohne
+// gültigen Strahl (Empfindlichkeiten, M10-T3). Wirft std::invalid_argument bei falschen Längen
+// oder λ ≤ 0.
 TupleQuality tuple_quality(const PupilQuadrature<double>& q, std::span<const double> opd,
-                           std::span<const std::uint8_t> status, double lambda_mm);
+                           std::span<const std::uint8_t> status, double lambda_mm,
+                           std::span<double> rest = {});
 
 // Kennzahlen einer Stichprobe.
 struct ToleranceSampleResult {
@@ -85,6 +88,15 @@ DistributionStats distribution_stats(std::span<const double> values, bool higher
 // `out` muss danach opd und status für alle Varianten enthalten (residuals darf leer sein).
 using ToleranceTraceFn = std::function<void(const SystemBatchHost& batch,
                                             const ResidualLayout& layout, ResidualResult& out)>;
+// CPU-Trace der Tolerierung: residuals_cpu pro Variante auf Host-Threads (zusammenhängende
+// Blöcke; threads ≤ 0: nach der Arbeit, lm_host_threads), OPD und Status aller Varianten in der
+// Ablage von `layout`, ohne Residuen. Bitgleich für jede Threadzahl.
+void tolerance_trace_cpu(const SystemBatchHost& batch, const ResidualLayout& layout,
+                         ResidualResult& out, int threads = 0);
+
+// Normierte Gewichte ŵ_f ŵ_λ der Tupel [f · L + l] wie in der Merit (Summen aufsteigend).
+std::vector<double> tolerance_tuple_weights(const SystemBatchHost& batch);
+
 // Optimierer des Kompensators (z. B. optimize_lm_cpu oder cuda::optimize_lm_gpu); `base` hat eine
 // Variante pro Lauf.
 using ToleranceOptimizerFn =

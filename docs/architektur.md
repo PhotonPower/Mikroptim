@@ -37,7 +37,7 @@ flowchart TD
 | Optimierer (ab M3-T1: Variablen, Variantengenerator; M3-T2: FD-Jacobi) | `include/mikroptim/optim/` | `src/optim/`, `src/cuda/` | M3, M5 |
 | Synthese (ab M6-T3: Homotopie-Controller, `Mikroptim::synth`) | `include/mikroptim/synth/` | `src/synth/` | M6 |
 | Auswertung (ab M8-T1: Modus EVAL, `Mikroptim::eval`; M8-T2: PSF, MTF, Strehl) | `include/mikroptim/eval/` | `src/eval/`, `src/cuda/` | M8 |
-| Monte-Carlo-Tolerierung (M8-T4, `Mikroptim::tolerance`) | `include/mikroptim/tolerance/` | `src/tolerance/` | M8 |
+| Monte-Carlo-Tolerierung (M8-T4, `Mikroptim::tolerance`), Empfindlichkeiten und Herstellbarkeit (M10-T3) | `include/mikroptim/tolerance/` | `src/tolerance/` | M8, M10 |
 | CLI ([cli.md](cli.md)) | – (intern `src/cli/trace_command.hpp`) | `src/cli/` | M1 ff. |
 | Python-Bindings (M9-T1, Modul `mikroptim`, [python/README.md](../python/README.md)) | – | `python/src/` (C++), `python/mikroptim/` (Python) | M9 |
 
@@ -1373,9 +1373,13 @@ Statische Host-Bibliothek `mikroptim_tolerance` (Alias `Mikroptim::tolerance`, `
 |---|---|
 | `include/mikroptim/tolerance/tolerance_model.hpp` | `tolerance_deviate` (Zufallsgrößen), `SurfacePlacement`, `ElementMotion`, `move_surface` (Starrkörperbewegung), `ToleranceModel` (aufgelöster Toleranzsatz für eine nicht koaxiale Topologie: `deviates(seed, i)`, `apply`, `write_samples`) |
 | `include/mikroptim/tolerance/tolerance_analysis.hpp` | `tuple_quality` (RMS und Strehl eines Tupels), `distribution_stats`, `ToleranceSettings` (Stichproben, Startwert, Kompensator, Quadratur, Tranchen, LM, austauschbare Funktionen `trace` und `optimizer`), `run_tolerance_analysis`, `ToleranceResult` |
-| `include/mikroptim/cuda/tolerance.hpp` (reines C++, header-only) | `cuda::use_gpu(settings, engine)`: Trace über `TraceEngine::run` im Modus RESIDUALS (OPD und Status), Kompensator über `cuda::optimize_lm_gpu` |
+| `include/mikroptim/tolerance/sensitivity.hpp` (M10-T3) | `SensitivityDefaults`, `default_sensitivity_tolerances` (Mikroptim-Standardsatz), `SensitivitySettings`, `run_sensitivity_analysis` (Q bei ±δ und Jacobi-Spalten nach den Toleranzparametern), `SensitivityResult`, `summarize_sensitivity` |
+| `include/mikroptim/tolerance/manufacturability.hpp` (M10-T3) | `ManufacturabilityLimits`, `check_manufacturability` (Halbkugelgrad, Mitten- und Randdicke, Luftrand, Durchmesser/Dicke, Zentrierbarkeit), `ManufacturabilityReport` |
+| `include/mikroptim/cuda/tolerance.hpp` (reines C++, header-only) | `cuda::gpu_tolerance_trace(engine)`, `cuda::use_gpu(settings, engine)`: Trace über `TraceEngine::run` im Modus RESIDUALS (OPD und Status), Kompensator über `cuda::optimize_lm_gpu`; für `SensitivitySettings` nur der Trace |
 
 Ablauf pro Tranche (Standard 4.096 Stichproben): `make_non_coaxial` des nominellen Batches (volle Pupille, Transformationen) → Batch mit T Varianten, `write_samples` → gebündelter LM mit der einzigen Variablen `working_distance` (T Läufe, ein Aufruf) → RESIDUALS mit hartem Versagen (CPU: `residuals_cpu` pro Variante auf Host-Threads; GPU: ein `TraceEngine::run`) → Bewertung auf dem Host. Wie bei `Mikroptim::synth` bindet der Aufrufer die GPU über Funktionsobjekte ein, die Bibliothek selbst baut ohne CUDA. Speicher: ein Batch mit T Varianten und OPD/Status T·R_v; der LM legt seine Puffer pro Tranche an (GPU: nach `cudaMemGetInfo`, M3-T4). CLI: `src/cli/tolerance_command.cpp` ([cli.md](cli.md#mikroptim-tolerance)).
+
+**Empfindlichkeiten (M10-T3).** Ein Batch mit 1 + 4 D Varianten (nominal, pro Komponente ξ = ±1 und ±h über `ToleranceModel::apply`), ein Trace über dieselbe Funktion wie die Tolerierung (`tolerance_trace_cpu` bzw. `cuda::gpu_tolerance_trace`), Bewertung mit `tuple_quality` (Ausgabe `rest` für die Wellenfrontreste). `tolerance_trace_cpu` und `tolerance_tuple_weights` sind dafür aus `run_tolerance_analysis` herausgelöst (unverändertes Verhalten). Herstellbarkeit ohne Trace aus der Systembeschreibung (Pfeilhöhe `sag`, `edge_thickness` aus `mikroptim/optim/mechanical_constraints.hpp`). CLI: `src/cli/sensitivity_command.cpp` ([cli.md](cli.md#mikroptim-sensitivity)); Verfahren: [optimierung.md, Abschnitt 12](optimierung.md#12-empfindlichkeiten-und-herstellbarkeit-m10-t3).
 
 ## Mehrere GPUs (M7-T3)
 
