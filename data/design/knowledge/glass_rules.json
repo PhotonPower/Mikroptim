@@ -1,0 +1,86 @@
+{
+  "format": "mikroptim.design.knowledge/1",
+  "kind": "glass_rules",
+  "description": "Glasregeln der Entwurfssteuerung (M10-T5, docs/entwurfssteuerung.md, Abschnitt 5.3), in eigenen Worten mit Quellenangabe. Ausgewertet von glass_query auf den Kennzahlen der geladenen Kataloge (mikroptim glasses --list, docs/numerik.md, Abschnitt 17). Bedingungen: geschlossene Bereiche [min, max], null = offen; Kennzahlen nd, vd, pgf, dpgf eines Glases, bei Paarregeln zusätzlich abs_delta_nd, abs_delta_vd, abs_delta_pgf, abs_delta_dpgf gegenüber dem Bezugsglas; Verknüpfung mit all, any, not und Verweis rule. Schwellen, die die Quelle nur qualitativ nennt, sind im Feld assumption als Mikroptim-Annahme gekennzeichnet.",
+  "references": {
+    "Zhang 2019": "Y. Zhang, Systematic Design of Microscope Objectives, Dissertation, Friedrich-Schiller-Universität Jena, 2019",
+    "Schott TIE-29": "Schott AG, Technical Information TIE-29: Refractive Index and Dispersion (öffentlich auf der Website des Herstellers)"
+  },
+  "rules": [
+    {
+      "id": "selectable_pgf",
+      "title": "Teildispersion im wählbaren Bereich",
+      "condition": {"pgf": [0.535, 0.58]},
+      "notes": "Für die Farbkorrektur der Gruppen kommen Gläser mit P_g,F zwischen 0,535 und 0,58 in Frage; am günstigsten bis etwa 0,56.",
+      "source": "Zhang 2019, §6.3"
+    },
+    {
+      "id": "merte_pair",
+      "title": "Partner für eine Merte-Fläche",
+      "needs_partner": true,
+      "condition": {"abs_delta_nd": [0.05, 0.15], "abs_delta_vd": [15, null], "abs_delta_pgf": [null, 0.01]},
+      "notes": "Kittfläche mit kleinem Brechzahlsprung: stark gekrümmt erzeugt sie viel sphärische Aberration höherer Ordnung bei geringer Brechkraft. Die beiden Gläser sollen sich in der Abbezahl deutlich, in der Teildispersion wenig unterscheiden.",
+      "source": "Zhang 2019, Tab. 6.7",
+      "assumption": "Mikroptim-Annahme: Schwellen für „deutlich“ (|Δν_d| ≥ 15) und „wenig“ (|ΔP_g,F| ≤ 0,01)."
+    },
+    {
+      "id": "front_medium_n_medium_vd",
+      "title": "Frontgläser mittlerer Brechzahl und Dispersion",
+      "condition": {"nd": [1.60, 1.90], "vd": [40, 60]},
+      "notes": "Frontlinsen und frontnahe Menisken aus Gläsern mit n_d 1,60–1,90 und ν_d 40–60; hochbrechende Lanthan-Schwerflinte nur, wenn die NA es erzwingt.",
+      "source": "Zhang 2019, §6.3, Anh. VII"
+    },
+    {
+      "id": "low_n_low_dispersion",
+      "title": "Niedrigbrechend, wenig dispersiv (Fluor- und Phosphatkron)",
+      "condition": {"nd": [null, 1.60], "vd": [66, null]},
+      "notes": "Schalenlinsen hinter der Front aus Fluorkron oder Phosphatkron.",
+      "source": "Zhang 2019, Anh. VII",
+      "assumption": "Mikroptim-Annahme: Abgrenzung der Glasfamilien über n_d ≤ 1,60 und ν_d ≥ 66."
+    },
+    {
+      "id": "af_forbidden",
+      "title": "Sperrzone der Autofluoreszenz",
+      "condition": {
+        "all": [
+          {"any": [{"vd": [null, 35]}, {"vd": [null, 50], "nd": [null, 1.62]}]},
+          {"not": {"vd": [25, 41], "nd": [1.65, 1.80]}}
+        ]
+      },
+      "notes": "Gläser mit ν_d < 35 oder mit ν_d < 50 und n_d < 1,62 fluoreszieren meist stark und sind für Fluoreszenzobjektive ungeeignet; ausgenommen der Bereich 25 ≤ ν_d ≤ 41 bei 1,65 ≤ n_d ≤ 1,80. Die Kataloge enthalten keine Fluoreszenzdaten; die Regel ist eine Näherung im n_d-ν_d-Diagramm.",
+      "source": "Zhang 2019, Abb. 2.4, Anh. VII"
+    },
+    {
+      "id": "not_af_forbidden",
+      "title": "außerhalb der Sperrzone der Autofluoreszenz",
+      "condition": {"not": {"rule": "af_forbidden"}},
+      "notes": "Gegenteil von af_forbidden; Standardfilter für Fluoreszenzanwendungen.",
+      "source": "Zhang 2019, Abb. 2.4, Anh. VII"
+    },
+    {
+      "id": "dense_flint_for_lca",
+      "title": "Dichtes Flint gegen Farbquerfehler",
+      "condition": {"nd": [1.65, null], "vd": [25, 40]},
+      "notes": "Positive Linsen aus dichtem Flint in der Hintergruppe gleichen den Farbquerfehler aus; mittlere Dispersion wird bevorzugt.",
+      "source": "Zhang 2019, §6.4.3, Anh. VIII",
+      "assumption": "Mikroptim-Annahme: „dichtes Flint, mittlere Dispersion“ als n_d ≥ 1,65 und 25 ≤ ν_d ≤ 40."
+    },
+    {
+      "id": "buried_surface",
+      "title": "Partner für eine vergrabene Fläche",
+      "needs_partner": true,
+      "condition": {"abs_delta_nd": [null, 0.01], "abs_delta_vd": [10, null]},
+      "notes": "Kittfläche zwischen Gläsern gleicher Brechzahl: monochromatisch nahezu ohne Wirkung, wirkt nur auf die Farbe.",
+      "source": "Zhang 2019, Anh. VIII",
+      "assumption": "Mikroptim-Annahme: „unterschiedliche Abbezahl“ als |Δν_d| ≥ 10."
+    },
+    {
+      "id": "anomalous_pgf",
+      "title": "Anomale Teildispersion",
+      "condition": {"any": [{"dpgf": [0.01, null]}, {"dpgf": [null, -0.01]}]},
+      "notes": "Das sekundäre Spektrum lässt sich nur mit Gläsern abseits der Normalgeraden P_g,F(ν_d) verkleinern (Apochromasie). Kandidaten für Apochromat-Tripel; die Kombination liefert glass_preselect mit order 2.",
+      "source": "Schott, Technical Information TIE-29 (Brechzahl und Dispersion: relative Teildispersion und Normalgerade)",
+      "assumption": "Mikroptim-Annahme: Schwelle |ΔP_g,F| ≥ 0,01."
+    }
+  ]
+}

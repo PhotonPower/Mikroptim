@@ -1562,7 +1562,31 @@ Glasvorauswahl Achromat (Paare): 39 Gläser, 2 ohne Buchdahl-Fit übersprungen
     3  SYN-04 + N-BK7                         3.179e-03      6.300  3.650e+00, -2.650e+00
 ```
 
-Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile.
+**Glaskennzahlen** (M10-T5, `--list`; Formeln in [numerik.md, Abschnitt 17](numerik.md#17-glaskennzahlen-für-die-glasabfrage-m10-t5)): statt der Vorauswahl n_d, ν_d, P_g,F und ΔP_g,F aller Gläser der Kataloge (Gläser ohne die Linien g bis C werden übersprungen), wahlweise gefiltert. Grundlage der Glasabfrage `glass_query` in `mikroptim.design` ([entwurfssteuerung.md, Abschnitt 5.3](entwurfssteuerung.md#53-glasregeln-glass_rulesjson)), die darauf die Glasregeln der Wissensbasis und die Reintransmission der Kataloge anwendet.
+
+```
+mikroptim glasses <katalog.json>... [--system <system.json>] --list [--nd MIN,MAX] [--vd MIN,MAX]
+                  [--pgf MIN,MAX] [--dpgf MIN,MAX] [--json]
+```
+
+| Option | Bedeutung |
+|---|---|
+| `--list` | Kennzahlen statt Vorauswahl |
+| `--nd`, `--vd`, `--pgf`, `--dpgf` `MIN,MAX` | nur mit `--list`: geschlossener Bereich, eine Seite darf leer sein (`--vd 60,` heißt ν_d ≥ 60) |
+| `--json` | `mikroptim.glasses/1` mit `mode` = `list`, `count`, `skipped`, `list[]` mit `name`, `n_d`, `n_F`, `n_C`, `n_g`, `v_d`, `p_gF`, `dp_gF`, `range_nm` |
+
+```
+$ mikroptim glasses data/glass/synthetisch.json data/glass/basis.json --list --vd 60, --dpgf 0.01,
+Glaskennzahlen: 5 Gläser, 2 ohne die Linien g bis C übersprungen
+Glas                   n_d      ν_d    P_g,F    ΔP_g,F
+SYN-01             1.47695    78.79   0.5223    0.0110
+SYN-03             1.44086    88.63   0.5224    0.0277
+SYN-04             1.47359    88.47   0.5323    0.0373
+SYN-06             1.45333    78.51   0.5243    0.0125
+CAF2               1.43385    95.00   0.5387    0.0546
+```
+
+Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile (auch Bereichsfilter ohne `--list`).
 
 ## `mikroptim tolerance`
 

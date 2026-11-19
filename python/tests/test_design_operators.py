@@ -188,9 +188,10 @@ def test_replace_glass(session):
     assert {r["glass"] for r in res2["reports"]} == set(partners[:3])
     merits = [r["optimize"]["merit"] for r in res2["reports"]]
     assert merits == sorted(merits)
+    # Paarregel ohne Bezugsglas (Glasabfrage, M10-T5)
     bad = session.apply(0, response({"action": "replace_glass", "element": 2,
                                      "glass": {"filter": {"rule": "merte_pair"}}}), decider={})
-    assert bad["results"][0]["code"] == "not_implemented"
+    assert bad["results"][0]["code"] == "missing_parameter"
     unknown = session.apply(0, response({"action": "replace_glass", "element": 2,
                                          "glass": {"name": "GIBTESNICHT"}}), decider={})
     assert unknown["results"][0]["code"] == "tool_failed"

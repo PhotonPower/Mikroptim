@@ -464,6 +464,14 @@ inline constexpr double kGlassPreselectionAlgebra = 1e-12;
 // Einzellinse gleicher Brechkraft (gemessen 1,62e-2 / 2,359 = 6,9e-3).
 inline constexpr double kGlassPreselectionAchromatRatio = 0.05;
 
+// M10-T5 Glaskennzahlen: ν_d, P_g,F, ΔP_g,F gegen die geschlossene Form eines Polynomglases
+// (dieselben Linien, unabhängig ausgerechnet), relativ; nur Rundung.
+inline constexpr double kGlassPropertiesFormula = 1e-12;
+// Gegen das Datenblatt (N-BK7): ν_d ist dort auf zwei, P_g,F und ΔP_g,F auf vier Stellen
+// gerundet; dazu die Abweichung der Sellmeier-Formel (|Δn| ≲ 10⁻⁶ ⇒ Δν_d ≲ 0,005).
+inline constexpr double kGlassDatasheetAbbe = 0.02;
+inline constexpr double kGlassDatasheetPartial = 2e-4;
+
 // M8-T4 Monte-Carlo-Tolerierung: Stichprobenmittel und -varianz der Zufallsgrößen gegen die
 // exakten Momente höchstens so viele Standardfehler entfernt (bei 200.000 Ziehungen; fünf
 // Standardfehler werden bei richtigem Modell mit Wahrscheinlichkeit < 10⁻⁶ überschritten, und

@@ -4,7 +4,7 @@ Abschnitt 4). Jeder Entscheider (Mensch, Sprachmodell, Regel) benutzt genau dies
 Umgesetzt (M10-T6a), jeweils über die Kommandozeile von Mikroptim:
 
 - lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``, ``glass_preselect``,
-  ``sensitivity`` (M10-T3)
+  ``sensitivity`` (M10-T3), ``glass_query`` und ``module_lookup`` (Wissensbasis, M10-T5)
 - Läufe: ``optimize``, ``synth_segment``, ``snap_glasses``
 - Variablen: ``free_gaps``
 - Topologie (Merit unverändert): ``insert_null_meniscus``, ``split_lens``
@@ -23,11 +23,11 @@ import pathlib
 import tempfile
 
 from .. import aberrations
-from ._cli import ToolError, cli_json, cli_text
+from ._cli import cli_json, cli_text
 from .files import elements, is_air, read_system, write_system
 
 READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
-                "sensitivity"}
+                "sensitivity", "glass_query", "module_lookup"}
 MODIFY_ACTIONS = {"optimize", "synth_segment", "snap_glasses", "free_gaps",
                   "insert_null_meniscus", "split_lens", "place_ghost_dictionary", "insert_module",
                   "remove_element", "replace_glass", "replace_group", "start_from_skeleton"}
@@ -123,6 +123,23 @@ def read_action(a: dict, system_path) -> dict:
         return {"order": rep["order"], "results": [
             {key: r[key] for key in ("glasses", "powers", "power_sum", "residual")}
             for r in rep["results"]]}
+    if name == "glass_query":
+        _require(a, "filter")
+        from .glass_query import QueryError, glass_query
+        try:
+            return glass_query(system_path, a["filter"], limit=int(a.get("limit", 20)))
+        except QueryError as e:
+            raise ActionError(e.code, str(e)) from None
+    if name == "module_lookup":
+        from . import knowledge
+        try:
+            mods = knowledge.module_lookup(
+                group=a.get("group"), corrects=a.get("corrects"), zone=a.get("zone"),
+                na=a.get("na"), immersion=a.get("immersion"),
+                insertable_only=bool(a.get("insertable_only", False)))
+        except knowledge.KnowledgeError as e:
+            raise ActionError("invalid_parameter", str(e)) from None
+        return {"modules": mods}
     if name == "sensitivity":
         return sensitivity_report(system_path, kinds=a.get("kinds"), elements=a.get("elements"))
     if name == "evaluate":
@@ -259,11 +276,23 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
     raise ActionError("not_implemented", f"{name} ist noch nicht umgesetzt")
 
 
-def _glass_arg(glass) -> str:
+def resolve_filter(flt, system_path) -> str:
+    """Glasangabe ``{"filter": …}``: erstes Glas der Glasabfrage (M10-T5); ein leerer Filter
+    ist ein Fehler (docs/entwurfssteuerung.md, Abschnitt 4.7)."""
+    from .glass_query import QueryError, resolve_glass
+    if not isinstance(flt, dict):
+        raise ActionError("invalid_parameter", "filter: Objekt erwartet")
+    try:
+        return resolve_glass(system_path, flt)
+    except QueryError as e:
+        raise ActionError(e.code, str(e)) from None
+
+
+def _glass_arg(glass, system_path=None) -> str:
     if isinstance(glass, dict) and "name" in glass:
         return glass["name"]
     if isinstance(glass, dict) and "filter" in glass:
-        raise ActionError("not_implemented", "Glasfilter brauchen glass_query (M10-T5)")
+        return resolve_filter(glass["filter"], system_path)
     if isinstance(glass, (int, float)):
         return f"n={float(glass)!r}"
     raise ActionError("invalid_parameter", f"Glas {glass!r}: erwartet {{'name': ...}}")
@@ -285,7 +314,7 @@ def _insert_meniscus(a, system_path, workdir):
         c0 = float(data["surfaces"][ref].get("curvature", 0.0))
     else:
         c0 = float(curv)
-    glass = _glass_arg(a["glass"])
+    glass = _glass_arg(a["glass"], system_path)
     c_list = [c0 - SADDLE_DELTA, c0 + SADDLE_DELTA] if a.get("saddle_branches") else [c0]
     out = []
     for c in c_list:
@@ -312,7 +341,7 @@ def _split_lens(a, system_path, workdir):
     target = a.get("target_glass")
     if (free_part == 0) and target is not None:
         raise ActionError("not_implemented", "target_glass nur mit free_part 1 (hinterer Teil)")
-    target_name = _glass_arg(target) if target is not None else None
+    target_name = _glass_arg(target, system_path) if target is not None else None
     cs = a.get("cement_curvature", "mean")
     report = {"element": k, "surface": e["front"]}
     if cs == "mean":

@@ -8,18 +8,48 @@ die Dateien des Repositorys nicht mitbringt.
 
 from __future__ import annotations
 
+from . import knowledge
 from .modules import MODULES
 
 _REASON = {"type": "string", "maxLength": 300}
 _SURFACE = {"type": "integer", "minimum": 0, "maximum": 63}
 _RANGE = {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}],
           "minItems": 2, "maxItems": 2}
-_GLASS = {"type": "object", "additionalProperties": False, "required": ["name"],
-          "properties": {"name": {"type": "string"}}}
+_OPEN_RANGE = {"type": "array", "prefixItems": [{"type": ["number", "null"]},
+                                                {"type": ["number", "null"]}],
+               "minItems": 2, "maxItems": 2}
+_GLASS_NAME = {"type": "object", "additionalProperties": False, "required": ["name"],
+               "properties": {"name": {"type": "string"}}}
+#: Glasregeln der Wissensbasis (M10-T5)
+RULE_IDS = sorted(knowledge.rules())
+#: Glasfilter (glass_query, Glasangaben mit filter; M10-T5)
+_GLASS_FILTER = {
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "rule": {"enum": RULE_IDS},
+        "rules": {"type": "array", "maxItems": 4, "items": {"enum": RULE_IDS}},
+        "partner_of_element": {"type": "integer", "minimum": 0},
+        "partner": {"type": "string"},
+        "nd": _OPEN_RANGE, "vd": _OPEN_RANGE, "pgf": _OPEN_RANGE, "dPgF": _OPEN_RANGE,
+        "transmission": {"type": "object", "additionalProperties": False,
+                         "required": ["nm", "min"],
+                         "properties": {"nm": {"type": "number", "minimum": 200, "maximum": 2500},
+                                        "min": {"type": "number", "minimum": 0, "maximum": 1},
+                                        "thickness_mm": {"type": "number",
+                                                         "exclusiveMinimum": 0}}},
+        "exclude": {"type": "array", "items": {"type": "string"}},
+        "max_results": {"type": "integer", "minimum": 1, "maximum": 8}}}
+#: Glasangabe: Katalogname oder Filter (erstes Glas der Glasabfrage)
+_GLASS = {"oneOf": [_GLASS_NAME, {"type": "object", "additionalProperties": False,
+                                  "required": ["filter"], "properties": {"filter": _GLASS_FILTER}}]}
 _GROUP = {"enum": ["front", "middle", "rear"]}
-#: Module für insert_module und replace_group (ohne die Einzellinse des Gerüsts)
-MODULE_IDS = sorted(k for k, m in MODULES.items() if m["template"] != "lens")
-SKELETON_MODULE_IDS = sorted(MODULES)
+#: Module für insert_module und replace_group (Vorlage umgesetzt)
+MODULE_IDS = sorted(k for k, m in MODULES.items() if m["insertable"])
+#: Module für start_from_skeleton (Vorlage als Linse bzw. Kittglied darstellbar)
+SKELETON_MODULE_IDS = sorted(k for k, m in MODULES.items() if m["skeleton"])
+#: Brechkraftverteilungen der Wissensbasis
+DISTRIBUTION_IDS = list(knowledge.distributions())
+_ABERRATION = {"enum": list(knowledge.ABERRATIONS)}
 _STAGES = {"type": "integer", "minimum": 0, "maximum": 16}
 _CYCLES = {"type": "integer", "minimum": 0, "maximum": 2000}
 
@@ -44,6 +74,19 @@ ACTION_DEFS = {
                        "element": {"type": "integer", "minimum": 0},
                        "top": {"type": "integer", "minimum": 1, "maximum": 50},
                        "reason": _REASON}},
+    "glass_query": {
+        "type": "object", "additionalProperties": False, "required": ["action", "filter"],
+        "properties": {"action": {"const": "glass_query"}, "filter": _GLASS_FILTER,
+                       "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                       "reason": _REASON}},
+    "module_lookup": {
+        "type": "object", "additionalProperties": False, "required": ["action"],
+        "properties": {"action": {"const": "module_lookup"}, "group": _GROUP,
+                       "corrects": {"type": "array", "items": _ABERRATION},
+                       "zone": {"type": "integer", "minimum": 1, "maximum": 6},
+                       "na": {"type": "number", "minimum": 0, "maximum": 1.6},
+                       "immersion": {"type": "boolean"},
+                       "insertable_only": {"type": "boolean"}, "reason": _REASON}},
     "sensitivity": {
         "type": "object", "additionalProperties": False, "required": ["action"],
         "properties": {"action": {"const": "sensitivity"},
@@ -120,6 +163,8 @@ ACTION_DEFS = {
                        "glasses": {"type": "array", "maxItems": 3, "items": _GLASS},
                        "group": _GROUP,
                        "thickness": {"type": "number", "exclusiveMinimum": 0, "maximum": 50},
+                       "incidence_deg": {"type": "number", "minimum": 20, "maximum": 70},
+                       "power": {"type": "number", "exclusiveMinimum": 0, "maximum": 5},
                        "stages": _STAGES, "cycles": _CYCLES, "reason": _REASON}},
     "remove_element": {
         "type": "object", "additionalProperties": False, "required": ["action", "element"],
@@ -130,15 +175,7 @@ ACTION_DEFS = {
         "type": "object", "additionalProperties": False, "required": ["action", "element", "glass"],
         "properties": {"action": {"const": "replace_glass"},
                        "element": {"type": "integer", "minimum": 0},
-                       "glass": {"oneOf": [_GLASS, {
-                           "type": "object", "additionalProperties": False, "required": ["filter"],
-                           "properties": {"filter": {
-                               "type": "object", "additionalProperties": False,
-                               "required": ["partner_of_element"],
-                               "properties": {
-                                   "partner_of_element": {"type": "integer", "minimum": 0},
-                                   "max_results": {"type": "integer", "minimum": 1,
-                                                   "maximum": 8}}}}}]},
+                       "glass": _GLASS,
                        "cycles": _CYCLES, "reason": _REASON}},
     "replace_group": {
         "type": "object", "additionalProperties": False, "required": ["action", "group", "modules"],
@@ -151,9 +188,7 @@ ACTION_DEFS = {
         "type": "object", "additionalProperties": False,
         "required": ["action", "power_distribution", "front", "middle", "rear"],
         "properties": {"action": {"const": "start_from_skeleton"},
-                       "power_distribution": {"enum": [
-                           "PPN", "PPN_strong_retrofocus", "PP(NP)", "P(PN)0", "P(P0)N",
-                           "(P0)PN", "P(P0P)N", "PNP"]},
+                       "power_distribution": {"enum": DISTRIBUTION_IDS},
                        "front": {"type": "array", "minItems": 1, "maxItems": 4,
                                  "items": {"enum": SKELETON_MODULE_IDS}},
                        "middle": {"type": "array", "minItems": 1, "maxItems": 5,
@@ -173,7 +208,18 @@ ACTION_DEFS = {
 
 #: Lese-Werkzeuge, die das Modell vor seiner Antwort aufrufen darf (Tool-Calls)
 TOOL_ACTIONS = ("get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
-                "sensitivity")
+                "sensitivity", "glass_query", "module_lookup")
+
+
+GLASS_QUERY_DESCRIPTION = (
+    "Gläser der geladenen Kataloge mit n_d, ν_d, P_g,F, ΔP_g,F nach Filter: Glasregeln der "
+    "Wissensbasis (rule/rules, Paarregeln mit partner oder partner_of_element), Bereiche nd, vd, "
+    "pgf, dPgF als [min, max] (null offen), Reintransmission; partner_of_element liefert die "
+    "achromatischen Partner dieses Elements aus der Glasvorauswahl")
+MODULE_LOOKUP_DESCRIPTION = (
+    "Linsenmodule der Wissensbasis nach Gruppe, korrigierbarer Aberration (corrects), "
+    "Etendue-Zone, NA und Immersion: Wirkungsvektor, Vorbedingungen, Vorlage (insertable = mit "
+    "insert_module einfügbar), Glasregel, Quelle")
 
 
 def response_schema() -> dict:
@@ -204,6 +250,8 @@ def tool_specs() -> list[dict]:
         "sensitivity": "Empfindlichkeit für Dezentrierung, Verkippung, Radius, Dicke, Brechzahl "
                        "(RMS-Zunahme bei ±δ, sortiert) und Herstellbarkeit (Randdicken, "
                        "Halbkugelgrad, Zentrierbarkeit)",
+        "glass_query": GLASS_QUERY_DESCRIPTION,
+        "module_lookup": MODULE_LOOKUP_DESCRIPTION,
     }
     out = []
     for name in TOOL_ACTIONS:

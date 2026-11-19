@@ -1033,3 +1033,15 @@ Pro Tupel (Feld f, Wellenlänge λ) mit Stützstellen k (ρ_k, φ_k, Gewicht W_k
 - **Strehl** S = |Σ_K W_k exp(2πi e_k/λ)|² / (Σ_alle W_k)² mit der Vakuumwellenlänge λ des Tupels. Versagte Strahlen sind undurchlässig (Normierung über alle Stützstellen), ohne gültigen Strahl ist RMS = NaN und S = 0. Das ist der Strehl im durch die Kippung verschobenen Bildpunkt wie `PsfResult::strehl` (Abschnitt „Beugung“), nur mit der Gauß-Quadratur statt des kartesischen Rasters.
 
 **Genauigkeit.** Die radiale Gauß-Regel mit N Ringen ist exakt für Polynome in u = ρ² bis Grad 2N − 1, die volle Regel mit M Speichen für cos/sin(mφ) bis m = M − 1. Der RMS ist damit exakt, solange e² in diesen Grenzen liegt (bei 10 × 8 z. B. Defokus, Koma, Astigmatismus und sphärische Aberration dritter und fünfter Ordnung); für den Strehl ist der Integrand e^{iφ(ρ, φ)} kein Polynom, der Fehler wächst mit der Phasenvariation. Prüfungen: Defokus A ρ² gegen RMS = A/√12 und S = sinc²(πA/λ) bis A = 1 λ (≤ 10⁻¹³); gestörte Systeme gegen die direkte Summe der PSF über das EVAL-Raster 256² mit der Standardquadratur 10 × 8: ≤ 1,7·10⁻³ bei Strehl 0,14 … 0,98 (Toleranz `kToleranceStrehlVsPsf`). Bei sehr großen Aberrationen (viele Wellen) mehr Ringe und Speichen wählen (`--rings`, `--spokes`); Maréchal S ≈ exp(−(2π·RMS/λ)²) gilt nur für kleine RMS.
+
+## 17. Glaskennzahlen für die Glasabfrage (M10-T5)
+
+`include/mikroptim/glass/glass_properties.hpp` (Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses --list` ([cli.md](cli.md#mikroptim-glasses)), Glasabfrage `glass_query` der Entwurfssteuerung ([entwurfssteuerung.md, Abschnitt 5.3](entwurfssteuerung.md#53-glasregeln-glass_rulesjson)).
+
+Brechzahlen relativ zu Luft aus dem Katalogmodell (Abschnitt „Glasdaten“ in dateiformat.md) an den Linien d = 587,5618 nm, F = 486,1327 nm, C = 656,2725 nm, g = 435,8343 nm:
+
+$$\nu_d = \frac{n_d - 1}{n_F - n_C},\qquad P_{g,F} = \frac{n_g - n_F}{n_F - n_C},\qquad \Delta P_{g,F} = P_{g,F} - (0{,}6438 - 0{,}001682\,\nu_d).$$
+
+Die Normalgerade P_g,F = 0,6438 − 0,001682 ν_d (durch die Normalgläser K7 und F2) folgt Schott, *Technical Information TIE-29*. Gläser, deren `range_nm` die Linien g bis C nicht abdeckt, fehlen in der Liste (`skipped`). Bereichsfilter sind geschlossen [min, max], eine fehlende Grenze ist offen.
+
+**Prüfungen** (`tests/test_glass_properties.cpp`): Polynomglas n² = a + b/λ² gegen die unabhängig ausgerechnete geschlossene Form (relativ ≤ 10⁻¹², `kGlassPropertiesFormula`); N-BK7 gegen das Datenblatt (ν_d 64,17, P_g,F 0,5349, ΔP_g,F −0,0009; Rundung des Datenblatts, `kGlassDatasheetAbbe`, `kGlassDatasheetPartial`); 400 zufällige Bereichsfilter auf den Testkatalogen (`synthetisch.json`, `basis.json`) gegen Bruteforce aus `Glass::index` (gleiche Listen).

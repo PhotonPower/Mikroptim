@@ -1,0 +1,70 @@
+{
+  "format": "mikroptim.design.knowledge/1",
+  "kind": "power_distributions",
+  "description": "Brechkraftverteilungen für start_from_skeleton (M10-T4/M10-T5, docs/entwurfssteuerung.md, Abschnitte 4.5 und 6), in eigenen Worten. Pro Gruppe ein Zeichen für alle Elemente der Gruppe oder eines pro Element, von der Objektseite aus: P positiv, N negativ, 0 ohne Brechkraft. Das Gerüst skaliert die Brechkräfte gemeinsam auf die Brennweite des Kandidaten (docs/optimierung.md, Abschnitt 13). Tracerichtung von der Blende (Hintergruppe) zum Objekt (Frontgruppe). Die Quelle belegt die Typbezeichnung; die Erläuterungen (notes) deuten das Vorzeichenmuster in eigenen Worten.",
+  "references": {
+    "Zhang 2019": "Y. Zhang, Systematic Design of Microscope Objectives, Dissertation, Friedrich-Schiller-Universität Jena, 2019",
+    "Kingslake & Johnson 2010": "R. Kingslake, R. B. Johnson, Lens Design Fundamentals, 2. Aufl., Academic Press/SPIE Press, 2010"
+  },
+  "sign_weights": {"P": 1.0, "N": -0.5, "0": 0.0},
+  "sign_weights_source": "Mikroptim-Annahme (M10-T4): relative Brechkraft der Zeichen im Gerüst; der LM ändert sie danach frei.",
+  "distributions": [
+    {
+      "id": "PPN",
+      "groups": {"front": "P", "middle": "P", "rear": "N"},
+      "notes": "Sammelnde Front- und Mittelgruppe, zerstreuende Hintergruppe an der Blende: in Tracerichtung eine Retrofokus-Anordnung, die den Arbeitsabstand gegenüber einer rein positiven Folge vergrößert und die Petzvalsumme senkt. Für 50×/0,95 trocken naheliegend.",
+      "source": "Zhang 2019, Tab. 6.2; Empfehlung für das Ziel: docs/entwurfssteuerung.md, Abschnitt 6"
+    },
+    {
+      "id": "PPN_strong_retrofocus",
+      "groups": {"front": "P", "middle": "P", "rear": "N"},
+      "weights": {"N": -1.0},
+      "notes": "Wie PPN mit stärker zerstreuender Hintergruppe: größerer Arbeitsabstand und kleinere Petzvalsumme, dafür größere Brechkräfte der übrigen Gruppen.",
+      "source": "Zhang 2019, Tab. 6.2",
+      "assumption": "Mikroptim-Annahme: Gewicht −1 statt −0,5 für N."
+    },
+    {
+      "id": "PP(NP)",
+      "groups": {"front": "P", "middle": "P", "rear": "NP"},
+      "notes": "Hintergruppe aus einem zerstreuenden und einem sammelnden Glied, von der Objektseite aus; ebnet das Feld, ohne die Gesamtbrechkraft stark zu ändern.",
+      "source": "Zhang 2019, Tab. 6.2"
+    },
+    {
+      "id": "P(PN)0",
+      "groups": {"front": "P", "middle": "PN", "rear": "0"},
+      "notes": "Mittelgruppe aus sammelndem und zerstreuendem Glied (Farb- und Sphärikkorrektur), Hintergruppe nahezu ohne Brechkraft. Für 50×/0,95 trocken naheliegend.",
+      "source": "Zhang 2019, Tab. 6.2; Empfehlung für das Ziel: docs/entwurfssteuerung.md, Abschnitt 6"
+    },
+    {
+      "id": "P(P0)N",
+      "groups": {"front": "P", "middle": "P0", "rear": "N"},
+      "notes": "Mittelgruppe mit einem brechkraftlosen Korrekturglied (z. B. Kittglied mit vergrabener oder Merte-Fläche), negative Hintergruppe.",
+      "source": "Zhang 2019, Tab. 6.2"
+    },
+    {
+      "id": "(P0)PN",
+      "groups": {"front": "P0", "middle": "P", "rear": "N"},
+      "notes": "Frontgruppe aus sammelndem Glied und brechkraftlosem Korrekturglied, sonst wie PPN.",
+      "source": "Zhang 2019, Tab. 6.2"
+    },
+    {
+      "id": "P(P0P)N",
+      "groups": {"front": "P", "middle": "P0P", "rear": "N"},
+      "notes": "Dreigliedrige Mittelgruppe mit brechkraftlosem Glied in der Mitte; für große Etendue mit vielen Korrekturfreiheitsgraden.",
+      "source": "Zhang 2019, Tab. 6.2"
+    },
+    {
+      "id": "PNP",
+      "groups": {"front": "P", "middle": "N", "rear": "P"},
+      "notes": "Zerstreuende Mitte zwischen sammelnden Gruppen (Triplet-artig); kleine Petzvalsumme bei kurzer Baulänge.",
+      "source": "Zhang 2019, Tab. 6.2 (Typbezeichnung wie in M10-T4)"
+    },
+    {
+      "id": "double_gauss",
+      "groups": {"front": "PN", "middle": "P", "rear": "NP"},
+      "notes": "Zwei gegeneinander gestellte Gauss-Hälften (außen sammelnd, innen zerstreuend) um eine sammelnde Mitte; die Quasisymmetrie hält Koma, Verzeichnung und Farbquerfehler klein.",
+      "source": "Prinzip des Doppel-Gauss-Objektivs: Kingslake & Johnson 2010 (symmetrische Objektive)",
+      "assumption": "Mikroptim-Annahme: Zuordnung der Hälften zu Front- und Hintergruppe und die sammelnde Mitte."
+    }
+  ]
+}

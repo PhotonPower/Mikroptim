@@ -46,6 +46,7 @@ add_executable(mikroptim_tests
     test_glass_catalog.cpp
     test_glass_hull.cpp
     test_glass_optimization.cpp
+    test_glass_properties.cpp
     test_glass_snap.cpp
     test_glass_variables.cpp
     test_homotopy.cpp

@@ -22,6 +22,7 @@ import urllib.request
 
 from .actions import ActionError, read_action, validate_response
 from .deciders import Decider, DecisionError
+from . import knowledge
 from .prompt import SYSTEM_PROMPT
 from .schema import TOOL_ACTIONS, response_schema, tool_specs
 
@@ -102,6 +103,7 @@ class OllamaDecider(Decider):
         return {"kind": self.kind, "model": self.model, "digest": self.digest(),
                 "think": self.think, "options": self.options,
                 "prompt_sha256": hashlib.sha256(self.system_prompt.encode("utf-8")).hexdigest(),
+                "knowledge_sha256": knowledge.digest(),
                 "trace": self.last_trace}
 
     def decide(self, state: dict, session) -> dict:

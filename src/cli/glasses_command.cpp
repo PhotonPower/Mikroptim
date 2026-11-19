@@ -2,6 +2,7 @@
 
 #include "mikroptim/glass/catalog.hpp"
 #include "mikroptim/glass/glass_preselection.hpp"
+#include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/version.hpp"
 
@@ -26,7 +27,9 @@ struct GlassesArgs {
     std::vector<std::string> fixed;
     bool help = false;
     bool json = false;
+    bool list = false; // Kennzahlen und Bereichsfilter (M10-T5) statt Vorauswahl
     GlassPreselectionOptions options;
+    GlassPropertyFilter filter;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -53,6 +56,24 @@ std::vector<double> parse_list(std::string_view option, std::string_view text) {
     return out;
 }
 
+// "min,max"; eine leere Seite ist offen (z. B. ",35" oder "1.6,")
+ValueRange parse_range(std::string_view option, std::string_view text) {
+    const std::size_t comma = text.find(',');
+    if (comma == std::string_view::npos || text.find(',', comma + 1) != std::string_view::npos) {
+        throw UsageError(std::string(option) + " erwartet min,max (eine Seite darf leer sein)");
+    }
+    ValueRange r;
+    const std::string_view lo = text.substr(0, comma);
+    const std::string_view hi = text.substr(comma + 1);
+    if (!lo.empty()) {
+        r.min = parse_double(option, lo);
+    }
+    if (!hi.empty()) {
+        r.max = parse_double(option, hi);
+    }
+    return r;
+}
+
 GlassesArgs parse_args(std::span<const std::string_view> args) {
     GlassesArgs a;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -61,6 +82,16 @@ GlassesArgs parse_args(std::span<const std::string_view> args) {
             a.help = true;
         } else if (arg == "--json") {
             a.json = true;
+        } else if (arg == "--list") {
+            a.list = true;
+        } else if (arg == "--nd") {
+            a.filter.n_d = parse_range(arg, next_value(args, i, arg));
+        } else if (arg == "--vd") {
+            a.filter.v_d = parse_range(arg, next_value(args, i, arg));
+        } else if (arg == "--pgf") {
+            a.filter.p_gF = parse_range(arg, next_value(args, i, arg));
+        } else if (arg == "--dpgf") {
+            a.filter.dp_gF = parse_range(arg, next_value(args, i, arg));
         } else if (arg == "--system") {
             a.system = std::string(next_value(args, i, arg));
         } else if (arg == "--order") {
@@ -90,7 +121,52 @@ GlassesArgs parse_args(std::span<const std::string_view> args) {
     if (!a.help && a.catalogs.empty() && a.system.empty()) {
         throw UsageError("Glaskatalog oder --system fehlt");
     }
+    const bool has_filter = a.filter.n_d || a.filter.v_d || a.filter.p_gF || a.filter.dp_gF;
+    if (has_filter && !a.list) {
+        throw UsageError("--nd, --vd, --pgf und --dpgf nur mit --list");
+    }
     return a;
+}
+
+void print_list(const GlassCatalog& cat, const GlassesArgs& a, std::ostream& out) {
+    std::vector<std::string> skipped;
+    const std::vector<GlassProperties> list = list_glass_properties(cat, a.filter, &skipped);
+    if (a.json) {
+        Json j;
+        j["format"] = "mikroptim.glasses/1";
+        j["version"] = std::string(kVersion);
+        j["mode"] = "list";
+        j["count"] = list.size();
+        j["skipped"] = skipped;
+        Json arr = Json::array();
+        for (const GlassProperties& p : list) {
+            arr.push_back(Json{{"name", p.name},
+                               {"n_d", p.n_d},
+                               {"n_F", p.n_F},
+                               {"n_C", p.n_C},
+                               {"n_g", p.n_g},
+                               {"v_d", p.v_d},
+                               {"p_gF", p.p_gF},
+                               {"dp_gF", p.dp_gF},
+                               {"range_nm", Json::array({p.range_nm[0], p.range_nm[1]})}});
+        }
+        j["list"] = arr;
+        out << j.dump(2) << '\n';
+        return;
+    }
+    out << "Glaskennzahlen: " << list.size() << " Gläser";
+    if (!skipped.empty()) {
+        out << ", " << skipped.size() << " ohne die Linien g bis C übersprungen";
+    }
+    // ν und Δ sind in UTF-8 zwei Bytes, pad_left zählt Bytes
+    out << '\n'
+        << pad_right("Glas", 16) << pad_left("n_d", 10) << pad_left("ν_d", 10)
+        << pad_left("P_g,F", 9) << pad_left("ΔP_g,F", 11) << '\n';
+    for (const GlassProperties& p : list) {
+        out << pad_right(p.name, 16) << pad_left(fixed(p.n_d, 5), 10)
+            << pad_left(fixed(p.v_d, 2), 9) << pad_left(fixed(p.p_gF, 4), 9)
+            << pad_left(fixed(p.dp_gF, 4), 10) << '\n';
+    }
 }
 
 } // namespace
@@ -99,6 +175,9 @@ void print_glasses_usage(std::ostream& out) {
     out << "Aufruf: mikroptim glasses <katalog.json>... [--system <system.json>] [--order 1|2]\n"
            "                          [--fixed GLAS]... [--weights w1,w2[,w3]] [--power P]\n"
            "                          [--max-power-sum S] [--top N] [--json]\n"
+           "       mikroptim glasses <katalog.json>... [--system <system.json>] --list\n"
+           "                          [--nd MIN,MAX] [--vd MIN,MAX] [--pgf MIN,MAX]\n"
+           "                          [--dpgf MIN,MAX] [--json]\n"
            "Algebraische Glasvorauswahl (M11-T5): Paare (Achromat, --order 1) bzw. Tripel\n"
            "(Apochromat, --order 2) dünner Elemente, deren gewichtete Brechkraft in den\n"
            "Buchdahl-Termen bis zur Ordnung k farbfrei ist; Rangfolge nach dem Rest der Ordnung\n"
@@ -111,7 +190,12 @@ void print_glasses_usage(std::ostream& out) {
            "  --power P            Gesamtbrechkraft φ [1/mm] (Standard 1: Anteile)\n"
            "  --max-power-sum S    verwerfen bei Σ|w φ|/|φ| > S (Standard 10)\n"
            "  --top N              höchstens N Ergebnisse (Standard 20)\n"
-           "  --json               Ausgabe im Format mikroptim.glasses/1\n"
+           "  --list               Kennzahlen n_d, ν_d, P_g,F, ΔP_g,F aller Gläser (M10-T5,\n"
+           "                       docs/numerik.md, Abschnitt 17) statt der Vorauswahl\n"
+           "  --nd, --vd, --pgf, --dpgf MIN,MAX\n"
+           "                       nur mit --list: geschlossener Bereich, eine Seite darf leer\n"
+           "                       sein (z. B. --vd ,35)\n"
+           "  --json             Ausgabe im Format mikroptim.glasses/1\n"
            "Exit-Code: 0 Erfolg, 1 Fehler beim Laden, 2 ungültige Kommandozeile.\n";
 }
 
@@ -141,6 +225,10 @@ int run_glasses_command(std::span<const std::string_view> args, std::ostream& ou
         GlassCatalog cat;
         for (const fs::path& f : files) {
             cat.merge(GlassCatalog::from_file(f));
+        }
+        if (a.list) {
+            print_list(cat, a, out);
+            return kExitOk;
         }
         std::vector<std::string> skipped;
         const std::vector<GlassDispersion> g = catalog_dispersions(cat, {}, &skipped);
