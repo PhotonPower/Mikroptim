@@ -322,6 +322,21 @@ def _split_lens(a, system_path, workdir):
     spec = f"{e['front']},{float(cs)!r}"
     if "fraction" in a:
         spec += f",{float(a['fraction'])!r}"
+    # Dickenvariable des Elements: untere Schranke höchstens die dünnere Hälfte, sonst lehnt
+    # insert das geteilte System ab (Startwert unter der Schranke; Befund M10-T7)
+    frac = float(a.get("fraction", 0.5))
+    part = data["surfaces"][e["front"]]["thickness"] * min(frac, 1.0 - frac)
+    relaxed = False
+    for it in (data.get("variables") or {}).get("items", []):
+        on_element = it.get("surface") == e["front"] or (
+            isinstance(it.get("surfaces"), list) and e["front"] in it["surfaces"])
+        if it.get("type") == "thickness" and on_element and it.get("min", 0.0) > part:
+            it["min"] = part
+            relaxed = True
+    if relaxed:
+        system_path = _tmp_out(workdir)
+        write_system(data, system_path)
+        report["relaxed_thickness_min"] = part
     target_file = _tmp_out(workdir)
     args = ["insert", system_path, "-o", target_file, "--split", spec]
     if free_part is not None or target_name is not None:
@@ -369,6 +384,10 @@ def _free_gaps(a, system_path, workdir):
         for g in data.get("ghost_plates", []):
             if g["after_surface"] == s:
                 lo = max(lo, g["distance"])
+        if lo > t:
+            # Spalt dünner als die Plattenlage (z. B. nach einem Einfügen): Startwert läge
+            # außerhalb der Schranken, synth/insert lehnten das System ab (Befund M10-T7)
+            continue
         items.append({"type": "thickness", "surface": s, "min": lo, "max": hi})
         added.append(s)
     if not added:

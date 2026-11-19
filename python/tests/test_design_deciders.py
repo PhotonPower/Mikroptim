@@ -42,6 +42,9 @@ class FakeOllama:
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 fake.requests.append(body)
+                if self.path == "/api/generate":  # Entladen (keep_alive 0)
+                    self._send({"model": body["model"], "done": True})
+                    return
                 self._send({"model": body["model"], "done": True, "message": fake.replies.pop(0)})
 
         self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
@@ -153,3 +156,114 @@ def test_embedded_schema_matches_repository():
         assert d["required"] == repo[name]["required"], name
         assert set(d["properties"]) <= set(repo[name]["properties"]), name
     assert {t["function"]["name"] for t in schema.tool_specs()} == set(schema.TOOL_ACTIONS)
+
+
+def test_rule_decider_opens_aperture(tmp_path):
+    """M10-T7: Liegt die aktuelle NA unter der Soll-NA, öffnet die Regel die Apertur mit
+    synth_segment; nach einem Abschnitt ohne Ziel folgen Spalte freigeben und optimieren."""
+    s = design.Session.create(SYSTEMS / "einzellinse_homotopie_start.json", tmp_path / "a",
+                              spec={"na": 0.6})
+    st = s.state(0)
+    assert st["homotopy_point"]["aperture"] == pytest.approx(0.3, rel=1e-3)
+    assert st["spec"]["na"] == 0.6
+    r = design.RuleDecider().decide(st, s)
+    assert r["actions"] == [{"action": "synth_segment", "target": {"aperture": 0.6},
+                             "max_new_elements": 4, "reason": "Soll-NA der Spezifikation"}]
+    # Kandidat nach einem synth_segment, der die Soll-NA nicht erreicht hat
+    s.meta["candidates"]["0"]["action"] = "synth_segment"
+    r = design.RuleDecider().decide(st, s)
+    assert [a["action"] for a in r["actions"]] == ["free_gaps", "optimize"]
+    # höchstens max_synth Abschnitte: danach die übrigen Regeln
+    s.meta["candidates"]["0"]["action"] = None
+    r = design.RuleDecider(max_synth=0).decide(st, s)
+    assert r["actions"][0]["action"] == "free_gaps"
+    # ein gescheiterter Abschnitt wird nicht wiederholt
+    failed = {**st, "last_errors": ["synth_segment: mikroptim synth: Fehler"]}
+    r = design.RuleDecider().decide(failed, s)
+    assert r["actions"][0]["action"] == "free_gaps"
+
+
+def test_split_lens_relaxes_thickness_bound(tmp_path):
+    """Befund M10-T7: Die Hälften einer Linse mit Dickenvariable (Schranke 0,4 mm) dürfen
+    dünner sein als die Schranke; vorher lehnte insert das geteilte System ab."""
+    data = json.loads((SYSTEMS / "zielspezifikation_start.json").read_text(encoding="utf-8"))
+    data["surfaces"][2]["thickness"] = 0.6  # Hälften 0,3 mm < 0,4 mm
+    from mikroptim.design.files import resolve_catalogs
+
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(resolve_catalogs(data, SYSTEMS)), encoding="utf-8")
+    s = design.Session.create(start, tmp_path / "s")
+    entry = s.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
+                        "actions": [{"action": "split_lens", "element": 0}]})
+    r = entry["results"][0]
+    assert r["status"] == "ok", r
+    assert r["reports"][0]["relaxed_thickness_min"] == pytest.approx(0.3)
+    # dieselbe Variable in der Listenform (so legt sie Operator B für beide Hälften an)
+    for it in data["variables"]["items"]:
+        if it.get("type") == "thickness" and it.get("surface") == 2:
+            del it["surface"]
+            it["surfaces"] = [2]
+    start.write_text(json.dumps(resolve_catalogs(data, SYSTEMS)), encoding="utf-8")
+    s2 = design.Session.create(start, tmp_path / "s2")
+    entry = s2.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
+                         "actions": [{"action": "split_lens", "element": 0}]})
+    assert entry["results"][0]["status"] == "ok", entry["results"][0]
+
+
+def test_free_gaps_skips_gap_thinner_than_plate(tmp_path):
+    """Befund M10-T7: Spalt dünner als die Lage seiner Geisterplatte bekommt keine Variable
+    (der Startwert läge unter der Schranke, synth lehnte das System ab)."""
+    data = json.loads((SYSTEMS / "einzellinse_homotopie_start.json").read_text(encoding="utf-8"))
+    data["surfaces"][2]["thickness"] = 0.3  # Platte nach Fläche 2 liegt bei 0,5 mm
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(data), encoding="utf-8")
+    s = design.Session.create(start, tmp_path / "s")
+    entry = s.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
+                        "actions": [{"action": "free_gaps"}]})
+    assert entry["results"][0]["status"] == "ok"
+    new = json.loads(s.system_path(entry["results"][0]["new_candidates"][0])
+                     .read_text(encoding="utf-8"))
+    gaps = [it["surface"] for it in new["variables"]["items"] if it["type"] == "thickness"]
+    assert 2 not in gaps and 0 in gaps
+
+
+def test_wrong_parameter_type_is_structured_error(session):
+    """M10-T7 (Befund mit gpt-oss:20b): Parameter falschen Typs brechen die Sitzung nicht ab."""
+    entry = session.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0,
+                              "assessment": "", "actions": [
+                                  {"action": "split_lens", "element": "achromat"}]})
+    r = entry["results"][0]
+    assert r["status"] == "error" and r["code"] == "invalid_parameter"
+
+
+def test_tool_call_with_wrong_type_returns_error(session):
+    """Befund mit gpt-oss:20b: glass_preselect mit element "achromat" bricht nicht ab, das
+    Modell bekommt die Fehlermeldung als Werkzeugergebnis."""
+    fake = FakeOllama([
+        {"role": "assistant", "content": "", "tool_calls": [{"function": {
+            "name": "glass_preselect", "arguments": {"element": "achromat"}}}]},
+        {"role": "assistant", "content": ""},
+        answer({"action": "free_gaps", "surfaces": [3]}),
+    ])
+    try:
+        entry = session.step(design.OllamaDecider("test:1b", host=fake.url), 0)
+    finally:
+        fake.close()
+    assert entry["results"][0]["status"] == "ok"
+    tool_msg = [m for m in fake.requests[1]["messages"] if m["role"] == "tool"][0]
+    assert "error" in json.loads(tool_msg["content"])
+
+
+def test_ollama_usage_and_unload(session):
+    """Tokenangaben von Ollama landen in der Spur; unload schickt keep_alive 0."""
+    fake = FakeOllama([{"role": "assistant", "content": ""},
+                       answer({"action": "free_gaps", "surfaces": [3]})])
+    try:
+        d = design.OllamaDecider("test:1b", host=fake.url, keep_alive="2m")
+        entry = session.step(d, 0)
+        d.unload()
+    finally:
+        fake.close()
+    assert len(entry["decider"]["trace"]["usage"]) == 2
+    assert fake.requests[0]["keep_alive"] == "2m"
+    assert fake.requests[-1] == {"model": "test:1b", "keep_alive": 0}

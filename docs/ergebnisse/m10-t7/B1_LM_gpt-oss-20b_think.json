@@ -1,0 +1,113 @@
+{
+  "seconds": 226.52105010000014,
+  "aborted": null,
+  "decisions": 5,
+  "actions": 14,
+  "rejected_actions": 2,
+  "rejected_share": 0.14285714285714285,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 72,
+  "lm_optimize": 2,
+  "candidates": 6,
+  "best_candidate": 5,
+  "best": {
+    "na": 0.6,
+    "rms_max_waves": 0.0062558805915202105,
+    "rms_eval_exit_pupil": 0.006293854068008758,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 10.000001630522362,
+    "goal": true
+  },
+  "usage": {
+    "prompt_tokens": 51725,
+    "output_tokens": 21651,
+    "thinking_chars": 79704,
+    "requests": 20,
+    "cache_read_tokens": 0,
+    "cost_usd": 0.0
+  },
+  "session": "B1_LM_gpt-oss-20b_think/",
+  "system": "B1_LM_gpt-oss-20b_think/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "snap_glasses",
+        "synth_segment",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "split_lens",
+        "synth_segment",
+        "optimize"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "synth_segment",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "ollama",
+      "actions": [
+        "synth_segment",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 5,
+      "decider": "ollama",
+      "actions": [
+        "finish"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "ollama",
+    "model": "gpt-oss:20b",
+    "digest": "f38aa0c53da5f8c49d08c43a99df24ff53167fe68e24664a7777288e7656fdfe",
+    "think": true,
+    "options": {
+      "temperature": 0.0,
+      "seed": 0,
+      "num_ctx": 32768
+    },
+    "prompt_sha256": "5f3329d9c76df653cf0ed6e14c42753b0e32441795429da0f14b0477303d14b7"
+  },
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LM_gpt-oss-20b_think",
+  "target_na": 0.6
+}

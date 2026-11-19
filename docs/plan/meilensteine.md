@@ -384,6 +384,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T7 – Bewertung
 - **Abhängig von:** M10-T6
+- **Stand:** Teilergebnis ([Bericht](../ergebnisse/m10-t7-bewertung.md), Skript `tools/m10t7_bewertung.py`): V0, V1, V3 und zwei Ollama-Modelle (qwen3:14b Instruktion, gpt-oss:20b Thinking) auf B1–B3 gerechnet, V2 aus M6-T6 übernommen. B1 erreichen V0, V1, V3 und gpt-oss (kleinster RMS: gpt-oss), B2/B3 (Aperturteil bei 10 % Feld) keine Variante (Controller bleibt bei NA 0,41–0,46 stehen, F3). **Ausstehend:** Claude-Läufe (keine Zugangsdaten in der Umgebung; Befehle im Bericht, Abschnitt 6), V4 (Mensch), B4 (private Systeme, Ort und Format offen). Werkzeugfehler E1–E5 behoben, E6–E8 offen.
 - **Inhalt:** Benchmarks B1–B3 (und lokal B4) gegen V0–V4, mehrere Ollama-Modelle (Instruktion und Thinking), insbesondere gegen die regelbasierte Strategie ohne Modell und gegen den Menschen mit denselben Werkzeugen.
 - **Abnahme:** Bericht unter `docs/ergebnisse/`.
 

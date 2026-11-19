@@ -8,7 +8,7 @@ Befehle::
     tree <dir>                                   Kandidatenbaum
     replay <dir> <neues_dir>                     Protokoll in einer neuen Sitzung abspielen
     run <dir> --decider rule|ollama|claude|human [--confirm] [--model M] [--host URL]
-        [--think|--no-think] [--effort E] [--max-usd X] [--cost-file F] [--no-fallbacks]
+        [--think|--no-think] [--keep-alive T] [--effort E] [--max-usd X] [--cost-file F] [--no-fallbacks]
         [--steps N] [-c N] [--fallback rule|human|none]   Folge von Entscheidungen
 """
 
@@ -53,6 +53,8 @@ def main(argv=None) -> int:
     ru.add_argument("--model", help="Ollama-Modell (z. B. qwen3:14b) bzw. Claude-Modell "
                     f"(Standard {DEFAULT_MODEL}; claude-sonnet-5-5, claude-haiku-5-5)")
     ru.add_argument("--host", default="http://localhost:11434")
+    ru.add_argument("--keep-alive", default="30m",
+                    help="Ollama: wie lange das Modell nach einer Anfrage geladen bleibt (z. B. 2m, 0)")
     th = ru.add_mutually_exclusive_group()
     th.add_argument("--think", dest="think", action="store_true", default=None)
     th.add_argument("--no-think", dest="think", action="store_false")
@@ -95,7 +97,8 @@ def main(argv=None) -> int:
                 if not a.model:
                     print("Fehler: --model fehlt", file=sys.stderr)
                     return 2
-                decider = OllamaDecider(a.model, host=a.host, think=a.think)
+                decider = OllamaDecider(a.model, host=a.host, think=a.think,
+                                        keep_alive=a.keep_alive)
             elif a.decider == "claude":
                 ledger = CostLedger(a.max_usd, a.cost_file or s.dir / "claude_cost.json")
                 decider = ClaudeDecider(a.model or DEFAULT_MODEL, effort=a.effort,

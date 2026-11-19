@@ -1,0 +1,45 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7/B1_LM_gpt-oss-20b_think/start.json",
+  "spec": {
+    "na": 0.6
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "All performance criteria satisfied; remaining budget unused."
+    }
+  },
+  "next_id": 6,
+  "decisions": 5
+}

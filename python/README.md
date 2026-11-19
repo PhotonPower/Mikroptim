@@ -161,5 +161,7 @@ python -m mikroptim.design run sitzung --decider claude --steps 10 --fallback ru
 python -m mikroptim.design run sitzung --decider claude --model claude-sonnet-5-5 --effort high --max-usd 5
 ```
 
+Bewertung der Entscheider (M10-T7): `tools/m10t7_bewertung.py`, Bericht [docs/ergebnisse/m10-t7-bewertung.md](../docs/ergebnisse/m10-t7-bewertung.md). Für geteilte GPUs: `run --keep-alive 2m` (Ollama) und `OllamaDecider.unload()` nach einer Messreihe.
+
 Ollama und Trace teilen sich auf herkules3 die RTX 6000 Ada (48 GB; Speicher für das Modell bei der Batchgröße berücksichtigen, `EngineOptions::memory_limit_bytes`). Läufe mit Modell sind über das Protokoll ohne Ollama wiederholbar (`replay`).
 

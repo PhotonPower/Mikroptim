@@ -158,6 +158,10 @@ class Session:
             return {"status": "error", **e.as_dict(name)}
         except ToolError as e:
             return {"status": "error", "action": name, "code": "tool_failed", "message": str(e)}
+        except (ValueError, TypeError, LookupError) as e:
+            # Parameter falschen Typs (z. B. Text statt Zahl), die kein Schema abgefangen hat
+            return {"status": "error", "action": name, "code": "invalid_parameter",
+                    "message": f"{type(e).__name__}: {e}"}
 
     def _control(self, current: int, a: dict) -> dict:
         name = a["action"]

@@ -1,0 +1,110 @@
+{
+  "seconds": 358.4009599000019,
+  "aborted": null,
+  "decisions": 4,
+  "actions": 16,
+  "rejected_actions": 3,
+  "rejected_share": 0.1875,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 41,
+  "lm_optimize": 3,
+  "candidates": 8,
+  "best_candidate": 4,
+  "best": {
+    "na": 0.44250000000000006,
+    "rms_max_waves": 0.07426049004825847,
+    "rms_eval_exit_pupil": 0.07467076041834135,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 10.00470432635021,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 137750,
+    "output_tokens": 2437,
+    "thinking_chars": 0,
+    "requests": 27,
+    "cache_read_tokens": 0,
+    "cost_usd": 0.0
+  },
+  "session": "B1_LM_qwen3-14b_nothink/",
+  "system": "B1_LM_qwen3-14b_nothink/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "insert_null_meniscus",
+        "optimize",
+        "free_gaps",
+        "snap_glasses"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "synth_segment",
+        "free_gaps",
+        "optimize",
+        "snap_glasses"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "ollama",
+      "actions": [
+        "split_lens",
+        "free_gaps",
+        "optimize",
+        "abandon"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 5,
+      "decider": "ollama",
+      "actions": [
+        "insert_null_meniscus",
+        "optimize",
+        "snap_glasses",
+        "free_gaps"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "ollama",
+    "model": "qwen3:14b",
+    "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+    "think": false,
+    "options": {
+      "temperature": 0.0,
+      "seed": 0,
+      "num_ctx": 32768
+    },
+    "prompt_sha256": "5f3329d9c76df653cf0ed6e14c42753b0e32441795429da0f14b0477303d14b7"
+  },
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LM_qwen3-14b_nothink",
+  "target_na": 0.6
+}
