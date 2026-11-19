@@ -1,8 +1,10 @@
-# M10-T7: Bewertung der Entwurfssteuerung
+# M10-T7: Bewertung der Entwurfssteuerung (mit M10-T7b)
 
 Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--bewertung), [entwurfssteuerung.md, Abschnitt 8](../entwurfssteuerung.md#8-bewertung)). Verglichen werden die Synthese ohne Entscheider (V0, V1), das M6-T6-Skript (V2), die regelbasierte Strategie ohne Modell (V3) und zwei lokale Sprachmodelle über Ollama auf denselben Werkzeugen (`mikroptim.design`). Läufe mit der Claude-API (M10-T6c) und mit einem Menschen (V4) stehen aus (Abschnitt 6).
 
-**Stand: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
+**Fortschreibung M10-T7b (Abschnitt 9):** Bewertung mit den Operatoren aus M10-T4 wiederholt (Stand `main` 9cc89a7 plus PR), Regel V3 mit Stufen bei Stillstand, Befunde E6–E8 behoben. Ergebnis: **B3 erreicht die Regel mit der Referenzsphäre nach ADR-0017 (V3RS): NA 0,85, RMS 0,060, 4 Elemente** – der erste Lauf, der B3 löst; mit alter Sphäre kommt V3 bis NA 0,833 (alt 0,448). **B2: V3RS bis NA 0,79** (alte Sphäre 0,41; Ziel 0,95). Entscheidende Schritte: Geisterplatten-Wörterbuch und Null-Meniskus mit Dicken-Homotopie an der Stelle größter Randstrahlhöhe. Kein lokales Modell ist besser als die Regel; gpt-oss:20b erreichte B1 nur auf dem Zwischenstand 8d3aa3c. Claude-Läufe weiter ausstehend (kein `ANTHROPIC_API_KEY`). Die Abschnitte 1–8 beschreiben den Stand von M10-T7 (717a8ff).
+
+**Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
 
 **Kurzfassung.**
 
@@ -107,7 +109,7 @@ Vorläufe mit beiden Modellen haben Fehler in `mikroptim.design` gezeigt. Sie si
 | E4 | `homotopy_point.aperture` im Zustand war die Soll-NA, nicht die aktuelle; Modell und Regel konnten nicht erkennen, wie weit die Apertur offen ist | aktuelle NA = Pupillenradius / Soll-Brennweite, `spec.na` bleibt die Soll-NA; System-Prompt nennt `synth_segment` zum Öffnen der Apertur |
 | E5 | Die Regel wiederholte einen gescheiterten `synth_segment` bis zum Budgetende | ein gescheiterter Abschnitt wird nicht wiederholt |
 
-**Offen (nicht in dieser Aufgabe):**
+**In M10-T7 offen, mit M10-T7b behoben (Abschnitt 9.1):**
 
 - **E6:** Nach Einfügungen durch `synth` (Operator A in einem Plattenspalt) liegen Startwerte von Dickenvariablen gelegentlich unter ihren Schranken (`variables.items[…].min: Startwert 0 … liegt unter der unteren Schranke 0,125`); der nächste Aufruf von `synth` oder `insert` lehnt das System ab (B3 V3, qwen3 B2). Ursache im C++-Einfügen bzw. in der Fortschreibung der Variablen; Vorschlag: Schranken beim Einfügen anpassen oder beim Laden auf den Startwert klemmen (mit Warnung).
 - **E7:** `snap_glasses` ohne Glasvariablen und Glasnamen, die nicht im Katalog stehen, kosten die Modelle viele Entscheidungen. Eine Vorprüfung im Zustand („einrastbar: nein“, Liste der Katalognamen) würde helfen.
@@ -161,4 +163,150 @@ python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:
 python tools/m10t7_bewertung.py --neu-bewerten --archiv --tabelle
 ```
 
-Vorhandene Ergebnisse werden übersprungen; zum Neurechnen die Datei `docs/ergebnisse/m10-t7/<B>_<Variante>.json` löschen. Das Arbeitsverzeichnis (`--work`, Standard `docs/ergebnisse/m10-t7-arbeit`) gehört nicht ins Repository.
+Seit M10-T7b schreibt das Skript standardmäßig nach `docs/ergebnisse/m10-t7b` (Abschnitt 9.5); für den Stand von M10-T7 `--out docs/ergebnisse/m10-t7`. Vorhandene Ergebnisse werden übersprungen; zum Neurechnen die Datei `<out>/<B>_<Variante>.json` löschen. Das Arbeitsverzeichnis (`--work`, Standard `docs/ergebnisse/m10-t7-arbeit`) gehört nicht ins Repository.
+
+## 9. M10-T7b: Wiederholung mit den Operatoren aus M10-T4
+
+Aufgabe M10-T7b: Bewertung mit den neuen Operatoren (M10-T4: `insert_module`, `place_ghost_dictionary`, `remove_element`, `replace_glass`, `replace_group`, `start_from_skeleton`) wiederholen, die offenen Befunde E6–E8 beheben und die Regel V3 so erweitern, dass sie die Operatoren nutzt, wenn die Homotopie stehen bleibt. **Code-Stand aller Zahlen dieses Abschnitts:** `main` 9cc89a7 (nach M10-T5 Wissensbasis, M11-T6/T6b/T7, den Folgeentscheidungen #97, M6-T7/ADR-0017 und M11-T5g) plus die Änderungen dieses PRs, außer wo ausdrücklich der Zwischenstand 8d3aa3c genannt ist (nach dem letzten Rebase auf 9da0d30 geprüft: B1 mit V0, V3 und V3RS unverändert); Ergebnisse, Protokolle und beste Systeme unter [`m10-t7b/`](m10-t7b/). Die Zahlen der Abschnitte 1–8 bleiben der Stand 717a8ff (M10-T7) und dienen als „alt“.
+
+### 9.1 Änderungen
+
+**Regel V3 (`RuleDecider`, [entwurfssteuerung.md, Abschnitt 2.1](../entwurfssteuerung.md#21-entscheider)).** Bleibt ein `synth_segment` unter der Soll-NA stehen (in allen Läufen `step_too_small`) oder scheitert er, folgt je einmal die nächste Stufe, danach ein neuer Abschnitt (höchstens 5):
+
+1. `free_gaps` + `optimize` (wie bisher),
+2. aplanatische Schale `front.shell_ca` im Arbeitsabstand aus dem Katalogglas mit dem größten n₀ (`mikroptim glasses`); Dicke so, dass der nachfokussierte Arbeitsabstand (w − p)/n′ − t ≈ 1,05 w_min bleibt, sonst übersprungen; dann `free_gaps` + `optimize`,
+3. Geisterplatten-Wörterbuch (hochbrechendes Glas und die Katalognamen der vorhandenen Platten) in der Mitte des Luftspalts mit der größten Randstrahlhöhe, sofort gefolgt vom Abschnitt (F3: Bedarf sichtbar machen),
+4. Null-Meniskus `generic.null_meniscus` im selben Spalt mit Dicken-Homotopie (4 Stufen à 50 Zyklen, Dicke höchstens so groß, dass der Luftspalt dahinter über seiner Schranke bleibt), dann `free_gaps` + `optimize`,
+5. danach `free_gaps` + `optimize` und weitere Abschnitte, solange der letzte die NA um ≥ 0,01 geöffnet hat.
+
+Keine Linsendaten realer Objektive: alle Geometrien entstehen aus den Vorlagen und den Strahldaten des Kandidaten. Variante **V3AL** ist dieselbe Regel mit `augmented_lagrangian: 5` und `sine_condition: 13,1` (Gewicht wie im Versuch M11-T4) in jedem Abschnitt (`synth_segment` kennt beide Parameter jetzt).
+
+**Befunde E6–E8 (Abschnitt 5) behoben:**
+
+| Nr. | Ursache | Behebung | Test |
+|---|---|---|---|
+| E6 | Operator A in `synth` setzt den Meniskus an die Lage der aktiven Geisterplatte. Eine frühere Dicken-Homotopie hatte Platten ans Spaltende geschoben; beide Teilstücke erben die Dickenvariable des Spalts, das Teilstück der Dicke 0 lag unter deren Schranke, `insert_meniscus` warf `FormatError` (kein `invalid_argument`), `synth` brach ab | `meniscus_from_diagnosis` rückt die Lage auf [b, T − t − b] in den Spalt (bei Dicke 0 merit-neutral); passt der Spalt nicht, `std::invalid_argument` und der Controller endet geordnet | `InsertionInit.MeniscusFromDiagnosisKeepsGapBounds` (C++); B3 V3: der zweite Abschnitt, der in M10-T7 an E6 scheiterte, läuft jetzt (NA 0,4475 → 0,5025) |
+| E7 | Modelle riefen `snap_glasses` ohne Glasvariablen und erfundene Glasnamen auf | Zustand `glass_check` (`snappable`, `glass_variables`, `model_glass_elements`, Katalognamen); `snap_glasses` ohne Glasvariablen → `precondition`; Glasnamen außerhalb der Kataloge → `unknown_glass` vor jedem Aufruf | `test_state_glass_check_and_snap_precondition`, `test_unknown_glass_name_is_rejected`, `test_catalog_names_json_and_agf` |
+| E8 | Zustand nannte bei monochromatischen Benchmarks die Ziel-Farbklasse c | `spec.monochromatic`; bei einer Wellenlänge ist `target_color_class` `null`, die Farbregel von V3 greift nicht | `test_state_monochromatic_has_no_target_color_class` |
+
+**Weitere Befunde der Läufe (behoben, mit Tests):**
+
+| Nr. | Befund | Behebung |
+|---|---|---|
+| E9 | Nach `optimize` mit freier Glasvariable (qwen3, B1) lag eine Brechzahl ≤ 0 vor; der Zustand des neuen Kandidaten ließ sich nicht bilden, die Sitzung brach ab | neue Kandidaten werden vor der Aufnahme ausgewertet (Trace und Aberrationsbericht), sonst Fehler `invalid_result` (`test_unevaluable_result_is_rejected`) |
+| E10 | `insert_module` mit Dicke: die Nachoptimierung der vorigen Stufe schob den Luftspalt dahinter an seine Schranke, die nächste Stufe unterschritt sie, `optimize` lehnte ab (V3 B3) | der Luftspalt bleibt auf der Schranke, die folgenden Scheitel rücken (`test_thickness_homotopy_keeps_gap_bound`) |
+| E11 | Die Regel wiederholte eine scheiternde Stufe bis zum Budgetende | jede Stufe nur einmal, auch wenn sie scheitert |
+| E12 | Ollama antwortete gelegentlich mit HTTP 500 (Modell lädt nicht, solange andere Agenten die RTX 3090 belegen); der Lauf brach ab | `OllamaDecider` wiederholt Serverfehler dreimal nach 20 s (`test_ollama_retries_server_error`); das Skript schreibt bei HTTP-Fehlern kein Ergebnis |
+| E13 | Nach `replace_group` (gpt-oss, B1) war der Bildraum afokal (u′ = 0); die Feldklasse teilte durch u′², der Zustand brach mit `ZeroDivisionError` ab und mit ihm die Sitzung | keine Bildschale bei u′ = 0 (Feldklasse 1); die Prüfung neuer Kandidaten (E9) bildet jetzt den Zustand ohne Merit und Empfindlichkeiten und meldet jeden Fehler als `invalid_result` (`test_afocal_image_space_has_no_field_shift`); der Lauf wurde danach wiederholt (die ersten elf Antworten des Modells gleich, Temperatur 0, Seed 0) |
+| – | Hinweis im Zustand „replace_glass mit einem Katalognamen“ (erste Fassung von `glass_check`) | qwen3 tauschte daraufhin nur noch Gläser (Vorlauf, verworfen); `glass_check.reason` nennt jetzt nur den Befund |
+
+Neu als Werkzeuge (im Teilumfang, für die Regel und die Modelle): `set_bounds` (`wd`, `t[i]`; Startwert wird geklemmt) und `set_constraint` (`weight`, `enabled: false`, `paraxial_focus` neu anlegen).
+
+### 9.2 Ergebnisse alt gegen neu
+
+Bewertung wie in Abschnitt 2 (reales System ohne Geisterplatten, `trace` 10 × 8 in der Konvention der Datei; „RMS AP“ = `eval --grid 64` durch die Austrittspupille, in allen Varianten gleich und damit die vergleichbare Spalte). **Neue Varianten V0RS und V3RS** (Abschnitt 9.3): wie V0 bzw. V3, Start mit `reference_sphere: image_infinite` (ADR-0017, M6-T7). Zeiten auf dem geteilten Rechner (bis zu zehn Läufe und andere Agenten gleichzeitig), nur Orientierung.
+
+| Bench. | Variante | Ziel alt | NA alt | RMS alt | Elem. alt | Zeit alt [s] | Ziel neu | NA neu | RMS neu | RMS AP neu | Elem. neu | Zeit neu [s] |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | V0 | **ja** | 0,600 | 0,0163 | 4 | 15 | **ja** | 0,600 | 0,0163 | 0,0165 | 4 | 15 |
+| B1 | V1 | **ja** | 0,600 | 0,0354 | 3 | 35 | **ja** | 0,600 | 0,0354 | 0,0354 | 3 | 34 |
+| B1 | V3 | **ja** | 0,600 | 0,0163 | 4 | 15 | **ja** | 0,600 | 0,0163 | 0,0165 | 4 | 16 |
+| B1 | V3AL | – | – | – | – | – | **ja** | 0,600 | 0,0111 | 0,0115 | 5 | 23 |
+| B1 | V0RS | – | – | – | – | – | **ja** | 0,600 | 0,0154 | 0,0156 | 4 | 16 |
+| B1 | V3RS | – | – | – | – | – | **ja** | 0,600 | 0,0154 | 0,0156 | 4 | 16 |
+| B1 | qwen3:14b | nein | 0,443 | 0,0743 | 4 | 358 | nein | 0,300 | 22,1581 | 21,2078 | 1 | 763 |
+| B1 | gpt-oss:20b | **ja** | 0,600 | 0,0063 | 4 | 227 | nein | 0,443 | 0,0761 | 0,0765 | 3 | 1470 |
+| B2 | V0 | nein | 0,405 | 0,0845 | 3 | 486 | nein | 0,405 | 0,0845 | 0,1062 | 3 | 415 |
+| B2 | V1 | nein | 0,413 | 0,0890 | 3 | 876 | nein | 0,413 | 0,0890 | 0,1141 | 3 | 769 |
+| B2 | V2 | nein | 0,94 (Merit) | 21 (real) | 4 | 390 (GPU) | – | – | – | – | – | – |
+| B2 | V3 | nein | 0,413 | 0,0822 | 3 | 646 | nein | 0,413 | 0,0818 | 0,0988 | 4 | 754 |
+| B2 | V3AL | – | – | – | – | – | nein | 0,410 | 0,0759 | 0,0843 | 4 | 784 |
+| B2 | V0RS | – | – | – | – | – | nein | 0,453 | 0,0797 | 0,0802 | 4 | 621 |
+| B2 | V3RS | – | – | – | – | – | nein | 0,790 | 0,0907 | 0,0913 | 4 | 1239 |
+| B2 | qwen3:14b | nein | 0,300 | 0,5340 | 8 | 757 | nein | 0,300 | 1,7930 | 2,0921 | 1 | 68 |
+| B2 | gpt-oss:20b | nein | 0,405 | 0,0845 | 3 | 1184 | nein | 0,530 | 0,0920 | 39,4328 | 5 | 33390 |
+| B3 | V0 | nein | 0,448 | 0,0747 | 3 | 500 | nein | 0,448 | 0,0747 | 0,0779 | 3 | 500 |
+| B3 | V1 | nein | 0,448 | 0,0747 | 3 | 827 | nein | 0,448 | 0,0747 | 0,0779 | 3 | 805 |
+| B3 | V3 | nein | 0,448 | 0,0747 | 3 | 601 | nein | 0,833 | 0,0984 | 0,1027 | 4 | 1135 |
+| B3 | V3AL | – | – | – | – | – | nein | 0,525 | 0,0791 | 0,0837 | 6 | 1382 |
+| B3 | V0RS | – | – | – | – | – | nein | 0,375 | 0,0799 | 0,0806 | 3 | 482 |
+| B3 | V3RS | – | – | – | – | – | **ja** | 0,850 | 0,0595 | 0,0603 | 4 | 1062 |
+| B3 | qwen3:14b | nein | 0,340 | 0,1142 | 3 | 392 | nein | 0,300 | 2,2413 | 2,6151 | 1 | 288 |
+| B3 | gpt-oss:20b | nein | 0,455 | 0,1074 | 5 | 1331 | nein | 0,300 | 2,2413 | 2,6151 | 1 | 716 |
+
+Weitere Kennzahlen der neuen Läufe (vollständige Tabelle: `python tools/m10t7_bewertung.py --tabelle`):
+
+| Bench. | Variante | LM-Läufe | Entscheidungen | Aktionen abgelehnt | Tokens Prompt / Ausgabe | Denktext [Zeichen] |
+|---|---|---|---|---|---|---|
+| B1 | V0 | 63 | – | – | – | – |
+| B1 | V1 | 121 | – | – | – | – |
+| B1 | V3 | 63 | 2 | 0 % | – | – |
+| B1 | V3AL | 73 | 6 | 0 % | – | – |
+| B1 | V0RS | 63 | – | – | – | – |
+| B1 | V3RS | 63 | 2 | 0 % | – | – |
+| B1 | qwen3:14b | 0 | 12 | 24 % | 525222 / 7994 | – |
+| B1 | gpt-oss:20b | 62 | 12 | 21 % | 133616 / 59537 | 224484 |
+| B2 | V0 | 44 | – | – | – | – |
+| B2 | V1 | 139 | – | – | – | – |
+| B2 | V3 | 69 | 7 | 0 % | – | – |
+| B2 | V3AL | 78 | 7 | 0 % | – | – |
+| B2 | V0RS | 67 | – | – | – | – |
+| B2 | V3RS | 138 | 11 | 0 % | – | – |
+| B2 | qwen3:14b | 0 | 2 | 20 % | 46704 / 754 | – |
+| B2 | gpt-oss:20b | 76 | 12 | 30 % | 178204 / 138708 | 553376 |
+| B3 | V0 | 47 | – | – | – | – |
+| B3 | V1 | 143 | – | – | – | – |
+| B3 | V3 | 98 | 9 | 0 % | – | – |
+| B3 | V3AL | 128 | 11 | 0 % | – | – |
+| B3 | V0RS | 42 | – | – | – | – |
+| B3 | V3RS | 103 | 5 | 0 % | – | – |
+| B3 | qwen3:14b | 0 | 4 | 27 % | 199838 / 3060 | – |
+| B3 | gpt-oss:20b | 0 | 6 | 25 % | 81412 / 91496 | 376630 |
+
+**gpt-oss:20b auf B3** brach zweimal bei der 7. Entscheidung mit HTTP 500 von Ollama ab, auch nach drei Wiederholungen (E12); die Zeile ist das Teilergebnis der ersten sechs Entscheidungen (in dieser Zeit 377.000 Zeichen Denktext – vermutlich überschritt der Verlauf den Kontext von 32.768 Tokens). gpt-oss auf B2 brauchte 9,3 h (lange Denkphasen bei voller GPU), die anderen Läufe 0,1–0,7 h.
+
+**Modelle auf dem Zwischenstand 8d3aa3c** (nach M10-T5, vor den Folgeentscheidungen des Maintainers #97 und M6-T7; gleiche Regel und Werkzeuge dieses PRs, archiviert nicht im Repository). Die Prompts unterscheiden sich vom Endstand im Zustand (Gruppen aus #97), die Modelle entschieden deshalb anders:
+
+| Bench. | Modell | Ziel | NA | RMS | RMS AP | Elemente | Zeit [s] | Tokens Prompt / Ausgabe |
+|---|---|---|---|---|---|---|---|---|
+| B1 | qwen3:14b | nein | 0,300 | 2,5602 | 2,8624 | 1 | 378 | 297345 / 5602 |
+| B1 | gpt-oss:20b | **ja** | 0,600 | 0,0061 | 0,0062 | 4 | 2496 | 152512 / 69964 |
+| B2 | qwen3:14b | nein | 0,300 | 0,9004 | 1,0477 | 1 | 376 | 365435 / 5687 |
+| B2 | gpt-oss:20b | nein | 0,413 | 0,0822 | 0,0998 | 3 | 1790 | 193093 / 82016 |
+| B3 | qwen3:14b | nein | 0,300 | 1,0423 | 1,1357 | 1 | 379 | 490324 / 9152 |
+| B3 | gpt-oss:20b | nein | 0,448 | 0,0747 | 0,0779 | 3 | 1827 | 169382 / 46945 |
+
+**Kosten:** keine. `ANTHROPIC_API_KEY` ist in der Umgebung nicht gesetzt (nur auf Existenz geprüft); die Claude-Läufe bleiben ausstehend (Abschnitt 6, Budget unverändert höchstens 20 US-$).
+
+### 9.3 Beobachtungen
+
+**B3 (40x/0,85) wird erreicht – mit Regel und neuer Referenzsphäre.** V3RS erreicht das Ziel: NA **0,850**, RMS **0,060** Wellen (AP 0,060), **4 Elemente**, 5 Entscheidungen. Verlauf: 0,375 → 0,39 (Spaltfreigabe) → **0,85** im Abschnitt nach dem Geisterplatten-Wörterbuch im Spalt größter Randstrahlhöhe (der Controller sieht dort Bedarf und fügt Elemente ein). Ohne Regel (V0RS) bleibt der Controller mit der neuen Sphäre bei 0,375 stehen, ehrlicher als V0 (0,448 mit alter Sphäre, siehe M6-T7: der Zweig „Apertur zuerst“ bei 10 % Feld endet dort ebenfalls bei 0,47). Mit der alten Sphäre kommt V3 bis NA 0,833 (4 Elemente, RMS 0,098; alt 0,448): 0,4475 → 0,5025 (Spalte; dieser Abschnitt scheiterte in M10-T7 an E6) → 0,5475 (Wörterbuch) → **0,8125** (Null-Meniskus mit Dicken-Homotopie im Spalt größter Randstrahlhöhe) → 0,8325 (Wiederholung), dann ist das Budget von 5 Abschnitten erschöpft.
+
+**B2 (50x/0,95): von 0,41 auf 0,79.** Mit alter Sphäre bewegen die Stufen die NA kaum (V3: 0,405 → 0,41 → 0,4125 → 0,4125). Die Schale ist dort nie anwendbar: Am Stillstand liegt der Arbeitsabstand auf seiner unteren Schranke (0,15 mm), die Schale verkürzt ihn etwa auf (w − p)/n′ − t. Platz dafür zu schaffen (Schranke des Arbeitsabstands auf 1,1 mm heben und optimieren; Vorlauf mit `set_bounds`/`set_constraint`) scheiterte an der **Falle F12**: Der LM legte den Fokus in den Scheitel der Hilfsebene (Merit-RMS 0,12, durch die Austrittspupille 12 Wellen, mit `paraxial_focus` bis Gewicht 10⁴ unverändert); deshalb ist dieser Weg nicht Teil der Regel. **Mit der neuen Sphäre (V3RS)** öffnet das Wörterbuch die Apertur von 0,465 auf **0,765**, der Null-Meniskus auf **0,79** (4 Elemente, RMS 0,091, AP 0,091); danach lehnt der Controller den Start ab. Das Ziel 0,95 bleibt fern; die Schale ist auch hier nicht anwendbar.
+
+**V3AL** (Augmented Lagrangian + Sinusbedingung, alte Sphäre) hilft der Apertur nicht: B2 0,41 (wie V3, RMS 0,076 statt 0,082), B3 0,525 mit 6 Elementen (die Schale passt dort, weil der Arbeitsabstand nach der Spaltfreigabe noch 0,65 mm ist, bringt aber nur 0,495 → 0,52; Wörterbuch und Null-Meniskus danach je < 0,01). Auf B1 ändert sie den Weg (zweimal `step_too_small`, dann Schale, dann Ziel) und liefert RMS 0,011 statt 0,016 mit einem Element mehr. Fazit: AL und Sinusbedingung verbessern den RMS bei gleicher NA, kosten aber die Freiheit, die der Null-Meniskus-Schritt auf B3 brauchte.
+
+**Einordnung F11/F12.** Die Läufe bestätigen den Befund aus M11-T4: Mit der an die letzte Fläche gebundenen Referenzsphäre ist der Engpass bei hoher NA nicht die Entscheidung, sondern die Falle F12. Die Konventionsänderung hat der Maintainer inzwischen getroffen (ADR-0017, M6-T7, angenommen 2026-11-19); dieser PR ändert keine Konvention, sondern nutzt das neue Dateifeld in den Varianten …RS. Die Benchmark-Starts selbst bleiben ohne Feld (alte Konvention, vergleichbar mit M10-T7); **Empfehlung:** die Bewertung künftig mit `image_infinite` führen (V3RS als neue Referenz der Regel).
+
+**Modelle.** Auf dem Endstand ist kein Modell besser als die Regel. qwen3:14b (ohne Thinking) fügt Kittglieder ohne Glas ein (`glasses fehlt`, B1: 11 Fehler) und verwirft auf B2 und B3 nach zwei bzw. vier Entscheidungen den Startkandidaten (`abandon`); NA 0,30 überall. gpt-oss:20b (Thinking) verfehlt B1 diesmal (NA 0,4425, 3 Elemente; auf dem Zwischenstand 8d3aa3c erreichte es B1 mit dem besten System aller Varianten, RMS 0,0061): Es teilt Linsen, tauscht Gläser und versucht Module – 21 % der Aktionen abgelehnt, meist die Schale ohne Glas oder Module an Stellen ohne Luftspalt. Auf B2 erreicht es NA 0,53 mit 5 Elementen, aber nur in der Falle F12 (Merit-RMS 0,092, durch die Austrittspupille 39 Wellen) – die alte Sphäre täuscht auch die Bewertung von Modellen. Der Null-Meniskus mit Dicke und das Wörterbuch an der Stelle großer Randstrahlhöhe, die der Regel B3 öffnen, wählt keines der Modelle gezielt.
+
+**Werkzeugfehler, die die Modelle trafen,** sind jetzt strukturierte Fehler (`unknown_glass`, `snap_glasses` ohne Glasvariablen, `invalid_result`). Offen und für Folgeaufgaben notiert: Die Vorgabedicke der Schale in `insert_module` (30 % des Spalts) verletzt fast immer die Schranke des Arbeitsabstands; `insert_module` ohne `glasses` (häufigster Fehler beider Modelle, 3–11 pro Lauf) könnte das hochbrechendste Katalogglas bzw. eine Glasregel der Wissensbasis wählen.
+
+### 9.4 Folgerungen
+
+1. **Die neuen Operatoren lösen den Stillstand:** Mit der alten Sphäre öffnet der Null-Meniskus mit Dicken-Homotopie B3 von 0,55 auf 0,81 (V3: 0,833); mit der Sphäre nach ADR-0017 öffnet das Wörterbuch B3 bis zum **Ziel (4 Elemente)** und B2 bis 0,79. Für B2 fehlen weiterhin Schritte jenseits von NA 0,8 (Kandidaten: zweiter Null-Meniskus, Schale nach einem Umbau der Frontgruppe, Wiederholung bei größerem Budget).
+2. **V3 gegen Modell:** Die Regel ist auf B2 und B3 klar besser als beide lokalen Modelle; gpt-oss war nur auf dem Zwischenstand bei B1 besser. Nach ADR-0012, Punkt 10, rechtfertigen die Ergebnisse keinen Ausbau der Anbindung lokaler Modelle; die Bewertung mit Claude steht aus.
+3. **Augmented Lagrangian + Sinusbedingung** (V3AL) helfen der Apertur nicht, verbessern aber den RMS bei gleicher NA (B1, B2).
+4. **Nächste Schritte:** Benchmarks auf `image_infinite` umstellen; Claude-Läufe (Abschnitt 6) auf dem Stand dieses PRs; Vorgabeglas und -dicke in `insert_module`; Kontextgrenze von gpt-oss (B3) prüfen.
+
+### 9.5 Reproduktion
+
+```bash
+python tools/m10t7_bewertung.py --varianten V0,V1,V3,V3AL,V0RS,V3RS             # --out Standard docs/ergebnisse/m10-t7b
+python tools/m10t7_bewertung.py --varianten LM --decider ollama --model qwen3:14b --no-think
+python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:20b --think
+python tools/m10t7_bewertung.py --archiv --tabelle
+python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7                # alt gegen neu
+```
+
+Jede Sitzung lässt sich ohne Modell wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7b/<B>_<Variante> <ziel>`; geprüft an B1 V3AL: bestes System bitgleich).

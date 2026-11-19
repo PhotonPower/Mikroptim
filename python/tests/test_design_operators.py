@@ -155,6 +155,19 @@ def test_group_field_overrides_automatic_groups(session):
     assert lo <= surface <= hi
 
 
+def test_thickness_homotopy_keeps_gap_bound(session):
+    """M10-T7b: Wächst ein Modul dicker, als der Luftspalt dahinter über seiner Schranke Platz
+    hat, bleibt der Spalt auf der Schranke und die folgenden Scheitel rücken (vorher lehnte
+    optimize das System ab)."""
+    c = with_variables(session)  # Spalt 5: 2 mm, untere Schranke 0,1 mm
+    [res] = apply_ok(session, c, {"action": "insert_module", "module": "generic.null_meniscus",
+                                  "after_surface": 5, "position": 1.0, "thickness": 0.95,
+                                  "glasses": [{"name": "N-BK7"}], "stages": 1, "cycles": 0})
+    data = load(session, res["new_candidates"][0])
+    assert data["surfaces"][6]["thickness"] == 0.95
+    assert data["surfaces"][7]["thickness"] == 0.1
+
+
 @pytest.mark.parametrize("mod,glasses,added", [
     ("generic.null_meniscus", [{"name": "N-BK7"}], 2),
     ("middle.merte_doublet", [{"name": "N-BK7"}, {"name": "CAF2"}], 3),
@@ -250,7 +263,7 @@ def test_replace_glass(session):
     assert bad["results"][0]["code"] == "missing_parameter"
     unknown = session.apply(0, response({"action": "replace_glass", "element": 2,
                                          "glass": {"name": "GIBTESNICHT"}}), decider={})
-    assert unknown["results"][0]["code"] == "tool_failed"
+    assert unknown["results"][0]["code"] == "unknown_glass"
 
 
 def skeleton(session, distribution="PPN"):

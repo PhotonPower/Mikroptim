@@ -6,7 +6,8 @@ Umgesetzt (M10-T6a), jeweils über die Kommandozeile von Mikroptim:
 - lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``, ``glass_preselect``,
   ``sensitivity`` (M10-T3), ``glass_query`` und ``module_lookup`` (Wissensbasis, M10-T5)
 - Läufe: ``optimize``, ``synth_segment``, ``snap_glasses``
-- Variablen: ``free_gaps``
+- Variablen: ``free_gaps``, ``set_bounds`` (M10-T7b: Arbeitsabstand ``wd`` und Dicken ``t[i]``),
+  ``set_constraint`` (M10-T7b: Gewicht und an/aus vorhandener Einträge, ``paraxial_focus`` neu)
 - Topologie (Merit unverändert): ``insert_null_meniscus``, ``split_lens``
 - Steuerung: ``branch``, ``abandon``, ``finish``
 
@@ -24,13 +25,14 @@ import tempfile
 
 from .. import aberrations
 from ._cli import cli_json, cli_text
-from .files import elements, is_air, read_system, write_system
+from .files import catalog_names, elements, is_air, read_system, write_system
 
 READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
                 "sensitivity", "glass_query", "module_lookup"}
 MODIFY_ACTIONS = {"optimize", "synth_segment", "snap_glasses", "free_gaps",
                   "insert_null_meniscus", "split_lens", "place_ghost_dictionary", "insert_module",
-                  "remove_element", "replace_glass", "replace_group", "start_from_skeleton"}
+                  "remove_element", "replace_glass", "replace_group", "start_from_skeleton",
+                  "set_bounds", "set_constraint"}
 #: strukturelle Aktionen aus operators.py (M10-T4)
 OPERATOR_ACTIONS = {"place_ghost_dictionary", "insert_module", "remove_element", "replace_glass",
                     "replace_group", "start_from_skeleton"}
@@ -248,6 +250,7 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
     als ein Eintrag bei Verzweigung (Sattelzweige von Operator A)."""
     name = a["action"]
     workdir = pathlib.Path(workdir)
+    check_glass_names(a, read_system(system_path))
     if name in OPERATOR_ACTIONS:
         from . import operators
         return getattr(operators, name)(a, system_path, workdir)
@@ -279,10 +282,20 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
                 args += ["--alternatives", a["alternatives"]]
         if "max_new_elements" in a:
             args += ["--max-elements", len(elements(read_system(system_path))) + int(a["max_new_elements"])]
+        if a.get("augmented_lagrangian"):
+            args += ["--augmented-lagrangian", int(a["augmented_lagrangian"])]
+        if "sine_condition" in a:
+            args += ["--sine-condition", float(a["sine_condition"])]
         rep = cli_json(args)
         summary = {k: rep.get(k) for k in ("status", "goal_reached", "result", "summary") if k in rep}
         return [(out, summary)]
     if name == "snap_glasses":
+        data = read_system(system_path)
+        if not any(it.get("type") == "glass"
+                   for it in (data.get("variables") or {}).get("items", [])):
+            # Vorprüfung wie glass_check im Zustand (Befund E7 aus M10-T7)
+            raise ActionError("precondition", "snap_glasses braucht Glasvariablen (Typ glass); "
+                              "das System hat keine (siehe glass_check im Zustand)")
         out = _tmp_out(workdir)
         args = ["snap", system_path, "-o", out]
         if a.get("k"):
@@ -291,6 +304,10 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
             args += ["--max-combinations", a["max_combinations"]]
         rep = cli_json(args)
         return [(out, {k: rep.get(k) for k in ("best", "result") if k in rep})]
+    if name == "set_bounds":
+        return [_set_bounds(a, system_path, workdir)]
+    if name == "set_constraint":
+        return [_set_constraint(a, system_path, workdir)]
     if name == "free_gaps":
         out = _free_gaps(a, system_path, workdir)
         return [] if out is None else [(out, {})]
@@ -311,6 +328,39 @@ def resolve_filter(flt, system_path) -> str:
         return resolve_glass(system_path, flt)
     except QueryError as e:
         raise ActionError(e.code, str(e)) from None
+
+
+def _named_glasses(a: dict) -> list[str]:
+    """Glasnamen einer Aktion (``glass``, ``target_glass``, ``glasses``)."""
+    out = []
+    for key in ("glass", "target_glass"):
+        g = a.get(key)
+        if isinstance(g, dict) and isinstance(g.get("name"), str):
+            out.append(g["name"])
+        elif isinstance(g, str):
+            out.append(g)
+    for g in a.get("glasses") or []:
+        if isinstance(g, dict) and isinstance(g.get("name"), str):
+            out.append(g["name"])
+        elif isinstance(g, str):
+            out.append(g)
+    return out
+
+
+def check_glass_names(a: dict, data: dict) -> None:
+    """Glasnamen müssen in den geladenen Katalogen stehen (Befund E7 aus M10-T7: Modelle
+    erfanden Namen wie ``F2`` oder ``buchdahl(...)``); Fehler ``unknown_glass`` mit Hinweis auf
+    ``glass_check.catalog_names`` statt einer Fehlermeldung des Laders."""
+    names = _named_glasses(a)
+    if not names:
+        return
+    known = set(catalog_names(data))
+    if not known:  # Kataloge nicht lesbar: das Laden des Systems meldet es
+        return
+    unknown = [g for g in names if g not in known]
+    if unknown:
+        raise ActionError("unknown_glass", f"Gläser {unknown} stehen nicht in den Katalogen "
+                          "des Systems (Namen aus glass_check.catalog_names im Zustand)")
 
 
 def _glass_arg(glass, system_path=None) -> str:
@@ -413,6 +463,108 @@ def _split_lens(a, system_path, workdir):
     cli_text(args)
     report["cement_curvature"] = cs
     return target_file, report
+
+
+#: set_constraint: Standardgewicht eines neuen Eintrags paraxial_focus [Wellen²/mm²] (wie im
+#: Versuch M11-T4: 0,1 mm Randstrahlhöhe kostet eine Welle², die Falle F12 einige hundert)
+PARAXIAL_FOCUS_WEIGHT = 100.0
+
+
+def _set_constraint(a, system_path, workdir):
+    """Nebenbedingung ändern (M10-T7b, Teilumfang): Gewicht ``weight`` oder ``enabled: false``
+    (Eintrag entfernen) für alle Einträge des Typs; ``paraxial_focus`` (Bildebene im paraxialen
+    Brennpunkt, Schutz gegen die Falle F12) wird angelegt, wenn es fehlt. ``limit`` und ``mode``
+    sind noch nicht umgesetzt."""
+    _require(a, "type")
+    if "limit" in a or "mode" in a:
+        raise ActionError("not_implemented", "set_constraint: limit und mode noch nicht")
+    kind = a["type"]
+    data = read_system(system_path)
+    items = data.setdefault("constraints", {"items": []}).setdefault("items", [])
+    found = [c for c in items if c.get("type") == kind]
+    if a.get("enabled") is False:
+        if not found:
+            raise ActionError("precondition", f"keine Nebenbedingung {kind} im System")
+        data["constraints"]["items"] = [c for c in items if c.get("type") != kind]
+        change = "entfernt"
+    elif found:
+        if "weight" not in a:
+            raise ActionError("missing_parameter", "set_constraint: weight oder enabled fehlt")
+        for c in found:
+            c["weight"] = float(a["weight"])
+        change = "Gewicht"
+    elif kind == "paraxial_focus":
+        items.append({"type": "paraxial_focus",
+                      "weight": float(a.get("weight", PARAXIAL_FOCUS_WEIGHT)),
+                      "comment": "mikroptim.design set_constraint: gegen F12"})
+        change = "angelegt"
+    else:
+        raise ActionError("precondition", f"keine Nebenbedingung {kind} im System (neu anlegen "
+                          "nur paraxial_focus)")
+    out = _tmp_out(pathlib.Path(workdir))
+    write_system(data, out)
+    return out, {"type": kind, "change": change, "entries": len(found) or 1}
+
+
+def _set_bounds(a, system_path, workdir):
+    """Schranken einer Variablen setzen (M10-T7b): ``wd`` (Arbeitsabstand) oder ``t[i]`` (Dicke
+    nach Fläche i). Ein Eintrag mit mehreren Flächen wird geteilt (Fläche i bekommt einen eigenen
+    Eintrag). Liegt der Startwert außerhalb der neuen Schranken, wird er auf sie geklemmt (die
+    Merit ändert sich dann; Nachoptimierung mit ``optimize``)."""
+    _require(a, "variable")
+    name = str(a["variable"]).strip()
+    data = read_system(system_path)
+    items = (data.get("variables") or {}).get("items", [])
+    surfaces = data["surfaces"]
+    if name in ("wd", "working_distance"):
+        entry = next((it for it in items if it.get("type") == "working_distance"), None)
+        if entry is None:
+            raise ActionError("precondition", "keine Variable working_distance im System")
+        surface = len(surfaces) - 1
+    elif name.startswith("t[") and name.endswith("]"):
+        try:
+            surface = int(name[2:-1])
+        except ValueError:
+            raise ActionError("invalid_parameter", f"Variable {name!r}: erwartet t[i]") from None
+        if not 0 <= surface < len(surfaces) - 1:
+            raise ActionError("precondition", f"t[{surface}]: keine Dicke (Arbeitsabstand: wd)")
+        entry = None
+        for it in items:
+            if it.get("type") != "thickness":
+                continue
+            if it.get("surface") == surface:
+                entry = it
+                break
+            sel = it.get("surfaces")
+            if sel == "all" or (isinstance(sel, list) and surface in sel):
+                if sel == "all":
+                    raise ActionError("not_implemented",
+                                      f"t[{surface}] liegt in einem Eintrag mit surfaces all")
+                sel.remove(surface)
+                if not sel:
+                    items.remove(it)
+                entry = {k: v for k, v in it.items() if k not in ("surfaces", "comment")}
+                entry["surface"] = surface
+                items.append(entry)
+                break
+        if entry is None:
+            raise ActionError("precondition", f"t[{surface}] ist keine Variable (free_gaps)")
+    else:
+        raise ActionError("not_implemented", f"set_bounds: nur wd und t[i], nicht {name!r}")
+    lo = float(a["min"]) if "min" in a else entry.get("min")
+    hi = float(a["max"]) if "max" in a else entry.get("max")
+    if lo is not None and hi is not None and not lo < hi:
+        raise ActionError("invalid_parameter", f"min {lo} muss kleiner als max {hi} sein")
+    for key, v in (("min", lo), ("max", hi)):
+        if v is not None:
+            entry[key] = v
+    value = surfaces[surface]["thickness"]
+    clamped = min(max(value, lo if lo is not None else value), hi if hi is not None else value)
+    surfaces[surface]["thickness"] = clamped
+    out = _tmp_out(pathlib.Path(workdir))
+    write_system(data, out)
+    return out, {"variable": name, "surface": surface, "min": lo, "max": hi,
+                 "value_before": value, "value": clamped}
 
 
 def _free_gaps(a, system_path, workdir):

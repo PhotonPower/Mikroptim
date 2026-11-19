@@ -82,6 +82,10 @@
             "type": "number"
           }
         },
+        "monochromatic": {
+          "type": "boolean",
+          "description": "eine Wellenlänge: target_color_class ist dann null (seit M10-T7b)"
+        },
         "target_color_class": {
           "enum": [
             "a",
@@ -368,6 +372,42 @@
           "af_forbidden": {
             "type": "boolean"
           }
+        }
+      }
+    },
+    "glass_check": {
+      "type": "object",
+      "description": "Vorprüfung für Glasaktionen (seit M10-T7b)",
+      "properties": {
+        "snappable": {
+          "type": "boolean",
+          "description": "snap_glasses möglich (Variablen vom Typ glass vorhanden)"
+        },
+        "glass_variables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "model_glass_elements": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "reason": {
+          "type": "string"
+        },
+        "catalog_glass_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalog_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "catalog_names_truncated": {
+          "type": "boolean"
         }
       }
     },

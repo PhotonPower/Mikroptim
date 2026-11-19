@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
+import urllib.error
 import urllib.request
 
 from .actions import ActionError, read_action, validate_response
@@ -61,11 +63,25 @@ class OllamaDecider(Decider):
 
     # --- HTTP -------------------------------------------------------------------------------
 
+    #: Wiederholungen bei Serverfehlern (HTTP 5xx, z. B. Laden des Modells scheitert, weil die
+    #: geteilte GPU gerade voll ist; M10-T7b) und Wartezeit davor [s]
+    server_retries = 3
+    server_retry_wait = 20.0
+
     def _post(self, path: str, body: dict) -> dict:
-        req = urllib.request.Request(self.host + path, data=json.dumps(body).encode("utf-8"),
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=self.timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+        data = json.dumps(body).encode("utf-8")
+        for attempt in range(self.server_retries + 1):
+            req = urllib.request.Request(self.host + path, data=data,
+                                         headers={"Content-Type": "application/json"},
+                                         method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                if e.code < 500 or attempt == self.server_retries:
+                    raise
+                time.sleep(self.server_retry_wait)
+        raise AssertionError("unerreichbar")  # pragma: no cover
 
     def digest(self) -> str | None:
         if self._digest is None:

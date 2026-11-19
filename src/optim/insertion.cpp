@@ -545,6 +545,8 @@ const GhostPositionReport& position_of(const SystemDescription& system,
     return pr;
 }
 
+double thickness_lower_bound(const SystemDescription& system, int surface);
+
 } // namespace
 
 MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
@@ -586,16 +588,37 @@ MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
         mag_from = c_near != 0.0 ? "nähere Spaltfläche"
                                  : (c_other != 0.0 ? "andere Spaltfläche" : "Planplatte");
     }
+    // Lage im Spalt: beide Teilstücke erben die Dickenvariablen des Spalts (renumber_surfaces);
+    // liegt die Platte näher als deren untere Schranke an einem Spaltende (z. B. am Ende, weil
+    // eine frühere Dicken-Homotopie den Spalt verkürzt hat), wird der Meniskus so weit in den
+    // Spalt verschoben, dass beide Teilstücke die Schranke einhalten. Bei Dicke 0 ändert die Lage
+    // die Merit nicht (Befund E6 aus M10-T7: sonst lehnte insert_meniscus das System ab und synth
+    // brach ab).
+    const double T = system.surfaces[sz(i)].thickness;
+    const double lb = thickness_lower_bound(system, i);
+    double position = pr.distance;
+    std::string shifted;
+    if (lb > 0.0 && (position < lb || T - position - options.thickness < lb)) {
+        if (T - options.thickness < 2.0 * lb) {
+            invalid("Operator A: Spalt nach Fläche " + std::to_string(i) + " (" + num(T) +
+                    " mm) zu kurz für zwei Teilstücke mit der unteren Schranke " + num(lb) +
+                    " mm der Dickenvariable");
+        }
+        position = std::clamp(position, lb, T - options.thickness - lb);
+        shifted = ", Lage von " + num(pr.distance) + " auf " + num(position) +
+                  " mm verschoben (untere Schranke " + num(lb) + " mm der Spaltdicke)";
+    }
     plan.insertion.after_surface = i;
-    plan.insertion.position = pr.distance;
+    plan.insertion.position = position;
     plan.insertion.curvature = sign * magnitude;
     plan.insertion.glass = gp.glass;
     plan.insertion.thickness = options.thickness;
     plan.insertion.curvature_variables = options.curvature_variables;
     std::ostringstream os;
-    os << "Operator A nach Fläche " << i << " bei " << num(pr.distance) << " mm, Glas der Platte "
+    os << "Operator A nach Fläche " << i << " bei " << num(position) << " mm, Glas der Platte "
        << best << " (" << rep.glass.name << "), c0 = " << num(plan.insertion.curvature)
-       << " (Betrag: " << mag_from << ", Vorzeichen: " << from << ", t4 = " << num(plan.t4) << ")";
+       << " (Betrag: " << mag_from << ", Vorzeichen: " << from << ", t4 = " << num(plan.t4) << ")"
+       << shifted;
     plan.reason = os.str();
     return plan;
 }

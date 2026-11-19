@@ -187,9 +187,11 @@ struct MeniscusPlan {
 // und distance; Glas der aktivsten Platte dort; |c₀| nach options; Vorzeichen von c₀ =
 // Vorzeichen von (n_G − n_m)·t₄ der Platte (Ordnung 2 dominiert: Vorzeichen von a₂), bei t₄ = 0
 // das von φ_G. Die Festlegung ist eine Heuristik; die Gegenrichtung liefert
-// meniscus_saddle_starts bzw. ein Lauf mit −c₀ (docs/optimierung.md, Abschnitt 6). Wirft
-// std::invalid_argument ohne aktive Platte an der Lage oder wenn Bericht und System nicht
-// zusammenpassen.
+// meniscus_saddle_starts bzw. ein Lauf mit −c₀ (docs/optimierung.md, Abschnitt 6). Liegt die
+// Lage näher als die untere Schranke einer Dickenvariable des Spalts an einem Spaltende, wird
+// sie in den Spalt verschoben, bis beide Teilstücke die Schranke einhalten (M10-T7b, Befund E6).
+// Wirft std::invalid_argument ohne aktive Platte an der Lage, wenn Bericht und System nicht
+// zusammenpassen oder der Spalt für zwei Teilstücke mit der Schranke zu kurz ist.
 MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
                                      const GhostDiagnosis& diagnosis,
                                      const MeniscusInitOptions& options = {});
