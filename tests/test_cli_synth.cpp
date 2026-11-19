@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -225,6 +226,54 @@ TEST(CliSynth, BeamShortRunJsonTreeAndDot) {
     EXPECT_NE(d.find("n0 -> n1;"), std::string::npos);
     const LoadedSystem l = load_system(result);
     EXPECT_EQ(l.system.surfaces.size(), 6U);
+}
+
+// --tolerance-aware (M11-T6b): jeder Schritt minimiert F_tol mit dem Standardsatz; Optionen im
+// Protokoll, Text und Strahlsuche; Kombinationen ohne --tolerance-aware sind Fehler.
+TEST(CliSynth, ToleranceAware) {
+    EXPECT_EQ(synth({kStart, "--tolerance-tilt", "remove"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--tolerance-samples", "3"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--tolerance-aware", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--tolerance-aware", "0.5", "--tolerance-seed", "2"}).code,
+              cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--tolerance-aware", "0.5", "--tolerance-tilt", "x"}).code,
+              cli::kExitUsage);
+    EXPECT_NE(synth({"--help"}).out.find("--tolerance-aware"), std::string::npos);
+    const std::vector<std::string> base{kStart, "--target-na",    "0.305", "--merit-factor",
+                                        "10",   "--max-elements", "1",     "--max-iterations",
+                                        "20",   "--json"};
+    const SynthCliResult plain = synth(base);
+    ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
+    const nlohmann::json jp = nlohmann::json::parse(plain.out);
+    EXPECT_TRUE(jp["options"]["tolerance_aware"].is_null());
+    std::vector<std::string> args = base;
+    for (const char* a : {"--tolerance-aware", "0.5", "--tolerance-tilt", "remove"}) {
+        args.emplace_back(a);
+    }
+    const SynthCliResult tol = synth(args);
+    ASSERT_EQ(tol.code, cli::kExitOk) << tol.err;
+    const nlohmann::json jt = nlohmann::json::parse(tol.out);
+    const nlohmann::json& o = jt["options"]["tolerance_aware"];
+    EXPECT_EQ(o["alpha"], 0.5);
+    EXPECT_EQ(o["scheme"], "plus_minus");
+    EXPECT_EQ(o["set"], "default");
+    EXPECT_EQ(o["tilt"], "remove");
+    // Merit des ersten Schritts am selben Startpunkt ist F_tol (größer als die nominelle Merit
+    // des gewöhnlichen Laufs); die Bewertung F_B ist nominal und gleich
+    const nlohmann::json& lt = jt["result"]["steps"][0]["lm"];
+    const nlohmann::json& lp = jp["result"]["steps"][0]["lm"];
+    ASSERT_TRUE(lt.is_object());
+    ASSERT_TRUE(lp.is_object());
+    EXPECT_GT(lt["start_merit"].get<double>(), lp["start_merit"].get<double>());
+    // Strahlsuche: Rangfolge nach F_tol, Text nennt die Option
+    args.back() = "keep";
+    args.erase(std::find(args.begin(), args.end(), "--json"));
+    for (const char* a : {"--beam", "2", "--quiet"}) {
+        args.emplace_back(a);
+    }
+    const SynthCliResult beam = synth(args);
+    ASSERT_EQ(beam.code, cli::kExitOk) << beam.err;
+    EXPECT_NE(beam.out.find("Toleranzbewusst"), std::string::npos) << beam.out;
 }
 
 TEST(CliSynth, BeamTextOutput) {

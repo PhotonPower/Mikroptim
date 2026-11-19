@@ -4,6 +4,10 @@
 
 #include "mikroptim/tolerance/tolerance_aware.hpp"
 
+#include "mikroptim/optim/normal_equations.hpp"
+#include "mikroptim/tolerance/piston_tilt.hpp"
+#include "mikroptim/trace/surface_ops.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -67,6 +71,26 @@ std::optional<ToleranceAwareScheme> tolerance_aware_scheme_from_string(std::stri
     return std::nullopt;
 }
 
+const char* to_string(ToleranceAwareTilt tilt) {
+    switch (tilt) {
+    case ToleranceAwareTilt::Keep:
+        return "keep";
+    case ToleranceAwareTilt::Remove:
+        return "remove";
+    }
+    return "?";
+}
+
+std::optional<ToleranceAwareTilt> tolerance_aware_tilt_from_string(std::string_view name) {
+    if (name == "keep") {
+        return ToleranceAwareTilt::Keep;
+    }
+    if (name == "remove") {
+        return ToleranceAwareTilt::Remove;
+    }
+    return std::nullopt;
+}
+
 ToleranceInnerFactory cpu_tolerance_inner() {
     return [](const VariableSet& set, const LmOptions& options, const SystemBatchHost& base) {
         return std::unique_ptr<LmBackend>(std::make_unique<CpuLmBackend>(set, base, options));
@@ -79,6 +103,9 @@ ToleranceAwareModel::ToleranceAwareModel(const SystemDescription& system,
     : settings_(settings) {
     if (!(settings.alpha > 0.0 && settings.alpha <= 1.0)) {
         invalid("Gewicht alpha muss in (0, 1] liegen");
+    }
+    if (settings.tilt != ToleranceAwareTilt::Keep && settings.tilt != ToleranceAwareTilt::Remove) {
+        invalid("unbekannte Bewertung der Kippung");
     }
     if (!system.tolerances || system.tolerances->items.empty()) {
         invalid("kein Toleranzsatz (Abschnitt tolerances fehlt oder ist leer)");
@@ -222,6 +249,27 @@ ToleranceAwareBackend::ToleranceAwareBackend(const ToleranceAwareModel& model,
     if (!inner_) {
         invalid("das innere Backend fehlt");
     }
+    if (model_.remove_tilt()) {
+        layout_ = ResidualLayout(inner_base_.topology(), options.jacobian.quadrature);
+    }
+}
+
+void ToleranceAwareBackend::project(std::size_t i, LmHostRows& rows) const {
+    const auto S1 = to_size(model_.samples() + 1);
+    if (i % S1 == 0) {
+        return; // nominal: volle Merit (Bildlage ist Entwurfsziel)
+    }
+    const auto R = to_size(rows.shape.rows());
+    const auto n = to_size(rows.rays_per_variant);
+    const auto P = to_size(rows.shape.variables);
+    const TiltProjection proj(layout_,
+                              std::span<const std::uint8_t>(rows.status).subspan(i * n, n));
+    proj.apply(std::span<double>(rows.residuals).subspan(i * R, R));
+    if (!rows.jacobian.empty()) {
+        for (std::size_t p = 0; p < P; ++p) {
+            proj.apply(std::span<double>(rows.jacobian).subspan((i * P + p) * R, R));
+        }
+    }
 }
 
 void ToleranceAwareBackend::inner_points(std::span<const int> runs, std::span<const double> x) {
@@ -258,7 +306,25 @@ void ToleranceAwareBackend::normal_equations(std::span<const int> runs, std::spa
     inner_points(runs, x);
     std::vector<double> ia(n * S1 * P * P);
     std::vector<double> ig(n * S1 * P);
-    inner_->normal_equations(inner_runs_, inner_x_, ia, ig);
+    if (model_.remove_tilt()) {
+        // Kippungsabzug (M11-T6b): J_s und r_s auf dem Host projizieren, dann A_s und g_s
+        inner_->host_jacobians(inner_runs_, inner_x_, rows_);
+        if (to_size(rows_.shape.runs) != n * S1 || to_size(rows_.shape.variables) != P ||
+            rows_.rays_per_variant != layout_.rays_per_variant()) {
+            invalid("Zeilen des inneren Backends passen nicht");
+        }
+        const auto R = to_size(rows_.shape.rows());
+        for (std::size_t i = 0; i < n * S1; ++i) {
+            project(i, rows_);
+            normal_equations_host(std::span<const double>(rows_.jacobian).subspan(i * P * R, P * R),
+                                  std::span<const double>(rows_.residuals).subspan(i * R, R),
+                                  static_cast<int>(P),
+                                  std::span<double>(ia).subspan(i * P * P, P * P),
+                                  std::span<double>(ig).subspan(i * P, P));
+        }
+    } else {
+        inner_->normal_equations(inner_runs_, inner_x_, ia, ig);
+    }
     // A = Σ_s w_s D_s A_s D_s, g = Σ_s w_s D_s g_s in fester Reihenfolge s = 0 … S
     for (std::size_t j = 0; j < n; ++j) {
         const std::span<double> aj = a.subspan(j * P * P, P * P);
@@ -290,7 +356,35 @@ ToleranceAwareMerits ToleranceAwareBackend::merits(std::span<const int> runs,
     out.merit.assign(m, 0.0);
     out.failed.assign(m, 0);
     out.hard_failed.assign(m, 0);
-    inner_->merit(inner_runs_, inner_x_, out.merit, out.failed, out.hard_failed);
+    if (!model_.remove_tilt()) {
+        inner_->merit(inner_runs_, inner_x_, out.merit, out.failed, out.hard_failed);
+        return out;
+    }
+    // Kippungsabzug (M11-T6b): F_s = ‖P r_s‖² aus den Residuen am Punkt (aufsteigend summiert)
+    inner_->host_residuals(inner_runs_, inner_x_, rows_);
+    if (to_size(rows_.shape.runs) != m || rows_.rays_per_variant != layout_.rays_per_variant()) {
+        invalid("Zeilen des inneren Backends passen nicht");
+    }
+    const auto R = to_size(rows_.shape.rows());
+    const auto rays = to_size(rows_.rays_per_variant);
+    for (std::size_t i = 0; i < m; ++i) {
+        project(i, rows_);
+        double f = 0.0;
+        for (std::size_t k = 0; k < R; ++k) {
+            const double r = rows_.residuals[i * R + k];
+            f += r * r;
+        }
+        out.merit[i] = f;
+        for (std::size_t k = 0; k < rays; ++k) {
+            const auto st = static_cast<TraceStatus>(rows_.status[i * rays + k]);
+            if (st != TraceStatus::Ok) {
+                ++out.failed[i];
+                if (is_hard_failure(st)) {
+                    ++out.hard_failed[i];
+                }
+            }
+        }
+    }
     return out;
 }
 
@@ -328,6 +422,47 @@ LmResult optimize_lm_tolerance_aware(const ToleranceAwareModel& model,
             std::make_unique<ToleranceAwareBackend>(model, inner, b, o));
     };
     return optimize_lm_rounds(factory, set, base, x0, options);
+}
+
+Tolerances tolerance_aware_standard_set(const SystemDescription& system, const VariableSet& set,
+                                        const SensitivityDefaults& defaults) {
+    Tolerances t = default_sensitivity_tolerances(system, defaults);
+    std::vector<int> glass_surfaces;
+    for (int p = 0; p < set.size(); ++p) {
+        if (set[p].type == VariableType::Glass) {
+            glass_surfaces.push_back(set[p].file_surface);
+        }
+    }
+    if (glass_surfaces.empty()) {
+        return t;
+    }
+    std::vector<ToleranceSpec> items;
+    for (ToleranceSpec& spec : t.items) {
+        if (spec.type == ToleranceType::Index || spec.type == ToleranceType::Abbe) {
+            std::erase_if(spec.surfaces, [&](int s) {
+                return std::find(glass_surfaces.begin(), glass_surfaces.end(), s) !=
+                       glass_surfaces.end();
+            });
+            if (spec.surfaces.empty()) {
+                continue;
+            }
+        }
+        items.push_back(std::move(spec));
+    }
+    t.items = std::move(items);
+    return t;
+}
+
+LmResult optimize_lm_tolerance_aware_standard(const SystemDescription& system,
+                                              const ToleranceAwareSettings& settings,
+                                              const ToleranceInnerFactory& inner,
+                                              const VariableSet& set, const SystemBatchHost& base,
+                                              std::span<const double> x0,
+                                              const LmOptions& options) {
+    SystemDescription with_set = system;
+    with_set.tolerances = tolerance_aware_standard_set(system, set);
+    const ToleranceAwareModel model(with_set, base, set, settings);
+    return optimize_lm_tolerance_aware(model, inner, set, base, x0, options);
 }
 
 } // namespace mko

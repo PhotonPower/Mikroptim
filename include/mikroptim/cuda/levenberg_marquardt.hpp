@@ -54,6 +54,15 @@ public:
                           std::span<double> g) override;
     void merit(std::span<const int> runs, std::span<const double> x, std::span<double> merit,
                std::span<std::int64_t> failed, std::span<std::int64_t> hard_failed) override;
+    // M11-T6b: J und r wie normal_equations (Teilstücke, Download von DeviceFdJacobian bzw.
+    // DeviceAdjointJacobian), Status bei FD aus einem Lauf RESIDUALS über die Punkte, bei der
+    // adjungierten Jacobi aus deren Download.
+    void host_jacobians(std::span<const int> runs, std::span<const double> x,
+                        LmHostRows& out) override;
+    // Modus RESIDUALS der Engine (Status, Extrema für trace-abhängige Residuen), Zusatzresiduen
+    // auf dem Host wie fd_extra_residuals.
+    void host_residuals(std::span<const int> runs, std::span<const double> x,
+                        LmHostRows& out) override;
 
     // Größte Zahl von Läufen, deren Jacobi-Matrizen gemeinsam gerechnet werden (aus dem
     // Speicher und dem Verfahren, siehe oben; mindestens 1).

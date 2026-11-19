@@ -21,6 +21,7 @@
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/tolerance/sensitivity.hpp"
 #include "mikroptim/tolerance/tolerance_aware.hpp"
 #include "residual_test_systems.hpp"
 #include "temp_paths.hpp"
@@ -999,6 +1000,47 @@ TEST(CliOptimize, ToleranceAware) {
         r = optimize(args);
         EXPECT_EQ(r.code, mko::cli::kExitUsage) << args.back();
     }
+}
+
+// --tolerance-tilt (M11-T6b): Standard keep (JSON wie bisher plus "tilt"), remove bewertet die
+// gestörten Systeme ohne Kippung; Ergebnis gleich der Bibliothek.
+TEST(CliOptimize, ToleranceAwareTilt) {
+    const std::string block = kSystems + "kittblock_toleranzbewusst.json";
+    RunResult r =
+        optimize({block, "--tolerance-aware", "0.5", "--json", "--quiet", "--max-iterations", "3"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_EQ(json::parse(r.out)["tolerance_aware"]["tilt"], "keep");
+    r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "remove",
+                  "--tolerance-set", "default", "--json", "--quiet", "--max-iterations", "3"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    EXPECT_EQ(j["tolerance_aware"]["tilt"], "remove");
+    EXPECT_EQ(j["tolerance_aware"]["set"], "default");
+    // gleich der Bibliothek
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(block));
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::SystemDescription sys = loaded.system;
+    sys.tolerances = mko::default_sensitivity_tolerances(sys);
+    mko::ToleranceAwareSettings ts;
+    ts.alpha = 0.5;
+    ts.tilt = mko::ToleranceAwareTilt::Remove;
+    const mko::ToleranceAwareModel model(sys, base, set, ts);
+    mko::LmOptions o;
+    o.max_iterations = 3;
+    const std::vector<double> x0 = set.extract(base, 0);
+    const mko::LmResult lib =
+        mko::optimize_lm_tolerance_aware(model, mko::cpu_tolerance_inner(), set, base, x0, o);
+    EXPECT_TRUE(same_bits(j["runs"][0]["merit"].get<double>(), lib.runs[0].merit))
+        << j["runs"][0]["merit"] << " " << lib.runs[0].merit;
+    r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "remove", "--quiet",
+                  "--max-iterations", "1"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("gestört ohne Kippung"), std::string::npos) << r.out;
+    EXPECT_EQ(optimize({block, "--tolerance-tilt", "remove"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(optimize({block, "--tolerance-aware", "0.5", "--tolerance-tilt", "x"}).code,
+              mko::cli::kExitUsage);
+    EXPECT_NE(optimize({"--help"}).out.find("--tolerance-tilt"), std::string::npos);
 }
 
 #ifndef MIKROPTIM_HAS_CUDA

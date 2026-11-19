@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace mko {
 
@@ -675,6 +676,16 @@ std::vector<double> extra_merit_values(const ExtraResiduals& extra, const System
     return out;
 }
 
+void LmBackend::host_jacobians(std::span<const int> /*runs*/, std::span<const double> /*x*/,
+                               LmHostRows& /*out*/) {
+    throw std::logic_error("LmBackend: Jacobi-Zeilen auf dem Host werden nicht unterstützt");
+}
+
+void LmBackend::host_residuals(std::span<const int> /*runs*/, std::span<const double> /*x*/,
+                               LmHostRows& /*out*/) {
+    throw std::logic_error("LmBackend: Residuen auf dem Host werden nicht unterstützt");
+}
+
 CpuLmBackend::CpuLmBackend(const VariableSet& set, const SystemBatchHost& base,
                            const LmOptions& options)
     : set_(set), base_(base), options_(options),
@@ -707,8 +718,8 @@ void gram_of_runs(std::span<const double> jacobian, std::span<const double> resi
 
 } // namespace
 
-void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const double> x,
-                                    std::span<double> a, std::span<double> g) {
+void CpuLmBackend::host_jacobians(std::span<const int> runs, std::span<const double> x,
+                                  LmHostRows& out) {
     const SystemBatchHost tmpl = lm_template_batch(base_, runs);
     const int count = static_cast<int>(runs.size());
     if (options_.jacobian_method == JacobianMethod::Adjoint) {
@@ -722,9 +733,12 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
                                            static_cast<std::int64_t>(count) *
                                                fd_variant_count(FdScheme::Central, set_.size()),
                                            kLmExtraPerThread);
-        const AdjointJacobian jac = adjoint_jacobian_cpu(set_, tmpl, x, ao);
-        gram_of_runs(jac.jacobian, jac.residuals, set_.size(), jac.shape.rows(), count,
-                     options_.threads, a, g);
+        AdjointJacobian jac = adjoint_jacobian_cpu(set_, tmpl, x, ao);
+        out.shape = jac.shape;
+        out.rays_per_variant = jac.rays_per_variant;
+        out.jacobian = std::move(jac.jacobian);
+        out.residuals = std::move(jac.residuals);
+        out.status = std::move(jac.status);
         return;
     }
     const FdJacobianBatch fd = make_fd_jacobian_batch(set_, tmpl, x, options_.jacobian.scheme);
@@ -771,8 +785,81 @@ void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
     const std::vector<double> ev = fd_extra_residuals(fo, fd.batch, extrema);
     FdJacobian jac;
     fd_jacobian_from_residuals(fd, rays, ev, fo.extra_count(), jac);
-    gram_of_runs(jac.jacobian, jac.residuals, set_.size(), jac.shape.rows(), count,
-                 options_.threads, a, g);
+    out.shape = jac.shape;
+    out.rays_per_variant = rv;
+    out.jacobian = std::move(jac.jacobian);
+    out.residuals = std::move(jac.residuals);
+    // Status am Punkt: Variante 0 jedes Laufs im FD-Batch ist x₀ (variant_generator.hpp)
+    const auto n = static_cast<std::size_t>(rv);
+    out.status.resize(static_cast<std::size_t>(count) * n);
+    for (int j = 0; j < count; ++j) {
+        const auto from = static_cast<std::ptrdiff_t>(rays.ray_index(j * fd.variants_per_run, 0));
+        std::copy(
+            rays.status.begin() + from, rays.status.begin() + from + static_cast<std::ptrdiff_t>(n),
+            out.status.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(j) * n));
+    }
+}
+
+void CpuLmBackend::normal_equations(std::span<const int> runs, std::span<const double> x,
+                                    std::span<double> a, std::span<double> g) {
+    LmHostRows rows;
+    host_jacobians(runs, x, rows);
+    gram_of_runs(rows.jacobian, rows.residuals, set_.size(), rows.shape.rows(),
+                 static_cast<int>(runs.size()), options_.threads, a, g);
+}
+
+void CpuLmBackend::host_residuals(std::span<const int> runs, std::span<const double> x,
+                                  LmHostRows& out) {
+    const SystemBatchHost batch = lm_point_batch(set_, base_, runs, x);
+    const int V = batch.variants();
+    const std::int64_t rv = layout_.rays_per_variant();
+    const std::int64_t tr = layout_.trace_rows();
+    const bool traced = options_.jacobian.trace_extra.count > 0;
+    SurfaceExtremaResult extrema;
+    if (traced) {
+        extrema.variants = V;
+        extrema.surfaces = batch.surfaces();
+        extrema.values.resize(static_cast<std::size_t>(V) *
+                              static_cast<std::size_t>(extrema.surfaces) * 2);
+    }
+    FdJacobianOptions fo = options_.jacobian;
+    const int E = fo.extra_count();
+    const auto R = static_cast<std::size_t>(tr + E);
+    const auto n = static_cast<std::size_t>(rv);
+    out.shape = JacobianShape{V, set_.size(), tr, E};
+    out.rays_per_variant = rv;
+    out.jacobian.clear();
+    out.residuals.assign(static_cast<std::size_t>(V) * R, 0.0);
+    out.status.assign(static_cast<std::size_t>(V) * n, 0);
+    const std::int64_t ray_work =
+        static_cast<std::int64_t>(V) * rv * static_cast<std::int64_t>(batch.surfaces());
+    detail::parallel_for_variants(
+        0, V, lm_host_threads(options_.threads, ray_work, kLmRaySurfacesPerThread), [&](int v) {
+            const ResidualResult one = residuals_cpu(batch, v, layout_);
+            const auto vv = static_cast<std::size_t>(v);
+            std::copy(one.residuals.begin(), one.residuals.end(),
+                      out.residuals.begin() + static_cast<std::ptrdiff_t>(vv * R));
+            std::copy(one.status.begin(), one.status.end(),
+                      out.status.begin() + static_cast<std::ptrdiff_t>(vv * n));
+            if (traced) {
+                const SurfaceExtremaResult e =
+                    surface_extrema_cpu(batch, v, layout_, options_.jacobian.trace_extra.smoothing);
+                std::copy(e.values.begin(), e.values.end(),
+                          extrema.values.begin() +
+                              static_cast<std::ptrdiff_t>(extrema.index(v, 0)));
+            }
+        });
+    if (E > 0) {
+        fo.extra_threads = lm_host_threads(fo.extra_threads, V, kLmExtraPerThread);
+        const std::vector<double> ev = fd_extra_residuals(fo, batch, extrema);
+        const auto e = static_cast<std::size_t>(E);
+        for (std::size_t v = 0; v < static_cast<std::size_t>(V); ++v) {
+            std::copy(ev.begin() + static_cast<std::ptrdiff_t>(v * e),
+                      ev.begin() + static_cast<std::ptrdiff_t>((v + 1) * e),
+                      out.residuals.begin() + static_cast<std::ptrdiff_t>(v * R) +
+                          static_cast<std::ptrdiff_t>(tr));
+        }
+    }
 }
 
 void CpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,

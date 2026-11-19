@@ -112,6 +112,110 @@ void GpuLmBackend::normal_equations(std::span<const int> runs, std::span<const d
     }
 }
 
+void GpuLmBackend::host_jacobians(std::span<const int> runs, std::span<const double> x,
+                                  LmHostRows& out) {
+    const auto P = static_cast<std::size_t>(set_.size());
+    const auto count = static_cast<int>(runs.size());
+    const int chunk = max_jacobian_runs();
+    const bool adjoint = options_.jacobian_method == JacobianMethod::Adjoint;
+    out.jacobian.clear();
+    out.residuals.clear();
+    out.status.clear();
+    FdJacobian fd;
+    AdjointJacobian ad;
+    LmHostRows point;
+    for (int first = 0; first < count; first += chunk) {
+        const int m = std::min(chunk, count - first);
+        const auto f = static_cast<std::size_t>(first);
+        const auto mm = static_cast<std::size_t>(m);
+        const std::span<const int> part = runs.subspan(f, mm);
+        const SystemBatchHost tmpl = lm_template_batch(base_, part);
+        const std::span<const double> xp = x.subspan(f * P, mm * P);
+        const JacobianShape* shape = nullptr;
+        if (adjoint) {
+            AdjointJacobianOptions ao = adjoint_options_of(options_.jacobian);
+            ao.extra_threads = lm_host_threads(ao.extra_threads,
+                                               static_cast<std::int64_t>(m) *
+                                                   fd_variant_count(FdScheme::Central, set_.size()),
+                                               kLmExtraPerThread);
+            adjoint_.compute(engine_, set_, tmpl, xp, ao, Precision::Fp64);
+            adjoint_.download(ad);
+            ++stats_.jacobian_tranches;
+            out.jacobian.insert(out.jacobian.end(), ad.jacobian.begin(), ad.jacobian.end());
+            out.residuals.insert(out.residuals.end(), ad.residuals.begin(), ad.residuals.end());
+            out.status.insert(out.status.end(), ad.status.begin(), ad.status.end());
+            out.rays_per_variant = ad.rays_per_variant;
+            shape = &ad.shape;
+        } else {
+            FdJacobianOptions fo = options_.jacobian;
+            fo.extra_threads = lm_host_threads(fo.extra_threads,
+                                               static_cast<std::int64_t>(m) *
+                                                   fd_variant_count(fo.scheme, set_.size()),
+                                               kLmExtraPerThread);
+            jacobian_.compute(engine_, set_, tmpl, xp, fo);
+            jacobian_.download(fd);
+            stats_.jacobian_tranches += jacobian_.run_info().tranches;
+            out.jacobian.insert(out.jacobian.end(), fd.jacobian.begin(), fd.jacobian.end());
+            out.residuals.insert(out.residuals.end(), fd.residuals.begin(), fd.residuals.end());
+            // Status am Punkt aus einem Lauf RESIDUALS über die Punkte (derselbe Kernel wie die
+            // Variante x₀ des FD-Batches)
+            host_residuals(part, xp, point);
+            out.status.insert(out.status.end(), point.status.begin(), point.status.end());
+            out.rays_per_variant = point.rays_per_variant;
+            shape = &fd.shape;
+        }
+        out.shape = JacobianShape{count, shape->variables, shape->ray_rows, shape->extra_rows};
+        ++stats_.jacobian_chunks;
+        stats_.jacobian_runs += m;
+        stats_.max_runs_per_chunk = std::max(stats_.max_runs_per_chunk, m);
+    }
+    ++stats_.jacobian_calls;
+}
+
+void GpuLmBackend::host_residuals(std::span<const int> runs, std::span<const double> x,
+                                  LmHostRows& out) {
+    const SystemBatchHost batch = lm_point_batch(set_, base_, runs, x);
+    const TraceExtraResiduals& traced = options_.jacobian.trace_extra;
+    TraceSettings settings;
+    settings.quadrature = options_.jacobian.quadrature;
+    settings.status = true;
+    settings.extrema = traced.count > 0; // Max-Reduktionen für trace-abhängige Residuen
+    engine_.run(batch, TraceMode::Residuals, settings, output_);
+    const ResidualResult& rr = output_.residuals;
+    FdJacobianOptions fo = options_.jacobian;
+    const int V = batch.variants();
+    const int E = fo.extra_count();
+    const std::int64_t tr = rr.trace_rows();
+    const auto R = static_cast<std::size_t>(tr + E);
+    const auto stride = static_cast<std::size_t>(rr.stride);
+    out.shape = JacobianShape{V, set_.size(), tr, E};
+    out.rays_per_variant = rr.rays_per_variant;
+    out.jacobian.clear();
+    out.residuals.assign(static_cast<std::size_t>(V) * R, 0.0);
+    out.status.assign(rr.status.begin(), rr.status.end());
+    std::vector<double> ev;
+    if (E > 0) {
+        fo.extra_threads = lm_host_threads(fo.extra_threads, V, kLmExtraPerThread);
+        ev = fd_extra_residuals(fo, batch, rr.extrema);
+    }
+    const auto e = static_cast<std::size_t>(E);
+    for (std::size_t v = 0; v < static_cast<std::size_t>(V); ++v) {
+        const auto from = static_cast<std::ptrdiff_t>(v * stride);
+        std::copy(rr.residuals.begin() + from,
+                  rr.residuals.begin() + from + static_cast<std::ptrdiff_t>(tr),
+                  out.residuals.begin() + static_cast<std::ptrdiff_t>(v * R));
+        if (E > 0) {
+            std::copy(ev.begin() + static_cast<std::ptrdiff_t>(v * e),
+                      ev.begin() + static_cast<std::ptrdiff_t>((v + 1) * e),
+                      out.residuals.begin() + static_cast<std::ptrdiff_t>(v * R) +
+                          static_cast<std::ptrdiff_t>(tr));
+        }
+    }
+    ++stats_.merit_calls;
+    stats_.merit_tranches += output_.info.tranches;
+    stats_.merit_points += static_cast<std::int64_t>(runs.size());
+}
+
 void GpuLmBackend::merit(std::span<const int> runs, std::span<const double> x,
                          std::span<double> merit, std::span<std::int64_t> failed,
                          std::span<std::int64_t> hard_failed) {

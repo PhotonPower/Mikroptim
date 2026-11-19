@@ -3,9 +3,11 @@
 
 #include "mikroptim/tolerance/tolerance_analysis.hpp"
 
+#include "mikroptim/tolerance/piston_tilt.hpp"
 #include "mikroptim/trace/ray.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -258,67 +260,37 @@ TupleQuality tuple_quality(const PupilQuadrature<double>& q, std::span<const dou
         throw std::invalid_argument("tuple_quality: Wellenlänge muss > 0 sein");
     }
     TupleQuality out;
-    // Normalgleichungen der Anpassung c₀ + t_x x + t_y y (symmetrisch, obere Hälfte)
-    double a00 = 0.0, a01 = 0.0, a02 = 0.0, a11 = 0.0, a12 = 0.0, a22 = 0.0;
-    double b0 = 0.0, b1 = 0.0, b2 = 0.0;
-    double w_all = 0.0;
-    std::vector<double> xs(static_cast<std::size_t>(n));
-    std::vector<double> ys(static_cast<std::size_t>(n));
-    std::vector<double> ws(static_cast<std::size_t>(n));
+    // Anpassung von Kolben und Kippung über die Strahlen mit Status Ok (piston_tilt.hpp)
+    std::vector<std::uint8_t> use(static_cast<std::size_t>(n));
     for (int k = 0; k < n; ++k) {
-        const PupilSample<double> s = sample(q, k);
         const auto ku = static_cast<std::size_t>(k);
-        xs[ku] = s.rho * std::sin(s.phi);
-        ys[ku] = s.rho * std::cos(s.phi);
-        ws[ku] = s.weight;
-        w_all += s.weight;
-        if (static_cast<TraceStatus>(status[ku]) != TraceStatus::Ok) {
+        use[ku] = static_cast<TraceStatus>(status[ku]) == TraceStatus::Ok ? 1 : 0;
+        if (use[ku] == 0) {
             ++out.failed;
-            continue;
         }
-        const double w = s.weight;
-        const double x = xs[ku];
-        const double y = ys[ku];
-        const double o = opd[ku];
-        a00 += w;
-        a01 += w * x;
-        a02 += w * y;
-        a11 += w * (x * x);
-        a12 += w * (x * y);
-        a22 += w * (y * y);
-        b0 += w * o;
-        b1 += w * (x * o);
-        b2 += w * (y * o);
     }
-    if (!(a00 > 0.0)) {
+    const PistonTiltFit fit(q, use);
+    const double a00 = fit.fit_weight();
+    if (!fit.valid()) {
         out.rms = kNaN;
         out.strehl = 0.0;
         return out;
     }
-    // Cholesky A = L Lᵀ; bei (nahezu) singulärer Matrix nur der Kolben
-    double c0 = b0 / a00;
-    double tx = 0.0;
-    double ty = 0.0;
-    const double eps = 1e-12 * a00;
-    const double l00 = std::sqrt(a00);
-    const double l10 = a01 / l00;
-    const double l20 = a02 / l00;
-    const double d11 = a11 - l10 * l10;
-    if (d11 > eps) {
-        const double l11 = std::sqrt(d11);
-        const double l21 = (a12 - l20 * l10) / l11;
-        const double d22 = a22 - l20 * l20 - l21 * l21;
-        if (d22 > eps) {
-            const double l22 = std::sqrt(d22);
-            // L z = b, Lᵀ c = z
-            const double z0 = b0 / l00;
-            const double z1 = (b1 - l10 * z0) / l11;
-            const double z2 = (b2 - l20 * z0 - l21 * z1) / l22;
-            ty = z2 / l22;
-            tx = (z1 - l21 * ty) / l11;
-            c0 = (z0 - l10 * tx - l20 * ty) / l00;
+    double b0 = 0.0, b1 = 0.0, b2 = 0.0;
+    for (int k = 0; k < n; ++k) {
+        if (!fit.used(k)) {
+            continue;
         }
+        const double w = fit.weight(k);
+        const double o = opd[static_cast<std::size_t>(k)];
+        b0 += w * o;
+        b1 += w * (fit.x(k) * o);
+        b2 += w * (fit.y(k) * o);
     }
+    const std::array<double, 3> c = fit.solve(b0, b1, b2);
+    const double c0 = c[0];
+    const double tx = c[1];
+    const double ty = c[2];
     out.tilt_x = tx;
     out.tilt_y = ty;
     double sum2 = 0.0;
@@ -329,18 +301,18 @@ TupleQuality tuple_quality(const PupilQuadrature<double>& q, std::span<const dou
         if (static_cast<TraceStatus>(status[ku]) != TraceStatus::Ok) {
             continue;
         }
-        const double e = opd[ku] - c0 - tx * xs[ku] - ty * ys[ku];
+        const double e = opd[ku] - c0 - tx * fit.x(k) - ty * fit.y(k);
         if (!rest.empty()) {
             rest[ku] = e;
         }
-        const double w = ws[ku];
+        const double w = fit.weight(k);
         sum2 += w * (e * e);
         const double phase = kTwoPi * (e / lambda_mm);
         re += w * std::cos(phase);
         im += w * std::sin(phase);
     }
     out.rms = std::sqrt(sum2 / a00);
-    out.strehl = (re * re + im * im) / (w_all * w_all);
+    out.strehl = (re * re + im * im) / (fit.total_weight() * fit.total_weight());
     return out;
 }
 

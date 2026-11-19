@@ -11,11 +11,13 @@
 #include "mikroptim/synth/beam_search.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
+#include "mikroptim/tolerance/tolerance_aware.hpp"
 #include "mikroptim/version.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/levenberg_marquardt.hpp"
+#include "mikroptim/cuda/tolerance.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #endif
 
@@ -102,6 +104,14 @@ struct SynthArgs {
     bool prefilter = false;
     std::optional<double> dedup;
     std::string dot;
+    // Toleranzbewusste Synthese (M11-T6b): alpha > 0 schaltet ein (Standard aus); Toleranzsatz
+    // ist der Mikroptim-Standardsatz der realisierten Beschreibung an jedem Punkt
+    double tol_alpha = 0.0;
+    int tol_samples = 0;
+    std::uint64_t tol_seed = 0;
+    ToleranceAwareTilt tol_tilt = ToleranceAwareTilt::Keep;
+    bool have_tol_detail = false;
+    bool have_tol_seed = false;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -300,6 +310,30 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.prefilter = true;
         } else if (arg == "--dedup") {
             a.dedup = parse_double(arg, next_value(args, i, arg));
+        } else if (arg == "--tolerance-aware") {
+            a.tol_alpha = parse_double(arg, next_value(args, i, arg));
+            if (!(a.tol_alpha > 0.0 && a.tol_alpha <= 1.0)) {
+                throw UsageError("--tolerance-aware: Gewicht alpha in (0, 1] erwartet");
+            }
+        } else if (arg == "--tolerance-samples") {
+            a.tol_samples = parse_int(arg, next_value(args, i, arg));
+            if (a.tol_samples < 0) {
+                throw UsageError("--tolerance-samples muss >= 0 sein");
+            }
+            a.have_tol_detail = true;
+        } else if (arg == "--tolerance-seed") {
+            a.tol_seed = parse_uint64(arg, next_value(args, i, arg));
+            a.have_tol_detail = true;
+            a.have_tol_seed = true;
+        } else if (arg == "--tolerance-tilt") {
+            const std::string_view v = next_value(args, i, arg);
+            const std::optional<ToleranceAwareTilt> t = tolerance_aware_tilt_from_string(v);
+            if (!t) {
+                throw UsageError("--tolerance-tilt erwartet keep oder remove, nicht '" +
+                                 std::string(v) + "'");
+            }
+            a.tol_tilt = *t;
+            a.have_tol_detail = true;
         } else if (arg == "--dot") {
             a.dot = std::string(next_value(args, i, arg));
         } else if (arg.size() > 1 && arg.front() == '-') {
@@ -333,6 +367,13 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
                     a.dedup || !a.dot.empty())) {
         throw UsageError("--seed, --alternatives, --starts, --start-perturbation, --prefilter, "
                          "--dedup und --dot verlangen --beam");
+    }
+    if (a.have_tol_detail && !(a.tol_alpha > 0.0)) {
+        throw UsageError("--tolerance-samples, --tolerance-seed und --tolerance-tilt verlangen "
+                         "--tolerance-aware");
+    }
+    if (a.have_tol_seed && a.tol_samples == 0) {
+        throw UsageError("--tolerance-seed verlangt --tolerance-samples S mit S >= 1");
     }
     for (const std::string* f : {&a.output, &a.log, &a.dot}) {
         if (!f->empty() && same_file(fs::path(*f), fs::path(a.file))) {
@@ -405,6 +446,14 @@ void print_synth_usage(std::ostream& out) {
            "                            0: ein Zweig)\n"
            "  --curvature-bound C       Schranken +-C [1/mm] der neuen Krümmungsvariablen\n"
            "  --jacobian V              Jacobi-Matrix der LM-Läufe: fd (Standard) oder adjoint\n"
+           "  --tolerance-aware A       toleranzbewusst (M11-T6b): jeder Schritt minimiert\n"
+           "                            (1-A)·F + A·Mittel F(gestört) über feste Störungen des\n"
+           "                            Mikroptim-Standardsatzes der Beschreibung am Punkt;\n"
+           "                            die Strahlsuche ordnet nach dieser Merit (Standard aus)\n"
+           "  --tolerance-samples S     S feste Stichproben statt +-delta (Standard 0)\n"
+           "  --tolerance-seed n        Startwert der Stichproben (Standard 0)\n"
+           "  --tolerance-tilt K        keep (Standard) oder remove: gestörte Systeme nach\n"
+           "                            Abzug von Kolben und Kippung wie die Tolerierung\n"
            "  -o, --output <datei>      Ergebnis am Endpunkt als Systemdatei\n"
            "  --log <datei>             Protokoll als JSON (mikroptim.synth/1) in eine Datei\n"
            "  --json                    Ausgabe als JSON statt Text\n"
@@ -512,6 +561,28 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                            {"device_name", engine->device_name()}};
         }
 #endif
+        if (a.tol_alpha > 0.0) {
+            // Toleranzbewusste Synthese (M11-T6b): jeder Schritt minimiert F_tol mit dem
+            // Standardsatz der realisierten Beschreibung, inneres Backend CPU bzw. GPU
+            ToleranceAwareSettings ts;
+            ts.alpha = a.tol_alpha;
+            ts.scheme =
+                a.tol_samples > 0 ? ToleranceAwareScheme::Samples : ToleranceAwareScheme::PlusMinus;
+            ts.samples = a.tol_samples;
+            ts.seed = a.tol_seed;
+            ts.tilt = a.tol_tilt;
+            ToleranceInnerFactory inner = cpu_tolerance_inner();
+#ifdef MIKROPTIM_HAS_CUDA
+            if (engine) {
+                inner = cuda::gpu_tolerance_inner(*engine);
+            }
+#endif
+            o.system_optimizer = [ts, inner](const SystemDescription& realized,
+                                             const VariableSet& set, const SystemBatchHost& base,
+                                             std::span<const double> x0, const LmOptions& lm) {
+                return optimize_lm_tolerance_aware_standard(realized, ts, inner, set, base, x0, lm);
+            };
+        }
         if (a.start_perturbation) {
             o.start_perturbation = *a.start_perturbation;
         }
@@ -563,6 +634,16 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        std::to_string(a.starts.value_or(0)) + (a.prefilter ? ", Vorfilter" : ""));
             }
             kv(out, "Jacobi-Matrix", jacobian_text(a.jacobian));
+            if (a.tol_alpha > 0.0) {
+                kv(out, "Toleranzbewusst",
+                   "alpha = " + fixed(a.tol_alpha, 4) + ", " +
+                       (a.tol_samples > 0
+                            ? std::to_string(a.tol_samples) + " Stichproben, Startwert " +
+                                  std::to_string(a.tol_seed)
+                            : std::string("+-delta je Zufallsgröße")) +
+                       ", Mikroptim-Standardsatz" +
+                       (a.tol_tilt == ToleranceAwareTilt::Remove ? ", gestört ohne Kippung" : ""));
+            }
             out << '\n';
             if (stream) {
                 if (a.beam) {
@@ -640,6 +721,15 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                                     {"achromat_start", a.split_achromat}}},
                      {"quadrature", Json{{"rings", a.rings}, {"spokes", a.spokes}}},
                      {"jacobian", to_string(a.jacobian)},
+                     {"tolerance_aware",
+                      a.tol_alpha > 0.0
+                          ? Json{{"alpha", a.tol_alpha},
+                                 {"scheme", a.tol_samples > 0 ? "samples" : "plus_minus"},
+                                 {"samples", a.tol_samples},
+                                 {"seed", a.tol_samples > 0 ? Json(a.tol_seed) : Json(nullptr)},
+                                 {"set", "default"},
+                                 {"tilt", to_string(a.tol_tilt)}}
+                          : Json(nullptr)},
                      {"element_thickness", o.element_thickness},
                      {"element_max_thickness", o.element_max_thickness},
                      {"saddle_delta", o.saddle_delta}};

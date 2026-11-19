@@ -224,6 +224,7 @@ target_link_libraries(mikroptim_synth
 # --------------------------------------------------------------------------
 add_library(mikroptim_tolerance STATIC
     src/tolerance/manufacturability.cpp
+    src/tolerance/piston_tilt.cpp
     src/tolerance/sensitivity.cpp
     src/tolerance/tolerance_aware.cpp
     src/tolerance/tolerance_analysis.cpp
