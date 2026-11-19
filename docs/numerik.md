@@ -977,11 +977,13 @@ $$S_{\mathrm{FSPH},s} = -2\,(Q'_s - Q_s),\qquad \sum_s S_{\mathrm{FSPH},s} = -2\
 
 Bei kleiner Apertur geht S_FSPH,s in S_I,s über (dieselbe Rolle wie der Beitrag nach Delano bei Zhang, Gl. 2.6; die Normierung −2 macht beide gleich); der Anteil höherer Ordnung ist S_HSPH,s = S_FSPH,s − S_I,s (Zhang Gl. 2.7). Die Zone ρ = 1/√2 liefert S_FSPH bei ρ, dort ≈ S_I ρ⁴ = S_I/4; die Abweichung davon beschreibt den Zonenfehler. In Wellen wie W040: W040_full = S_FSPH/(8λ), W040_higher, W040_zone.
 
-**Verletzung der Sinusbedingung** (Conrady), am Rand und in der Zone: mit f_real = −ρa/sin U′, paraxialer Brennweite f, paraxialer Schnittweite l′ und Lage l′_P der Austrittspupille (beide ab der letzten Fläche, Abschnitt 9)
+**Verletzung der Sinusbedingung** (Conrady), am Rand und in der Zone: mit f_real = −ρa/sin U′ (realer Strahl parallel zur Achse in der Höhe ρa, sin U′ = d_y nach der letzten Fläche, reale Schnittweite L′ = z − y d_z/d_y), bildseitiger paraxialer Brennweite f′ = n′_L/φ (= −a/u′_L; bei Bildraum in Luft die Brennweite 1/φ), paraxialer Schnittweite l′ und Lage l′_P der Austrittspupille (beide ab der letzten Fläche, Abschnitt 9)
 
-$$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f}\cdot\frac{l' - l'_P}{L' - l'_P} - 1$$
+$$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f'}\cdot\frac{l' - l'_P}{L' - l'_P} - 1$$
 
-(bildseitig telezentrisch: der zweite Faktor entfällt). Bei kleiner Apertur ist OSC = −S_II/(2H) (lineare Koma 3. Ordnung pro Bildhöhe), in der Zone die Hälfte.
+(bildseitig telezentrisch: der zweite Faktor entfällt; NaN, wenn d_y = 0 oder das System afokal ist). Bei kleiner Apertur ist OSC = −S_II/(2H) (lineare Koma 3. Ordnung pro Bildhöhe), in der Zone die Hälfte. Eine Funktion für Bericht und Residuum (M11-T4, [optimierung.md, Abschnitt 2.7](optimierung.md#27-sinusbedingung-ab-m11-t4)): `conrady_osc` in `include/mikroptim/paraxial/sine_condition.hpp`. Bis M11-T4 stand im Bericht f = 1/φ statt f′; das ändert nur Systeme mit Bildraum in Glas (dort ist OSC → 0 für ρ → 0 erst mit f′ erfüllt).
+
+*Orakel (M11-T4):* Ein zur Blende konzentrisches System (alle Krümmungsmittelpunkte in der Blendenmitte) ist komafrei, und OSC = 0 gilt exakt in jeder Zone: Der Abstand p eines Strahls vom Mittelpunkt erfüllt n p = n′ p′ an jeder Fläche, die Austrittspupille liegt im Mittelpunkt, also L′ − l′_P = −n₀ρa/(n′_L sin U′) und l′ − l′_P = −n₀ρa/(n′_L u′); mit f_real/f′ = u′/sin U′ wird das Produkt 1. Test `SineCondition.ConcentricSystemsSatisfyItExactly`: |OSC| ≤ 4,4·10⁻¹⁶.
 
 **Prüfungen M10-T1b** (Tests `Aberrations.FullOrder*`, `Aberrations.OscMatchesThirdOrderComa`, Toleranzen `kFullOrderSmallAperture`, `kOscThirdOrder`):
 

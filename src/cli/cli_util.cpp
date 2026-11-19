@@ -139,6 +139,36 @@ std::string join_fixed(const std::vector<double>& values, int decimals) {
     return s;
 }
 
+double parse_sine_condition_weight(std::string_view option, std::string_view text) {
+    const double w = parse_double(option, text);
+    if (!(w >= 0.0)) {
+        throw UsageError(std::string(option) + " erwartet ein Gewicht >= 0");
+    }
+    return w;
+}
+
+void apply_sine_condition_option(SystemDescription& system, double weight) {
+    if (!system.constraints) {
+        system.constraints = Constraints{};
+    }
+    std::vector<ConstraintSpec>& items = system.constraints->items;
+    ConstraintSpec* entry = nullptr;
+    for (ConstraintSpec& c : items) {
+        if (c.type == ConstraintType::SineCondition) {
+            entry = &c;
+            break;
+        }
+    }
+    if (entry == nullptr) {
+        ConstraintSpec c;
+        c.type = ConstraintType::SineCondition;
+        items.push_back(std::move(c));
+        entry = &items.back();
+    }
+    entry->weight = weight;
+    check_constraints(system);
+}
+
 // ---- Dateien ------------------------------------------------------------------------------
 
 namespace fs = std::filesystem;

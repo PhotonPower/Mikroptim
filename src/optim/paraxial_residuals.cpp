@@ -3,7 +3,9 @@
 #include "mikroptim/optim/paraxial_residuals.hpp"
 
 #include "mikroptim/model/system.hpp"
+#include "mikroptim/paraxial/sine_condition.hpp"
 #include "mikroptim/trace/ghost_plate.hpp"
+#include "mikroptim/trace/trace.hpp"
 
 #include "parallel_variants.hpp"
 
@@ -11,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -90,12 +93,40 @@ std::vector<ParaxialData> batch_paraxial_all(const SystemBatchHost& batch, int t
     return out;
 }
 
+double batch_sine_condition(const SystemBatchHost& batch, int v, const ParaxialData& p,
+                            double rho) {
+    check_variant(batch, v);
+    if (batch.topology().source != SourceKind::Collimated) {
+        throw std::invalid_argument("Sinusbedingung: nur für kollimierte Quelle definiert");
+    }
+    if (!(std::isfinite(rho) && rho > 0.0 && rho <= 1.0)) {
+        throw std::invalid_argument("Sinusbedingung: Pupillenzone muss in (0, 1] liegen");
+    }
+    const SystemBatchView<double> b = batch.view();
+    const BatchShape& sh = b.shape;
+    // Tabelle der Variante mit einer Wellenlänge (λ_ref): Brechzahlen [S] bzw. [G] der
+    // Variante, Ablage wie index[S][L] bzw. ghost_index[G][L] mit L = 1.
+    SurfaceTableView<double> table = b.surface_table(v);
+    table.wavelengths = 1;
+    table.index = b.paraxial_index + sh.surface_at(v, 0);
+    table.ghost_index = sh.ghost_plates > 0 ? b.paraxial_ghost_index + sh.ghost_at(v, 0) : nullptr;
+    table.decenter_tilt = nullptr;
+    table.tilt_trig = nullptr;
+    const double a = b.pupil_radius[v];
+    Ray<double> ray = collimated_ray<double>(a, 0.0, rho, 0.0);
+    if (trace_ray(table, 0, ray, nullptr) != TraceStatus::Ok) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const int S = sh.surfaces;
+    return conrady_osc(rho * a, ray.p, ray.d, p, b.paraxial_index[sh.surface_at(v, S - 1)]);
+}
+
 // ---- Nebenbedingungen --------------------------------------------------------------------
 
 bool ParaxialConstraints::needs_trace() const {
     return std::any_of(items.begin(), items.end(), [](const ParaxialConstraint& c) {
         return c.type == ConstraintType::FocalLength || c.type == ConstraintType::ParaxialFocus ||
-               c.type == ConstraintType::Petzval;
+               c.type == ConstraintType::Petzval || c.type == ConstraintType::SineCondition;
     });
 }
 
@@ -117,6 +148,14 @@ ParaxialConstraints make_paraxial_constraints(const SystemDescription& system) {
         c.mode = spec.mode_or_default();
         c.weight = spec.weight_or_default();
         c.target = *constraint_bound(system, spec); // von check_constraints garantiert
+        c.item = static_cast<int>(i);
+        if (spec.type == ConstraintType::SineCondition) {
+            for (const double zone : spec.zones_or_default()) {
+                c.zone = zone;
+                out.items.push_back(c);
+            }
+            continue;
+        }
         if (spec.type == ConstraintType::ParfocalLength) {
             c.reference_surface = map.table_surface(spec.reference_surface_or_default());
             c.offset = spec.offset_or_default();
@@ -124,7 +163,6 @@ ParaxialConstraints make_paraxial_constraints(const SystemDescription& system) {
         if (spec.shift.size() == 1) {
             c.shift = spec.shift.front(); // Augmented Lagrangian (M11-T2)
         }
-        c.item = static_cast<int>(i);
         out.items.push_back(c);
     }
     return out;
@@ -192,6 +230,20 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
                 fail_constraint(i, c, "Grenze κ_max muss mindestens 0 sein");
             }
             break;
+        case ConstraintType::SineCondition:
+            if (c.mode != ConstraintMode::Equal) {
+                fail_constraint(i, c, "nur als Gleichung definiert");
+            }
+            if (c.target != 0.0) {
+                fail_constraint(i, c, "Sollwert muss 0 sein");
+            }
+            if (!(std::isfinite(c.zone) && c.zone > 0.0 && c.zone <= 1.0)) {
+                fail_constraint(i, c, "Pupillenzone muss in (0, 1] liegen");
+            }
+            if (topology.source != SourceKind::Collimated) {
+                fail_constraint(i, c, "verlangt eine kollimierte Quelle");
+            }
+            break;
         case ConstraintType::GhostPenalty:
         case ConstraintType::GlassHull:
         case ConstraintType::MaxSemiDiameter:
@@ -241,6 +293,13 @@ double paraxial_deviation(const ParaxialConstraint& c, const SystemBatchHost& ba
         // Modus Max: aktiv nur oberhalb der Grenze.
         q = std::abs(p.petzval_curvature) - c.target;
         break;
+    case ConstraintType::SineCondition: {
+        // OSC der Zone; nicht bestimmbar (Strahl versagt, afokal): 0 – das Versagen bestrafen
+        // die Strahlresiduen (docs/optimierung.md, Abschnitt 2.7).
+        const double osc = batch_sine_condition(batch, v, p, c.zone);
+        q = std::isfinite(osc) ? osc : 0.0;
+        break;
+    }
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
     case ConstraintType::MaxSemiDiameter:

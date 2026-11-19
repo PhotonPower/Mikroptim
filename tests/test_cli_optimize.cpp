@@ -393,6 +393,44 @@ TEST(CliOptimize, ConstraintsReportedBeforeAndAfter) {
     EXPECT_LT(j["result"]["merit"].get<double>(), j["result"]["start_merit"].get<double>());
 }
 
+// --sine-condition w (M11-T4): hängt den Eintrag sine_condition an (Zonen 1/√2 und Rand), der
+// Bericht zeigt OSC und √w·OSC je Zone, die Ergebnisdatei enthält den Eintrag; die Biegung mit
+// großem Gewicht senkt OSC.
+TEST(CliOptimize, SineConditionOption) {
+    const TempDir dir("sine");
+    const std::string out = dir.file("ergebnis.json");
+    const RunResult r = optimize(
+        {kBiegung, "--json", "--max-iterations", "30", "--sine-condition", "1e6", "-o", out});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    const json& c = j["constraints"];
+    ASSERT_EQ(c.size(), 3U);
+    EXPECT_EQ(c[0]["type"], "focal_length");
+    for (int k = 1; k <= 2; ++k) {
+        EXPECT_EQ(c[k]["type"], "sine_condition");
+        EXPECT_EQ(c[k]["item"], 1);
+        EXPECT_EQ(c[k]["mode"], "equal");
+        EXPECT_EQ(c[k]["target"].get<double>(), 0.0);
+        const double osc = c[k]["value_start"].get<double>();
+        EXPECT_NE(osc, 0.0);
+        EXPECT_DOUBLE_EQ(c[k]["residual_start"].get<double>(), 1e3 * osc);
+        EXPECT_LT(std::abs(c[k]["value_result"].get<double>()), 0.05 * std::abs(osc));
+    }
+    EXPECT_DOUBLE_EQ(c[1]["zone"].get<double>(), std::sqrt(0.5));
+    EXPECT_EQ(c[2]["zone"].get<double>(), 1.0);
+    const mko::SystemDescription s = mko::read_system_file(out);
+    ASSERT_TRUE(s.constraints.has_value());
+    ASSERT_EQ(s.constraints->items.size(), 2U);
+    EXPECT_EQ(s.constraints->items[1].type, mko::ConstraintType::SineCondition);
+    EXPECT_EQ(s.constraints->items[1].weight, 1e6);
+    // Text: eine Zeile pro Zone
+    const RunResult t =
+        optimize({kBiegung, "-q", "--max-iterations", "0", "--sine-condition", "4"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("sine rho=0.7071"), std::string::npos) << t.out;
+    EXPECT_NE(t.out.find("sine rho=1.0000"), std::string::npos) << t.out;
+}
+
 // Mit Geisterplatten: Die Dicke des geteilten Spalts wird als Dateidicke geschrieben; das
 // erneute Laden ergibt dasselbe letzte Teilstück fl(x − d) und damit bitgleich dieselbe Merit.
 TEST(CliOptimize, GhostPlateResultReproducesMerit) {
@@ -821,6 +859,8 @@ TEST(CliOptimize, Errors) {
                                                {kBiegung, "--fail-weight", "1e8", "--hard-failure"},
                                                {kBiegung, "--jacobian"},
                                                {kBiegung, "--jacobian", "adjungiert"},
+                                               {kBiegung, "--sine-condition"},
+                                               {kBiegung, "--sine-condition", "-1"},
                                                {kBiegung, "--device", "0"}}) {
         r = optimize(args);
         EXPECT_EQ(r.code, mko::cli::kExitUsage) << (args.empty() ? "" : args.back());

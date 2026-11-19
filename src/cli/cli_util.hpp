@@ -63,6 +63,17 @@ std::string jacobian_text(JacobianMethod method);
 // Werte mit fixed(·, decimals), durch ", " getrennt.
 std::string join_fixed(const std::vector<double>& values, int decimals);
 
+// ---- Sinusbedingung (optimize, synth; M11-T4) ---------------------------------------------
+
+// Gewicht der Option --sine-condition: endlich und >= 0, sonst UsageError.
+double parse_sine_condition_weight(std::string_view option, std::string_view text);
+
+// Setzt das Gewicht des Eintrags sine_condition in system.constraints auf `weight` (Zonen der
+// Datei bleiben erhalten, sonst Standard); fehlt der Eintrag, wird er angehängt (ohne Abschnitt
+// constraints mit neuem Abschnitt). Danach check_constraints (FormatError, z. B. bei
+// Punktquelle). Die Ergebnisdatei enthält den Eintrag.
+void apply_sine_condition_option(SystemDescription& system, double weight);
+
 // ---- Dateien (optimize, snap) ------------------------------------------------------------
 
 // Dieselbe Datei? Existieren beide, entscheidet das Dateisystem (auch Verknüpfungen), sonst

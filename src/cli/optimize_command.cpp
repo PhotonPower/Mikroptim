@@ -88,6 +88,8 @@ struct OptimizeArgs {
     double fail_weight = kDefaultFailWeight; // Start-w_fail des Strafverfahrens [Wellen²]
     // Verfahren der Jacobi-Matrix (M5-T3): --jacobian fd|adjoint
     JacobianMethod jacobian = LmOptions{}.jacobian_method;
+    // Sinusbedingung (M11-T4): Gewicht des Eintrags sine_condition, gesetzt oder angehängt
+    std::optional<double> sine_condition;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -174,6 +176,8 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--seed") {
             a.seed = parse_uint64(arg, next_value(args, i, arg));
             a.have_seed = true;
+        } else if (arg == "--sine-condition") {
+            a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
         } else if (arg == "--fail-weight") {
             a.fail_weight = parse_double(arg, next_value(args, i, arg));
             if (!(a.fail_weight > 0.0) || !std::isfinite(a.fail_weight)) {
@@ -239,7 +243,8 @@ struct IterationRecord {
 
 // Eine paraxiale Nebenbedingung vorher und nachher. `value` ist die Istgröße (Brennweite
 // 1/φ, Arbeitsabstand, Abgleichlänge, bei paraxial_focus die Randstrahlhöhe q in der
-// Bildebene), `residual` das Residuum √w·q̃ aus paraxial_residual.
+// Bildebene, bei sine_condition die OSC der Zone), `residual` das Residuum √w·q̃ aus
+// paraxial_residual.
 struct ConstraintReport {
     ParaxialConstraint constraint;
     double value_before = 0.0;
@@ -339,6 +344,8 @@ double constraint_value(const ParaxialConstraint& c, const SystemBatchHost& batc
         raw.mode = ConstraintMode::Equal;
         return paraxial_residual(raw, batch, 0, p);
     }
+    case ConstraintType::SineCondition:
+        return batch_sine_condition(batch, 0, p, c.zone); // OSC (dimensionslos)
     default:
         break;
     }
@@ -599,7 +606,9 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
     }
 
     if (!r.constraint_reports.empty()) {
-        out << '\n' << "Nebenbedingungen (Istwerte in mm, Residuum r = Wurzel(w) q)\n";
+        out << '\n'
+            << "Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho; "
+               "Residuum r = Wurzel(w) q)\n";
         out << "  " << pad_left("Nr", 3) << "  " << pad_right("Typ", 17) << pad_right("Modus", 6)
             << pad_left("Gewicht", 11) << pad_left("Soll", 13) << pad_left("Ist vorher", 13)
             << pad_left("Ist nachher", 13) << pad_left("r vorher", 14) << pad_left("r nachher", 14)
@@ -607,8 +616,10 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
         for (std::size_t i = 0; i < r.constraint_reports.size(); ++i) {
             const ConstraintReport& c = r.constraint_reports[i];
             const int nr = c.constraint.item >= 0 ? c.constraint.item : static_cast<int>(i);
-            out << "  " << pad_left(std::to_string(nr), 3) << "  "
-                << pad_right(to_string(c.constraint.type), 17)
+            const std::string type = c.constraint.type == ConstraintType::SineCondition
+                                         ? "sine rho=" + fixed(c.constraint.zone, 4)
+                                         : std::string(to_string(c.constraint.type));
+            out << "  " << pad_left(std::to_string(nr), 3) << "  " << pad_right(type, 17)
                 << pad_right(to_string(c.constraint.mode), 6)
                 << pad_left(sci(c.constraint.weight, 3), 11)
                 << pad_left(fixed(c.constraint.target, 6), 13)
@@ -832,6 +843,9 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         e["mode"] = std::string(to_string(c.constraint.mode));
         e["weight"] = number(c.constraint.weight);
         e["target"] = number(c.constraint.target);
+        if (c.constraint.type == ConstraintType::SineCondition) {
+            e["zone"] = number(c.constraint.zone);
+        }
         e["value_start"] = number(c.value_before);
         e["value_result"] = number(c.value_after);
         e["residual_start"] = number(c.residual_before);
@@ -1000,7 +1014,7 @@ void print_optimize_usage(std::ostream& out) {
            "                          [--augmented-lagrangian K[,T]] [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
            "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
-           "                          [--gpu [--device N]]\n"
+           "                          [--sine-condition w] [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
            "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
            "  L1-Strafe der Geisterkoeffizienten) in Wellen²; mit Geisterplatten folgt ein\n"
@@ -1034,6 +1048,8 @@ void print_optimize_usage(std::ostream& out) {
         << sci(kDefaultFailWeight, 0)
         << "; je Runde x10 bis 1e14)\n"
            "  --hard-failure     hartes Strahlversagen wie in M3 (ohne Strafresiduen)\n"
+           "  --sine-condition w Verletzung der Sinusbedingung (OSC) als Residuum mit Gewicht w\n"
+           "                     (Eintrag sine_condition setzen oder anhängen, M11-T4)\n"
            "  --jacobian V       Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
            "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --gpu              auf der GPU rechnen statt auf der CPU\n"
@@ -1101,6 +1117,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         for (const std::string& w : r.loaded.warnings) {
             err << "mikroptim optimize: Warnung: " << w << '\n';
             r.warnings.push_back(w);
+        }
+        if (a.sine_condition) {
+            apply_sine_condition_option(r.loaded.system, *a.sine_condition);
         }
         std::error_code ec;
         fs::path input_dir = fs::absolute(fs::path(a.file), ec).parent_path();

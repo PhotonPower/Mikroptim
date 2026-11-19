@@ -50,6 +50,7 @@ std::string_view target_field(ConstraintType type) {
     case ConstraintType::MaxCenterThickness:
     case ConstraintType::MinEdgeThickness:
     case ConstraintType::MaxIncidenceAngle:
+    case ConstraintType::SineCondition:
         return {};
     }
     return {};
@@ -247,7 +248,8 @@ void check_mechanical(const SystemDescription& system, const ConstraintSpec& c,
 // Typen, die nur als Gleichung definiert sind (einseitig ohne sinnvolle Bedeutung bzw. ohne
 // stetige Formulierung, docs/optimierung.md, Abschnitt 2).
 bool equality_only(ConstraintType type) {
-    return type == ConstraintType::FocalLength || type == ConstraintType::ParaxialFocus;
+    return type == ConstraintType::FocalLength || type == ConstraintType::ParaxialFocus ||
+           type == ConstraintType::SineCondition;
 }
 
 } // namespace
@@ -278,6 +280,8 @@ std::string_view to_string(ConstraintType type) {
         return "min_edge_thickness";
     case ConstraintType::MaxIncidenceAngle:
         return "max_incidence_angle";
+    case ConstraintType::SineCondition:
+        return "sine_condition";
     }
     return "?";
 }
@@ -320,7 +324,8 @@ std::optional<ConstraintType> constraint_type_from_string(std::string_view name)
           ConstraintType::WorkingDistance, ConstraintType::ParaxialFocus, ConstraintType::Petzval,
           ConstraintType::GhostPenalty, ConstraintType::GlassHull, ConstraintType::MaxSemiDiameter,
           ConstraintType::MinCenterThickness, ConstraintType::MaxCenterThickness,
-          ConstraintType::MinEdgeThickness, ConstraintType::MaxIncidenceAngle}) {
+          ConstraintType::MinEdgeThickness, ConstraintType::MaxIncidenceAngle,
+          ConstraintType::SineCondition}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -363,6 +368,7 @@ bool is_paraxial(ConstraintType type) {
     case ConstraintType::WorkingDistance:
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
+    case ConstraintType::SineCondition:
         return true;
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
@@ -391,6 +397,7 @@ bool is_mechanical(ConstraintType type) {
     case ConstraintType::Petzval:
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
+    case ConstraintType::SineCondition:
         return false;
     }
     return false;
@@ -406,6 +413,9 @@ bool supports_shift(const ConstraintSpec& spec) {
 std::optional<double> constraint_target(const SystemDescription& system, ConstraintType type) {
     if (type == ConstraintType::ParaxialFocus) {
         return 0.0;
+    }
+    if (type == ConstraintType::SineCondition) {
+        return 0.0; // OSC = 0
     }
     if (type == ConstraintType::Petzval || type == ConstraintType::GhostPenalty ||
         type == ConstraintType::GlassHull || is_mechanical(type)) {
@@ -430,6 +440,7 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     case ConstraintType::MaxCenterThickness:
     case ConstraintType::MinEdgeThickness:
     case ConstraintType::MaxIncidenceAngle:
+    case ConstraintType::SineCondition:
         break;
     }
     return std::nullopt;
@@ -555,6 +566,27 @@ void check_constraints(const SystemDescription& system) {
             }
         } else if (c.max_curvature) {
             fail(path + ".max_curvature", "nur bei petzval erlaubt");
+        }
+
+        if (c.type == ConstraintType::SineCondition) {
+            for (std::size_t j = 0; j < c.zones.size(); ++j) {
+                const double z = c.zones[j];
+                if (!(std::isfinite(z) && z > 0.0 && z <= 1.0)) {
+                    fail(at(path + ".zones", j),
+                         "Pupillenzone muss in (0, 1] liegen, ist " + num(z));
+                }
+                for (std::size_t k = 0; k < j; ++k) {
+                    if (c.zones[k] == z) {
+                        fail(at(path + ".zones", j), "Pupillenzone " + num(z) + " doppelt");
+                    }
+                }
+            }
+            if (system.source.type != SourceType::Collimated) {
+                fail(path + ".type", "sine_condition (Verletzung der Sinusbedingung im "
+                                     "Unendlichraum) verlangt eine kollimierte Quelle");
+            }
+        } else if (!c.zones.empty()) {
+            fail(path + ".zones", "nur bei sine_condition erlaubt");
         }
 
         if (c.type == ConstraintType::GlassHull) {

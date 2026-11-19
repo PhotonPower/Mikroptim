@@ -575,7 +575,7 @@ private:
                                 "paraxial_focus, petzval, ghost_penalty, glass_hull, "
                                 "max_semi_diameter, min_center_thickness, "
                                 "max_center_thickness, min_edge_thickness, "
-                                "max_incidence_angle)");
+                                "max_incidence_angle, sine_condition)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -647,6 +647,15 @@ private:
             }
             c.height = *eh;
         }
+        // Sinusbedingung (M11-T4)
+        if (const Json* z = member(j, "zones")) {
+            const std::string zones_path = join(path, "zones");
+            c.zones = as_number_list(*z, zones_path);
+            if (c.zones.empty()) {
+                fail(zones_path, "mindestens eine Pupillenzone nötig (Feld weglassen für den "
+                                 "Standard)");
+            }
+        }
         if (const Json* m = member(j, "comment")) {
             c.comment = as_string(*m, join(path, "comment"));
         }
@@ -655,7 +664,7 @@ private:
                       "max_curvature", "plate",     "plates",  "order_weight",      "order_factor",
                       "smoothing",     "margin",    "surface", "surfaces",          "medium",
                       "semi_diameter", "thickness", "angle",   "clearance",         "height",
-                      "comment"});
+                      "zones",         "comment"});
         return c;
     }
 
@@ -926,6 +935,9 @@ Json constraints_to_json(const Constraints& cons) {
         }
         if (c.height) {
             j["height"] = std::string(to_string(*c.height));
+        }
+        if (!c.zones.empty()) {
+            j["zones"] = c.zones;
         }
         if (c.comment) {
             j["comment"] = *c.comment;
