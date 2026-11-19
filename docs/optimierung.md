@@ -976,3 +976,60 @@ Stichprobe i hängt nur von (seed, i) ab; der LM bündelt Läufe ohne Kopplung (
 | RMS und Strehl eines Tupels | Defokus A ρ²: RMS A/√12, Strehl sinc²(πA/λ); Kolben und Kippung; versagte Strahlen undurchlässig | ≤ 10⁻¹³ (`ToleranceQuality.*`) |
 | Zufallsgrößen | Mittel und Varianz gegen Gleichverteilung und abgeschnittene Irwin-Hall-Dichte (c = 0,5 … 3) | innerhalb 5 Standardfehlern bei 200.000 Ziehungen (`ToleranceModel.*DeviateMoments`) |
 | Anwendung | geschlossene Formeln pro Typ, Elementkippung um den Drehpunkt, Zusammensetzung zweier Drehungen | `ToleranceModel.*` |
+
+## 12. Empfindlichkeiten und Herstellbarkeit (M10-T3)
+
+Ziel: für einen Kandidaten sagen, welche Toleranz die Bildgüte am stärksten verschlechtert und welche Linsen schwer zu fertigen sind, als Diagnose für Mensch und Entscheider ([entwurfssteuerung.md, Abschnitt 3.4](entwurfssteuerung.md#34-neu-empfindlichkeiten-und-herstellbarkeit-m10-t3)). Bibliothek `Mikroptim::tolerance` (`include/mikroptim/tolerance/sensitivity.hpp`, `manufacturability.hpp`), Kommandozeile `mikroptim sensitivity` ([cli.md](cli.md#mikroptim-sensitivity)), Python-Aktion `sensitivity` und Feld `sensitivity` des Zustands (`mikroptim.design`). Die Bausteine der Monte-Carlo-Tolerierung (Abschnitt 11) werden wiederverwendet: Toleranzsatz und Auflösung (`resolve_tolerances`), Störungen (`ToleranceModel::apply`, ADR-0011), Trace (`tolerance_trace_cpu` bzw. RESIDUALS auf der GPU über `cuda::use_gpu`) und Bewertung (`tuple_quality`).
+
+### Toleranzsatz
+
+Der Abschnitt `tolerances` der Systemdatei, sonst (oder mit `--set default`) der **Mikroptim-Standardsatz** (`default_sensitivity_tolerances`): pro Element (`all_elements`, Linsen und Kittglieder als starrer Körper) Dezentrierung δ = 10 µm und Verkippung 1′ um die Elementmitte (Werte aus entwurfssteuerung.md, Abschnitt 3.4), für jede gekrümmte Kugelfläche Radius ±0,1 % relativ, für jede Dicke außer dem Arbeitsabstand ±20 µm und für jedes Glas Brechzahl ±5·10⁻⁴. Das ist die Größenordnung üblicher Fertigungstoleranzen für Präzisionsoptik, ohne Bezug auf einen bestimmten Hersteller; alle Werte sind auf der Kommandozeile einstellbar, 0 schaltet eine Art ab. Verteilung, Abschneiden und Kompensator des Satzes zählen hier nicht, nur die Grenzen δ.
+
+### Bewertung und Störungen
+
+Bewertet wird wie in der Tolerierung die mittlere quadratische Wellenfront nach Abzug von Kolben und Kippung ([numerik.md, Abschnitt 16](numerik.md#16-tolerierung-rms-und-strehl-aus-der-quadratur-m8-t4)), **ohne Kompensator**:
+
+$$Q = \sum_{f,\lambda} \hat w_f\,\hat w_\lambda \Big(\frac{\mathrm{RMS}_{f\lambda}}{\lambda_{\mathrm{ref}}}\Big)^2 = \|\tilde e\|^2 \quad [\text{Wellen}^2],\qquad \tilde e_k = \sqrt{\frac{\hat w_f\,\hat w_\lambda\,W_k}{W_{\mathrm{ok}}}}\;\frac{e_k}{\lambda_{\mathrm{ref}}}$$
+
+mit dem Rest e_k nach Abzug von Kolben und Kippung pro Stützstelle (`tuple_quality` mit der Ausgabe `rest`; versagte Strahlen 0). Q ist das Quadrat von „RMS gesamt“ der Tolerierung. Jede Toleranz hat eine oder zwei Komponenten (Dezentrierung x, y; Verkippung α, β), jede Komponente eine Zufallsgröße ξ mit dem Wert δ ξ. Ein Batch mit 1 + 4 D Varianten (D Komponenten, volle Pupille): nominal, dann pro Komponente ξ = +1, −1, +h, −h, alle übrigen 0 (`ToleranceModel::apply` ab der nominellen Variante, dieselben Formeln wie in Abschnitt 11). Ein Trace, Bewertung auf dem Host, Summen in fester Reihenfolge: bitgleich für jede Threadzahl und, auf demselben Gerät, auf der GPU.
+
+Pro Komponente:
+
+| Größe | Formel | Bedeutung |
+|---|---|---|
+| Q₊, Q₋ | Q bei ξ = ±1 | direkte Rechnung bei ±δ (Einzelrechnung im Batch) |
+| a, b | a = (Q₊ − Q₋)/2, b = (Q₊ + Q₋ − 2 Q₀)/2 | Q(ξ) ≈ Q₀ + a ξ + b ξ² durch die drei Punkte |
+| j | (ẽ(+h) − ẽ(−h)) / (2h) | Jacobi-Spalte der Wellenfrontreste nach ξ, also ∂ẽ/∂p mal δ („Spalte mal Toleranz“) |
+| g, ‖j‖² | g = 2 ẽ₀ᵀ j, ‖j‖² | Ableitung dQ/dξ bei 0 und Gauß-Newton-Term: Q(ξ) ≈ Q₀ + g ξ + ‖j‖² ξ² |
+
+Standard h = 0,01 (`--step`). Pro Toleranz: ΔQ_max = größtes Q± − Q₀ über Komponenten und Vorzeichen (Rangfolge der Ausgabe), RMS bei δ = √(Q₀ + ΔQ_max) und die Mittel von b und ‖j‖² über die Komponenten. Das Mittel ist die erwartete Zunahme von Q bei einer Störung der Größe δ in zufälliger Richtung (x/y bzw. α/β; die Mischterme mitteln sich weg) bzw. mit zufälligem Vorzeichen.
+
+**Jacobi-Matrix und Einzelrechnung.** Die Spalten j bilden das lineare Modell ẽ(ξ) ≈ ẽ₀ + Σ_k j_k ξ_k für beliebige Kombinationen von Toleranzen; g ist die Ableitung von Q. Der Gauß-Newton-Term ‖j‖² lässt den Beitrag ẽ₀ᵀ ẽ″ der Krümmung der Reste weg. Bei Toleranzen, die Q kaum ändern, ist dieser vergleichbar groß (am Testsystem bis zum Faktor 2 zwischen ‖j‖² und b bei Wirkungen um 10⁻⁷ Wellen², bei den wirksamen Toleranzen < 1 %); einzelne Toleranzen werden deshalb nach den direkten Werten Q± bewertet und sortiert, Kombinationen und Ableitungen über die Jacobi-Spalten. Anders als in entwurfssteuerung.md, Abschnitt 3.4, ursprünglich gedacht, stammt die Jacobi-Matrix nicht aus dem LM am Optimum: Dessen Residuen enthalten die Kippung (Merit, Abschnitt 2), seine Variablen umfassen weder Brechzahlen ohne Buchdahl-Umrechnung noch Dezentrierungen, und nicht jeder tolerierte Parameter ist eine Variable. Die zentralen Differenzen nach den Toleranzparametern kosten einen Trace von 1 + 4 D Varianten (Testsystem: 105 Varianten, 0,2 s auf der CPU).
+
+### Herstellbarkeit
+
+`check_manufacturability` prüft nur die Geometrie der Datei (kein Trace; Geisterplatten zählen nicht), mit dem Halbdurchmesser h der Fläche bzw. h = max(h_s, h_{s+1}) für das Stück zwischen zwei Flächen. Pfeilhöhe und Randdicke wie bei den mechanischen Nebenbedingungen (Abschnitt 2.5). Befunde sind Warnungen (Grenzwert überschritten) oder Fehler (geometrisch unmöglich):
+
+| Prüfung | Größe | Warnung (Standard) | Fehler | Herkunft der Grenze |
+|---|---|---|---|---|
+| `hemisphere` (Kugelfläche) | h \|c\| | > 0,95 | ≥ 1 (Halbdurchmesser ≥ Radius) | Zhang 2019, §3.2 (Hyperhemisphäre nicht fassbar), wie entwurfssteuerung.md, Abschnitt 3.4 |
+| `center_thickness` (Glas) | t | < 0,5 mm | – | Mikroptim-Standard |
+| `edge_thickness` (Glas) | t − sag(c_s, h) + sag(c_{s+1}, h) | < 0,5 mm | < 0 oder eine der Flächen mit h \|c\| ≥ 1 | Mikroptim-Standard |
+| `air_edge` (Luft zwischen zwei Flächen, nicht der Arbeitsabstand) | wie Randdicke | < 0 mm (Standard: keine Warnung) | < 0 (Berührung) oder h \|c\| ≥ 1 | – |
+| `aspect_ratio` (Glas) | 2h / t | > 10 | – | Mikroptim-Standard (Faustregel: dünne Linsen verformen sich beim Polieren und Fassen) |
+| `centering` (Glas, Meniskusform) | Z = (h/2) \|c_s − c_{s+1}\| | < 0,1 | – | Mikroptim-Standard (Richtwert der Glockenzentrierung: flache Menisken zentrieren sich nicht selbst) |
+
+Alle Grenzen sind einstellbar (`ManufacturabilityLimits`, CLI `--max-hemisphere`, `--min-center`, `--min-edge`, `--min-air-edge`, `--max-aspect`, `--min-centering`); eine Grenze 0 schaltet die Warnung ab, Fehler bleiben. Gekittete Glieder werden pro Glas geprüft (jede Linse wird vor dem Kitten einzeln gefertigt und zentriert). Noch nicht umgesetzt aus entwurfssteuerung.md, Abschnitt 3.4: größter Einfallswinkel (braucht den Trace; als Nebenbedingung `max_incidence_angle` vorhanden), Glas in der Autofluoreszenz-Sperrzone (braucht die Wissensbasis, M10-T5) und Elementzahl gegen die Abgleichlänge (braucht die Spezifikation des Entwurfs).
+
+### Abnahme (M10-T3)
+
+Tests `tests/test_sensitivity.cpp`, `tests/test_manufacturability.cpp`, `tests/test_cli_sensitivity.cpp`, GPU `CudaSensitivity.*` in `tests/test_cuda_tolerance.cpp`. System: `testsystem_toleranz.json` mit einem Satz aus allen Typen außer Abbe (11 Toleranzen, 15 Komponenten; die Brechzahl am Buchdahl-Glas, damit die Datei sie als n₀ + Δn ausdrücken kann) und fester Sollbrennweite 20 mm (Bildpunkte unabhängig von der Störung, wie im Batch).
+
+| Prüfung | Orakel | Ergebnis (Test) |
+|---|---|---|
+| Q± jeder Komponente (Radius relativ und in Passen, Dicke, Brechzahl, Flächen- und Elementdezentrierung, Flächen- und Elementverkippung um die Mitte) | Einzelrechnung: gestörte Systemdatei nach ADR-0011 (`decenter`, `tilt_deg` an den Flächen; Elementverkippung mit eigener Formel Scheitel P + R(V − P), Axialanteil in den Dicken), eigener Batch und eigene Bewertung | bitgleich (größte relative Abweichung 0; Toleranz `kSensitivitySingleSystem` = 10⁻¹⁰) (`Sensitivity.PerturbationsMatchSingleSystemFiles`) |
+| Jacobi-Empfindlichkeit gegen finite Differenzen | (a) h = 0,01 gegen h = 0,005; (b) Sekante (ẽ(+δ) − ẽ(−δ))/2 aus den beiden Einzelrechnungen: ‖j‖² und 2 ẽ₀ᵀ j; (c) g gegen (Q₊ − Q₋)/2 | relativ zur größten Änderung von Q: (a) 7,1·10⁻⁶, (b) 4,8·10⁻⁶, (c) 2,5·10⁻³ (kubischer Term) (`Sensitivity.JacobianAgreesWithFiniteDifferences`) |
+| Invariante Bewegungen | konzentrische Schale um ihren gemeinsamen Krümmungsmittelpunkt gekippt, planparallele Platte quer verschoben: dieselben Flächen | \|ΔQ\|/Q₀ ≤ 6,4·10⁻¹³, ‖j‖²/Q₀ ≤ 1,9·10⁻²⁰; Kontrolle (Linse um ihre Mitte gekippt) wirkt (`Sensitivity.InvariantMotionsHaveNoEffect`) |
+| Symmetrie | nur das Feld auf der Achse: Q gerade in der Dezentrierung, x gleich y | ≤ 10⁻¹⁰ Q₀ (`Sensitivity.AxialFieldIsSymmetric`) |
+| Determinismus, GPU | bitgleich für 1 und 7 Threads; GPU zweimal bitgleich; GPU gegen CPU (Toleranzsatz der Testdatei, 26 Komponenten) | GPU gegen CPU (RTX 3090): Q relativ 3,4·10⁻¹¹, Jacobi-Terme 6,4·10⁻⁷ relativ zur größten Änderung von Q (`Sensitivity.DeterministicForAnyThreadCount`, `CudaSensitivity.GpuMatchesCpuAndIsReproducible`) |
+| Herstellbarkeit | frei erfundenes System: Randdicke, Luftrand, Halbkugelgrad und Z gegen die geschlossene Pfeilhöhe R − √(R² − h²) | ≤ 10⁻¹² mm; 4 Fehler, 6 Warnungen wie konstruiert (`Manufacturability.*`) |

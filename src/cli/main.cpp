@@ -3,6 +3,7 @@
 #include "cli/glasses_command.hpp"
 #include "cli/insert_command.hpp"
 #include "cli/optimize_command.hpp"
+#include "cli/sensitivity_command.hpp"
 #include "cli/snap_command.hpp"
 #include "cli/synth_command.hpp"
 #include "cli/tolerance_command.hpp"
@@ -37,6 +38,8 @@ void print_usage() {
         "        mikroptim glasses <katalog.json>... [--order 1|2] [--fixed GLAS] [--json]\n"
         "        mikroptim tolerance <system.json> [--samples N] [--seed n] [--json]\n"
         "                        [--compensator wd|none] [--gpu [--device N]]\n"
+        "        mikroptim sensitivity <system.json> [--set file|default] [--json]\n"
+        "                        [--manufacturability-only] [--gpu [--device N]]\n"
         "  --version   Version ausgeben\n"
         "  --devices   CUDA-Geräte auflisten\n"
         "  trace       System auswerten (Hilfe: mikroptim trace --help)\n"
@@ -47,7 +50,9 @@ void print_usage() {
         "  synth       Systemsynthese, Homotopie (Hilfe: mikroptim synth --help)\n"
         "  aberrations Aberrationsbericht pro Fläche (Hilfe: mikroptim aberrations --help)\n"
         "  glasses     Glasvorauswahl für Farbkorrektur (Hilfe: mikroptim glasses --help)\n"
-        "  tolerance   Monte-Carlo-Tolerierung (Hilfe: mikroptim tolerance --help)");
+        "  tolerance   Monte-Carlo-Tolerierung (Hilfe: mikroptim tolerance --help)\n"
+        "  sensitivity Empfindlichkeiten und Herstellbarkeit (Hilfe: mikroptim sensitivity "
+        "--help)");
 }
 
 } // namespace
@@ -101,6 +106,10 @@ int main(int argc, char** argv) {
     if (arg == "tolerance") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);
         return mko::cli::run_tolerance_command(args, std::cout, std::cerr);
+    }
+    if (arg == "sensitivity") {
+        const std::vector<std::string_view> args(argv + 2, argv + argc);
+        return mko::cli::run_sensitivity_command(args, std::cout, std::cerr);
     }
     if (arg == "insert") {
         const std::vector<std::string_view> args(argv + 2, argv + argc);

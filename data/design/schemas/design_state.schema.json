@@ -305,6 +305,10 @@
         "max_incidence_deg": {
           "type": "array",
           "description": "[Fläche, Grad]"
+        },
+        "manufacturability": {
+          "type": "object",
+          "description": "Herstellbarkeit (M10-T3): warnings, errors, findings als [Prüfung, Fläche, Wert, Schwere]"
         }
       }
     },
@@ -312,7 +316,31 @@
       "type": [
         "object",
         "null"
-      ]
+      ],
+      "description": "Kurzfassung von mikroptim sensitivity (M10-T3, docs/entwurfssteuerung.md Abschnitt 3.4): set (file oder default), rms_nominal_waves, decenter_worst und tilt_worst als [[erste, letzte Fläche], RMS-Zunahme bei ±δ in Wellen], parameter_worst als [[Art, Fläche], RMS-Zunahme]",
+      "properties": {
+        "set": {
+          "enum": [
+            "file",
+            "default"
+          ]
+        },
+        "rms_nominal_waves": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "decenter_worst": {
+          "type": "array"
+        },
+        "tilt_worst": {
+          "type": "array"
+        },
+        "parameter_worst": {
+          "type": "array"
+        }
+      }
     },
     "glasses": {
       "type": "array",

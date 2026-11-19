@@ -351,6 +351,7 @@ Entwurf, noch nicht freigegeben. Diagnosen und Aktionen stehen Mensch (GUI, CLI,
 
 ### M10-T3 – Empfindlichkeiten und Herstellbarkeit
 - **Abhängig von:** M8-T3
+- **Stand:** umgesetzt (`mikroptim sensitivity`, `Mikroptim::tolerance`, Aktion und Zustandsfeld `sensitivity` in `mikroptim.design`; [optimierung.md, Abschnitt 12](../optimierung.md#12-empfindlichkeiten-und-herstellbarkeit-m10-t3)). Abnahme: Q bei ±δ gegen die Einzelrechnung gestörter Systemdateien nach ADR-0011 bitgleich; Jacobi-Spalten gegen FD (zwei Schrittweiten 7·10⁻⁶, Sekante der Einzelrechnungen 5·10⁻⁶ relativ); invariante Bewegungen ≤ 6·10⁻¹³ Q₀.
 - **Inhalt:** Dezentrier- und Kippempfindlichkeit pro Element, Empfindlichkeit aus der Jacobi-Matrix, einfache Herstellbarkeitsprüfungen.
 - **Abnahme:** gegen Einzelrechnungen mit ADR-0011 bzw. FD.
 

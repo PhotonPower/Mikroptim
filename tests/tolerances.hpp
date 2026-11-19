@@ -472,4 +472,30 @@ inline constexpr double kToleranceStrehlVsPsf = 5e-3;
 // kToleranceCompensatedRms (gemessen 1,6·10⁻¹⁰ mm bzw. 5,2·10⁻⁹ relativ).
 inline constexpr double kToleranceCpuGpuQuality = 1e-10;
 
+// M10-T3 Empfindlichkeiten. Q bei ±δ gegen die Einzelrechnung der gestörten Systemdatei
+// (ADR-0011), relativ. Beide Wege rechnen dieselbe Geometrie, die Elementverkippung in der Datei
+// aber über Grad und eigene Formel (Rundung der Scheitellage ≈ 10⁻¹⁶ mm, also δQ/Q ≈ 10⁻¹¹ bei
+// RMS ≈ 10⁻⁵ mm); gemessen 0 (bitgleich, MSVC).
+inline constexpr double kSensitivitySingleSystem = 1e-10;
+// Jacobi-Spalte mit h = 0,01 δ gegen h = 0,005 δ (Restglied O(h²)), relativ zur größten Änderung
+// von Q bei ±δ; gemessen 7,1·10⁻⁶.
+inline constexpr double kSensitivityJacobianStep = 1e-4;
+// Jacobi-Spalte (h = 0,01 δ, Batch) gegen die Sekante (ẽ(+δ) − ẽ(−δ))/2 aus zwei einzeln
+// geladenen Dateien: ‖j‖² und 2 ẽ₀ᵀ j, Restglied O(δ²), relativ wie oben; gemessen 4,8·10⁻⁶.
+inline constexpr double kSensitivityJacobianSecant = 1e-4;
+// g = 2 ẽ₀ᵀ j gegen (Q₊ − Q₋)/2 der direkten Werte bei ±δ: Unterschied ist der kubische Term von
+// Q(ξ) (bei ξ = 1 nicht klein), relativ wie oben; gemessen 2,5·10⁻³.
+inline constexpr double kSensitivityJacobianLinear = 1e-2;
+// Invariante Bewegungen (konzentrische Schale um ihren Mittelpunkt gekippt, Platte quer
+// verschoben): |ΔQ|/Q₀ und ‖j‖²/Q₀; nur Rundung der Flächenlage (gemessen 6,4·10⁻¹³ bzw.
+// 1,9·10⁻²⁰). Auch für die Symmetrie auf der Achse (linearer Term, x gegen y).
+inline constexpr double kSensitivityInvariant = 1e-10;
+// GPU gegen CPU (RESIDUALS gegen residuals_cpu, OPD ≤ 10⁻¹² mm, kCpuGpuFp64): Q bei ±δ relativ
+// (gemessen 3,4·10⁻¹¹, RTX 3090) und die Jacobi-Terme g, ‖j‖² relativ zur größten Änderung von Q
+// (gemessen 6,4·10⁻⁷; die zentrale Differenz mit ±h verstärkt die OPD-Abweichung um 1/h).
+inline constexpr double kSensitivityCpuGpuQuality = 1e-9;
+inline constexpr double kSensitivityCpuGpuJacobian = 1e-4;
+// Herstellbarkeit: Randdicken, Halbkugelgrad, Z gegen die geschlossene Form [mm bzw. 1].
+inline constexpr double kManufacturabilityGeometry = 1e-12;
+
 } // namespace mko::test

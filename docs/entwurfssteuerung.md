@@ -38,7 +38,7 @@ Die Werkzeuge setzen an den Entscheidungen an, die heute Heuristiken oder das Sk
 
 ## 2. Architektur
 
-**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Seit M11-T5 gibt es die Leseaktion `glass_preselect` (Glaspaare bzw. -tripel für Farbkorrektur, `element` hält dessen Glas fest; auch als Werkzeug für das Sprachmodell). Seit M10-T6b gibt es außerdem `OllamaDecider` (`mikroptim/design/ollama.py`: Lese-Werkzeuge als Tool-Calls, danach Antwort mit `format` = eingebettetes Antwortschema `mikroptim/design/schema.py`, bis zu zwei Nachbesserungen, Protokoll von Modell, Digest, Optionen, Prüfsumme des Prompts, Denktext und Tool-Calls), `RuleDecider` (einfache Vergleichsstrategie V3), `ConfirmDecider` (Vorschlag annehmen, ändern, verwerfen) und einen Rückfall-Entscheider bei ungültigen Modellantworten. Seit M10-T6c gibt es `ClaudeDecider` (`mikroptim/design/claude.py`, [ADR-0016](adr/0016-claude-als-entscheider.md), Abschnitt 2.4). Die GUI-Seite folgt in GUI-Mikroptim.
+**Stand der Umsetzung (M10-T6a):** `mikroptim.design` gibt es als Grundgerüst über der Kommandozeile (`run_cli` mit JSON): Zustand, die in `mikroptim/design/actions.py` aufgeführten Aktionen, Kandidatenbaum, Protokoll, `HumanDecider` (Kommandozeile `python -m mikroptim.design new|state|act|tree|replay`) und `ReplayDecider`. Nicht umgesetzte Aktionen des Schemas melden `not_implemented`. Seit M10-T3 gibt es die Leseaktion `sensitivity` (Empfindlichkeiten und Herstellbarkeit über `mikroptim sensitivity`) und das Feld `sensitivity` des Zustands. Seit M11-T5 gibt es die Leseaktion `glass_preselect` (Glaspaare bzw. -tripel für Farbkorrektur, `element` hält dessen Glas fest; auch als Werkzeug für das Sprachmodell). Seit M10-T6b gibt es außerdem `OllamaDecider` (`mikroptim/design/ollama.py`: Lese-Werkzeuge als Tool-Calls, danach Antwort mit `format` = eingebettetes Antwortschema `mikroptim/design/schema.py`, bis zu zwei Nachbesserungen, Protokoll von Modell, Digest, Optionen, Prüfsumme des Prompts, Denktext und Tool-Calls), `RuleDecider` (einfache Vergleichsstrategie V3), `ConfirmDecider` (Vorschlag annehmen, ändern, verwerfen) und einen Rückfall-Entscheider bei ungültigen Modellantworten. Seit M10-T6c gibt es `ClaudeDecider` (`mikroptim/design/claude.py`, [ADR-0016](adr/0016-claude-als-entscheider.md), Abschnitt 2.4). Die GUI-Seite folgt in GUI-Mikroptim.
 
 ```bash
 python -m mikroptim.design new start.json sitzung --spec spec.json
@@ -198,7 +198,11 @@ Für das Zielsystem (FZ 25, 50×, NA 0,95: y_obj = 0,25 mm) ist G ≈ 0,18 mm².
 
 Das Ziel der Spezifikation ist Farbklasse (c), Feldklasse 4 oder 5.
 
-### 3.4 Neu: Empfindlichkeiten und Herstellbarkeit (M10-T3, Vorgriff auf M8-T4)
+### 3.4 Neu: Empfindlichkeiten und Herstellbarkeit (M10-T3)
+
+**Stand (M10-T3):** umgesetzt als `mikroptim sensitivity` ([cli.md](cli.md#mikroptim-sensitivity)) über den Bausteinen der Tolerierung (M8-T4); Verfahren, Formeln und Grenzwerte in [optimierung.md, Abschnitt 12](optimierung.md#12-empfindlichkeiten-und-herstellbarkeit-m10-t3). Abweichungen vom Entwurf unten: pro Komponente vier Varianten (±δ direkt, ±h·δ für die Jacobi-Spalte) statt zwei; Maß ist Q = Σ ŵ RMS² nach Abzug von Kolben und Kippung (ohne Kompensator); die Jacobi-Matrix wird nach den Toleranzparametern im selben Batch gebildet, nicht aus dem LM am Optimum übernommen (dessen Residuen enthalten die Kippung, und Brechzahlen und Dezentrierungen sind dort keine Variablen). Toleranzsatz der Datei oder Mikroptim-Standardsatz (Element 10 µm und 1′, Radius 0,1 %, Dicke 20 µm, Brechzahl 5·10⁻⁴). Herstellbarkeit: Halbkugelgrad, Mitten- und Randdicke, Luftrand, Durchmesser/Mittendicke und Zentrierbarkeit (Meniskusform); größter Einfallswinkel, Autofluoreszenz und Elementzahl folgen. Für Entscheider: Lese-Aktion `sensitivity` (Filter `kinds`, `elements`; Ausgabe sortiert nach Wirkung mit der RMS-Zunahme bei ±δ in Wellen) und im Zustand `sensitivity` (`set`, `rms_nominal_waves`, `decenter_worst` und `tilt_worst` als [[erste, letzte Fläche], RMS-Zunahme], `parameter_worst` als [[Art, Fläche], RMS-Zunahme], je die drei größten) und `mechanics.manufacturability` (`warnings`, `errors`, `findings` als [Prüfung, Fläche, Wert, Schwere]).
+
+Ursprünglicher Entwurf:
 
 - **Dezentrierung und Verkippung** pro Element (ADR-0011): zwei Varianten pro Element im Batch, berichtet ∂(RMS²)/∂δ² bei δ = 10 µm bzw. 1′.
 - **Radien, Dicken und Brechzahlen:** aus der Jacobi-Matrix am Optimum, Spalte mal Standardtoleranz (Tabelle in der Systemdatei, sonst Vorgabe). Kostet keinen weiteren Trace.
@@ -241,7 +245,9 @@ Derselbe Zustand ist Grundlage der GUI-Ansicht eines Kandidaten und der Eingabe 
   "ghosts": {"recommendation": {"operator": "A", "after_surface": 4, "order": 4, "glass": "SYN-36"},
              "active": [{"plate": 3, "sum_abs": 2.1e-3, "dominant_orders": [4, 2], "merit_gain": 0.8}]},
   "mechanics": {"violations": [], "hemisphere_max": [20, 0.81], "max_incidence_deg": [18, 57.3]},
-  "sensitivity": {"decenter_worst": [[16, 0.42], [9, 0.18]], "tilt_worst": [[16, 0.30]]},
+  "sensitivity": {"set": "default", "rms_nominal_waves": 0.068,
+                  "decenter_worst": [[[16, 17], 0.42], [[9, 10], 0.18]], "tilt_worst": [[[16, 17], 0.30]],
+                  "parameter_worst": [[["radius", 16], 0.21]]},
   "glasses": [{"element": 1, "surface": 19, "name": "SYN-36", "nd": 1.807, "vd": 48.6, "dPgF": -0.004}],
   "budget": {"actions_left": 12, "elements_max": 15, "surfaces_max": 64},
   "history": ["#12: insert_null_meniscus nach 14 (Glas SYN-36) → F_B 4.6e-3 → 3.1e-3"]
@@ -265,7 +271,7 @@ Diese Werkzeuge stehen dem Sprachmodell als Tool-Calls zur Verfügung und dem Me
 | `get_surface_table` | Felder, Flächenbereich | Aberrationsbericht 3.2 |
 | `get_ghost_diagnosis` | – | `ghost_diagnosis_json` |
 | `evaluate` | Raster, PSF ja/nein | `mikroptim eval` |
-| `sensitivity` | Elemente, Arten | 3.4 |
+| `sensitivity` | Elemente, Arten | 3.4, `mikroptim sensitivity` (umgesetzt, M10-T3) |
 | `glass_query` | Filter: n_d, ν_d, ΔP_g,F, Autofluoreszenz, Transmission, Partner für Merte-Fläche | Regelwerk 5.3 auf die geladenen Kataloge, algebraische Vorauswahl (M11-T5) |
 | `module_lookup` | Gruppe, Aberrationsart, Etendue-Zone | Wissensbasis 5.1 |
 
@@ -453,6 +459,7 @@ V3 ist der entscheidende Vergleich. Er trennt den Nutzen der neuen Diagnose und 
 - **Abnahme:** Klassen und Kennzahlen an konstruierten Testsystemen mit bekannter Antwort (frei erfundene Systeme, AGENTS.md §8)
 
 ### M10-T3 – Empfindlichkeiten
+- **Stand:** umgesetzt (Abschnitt 3.4, optimierung.md Abschnitt 12)
 - **Inhalt:** Abschnitt 3.4
 - **Abnahme:** Dezentrierempfindlichkeit gegen Einzelrechnung mit ADR-0011; Jacobi-Empfindlichkeit gegen FD
 

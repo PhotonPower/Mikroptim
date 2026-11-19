@@ -16,6 +16,11 @@ mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log
 mikroptim tolerance <system.json> [--samples N] [--seed n] [--compensator wd|none] [--threshold S]
                     [--json] [--histogram DATEI.csv [--bins K]] [--samples-file DATEI.csv]
                     [--rings N] [--spokes M] [--chunk K] [--max-iterations N] [--gpu [--device N]]
+mikroptim sensitivity <system.json> [--set file|default] [--json] [--top N] [--decenter mm]
+                      [--tilt-arcmin a] [--pivot first|center|last] [--radius rel] [--thickness mm]
+                      [--index dn] [--step h] [--rings N] [--spokes M] [--max-hemisphere v]
+                      [--min-center mm] [--min-edge mm] [--min-air-edge mm] [--max-aspect v]
+                      [--min-centering Z] [--manufacturability-only] [--gpu [--device N]]
 ```
 
 | Aufruf | Wirkung |
@@ -29,6 +34,7 @@ mikroptim tolerance <system.json> [--samples N] [--seed n] [--compensator wd|non
 | `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
 | `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
 | `mikroptim tolerance …` | Monte-Carlo-Tolerierung mit dem Toleranzsatz der Systemdatei: Verteilung von RMS-Wellenfront und Strehl, Kompensator Arbeitsabstand (M8-T4; Abschnitt [`mikroptim tolerance`](#mikroptim-tolerance)) |
+| `mikroptim sensitivity …` | Empfindlichkeit der Bildgüte für jede einzelne Toleranz (direkt bei ±δ und aus der Jacobi-Matrix) und einfache Herstellbarkeitsprüfungen (M10-T3; Abschnitt [`mikroptim sensitivity`](#mikroptim-sensitivity)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio). Mit dem Python-Paket (M9-T1, [python/README.md](../python/README.md)) sind dieselben Unterbefehle auch als `python -m mikroptim <befehl> …` bzw. `mikroptim.run_cli([...])` erreichbar (Ausgabe erst am Ende des Befehls).
 
@@ -1539,3 +1545,55 @@ Mit `--gpu` (RTX 3090) dieselben Zahlen in 0,52 s.
 **JSON** (`mikroptim.tolerance/1`): `format`, `mikroptim_version`, `system`, `file`, `backend` (`cpu`/`gpu`), `device` (`index`, `name` oder `null`), `settings` (`samples`, `seed`, `compensator`, `strehl_threshold`, `rings`, `spokes`, `chunk`), `tolerances[]` (aufgelöste Toleranzen: `type`, `item`, `surface` bzw. `element` [erste, letzte], `limit` in `unit` – `mm`, `rad`, `1` (relativ bzw. Δn) oder `1/mm` (Passen als Δc) –, `distribution`, `cutoff_sigma`, `pivot_z_mm`), `draws`, `reference_nm`, `nominal` (`rms_waves`, `strehl_min`, `working_distance_mm`, `compensation_mm`, `failed_rays`), Verteilungen `rms_waves`, `strehl_min`, `compensation_mm` (je `count`, `mean`, `std`, `min`, `max`, `p50`, `p90`, `p95`, `p99`), `yield`, `yield_samples`, `failed_samples`, `tuples[]` (`field`, `field_angle_deg`, `wavelength`, `wavelength_nm`, `weight` ŵ_f ŵ_λ, `nominal_rms_waves`, `nominal_strehl`, `rms_waves`, `strehl`), `chunks`, `elapsed_seconds`, `warnings`. Nicht endliche Werte stehen als `null`.
 
 **Tests:** `CliTolerance.*` (JSON bitgleich zu `run_tolerance_analysis`, CSV-Dateien, Text, Fehler, `--gpu`), ctest `cli_tolerance_json`, `cli_tolerance_no_tolerances`, `cli_tolerance_gpu_json`.
+
+## `mikroptim sensitivity`
+
+Empfindlichkeiten und Herstellbarkeit (M10-T3, Verfahren und Grenzwerte: [optimierung.md, Abschnitt 12](optimierung.md#12-empfindlichkeiten-und-herstellbarkeit-m10-t3)). Für jede einzelne Toleranz des Toleranzsatzes (Abschnitt `tolerances` der Datei, sonst der Mikroptim-Standardsatz) wird Q = Σ ŵ RMS² (nach Abzug von Kolben und Kippung, Wellen² bei λ_ref, ohne Kompensator) bei ±δ direkt gerechnet und aus der Jacobi-Spalte der Wellenfrontreste (zentrale Differenz mit ±h δ) linearisiert; dazu prüft der Befehl die Geometrie der Linsen. Alles in einem Batch mit 1 + 4 D Varianten (D Komponenten).
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `--set S` | `file`: Toleranzsatz der Datei (Fehler ohne Abschnitt `tolerances`); `default`: Mikroptim-Standardsatz | Datei, falls vorhanden, sonst `default` |
+| `--decenter mm`, `--tilt-arcmin a`, `--pivot P` | Standardsatz: Dezentrierung und Verkippung pro Element, Drehpunkt `first`, `center` oder `last` | 0,01 mm, 1′, `center` |
+| `--radius rel`, `--thickness mm`, `--index dn` | Standardsatz: Radius relativ, Dicken und Luftabstände (ohne Arbeitsabstand), Brechzahl; 0 schaltet eine Art ab | 0,001, 0,02 mm, 0,0005 |
+| `--step h` | Schritt der Jacobi-Spalte relativ zu δ, 0 < h ≤ 1 | 0,01 |
+| `--rings N`, `--spokes M` | Pupillenquadratur (volle Pupille) | 10, 8 |
+| `--top N` | Zeilen der Rangliste im Text | 10 |
+| `--max-hemisphere v`, `--min-center mm`, `--min-edge mm`, `--min-air-edge mm`, `--max-aspect v`, `--min-centering Z` | Grenzen der Herstellbarkeit (0 schaltet die Warnung ab) | 0,95, 0,5, 0,5, 0, 10, 0,1 |
+| `--manufacturability-only` | nur die Herstellbarkeit, kein Trace | – |
+| `--json` | Ausgabe im Format `mikroptim.sensitivity/1` | – |
+| `--gpu`, `--device N` | RESIDUALS auf der GPU (`mko::cuda::use_gpu`, FP64) | CPU, Gerät 0 |
+
+Die Optionen des Standardsatzes sind ein Fehler der Kommandozeile mit `--set file` und ein Fehler beim Rechnen, wenn die Datei einen Toleranzsatz hat und `--set default` fehlt. Exit-Codes wie `mikroptim trace` (0 Erfolg, auch mit Befunden der Herstellbarkeit; 1 Fehler beim Laden oder Rechnen; 2 ungültige Kommandozeile; 3 GPU-Backend nicht verfügbar).
+
+**Text** (`data/systems/testsystem_toleranz.json`, Ausschnitt):
+
+```
+System: Testsystem Toleranz
+  Datei: data/systems/testsystem_toleranz.json
+  Toleranzsatz: Datei (tolerances), 18 Toleranzen, 26 Komponenten, 105 Varianten
+  Backend: CPU, FP64; Quadratur 10 Ringe x 8 Speichen, volle Pupille, ohne Kompensator
+  Q = Σ ŵ RMS² nach Abzug von Kolben und Kippung [Wellen² bei 546.070 nm]; Jacobi-Schritt h = 0.01 δ
+  Nominal: Q0 = 6.311e-04, RMS 0.02512 Wellen, versagte Strahlen 0
+  Laufzeit: 0.23 s
+
+  Empfindlichste Toleranzen (10 von 18, nach größtem ΔQ bei ±δ)
+    #  Art              Ort                      δ  Einheit      ΔQ max  RMS bei δ          b       ‖j‖²  Versagt
+    1  Radius           Fläche 3         0.0001775  1/mm      4.357e-03    0.07062  3.312e-03  3.312e-03        0
+    2  Brechzahl        Fläche 1            0.0005            3.635e-03    0.06531  2.686e-03  2.686e-03        0
+    …
+   10  Element-Verkipp. Element 1–3              2  arcmin    7.658e-06    0.02527  2.940e-07  1.581e-07        0
+  (ΔQ max: größte Zunahme von Q über Komponenten und ±δ [Wellen²]; b = (Q+ + Q- - 2 Q0)/2 direkt,
+   ‖j‖² Gauß-Newton-Term der Jacobi-Spalte, beide gemittelt über x/y bzw. α/β)
+
+  Herstellbarkeit: 12 Prüfungen, 1 Warnungen, 0 Fehler
+  Grenzen: h/|R| <= 0.95, Mittendicke >= 0.5 mm, Randdicke >= 0.5 mm, Luftrand >= 0 mm, 2h/t <= 10, Z >= 0.1
+  Warnung  Fläche 2   Zentrierbarkeit Z        0.07174
+```
+
+Ohne Kompensator dominieren Radien, Dicken und Brechzahlen über den Defokus; ein Kompensator (Arbeitsabstand) wie in `mikroptim tolerance` ist noch nicht vorgesehen.
+
+**JSON** (`mikroptim.sensitivity/1`): `format`, `mikroptim_version`, `system`, `file`, `backend`, `device`, `settings` (`set`: `file` oder `default`, `rings`, `spokes`, `step`), `reference_nm`, `variants`, `nominal` (`q_waves2`, `rms_waves`, `failed_rays`), `tolerances[]` (`index`, `type`, `item`, `surface` bzw. `element` [erste, letzte], `limit` in `unit` – `mm`, `arcmin`, `relativ`, `1/mm` (Passen als Δc) oder leer (Δn) –, `pivot_z_mm`, `worst_delta_q_waves2`, `worst_rms_waves`, `mean_quadratic_waves2` (Mittel von b), `mean_jacobian_quadratic_waves2` (Mittel von ‖j‖²), `failed_rays`, `components[]` mit `component` (`x`, `y`, `alpha`, `beta` oder `null`), `q_plus`, `q_minus`, `linear` (a), `quadratic` (b), `jacobian_linear` (g), `jacobian_quadratic` (‖j‖²), `failed_rays`), `ranking` (Indizes der Toleranzen nach `worst_delta_q_waves2` absteigend), `elapsed_seconds`, `manufacturability` (`limits`, `checks[]` mit `check` – `hemisphere`, `center_thickness`, `edge_thickness`, `air_edge`, `aspect_ratio`, `centering` –, `surface`, `value`, `limit`, `severity` – `ok`, `warning`, `error` –, `warnings`, `errors`), `warnings`. Mit `--manufacturability-only` ist `tolerances` `null` und es fehlen die Felder des Traces. Nicht endliche Werte stehen als `null`.
+
+**Python:** `mikroptim.run_cli(["sensitivity", …])`; in `mikroptim.design` die Lese-Aktion `sensitivity` (Filter `kinds`, `elements`) und das Feld `sensitivity` des Zustands ([entwurfssteuerung.md, Abschnitt 3.4](entwurfssteuerung.md#34-neu-empfindlichkeiten-und-herstellbarkeit-m10-t3)).
+
+**Tests:** `CliSensitivity.*` (JSON bitgleich zu `run_sensitivity_analysis` und `check_manufacturability`, Rangfolge, Standardsatz, nur Herstellbarkeit, Text, Fehler), ctest `cli_sensitivity_text`, `cli_sensitivity_default_json`, `cli_sensitivity_gpu_json`.

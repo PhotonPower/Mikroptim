@@ -3,7 +3,8 @@ Abschnitt 4). Jeder Entscheider (Mensch, Sprachmodell, Regel) benutzt genau dies
 
 Umgesetzt (M10-T6a), jeweils über die Kommandozeile von Mikroptim:
 
-- lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``, ``glass_preselect``
+- lesen: ``get_surface_table``, ``get_ghost_diagnosis``, ``evaluate``, ``glass_preselect``,
+  ``sensitivity`` (M10-T3)
 - Läufe: ``optimize``, ``synth_segment``, ``snap_glasses``
 - Variablen: ``free_gaps``
 - Topologie (Merit unverändert): ``insert_null_meniscus``, ``split_lens``
@@ -21,7 +22,8 @@ from .. import aberrations
 from ._cli import ToolError, cli_json, cli_text
 from .files import elements, is_air, read_system, write_system
 
-READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect"}
+READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
+                "sensitivity"}
 MODIFY_ACTIONS = {"optimize", "synth_segment", "snap_glasses", "free_gaps",
                   "insert_null_meniscus", "split_lens"}
 CONTROL_ACTIONS = {"branch", "abandon", "finish"}
@@ -113,6 +115,8 @@ def read_action(a: dict, system_path) -> dict:
         return {"order": rep["order"], "results": [
             {key: r[key] for key in ("glasses", "powers", "power_sum", "residual")}
             for r in rep["results"]]}
+    if name == "sensitivity":
+        return sensitivity_report(system_path, kinds=a.get("kinds"), elements=a.get("elements"))
     if name == "evaluate":
         args = ["eval", system_path]
         if a.get("grid"):
@@ -121,6 +125,69 @@ def read_action(a: dict, system_path) -> dict:
             args += ["--psf"]
         return cli_json(args)
     raise ActionError("not_implemented", f"{name} ist noch nicht umgesetzt")
+
+
+#: Arten der Aktion ``sensitivity`` → Toleranztypen von ``mikroptim sensitivity``
+SENSITIVITY_KINDS = {
+    "decenter": ("element_decenter", "decenter"),
+    "tilt": ("element_tilt", "tilt"),
+    "radius": ("radius",),
+    "thickness": ("thickness",),
+    "index": ("index", "abbe"),
+}
+
+
+def _covers(entry: dict, layers: list[dict]) -> bool:
+    """Gehört die Toleranz zu einem der Glaselemente ``layers`` (``files.elements``)?"""
+    if entry["element"] is not None:
+        first, last = entry["element"]
+        return any(first <= e["front"] < last for e in layers)
+    return any(entry["surface"] in (e["front"], e["back"]) for e in layers)
+
+
+def sensitivity_report(system_path, kinds=None, elements=None) -> dict:
+    """Empfindlichkeiten und Herstellbarkeit (``mikroptim sensitivity``, M10-T3): Toleranzsatz der
+    Datei, sonst Mikroptim-Standardsatz. ``kinds`` und ``elements`` (Glaselemente wie
+    ``files.elements``) filtern die Ausgabe; Reihenfolge nach größter Wirkung."""
+    types = None
+    if kinds:
+        unknown = [k for k in kinds if k not in SENSITIVITY_KINDS]
+        if unknown:
+            raise ActionError("invalid_parameter", f"sensitivity: unbekannte Arten {unknown}")
+        types = {t for k in kinds for t in SENSITIVITY_KINDS[k]}
+    layers = None
+    if elements is not None:
+        elems = _elements_of(system_path)
+        bad = [k for k in elements if not 0 <= int(k) < len(elems)]
+        if bad:
+            raise ActionError("precondition",
+                              f"Elemente {bad} existieren nicht ({len(elems)} Elemente)")
+        layers = [elems[int(k)] for k in elements]
+    rep = cli_json(["sensitivity", system_path])
+    rms0 = rep["nominal"]["rms_waves"]
+    rows = []
+    for i in rep["ranking"]:
+        t = rep["tolerances"][i]
+        if types is not None and t["type"] not in types:
+            continue
+        if layers is not None and not _covers(t, layers):
+            continue
+        rows.append({"type": t["type"], "surface": t["surface"], "element": t["element"],
+                     "limit": t["limit"], "unit": t["unit"],
+                     "delta_rms_waves": (None if t["worst_rms_waves"] is None or rms0 is None
+                                         else t["worst_rms_waves"] - rms0),
+                     "worst_delta_q_waves2": t["worst_delta_q_waves2"],
+                     "jacobian_quadratic_waves2": t["mean_jacobian_quadratic_waves2"],
+                     "failed_rays": t["failed_rays"]})
+    man = rep["manufacturability"]
+    return {"set": rep["settings"]["set"], "rms_nominal_waves": rms0, "tolerances": rows,
+            "manufacturability": {
+                "warnings": man["warnings"], "errors": man["errors"],
+                "findings": [c for c in man["checks"] if c["severity"] != "ok"]}}
+
+
+def _elements_of(system_path) -> list[dict]:
+    return elements(read_system(system_path))
 
 
 # --- Verändern --------------------------------------------------------------------------------

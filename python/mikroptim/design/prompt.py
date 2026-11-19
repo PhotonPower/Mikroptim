@@ -34,7 +34,8 @@ Regeln (Zhang 2019, gekürzt):
   ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon).
 
 Werkzeuge: Vor der Antwort darfst du Lese-Werkzeuge aufrufen (get_surface_table,
-get_ghost_diagnosis, evaluate, glass_preselect). glass_preselect nennt Glaspaare bzw. -tripel,
+get_ghost_diagnosis, evaluate, glass_preselect, sensitivity). sensitivity nennt die
+Toleranzen mit der größten RMS-Zunahme und Befunde der Herstellbarkeit. glass_preselect nennt Glaspaare bzw. -tripel,
 deren dünne Elemente farbfrei sind (Rest = sekundäres bzw. tertiäres Spektrum, kleiner ist
 besser; power_sum klein = flache Radien); mit element bleibt dessen Glas fest. Danach antwortest du nur mit JSON im Format
 mikroptim.design.action/1: {"format": "mikroptim.design.action/1", "candidate": <Nummer>,
