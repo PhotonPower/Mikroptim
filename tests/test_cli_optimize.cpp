@@ -20,6 +20,7 @@
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/tolerance/tolerance_aware.hpp"
 #include "residual_test_systems.hpp"
 #include "temp_paths.hpp"
 #include "tolerances.hpp"
@@ -869,6 +870,70 @@ TEST(CliOptimize, Errors) {
     r = optimize({"--help"});
     EXPECT_EQ(r.code, mko::cli::kExitOk);
     EXPECT_NE(r.out.find("Aufruf: mikroptim optimize"), std::string::npos);
+}
+
+// Toleranzbewusste Optimierung (M11-T6): am Kittblock läuft die Kittfläche von Lösung A nach
+// c = 0 (gleiches Ergebnis wie optimize_lm_tolerance_aware), Teilmerits im JSON; ohne die Option
+// kein Abschnitt tolerance_aware und c bleibt. Fehler der Kommandozeile.
+TEST(CliOptimize, ToleranceAware) {
+    const std::string block = kSystems + "kittblock_toleranzbewusst.json";
+    TempDir dir("tolerance_aware");
+    const std::string out = dir.file("ergebnis.json");
+    RunResult r = optimize({block, "--tolerance-aware", "0.5", "--json", "--quiet", "-o", out});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    ASSERT_TRUE(j.contains("tolerance_aware"));
+    const json& t = j["tolerance_aware"];
+    EXPECT_EQ(t["scheme"], "plus_minus");
+    EXPECT_EQ(t["samples"], 2);
+    EXPECT_EQ(t["set"], "file");
+    EXPECT_GT(t["start"]["perturbed_mean"].get<double>(),
+              2.0 * t["start"]["nominal"].get<double>());
+    const double nominal = t["result"]["nominal"].get<double>();
+    EXPECT_LE(std::abs(t["result"]["perturbed_mean"].get<double>() - nominal),
+              mko::test::kToleranceAwareNominal * nominal);
+    // Ergebnisdatei: Kittfläche bei 0, gleich der Bibliothek
+    const mko::LoadedSystem loaded = mko::load_system(fs::path(block));
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::ToleranceAwareSettings ts;
+    ts.alpha = 0.5;
+    const mko::ToleranceAwareModel model(loaded.system, base, set, ts);
+    const std::vector<double> x0 = set.extract(base, 0);
+    const mko::LmResult lib = mko::optimize_lm_tolerance_aware(model, mko::cpu_tolerance_inner(),
+                                                               set, base, x0, mko::LmOptions{});
+    const mko::LoadedSystem result = mko::load_system(fs::path(out));
+    const std::vector<double> x = set.extract(result.system);
+    ASSERT_EQ(x.size(), 2u);
+    EXPECT_TRUE(same_bits(x[0], lib.runs[0].x[0])) << x[0] << " " << lib.runs[0].x[0];
+    EXPECT_LE(std::abs(x[0]), mko::test::kToleranceAwareChosen * x0[0]);
+    // ohne Option: kein Abschnitt, Kittfläche bleibt
+    r = optimize({block, "--json", "--quiet"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_FALSE(json::parse(r.out).contains("tolerance_aware"));
+    // Stichproben und Standardsatz
+    r = optimize({block, "--tolerance-aware", "1", "--tolerance-samples", "4", "--tolerance-seed",
+                  "7", "--json", "--quiet"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_EQ(json::parse(r.out)["tolerance_aware"]["samples"], 4);
+    EXPECT_EQ(json::parse(r.out)["tolerance_aware"]["seed"], 7);
+    r = optimize({block, "--tolerance-aware", "0.5", "--tolerance-set", "default", "--quiet",
+                  "--max-iterations", "2"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("Satz Mikroptim-Standard"), std::string::npos) << r.out;
+    // Fehler
+    r = optimize({kBiegung, "--tolerance-aware", "0.5", "--tolerance-set", "file"});
+    EXPECT_EQ(r.code, mko::cli::kExitError);
+    EXPECT_NE(r.err.find("tolerances"), std::string::npos) << r.err;
+    for (const std::vector<std::string>& args : std::initializer_list<std::vector<std::string>>{
+             {block, "--tolerance-aware", "0"},
+             {block, "--tolerance-aware", "1.5"},
+             {block, "--tolerance-samples", "3"},
+             {block, "--tolerance-aware", "0.5", "--tolerance-seed", "3"},
+             {block, "--tolerance-aware", "0.5", "--tolerance-set", "x"}}) {
+        r = optimize(args);
+        EXPECT_EQ(r.code, mko::cli::kExitUsage) << args.back();
+    }
 }
 
 #ifndef MIKROPTIM_HAS_CUDA

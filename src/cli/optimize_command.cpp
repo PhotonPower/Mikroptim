@@ -22,16 +22,20 @@
 #include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/pupil/quadrature.hpp"
+#include "mikroptim/tolerance/sensitivity.hpp"
+#include "mikroptim/tolerance/tolerance_aware.hpp"
 #include "mikroptim/version.hpp"
 
 #ifdef MIKROPTIM_HAS_CUDA
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/levenberg_marquardt.hpp"
+#include "mikroptim/cuda/tolerance.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
 #endif
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -90,6 +94,14 @@ struct OptimizeArgs {
     JacobianMethod jacobian = LmOptions{}.jacobian_method;
     // Sinusbedingung (M11-T4): Gewicht des Eintrags sine_condition, gesetzt oder angehängt
     std::optional<double> sine_condition;
+    // Toleranzbewusste Optimierung (M11-T6): alpha > 0 schaltet ein (Standard aus)
+    double tol_alpha = 0.0;
+    int tol_samples = 0; // 0: ±δ je Zufallsgröße, sonst S Stichproben
+    bool have_tol_samples = false;
+    std::uint64_t tol_seed = 0;
+    bool have_tol_seed = false;
+    enum class TolSet { Auto, File, Default } tol_set = TolSet::Auto;
+    bool have_tol_set = false;
 };
 
 std::string_view next_value(std::span<const std::string_view> args, std::size_t& i,
@@ -194,6 +206,31 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
                                  "'");
             }
             a.jacobian = *m;
+        } else if (arg == "--tolerance-aware") {
+            a.tol_alpha = parse_double(arg, next_value(args, i, arg));
+            if (!(a.tol_alpha > 0.0 && a.tol_alpha <= 1.0)) {
+                throw UsageError("--tolerance-aware: Gewicht alpha in (0, 1] erwartet");
+            }
+        } else if (arg == "--tolerance-samples") {
+            a.tol_samples = parse_int(arg, next_value(args, i, arg));
+            if (a.tol_samples < 0) {
+                throw UsageError("--tolerance-samples muss >= 0 sein");
+            }
+            a.have_tol_samples = true;
+        } else if (arg == "--tolerance-seed") {
+            a.tol_seed = parse_uint64(arg, next_value(args, i, arg));
+            a.have_tol_seed = true;
+        } else if (arg == "--tolerance-set") {
+            const std::string_view v = next_value(args, i, arg);
+            if (v == "file") {
+                a.tol_set = OptimizeArgs::TolSet::File;
+            } else if (v == "default") {
+                a.tol_set = OptimizeArgs::TolSet::Default;
+            } else {
+                throw UsageError("--tolerance-set erwartet file oder default, nicht '" +
+                                 std::string(v) + "'");
+            }
+            a.have_tol_set = true;
         } else if (arg.size() > 1 && arg.front() == '-') {
             throw UsageError("unbekannte Option " + std::string(arg));
         } else if (have_file) {
@@ -214,6 +251,13 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
     }
     if (a.al_rounds > 0 && a.runs > 1) {
         throw UsageError("--augmented-lagrangian verlangt einen Lauf (nicht mit --runs K > 1)");
+    }
+    if ((a.have_tol_samples || a.have_tol_seed || a.have_tol_set) && !(a.tol_alpha > 0.0)) {
+        throw UsageError("--tolerance-samples, --tolerance-seed und --tolerance-set verlangen "
+                         "--tolerance-aware");
+    }
+    if (a.have_tol_seed && a.tol_samples == 0) {
+        throw UsageError("--tolerance-seed verlangt --tolerance-samples S mit S >= 1");
     }
     if (a.have_fail_weight && a.hard_failure) {
         throw UsageError("--fail-weight gilt nur für weiches Versagen (nicht mit --hard-failure)");
@@ -317,6 +361,16 @@ struct OptimizeReport {
     };
     std::vector<AlRound> al_rounds;
     ShiftUpdate al_last; // letzte Fortschreibung (Verletzungen und θ am Ende)
+    // Toleranzbewusste Optimierung (M11-T6): Modell und Teilmerits am Start und am Ergebnis
+    std::optional<ToleranceAwareModel> tol;
+    bool tol_default_set = false;
+    struct TolParts {
+        double nominal = 0.0;        // F des nominellen Systems (volle Pupille)
+        double perturbed_mean = 0.0; // (1/S) Σ_s F(x ⊕ δ_s)
+        double perturbed_max = 0.0;  // max_s F(x ⊕ δ_s)
+    };
+    TolParts tol_start;
+    TolParts tol_result;
 
     const LmRunResult& best_run() const { return result.runs[static_cast<std::size_t>(best)]; }
     // F am Startpunkt der Datei (Lauf 0 startet immer dort).
@@ -515,6 +569,18 @@ void write_text_header(const OptimizeReport& r, std::ostream& out) {
            "höchstens " + std::to_string(a.al_rounds) +
                " Läufe, Abbruch bei max Wurzel(w)|dtheta| <= " + sci(a.al_tolerance, 2));
     }
+    if (r.tol) {
+        const ToleranceAwareModel& m = *r.tol;
+        std::string scheme = a.tol_samples == 0
+                                 ? "+-delta je Zufallsgröße"
+                                 : std::to_string(a.tol_samples) + " Stichproben, Startwert " +
+                                       std::to_string(a.tol_seed);
+        kv(out, "Toleranzbewusst",
+           "alpha = " + fixed(m.alpha(), 4) + ", S = " + std::to_string(m.samples()) + " (" +
+               scheme + "), " + std::to_string(m.model().tolerances().size()) + " Toleranzen, " +
+               std::to_string(m.model().draws()) + " Zufallsgrößen, Satz " +
+               (r.tol_default_set ? "Mikroptim-Standard" : "Datei (tolerances)"));
+    }
 }
 
 void write_iteration_header(std::ostream& out, double reference_nm) {
@@ -557,6 +623,15 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
     kv(out, "Merit vorher [Wellen²]", sci(f0, 9));
     kv(out, "Merit nachher [Wellen²]", sci(b.merit, 9));
     kv(out, "Merit nachher/vorher", sci(f0 > 0.0 ? b.merit / f0 : std::nan(""), 6));
+    if (r.tol) {
+        // Merit oben: F_tol = (1 − α) F_nominal + α · Mittel der gestörten Merits
+        kv(out, "Nominal vorher/nachher [Wellen²]",
+           sci(r.tol_start.nominal, 9) + " / " + sci(r.tol_result.nominal, 9));
+        kv(out, "Gestört Mittel vorher/nachher",
+           sci(r.tol_start.perturbed_mean, 9) + " / " + sci(r.tol_result.perturbed_mean, 9));
+        kv(out, "Gestört Maximum vorher/nachher",
+           sci(r.tol_start.perturbed_max, 9) + " / " + sci(r.tol_result.perturbed_max, 9));
+    }
     kv(out, "Versagte Strahlen vorher/nachher",
        std::to_string(r.start_failed) + " / " + std::to_string(b.failed_rays));
     kv(out, "davon hart vorher/nachher",
@@ -922,6 +997,24 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         al["shifts"] = std::move(shifts);
         j["augmented_lagrangian"] = std::move(al);
     }
+    if (r.tol) {
+        // Toleranzbewusste Optimierung (M11-T6): nur mit --tolerance-aware
+        const ToleranceAwareModel& m = *r.tol;
+        const auto parts = [](const OptimizeReport::TolParts& p) {
+            return Json{{"nominal", number(p.nominal)},
+                        {"perturbed_mean", number(p.perturbed_mean)},
+                        {"perturbed_max", number(p.perturbed_max)}};
+        };
+        j["tolerance_aware"] = Json{{"alpha", number(m.alpha())},
+                                    {"scheme", to_string(m.settings().scheme)},
+                                    {"samples", m.samples()},
+                                    {"seed", a.tol_samples > 0 ? Json(a.tol_seed) : Json(nullptr)},
+                                    {"set", r.tol_default_set ? "default" : "file"},
+                                    {"tolerances", m.model().tolerances().size()},
+                                    {"draws", m.model().draws()},
+                                    {"start", parts(r.tol_start)},
+                                    {"result", parts(r.tol_result)}};
+    }
     j["ghost_diagnosis"] = r.ghost ? Json::parse(ghost_diagnosis_json(*r.ghost)) : Json(nullptr);
 
     if (a.quiet) {
@@ -1014,7 +1107,10 @@ void print_optimize_usage(std::ostream& out) {
            "                          [--augmented-lagrangian K[,T]] [--rings N] [--spokes M]\n"
            "                          [--runs K [--perturbation s] [--seed n]]\n"
            "                          [--fail-weight w | --hard-failure] [--jacobian fd|adjoint]\n"
-           "                          [--sine-condition w] [--gpu [--device N]]\n"
+           "                          [--sine-condition w]\n"
+           "                          [--tolerance-aware A [--tolerance-samples S]\n"
+           "                           [--tolerance-seed n] [--tolerance-set file|default]]\n"
+           "                          [--gpu [--device N]]\n"
            "  Optimiert die Variablen (Abschnitt variables) mit Levenberg-Marquardt (FP64),\n"
            "  Merit = Summe der Quadrate aus Wellenfront- und Zusatzresiduen (constraints,\n"
            "  L1-Strafe der Geisterkoeffizienten) in Wellen²; mit Geisterplatten folgt ein\n"
@@ -1052,6 +1148,14 @@ void print_optimize_usage(std::ostream& out) {
            "                     (Eintrag sine_condition setzen oder anhängen, M11-T4)\n"
            "  --jacobian V       Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
            "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
+           "  --tolerance-aware A\n"
+           "                     toleranzbewusst: Merit (1-A)·F + A·Mittel F(gestört) über\n"
+           "                     feste Störungen des Toleranzsatzes, 0 < A <= 1 (Standard aus)\n"
+           "  --tolerance-samples S\n"
+           "                     S feste Stichproben statt +-delta je Zufallsgröße (Standard 0)\n"
+           "  --tolerance-seed n Startwert der Stichproben (Standard 0)\n"
+           "  --tolerance-set T  file: Toleranzsatz der Datei; default: Mikroptim-Standardsatz\n"
+           "                     (Standard: Datei, sonst Standardsatz)\n"
            "  --gpu              auf der GPU rechnen statt auf der CPU\n"
            "  --device N         CUDA-Gerät für --gpu (Standard 0, Liste: mikroptim --devices)\n"
            "  --help             diese Hilfe\n"
@@ -1231,6 +1335,34 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             }
         }
 
+        // Toleranzbewusste Optimierung (M11-T6): Toleranzsatz der Datei oder Mikroptim-Standardsatz
+        // (wie mikroptim sensitivity), feste Störungen, inneres Backend CPU bzw. GPU
+        ToleranceInnerFactory tol_inner = cpu_tolerance_inner();
+        if (a.tol_alpha > 0.0) {
+            SystemDescription tol_system = sys;
+            if (a.tol_set == OptimizeArgs::TolSet::File && !sys.tolerances) {
+                throw std::invalid_argument("--tolerance-set file: die Datei hat keinen Abschnitt "
+                                            "\"tolerances\" (--tolerance-set default verwenden)");
+            }
+            if (a.tol_set == OptimizeArgs::TolSet::Default ||
+                (a.tol_set == OptimizeArgs::TolSet::Auto && !sys.tolerances)) {
+                tol_system.tolerances = default_sensitivity_tolerances(tol_system);
+                r.tol_default_set = true;
+            }
+            ToleranceAwareSettings ts;
+            ts.alpha = a.tol_alpha;
+            ts.scheme =
+                a.tol_samples > 0 ? ToleranceAwareScheme::Samples : ToleranceAwareScheme::PlusMinus;
+            ts.samples = a.tol_samples;
+            ts.seed = a.tol_seed;
+            r.tol.emplace(tol_system, base, r.set, ts);
+#ifdef MIKROPTIM_HAS_CUDA
+            if (engine) {
+                tol_inner = cuda::gpu_tolerance_inner(*engine);
+            }
+#endif
+        }
+
 #ifdef MIKROPTIM_HAS_CUDA
         if (engine) {
             r.backend.gpu = true;
@@ -1268,6 +1400,9 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         };
 
         const auto run_lm = [&](std::span<const double> x) {
+            if (r.tol) {
+                return optimize_lm_tolerance_aware(*r.tol, tol_inner, r.set, base, x, options);
+            }
 #ifdef MIKROPTIM_HAS_CUDA
             if (engine) {
                 return cuda::optimize_lm_gpu(*engine, r.set, base, x, options);
@@ -1360,6 +1495,31 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
             r.start_hard_failed = hard_failed[0];
         }
         r.best = select_best(r.result);
+        if (r.tol && r.best >= 0) {
+            // Teilmerits am Start und am Ergebnis (mit w_fail der letzten Runde des besten Laufs)
+            LmOptions o = options;
+            if (!a.hard_failure) {
+                o.jacobian.quadrature.fail_weight = r.best_run().fail_weight;
+            }
+            ToleranceAwareBackend backend(*r.tol, tol_inner, base, o);
+            const int run0 = 0;
+            const auto parts = [&](std::span<const double> x) {
+                const ToleranceAwareMerits m = backend.merits(std::span<const int>(&run0, 1), x);
+                OptimizeReport::TolParts p;
+                p.nominal = m.merit.front();
+                double sum = 0.0;
+                double worst = 0.0;
+                for (std::size_t s = 1; s < m.merit.size(); ++s) {
+                    sum += m.merit[s];
+                    worst = std::max(worst, m.merit[s]);
+                }
+                p.perturbed_mean = sum / static_cast<double>(m.merit.size() - 1);
+                p.perturbed_max = worst;
+                return p;
+            };
+            r.tol_start = parts(r.x0);
+            r.tol_result = parts(r.best_run().x);
+        }
         if (r.best < 0) {
             err << "mikroptim optimize: Fehler: Merit in keinem Lauf endlich (Startpunkt nicht "
                    "auswertbar)\n";

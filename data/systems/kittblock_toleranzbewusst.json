@@ -1,0 +1,30 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Kittblock toleranzbewusst",
+  "description": "Frei erfundenes Testsystem (kein reales Objektiv): Glasblock aus zwei Teilen desselben Glases (Buchdahl-Modell) mit gekrümmter Kittfläche c[2] im kollimierten Strahl vor einer Sammellinse N-BK7 (f ca. 19 mm, NA ca. 0,1, Achse, 546 nm). Nominal ist die Kittfläche unsichtbar (gleiche Brechzahl auf beiden Seiten), jede Krümmung ist gleich gut; mit dem Toleranzsatz (Brechzahl des hinteren Teils ±0,002) hat die Kittfläche die Brechkraft Δn·c. Lösung A: c = 0,05/mm (empfindlich), Lösung B: c = 0 (unempfindlich). Abnahme der toleranzbewussten Optimierung (M11-T6).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": { "wavelengths_nm": [546.07], "weights": [1.0], "reference_nm": 546.07 },
+  "source": { "type": "collimated", "field_angles_deg": [0.0], "field_weights": [1.0] },
+  "surfaces": [
+    { "type": "stop", "thickness": 1.0, "material": "AIR", "semi_diameter": 2.0 },
+    { "type": "sphere", "curvature": 0.0, "thickness": 3.0, "material": { "model": "buchdahl", "n0": 1.6, "nu": [-0.1, 0.01] }, "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": 0.05, "thickness": 3.0, "material": { "model": "buchdahl", "n0": 1.6, "nu": [-0.1, 0.01] }, "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": 0.0, "thickness": 2.0, "material": "AIR", "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": 0.08, "thickness": 3.0, "material": "N-BK7", "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": -0.02, "thickness": 17.891806892135094, "material": "AIR", "semi_diameter": 3.0 }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surface": 2, "min": -0.1, "max": 0.1, "comment": "Kittfläche zwischen gleichen Gläsern" },
+      { "type": "working_distance", "min": 10.0, "max": 30.0 }
+    ]
+  },
+  "tolerances": {
+    "distribution": "uniform",
+    "compensator": "none",
+    "items": [
+      { "type": "index", "surface": 2, "delta": 0.002, "comment": "Brechzahl des hinteren Teils" }
+    ]
+  }
+}

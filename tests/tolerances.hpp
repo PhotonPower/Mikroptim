@@ -519,4 +519,21 @@ inline constexpr double kSensitivityCpuGpuJacobian = 1e-4;
 // Herstellbarkeit: Randdicken, Halbkugelgrad, Z gegen die geschlossene Form [mm bzw. 1].
 inline constexpr double kManufacturabilityGeometry = 1e-12;
 
+// M11-T6 toleranzbewusste Optimierung (Kittblock mit Kittfläche zwischen gleichen Gläsern).
+// Unsichtbare Kittfläche: F(c = 0,05) gegen F(0) und F(0, ±Δn) gegen F(0), relativ; nur Rundung
+// der Strahlschnitte an der Kittfläche (gemessen: siehe PR).
+inline constexpr double kToleranceAwareInvisible = 1e-9;
+// Gewöhnliche Optimierung ab Lösung A: |c − c_A|/c_A (die Kittfläche hat keine Jacobi-Spalte).
+inline constexpr double kToleranceAwareStays = 1e-6;
+// Toleranzbewusste Optimierung ab A: |c|/c_A am Ende (Lösung B ist c = 0).
+inline constexpr double kToleranceAwareChosen = 1e-3;
+// Am Ergebnis: nominelle Merit gegen A und gestörte gegen nominelle, relativ.
+inline constexpr double kToleranceAwareNominal = 1e-6;
+// Teilsysteme gegen den direkt gestörten Batch (nominell mit x, dann ToleranceModel::apply),
+// relativ; Unterschied nur durch das Zurücklesen der Variablen (extract/apply).
+inline constexpr double kToleranceAwareDirect = 1e-12;
+// Gradient 2Jᵀr der Zusammensetzung gegen die zentrale Differenz von F_tol (h = 10⁻⁵ s_k),
+// skaliert mit s_k, relativ zur größten skalierten Komponente.
+inline constexpr double kToleranceAwareGradient = 1e-5;
+
 } // namespace mko::test

@@ -2,14 +2,17 @@
 // Modus RESIDUALS der TraceEngine und Kompensator über optimize_lm_gpu (mko::cuda::use_gpu).
 // GPU gegen CPU ohne Kompensator (nur Rundung) und mit Kompensator (Konvergenzgrenze des LM),
 // wiederholte Läufe und andere Tranchengrößen bitgleich, Abnahme mit 10.000 Stichproben.
-// Empfindlichkeiten (M10-T3): GPU gegen CPU, wiederholte Läufe bitgleich.
+// Empfindlichkeiten (M10-T3): GPU gegen CPU, wiederholte Läufe bitgleich. Toleranzbewusste
+// Optimierung (M11-T6): inneres Backend auf der GPU gegen die CPU.
 
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/cuda/device_info.hpp"
 #include "mikroptim/cuda/tolerance.hpp"
 #include "mikroptim/cuda/trace_engine.hpp"
+#include "mikroptim/optim/variable_set.hpp"
 #include "mikroptim/tolerance/sensitivity.hpp"
 #include "mikroptim/tolerance/tolerance_analysis.hpp"
+#include "mikroptim/tolerance/tolerance_aware.hpp"
 #include "tolerance_test_systems.hpp"
 #include "tolerances.hpp"
 
@@ -20,6 +23,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <span>
+#include <string>
 #include <vector>
 
 using mko::ToleranceResult;
@@ -190,4 +195,50 @@ TEST(CudaSensitivity, GpuMatchesCpuAndIsReproducible) {
     std::printf("[ Messung ] Empfindlichkeit GPU gegen CPU: Q relativ %.3e, Jacobi-Terme relativ "
                 "zu max |ΔQ| %.3e\n",
                 q_dev, j_dev);
+}
+
+// Toleranzbewusste Optimierung (M11-T6) mit dem inneren Backend auf der GPU am Kittblock
+// (test_tolerance_aware.cpp): Teilmerits gegen die CPU, Abnahme ab Lösung A wie auf der CPU
+// (Kittfläche c → 0), zwei Läufe bitgleich.
+TEST(CudaToleranceAware, PicksInsensitiveSolutionLikeCpu) {
+    MKO_REQUIRE_GPU();
+    const std::string file =
+        std::string(MKO_SOURCE_DIR) + "/data/systems/kittblock_toleranzbewusst.json";
+    const mko::LoadedSystem loaded = mko::load_system(file);
+    const mko::SystemBatchHost base = mko::make_system_batch(loaded, 1);
+    const mko::VariableSet set(loaded.system, base.topology());
+    mko::ToleranceAwareSettings ts;
+    ts.alpha = 0.5;
+    const mko::ToleranceAwareModel model(loaded.system, base, set, ts);
+    mko::LmOptions o;
+    o.max_iterations = 200;
+    mko::cuda::TraceEngine engine(0);
+    const mko::ToleranceInnerFactory gpu = mko::cuda::gpu_tolerance_inner(engine);
+    const mko::ToleranceInnerFactory cpu = mko::cpu_tolerance_inner();
+    const std::vector<double> xa = set.extract(base, 0);
+    const int run0 = 0;
+    const std::span<const int> run(&run0, 1);
+    mko::ToleranceAwareBackend bc(model, cpu, base, o);
+    mko::ToleranceAwareBackend bg(model, gpu, base, o);
+    const mko::ToleranceAwareMerits mc = bc.merits(run, xa);
+    const mko::ToleranceAwareMerits mg = bg.merits(run, xa);
+    ASSERT_EQ(mg.merit.size(), mc.merit.size());
+    double dev = 0.0;
+    for (std::size_t s = 0; s < mc.merit.size(); ++s) {
+        dev = std::max(dev, std::abs(mg.merit[s] - mc.merit[s]) / mc.merit[s]);
+    }
+    EXPECT_LE(dev, mko::test::kSensitivityCpuGpuQuality);
+    const mko::LmResult rc = mko::optimize_lm_tolerance_aware(model, cpu, set, base, xa, o);
+    const mko::LmResult rg = mko::optimize_lm_tolerance_aware(model, gpu, set, base, xa, o);
+    const mko::LmResult rg2 = mko::optimize_lm_tolerance_aware(model, gpu, set, base, xa, o);
+    const mko::LmRunResult& c = rc.runs.at(0);
+    const mko::LmRunResult& g = rg.runs.at(0);
+    EXPECT_TRUE(mko::lm_converged(g.status)) << mko::to_string(g.status);
+    EXPECT_LE(std::abs(g.x[0]), mko::test::kToleranceAwareChosen * xa[0]);
+    EXPECT_LE(std::abs(g.merit - c.merit), mko::test::kToleranceAwareNominal * c.merit);
+    EXPECT_EQ(g.x, rg2.runs.at(0).x);
+    EXPECT_EQ(g.history, rg2.runs.at(0).history);
+    std::printf("[ Messung ] toleranzbewusst GPU: Teilmerits gegen CPU %.3e relativ; c CPU %.3e, "
+                "GPU %.3e; F_tol CPU %.12e, GPU %.12e\n",
+                dev, c.x[0], g.x[0], c.merit, g.merit);
 }

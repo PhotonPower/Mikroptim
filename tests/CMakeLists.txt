@@ -75,6 +75,7 @@ add_executable(mikroptim_tests
     test_system_batch.cpp
     test_system_io.cpp
     test_tolerance_analysis.cpp
+    test_tolerance_aware.cpp
     test_tolerance_model.cpp
     test_tolerances_schema.cpp
     test_trace.cpp
@@ -203,6 +204,13 @@ add_test(NAME cli_optimize_no_variables
     COMMAND $<TARGET_FILE:mikroptim> optimize ${MKO_EINZELLINSE})
 set_tests_properties(cli_optimize_no_variables PROPERTIES
     PASS_REGULAR_EXPRESSION "keine Variablen")
+# Toleranzbewusste Optimierung (M11-T6): Kittblock, Kittfläche von c = 0,05 nach c = 0
+add_test(NAME cli_optimize_tolerance_aware
+    COMMAND $<TARGET_FILE:mikroptim> optimize
+            ${PROJECT_SOURCE_DIR}/data/systems/kittblock_toleranzbewusst.json
+            --tolerance-aware 0.5 --quiet)
+set_tests_properties(cli_optimize_tolerance_aware PROPERTIES
+    PASS_REGULAR_EXPRESSION "Toleranzbewusst +alpha = 0\\.5000, S = 2.*Status +converged.*c\\[2\\] +1/mm +-1\\.0+e-01 +5\\.0+e-02 +-?[0-9.]+e-0[5-9]")
 if(MIKROPTIM_ENABLE_CUDA)
     # Ohne CUDA-Gerät übersprungen (SKIP_RETURN_CODE); lokal auf der GPU ausführen.
     add_test(NAME cli_optimize_gpu_json
