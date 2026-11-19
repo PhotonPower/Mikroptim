@@ -275,7 +275,7 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abhängig von:** M2-T4
 - **Abnahme:** Ergebnisse pro Variante bitgleich zum Einzel-GPU-Lauf; Verteilung nach gemessenem Durchsatz.
 
-### M7-T4 – Profiling und Tuning
+### M7-T4 – Profiling und Tuning ✅ (#46, Teil 2 #89; ohne Nsight-Compute-Zähler, nur RTX 3090)
 - **Inhalt:** Nsight Compute, Registerdruck, Belegung, Blockgröße.
 - **Abnahme:** Profilberichte und Ergebnisse in docs/benchmarks.md.
 

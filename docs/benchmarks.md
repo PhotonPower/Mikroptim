@@ -13,7 +13,8 @@ Eine Zeile pro Messreihe: S = 30 Flächen, V = 10.000 Varianten, Standardquadrat
 | 2026-10-18 | 2297b58 + M7-T2 | RTX 3090 | 610.88 / 12.9 | FP32-Vorfilterung (kein Merit-Pfad) | 30 | 10.000 × 510 | 4,7·10⁸ (Kernel 1,7·10⁹) |
 | 2026-10-19 | 59c2408 + M7-T4 | RTX 3090 | 610.88 / 12.9 | FP64 | 30 | 10.000 × 510 | 1,0·10⁸ (Kernel 1,1·10⁸), Minimum statt Median |
 | 2026-10-19 | 59c2408 + M7-T4 | RTX 3090 | 610.88 / 12.9 | df64 | 30 | 10.000 × 510 | 3,8·10⁸ (Kernel 4,9·10⁸), Minimum statt Median |
-| ausstehend | | Tesla P100 | | FP64 | 30 | 10.000 × 510 | ausstehend (Befehl unten) |
+| 2026-11-19 | 7400c32 (M7-T4, Teil 2) | RTX 3090 | 610.88 / 13.4 | FP64 / df64 | 30 | 10.000 × 510 | 9,9·10⁷ / 3,7·10⁸ (Kernel 1,06·10⁸ / 4,6·10⁸), unverändert gegenüber 12.9 |
+| ausstehend | | RTX 6000 Ada | | FP64 / df64 | 30 | 10.000 × 510 | ausstehend (Befehle unten) |
 
 ## Messprogramm in Kürze
 
@@ -361,11 +362,137 @@ Synthese-Konfiguration (5 Felder × 7 Wellenlängen, Feld 0 auf der Achse: 2.310
 
 ### Offene Punkte
 
-- **P100:** Messung der Pakete und der Registergrenze (Befehle unten). Auf der P100 (FP64 mit halber FP32-Rate) dürfte die Belegung (4–5 von 16 Blöcken, 25–31 %) eher begrenzen als auf der RTX 3090; ein Build mit `-DMKO_KERNEL_MIN_BLOCKS=5` zeigt, ob 96 Register helfen.
+- *(entfällt seit ADR-0015, keine P100 mehr; stattdessen „RTX 6000 Ada: Messung nachholen“)* **P100:** Messung der Pakete und der Registergrenze (Befehle unten). Auf der P100 (FP64 mit halber FP32-Rate) dürfte die Belegung (4–5 von 16 Blöcken, 25–31 %) eher begrenzen als auf der RTX 3090; ein Build mit `-DMKO_KERNEL_MIN_BLOCKS=5` zeigt, ob 96 Register helfen.
 - **Nsight Compute:** nach dem Freischalten der Zähler die Annahmen dieses Abschnitts prüfen (FP64-Pipeline nahe 100 %, Lane-Ausnutzung nahe 32, Local-Memory-Verkehr der Extrema), [hardware.md](hardware.md#profiling-mit-nsight-compute).
 - **FP32-Vorfilterung und EVAL** rechnen weiter einen Block pro Tupel. Die Vorfilterung ist über die Engine durch Prüfung und Upload begrenzt (Kernel 3 ms von 11 ms bei S = 30, V = 10.000), die Pakete brächten dort ca. 7 % der Engine-Zeit; EVAL hat dichte Raster (viele Strahlen pro Tupel) und eher das umgekehrte Problem (zu wenige Blöcke bei wenigen Varianten, architektur.md).
 - **ADJOINT** (M5-T1/M5-T2) nutzt noch die alte Abbildung; die Pakete lassen sich übernehmen, wenn der Rückwärtsdurchlauf steht (gleiche Reduktionsreihenfolge, also bitgleiche Residuen wie RESIDUALS).
 - **Download** der Residuen im Modus RESIDUALS über die Engine (bei S = 40, V = 10.000 in df64 ca. 25 ms außerhalb des Kernels, fast alles Download) bleibt der größte Posten außerhalb des Kernels; der Optimierer nutzt für die Jacobi-Matrix `run_on_device` ohne Download.
+
+## Profiling und Tuning, Teil 2 (M7-T4, CUDA 13)
+
+**Ergebnis in Kürze.** Nachtrag zu Teil 1 mit dem Stand nach ADR-0015 (CUDA 13.4, Architekturen `86-real;89-real;89-virtual`) und den Kerneln, die Teil 1 nicht betrachtet hat (adjungierte Jacobi, FD-Jacobi, EVAL, Vorfilterung). Leistungszähler für Nsight Compute sind weiterhin gesperrt (`ERR_NVGPUCTRPERM`); die Befunde stützen sich auf `cuobjdump`/`cudaOccupancyMaxActiveBlocksPerMultiprocessor`, Experimente mit Quadratur und Startgrenzen und auf Nsight Systems (Kernelzeiten ohne Zähler). **Umgesetzt:** Startgrenze von 5 Blöcken pro SM für die adjungierte Jacobi in **df64** (96 statt 159–168 Register): 1,2–1,4-mal so schnell ab 30 Läufen, bitgleich. **Gemessen und verworfen:** Startgrenze 5 für RESIDUALS/MERIT in df64 (−4 … +4 %), Tupelpakete für die adjungierte Jacobi (höchstens 1,09 in FP64 und 1,14 in df64 bei 1.000 Läufen, bei wenigen Läufen bis 5-mal langsamer), Startgrenzen für die adjungierte Jacobi in FP64 (−13 … +15 % je nach Fall). Die Trace-Kernel sind mit CUDA 13.4 so schnell wie mit 12.9 (Teil 1).
+
+### Messumgebung und Methode
+
+RTX 3090 wie in „Messumgebung RTX 3090“, Treiber 610.88 (CUDA 13.3), **Toolkit 13.4**, Release (Preset `release-cuda`), main 7400c32 („vorher“, in einem eigenen Arbeitsbaum gebaut) gegen Branch `m7/t4-profiling`, 2026-11-19. Die GPU teilten sich mehrere Arbeitsbäume; jede Messreihe startete erst, wenn 9 s lang die Auslastung unter 5 % lag und kein fremder Mikroptim-Prozess lief, in der letzten Reihe (df64-Startgrenze der Trace-Kernel) zusätzlich weniger als 2 GB Grafikspeicher belegt waren (kein geladenes Ollama-Modell; Skript im Arbeitsverzeichnis, nicht im Repository). Pro Fall 3 Runden, vorher und nachher abwechselnd; angegeben ist der **Median der Runden** (die Runden-Mediane streuen bei ungestörten Läufen um 1–3 %, gestörte Runden sind daran zu erkennen und gehen über den Median nicht ein).
+
+- **Trace-Kernel:** `trace_throughput --surfaces 10,30 --variants 441,10000 --mode residuals,merit,merit+extrema --type fp64,df64,fp32prefilter --repeat 20 --warmup 3`.
+- **Jacobi-Matrix:** `jacobian_throughput --surfaces 31,41 --runs 1,10,30,100,300,1000 --type fp64,df64 --extra none --repeat 7 --warmup 2` (main) bzw. zusätzlich `--no-fd` (Branch, neue Option: nur die adjungierte Jacobi). Verglichen wird `adjoint_device` (Upload, Kernel, Synchronisation) bzw. `adjoint_j` (ganzes `compute`).
+- **Register und Belegung:** `cuobjdump --dump-resource-usage build/release-cuda/Release/mikroptim_cuda.lib`; Blöcke pro SM aus Registern (Zuteilung in Einheiten von 256 Registern pro Warp, 64 K Register und 48 Warps pro SM auf sm_86 und sm_89) und Shared Memory, für die adjungierte Jacobi zusätzlich `AdjointKernelInfo::blocks_per_sm` (neu, `cudaOccupancyMaxActiveBlocksPerMultiprocessor`).
+- **Bitgleichheit:** `CudaCoaxialFingerprint.*` und `MultiTraceEngine.ResultFingerprint` aus beiden Builds: alle 369 Zeilen gleich (alle Kernel-Modi aller Testsysteme, FP64 und df64, darunter 16 Fingerabdrücke der adjungierten Jacobi). Für FP64 ist der SASS der adjungierten Jacobi identisch mit main (`cuobjdump -sass`, verglichen).
+
+### Nsight Compute
+
+`ncu` (2026.3) bricht auf dem Arbeitsplatz-PC weiter mit `ERR_NVGPUCTRPERM` ab; das Freischalten braucht Administratorrechte ([hardware.md, „Profiling mit Nsight Compute“](hardware.md#profiling-mit-nsight-compute)) und ist eine Frage an den Maintainer. Ohne Zähler bleiben offen: erreichte Belegung, Auslastung der FP64-Pipeline, Stall-Gründe und Local-Memory-Verkehr. Die Aussagen „FP64 durch die FP64-Einheit begrenzt, df64 durch Latenz“ unten sind aus Experimenten geschlossen, nicht gemessen.
+
+### Register und Belegung (sm_86 und sm_89)
+
+Die Ressourcen sind auf sm_86 und sm_89 gleich (gleicher Befehlssatz, gleiche Registerdatei). Blöcke à 128 Threads pro SM, in Klammern die theoretische Belegung (Warps von 48); „T“ = Instanz für dezentrierte Systeme (M8-T3), sonst koaxial.
+
+| Kernel | Register | Stack [B] | stat. Shared [KB] | Blöcke/SM | begrenzt durch |
+|---|---:|---:|---:|---:|---|
+| `residuals_kernel<double>` / mit Extrema | 96 / 96 | 112 / 2.152 | 3,6 / 7,6 | 5 (42 %) | Register |
+| `residuals_kernel<df64>` / mit Extrema | 119 / 119 | 48 / 2.096 | 3,6 / 7,6 | 4 (33 %) | Register |
+| `merit_kernel<double>` / mit Extrema | 107 / 103 | 88 / 2.144 | 3,6 / 7,6 | 4 (33 %) | Register |
+| `merit_kernel<df64>` / mit Extrema | 112 / 118 | 48 / 2.096 | 3,6 / 7,6 | 4 (33 %) | Register |
+| `merit_kernel<double>` mit Extrema, T | 146 | 2.192 | 7,6 | 3 (25 %) | Register |
+| `prefilter_kernel` / T | 72 / 80 | 56 / 160 | 1,1 | 7 / 6 (58 / 50 %) | Register |
+| `eval_kernel` / T | 96 / 118 | 80 / 120 | 1,9 | 5 / 4 (42 / 33 %) | Register |
+| `adjoint_jacobian_kernel<double>`, C = 16 … 64 | 168 | 920 … 3.272 | 1,9 | 3 (25 %) | Register |
+| `adjoint_jacobian_kernel<df64>` vorher | 159 / T 168 | 848 … 3.592 | 1,9 | 3 (25 %) | Register |
+| `adjoint_jacobian_kernel<df64>` **nachher** | 96 | 1.000 … 3.696 | 1,9 | 5 (42 %) | Startgrenze |
+| `fd_difference_kernel` (128 Threads) | 53 | 0 | 1,0 | 9 (75 %) | Register |
+| `gram_kernel` (16 × 16 Threads) | 38 | 0 | 4,3 | 6 (100 %) | Warps |
+
+Gegenüber Teil 1 (CUDA 12.9) haben `merit_kernel<double>` (104 → 107) und `residuals_kernel<df64>` (106 → 119) einige Register mehr, ohne dass sich die Blöcke pro SM ändern. Shared Memory begrenzt keinen Kernel (≤ 7,6 KB statisch plus Tabellen, 100 KB pro SM).
+
+### Trace-Kernel mit CUDA 13.4
+
+Kernel-Median [ms], 3 Felder × 3 Wellenlängen, Standardquadratur, main 7400c32 (unverändert durch diesen Teil):
+
+| Typ | S | V | RESIDUALS | MERIT | MERIT + Extrema | Engine MERIT |
+|---|---:|---:|---:|---:|---:|---:|
+| FP64 | 10 | 10.000 | 17,41 | 17,84 | 20,38 | 19,09 |
+| FP64 | 30 | 441 | 2,356 | 2,370 | 2,749 | 2,768 |
+| FP64 | 30 | 10.000 | 47,54 | 47,98 | 55,10 | 51,28 |
+| df64 | 10 | 10.000 | 4,389 | 4,494 | 6,108 | 5,809 |
+| df64 | 30 | 441 | 0,541 | 0,574 | 0,831 | 0,853 |
+| df64 | 30 | 10.000 | 10,93 | 11,03 | 15,85 | 13,88 |
+| FP32-Vorfilterung | 10 / 30 | 10.000 | – | 2,382 / 3,609 (Kernel) | – | 4,398 / 7,593 |
+
+Die Minima liegen innerhalb von ±5 % der Werte von Teil 1 mit CUDA 12.9 (z. B. FP64 MERIT S = 30, V = 10.000: 47,63 gegen 47,56 ms; df64: 10,70 gegen 10,36 ms; df64 RESIDUALS 10,22 gegen 10,80 ms). Der Wechsel auf CUDA 13 kostet also nichts Messbares. Die Diagnose von Teil 1 gilt weiter; für die FP32-Vorfilterung ist die Engine (Prüfung, Upload, Download) mit 50–55 % der Zeit der größere Posten, Tupelpakete im Kernel brächten dort höchstens einige Prozent (Teil 1, Offene Punkte).
+
+### Adjungierte Jacobi
+
+**Diagnose.** Ein Block pro (Lauf, Feld, Wellenlänge) wie RESIDUALS vor Teil 1, 168 Register, also nur 3 Blöcke pro SM (12 Warps). Die Quadratur zeigt dasselbe Bild wie in Teil 1 (main, S = 31, `adjoint_device` [ms], eine Runde):
+
+| N × M | aktive Warps pro (v, l) | FP64, 100 Läufe | FP64, 1.000 | df64, 100 | df64, 1.000 |
+|---|---:|---:|---:|---:|---:|
+| 10 × 8 (Standard) | 1 + 3 + 3 = 7 | 4,02 | 34,1 | 1,80 | 13,6 |
+| 12 × 8 (20 % mehr Strahlen) | 1 + 3 + 3 = 7 | 4,06 | 34,1 | 1,65 | 13,3 |
+| 16 × 8 | 1 + 4 + 4 = 9 | 5,23 | 43,7 | 2,18 | 14,8 |
+
+In FP64 wächst die Zeit mit den aktiven Warps (9/7 = 1,29, gemessen 1,28), nicht mit den Strahlen: Die FP64-Einheit ist ausgelastet, leere Lanes kosten mit. In df64 wächst sie kaum (16 × 8: 1,09): df64 ist latenzbegrenzt (lange Ketten von FP32-Operationen, Aufzeichnung im Local Memory), mehr Warps pro SM sollten helfen.
+
+**Tupelpakete (verworfen).** Der Kernel wurde testweise auf die Pakete von Teil 1 umgestellt (Kolben mit `pack_piston` in der Reihenfolge von M2, Projektion ein Warp pro (Tupel, Variable), bitgleich zu main) und mit festen Paketgrößen sowie einer Wahl nach der Belegung (größtes Paket mit mindestens zwei Wellen residenter Blöcke) gemessen (`adjoint_device`, Faktor gegen main):
+
+| Fall | 1 Tupel/Block (neuer Code) | Paket 128 | 256 | 512 |
+|---|---:|---:|---:|---:|
+| FP64, S = 31, 1.000 Läufe | 0,94 | 1,01 | 1,06 | 1,08 |
+| FP64, S = 41, 1.000 Läufe | 0,93 | 0,99 | 1,04 | 1,07 |
+| df64, S = 31, 1.000 Läufe | 0,90 | 1,06 | 1,14 | 1,00 |
+| FP64 / df64, 100 Läufe | 0,86–0,94 | 0,88–1,01 | 0,85–0,98 | 0,68–0,82 |
+| FP64 / df64, 1 Lauf | 0,83–0,92 | 0,60–0,67 | 0,41–0,51 | 0,20–0,29 |
+
+Statt der erwarteten 1,31 (21 → 16 Warps) höchstens 1,09 (FP64) bzw. 1,14 (df64), und nur bei 1.000 Läufen: Die Projektion (ein Warp pro Variable über die Zeilen eines Tupels) und der Verkehr der Aufzeichnung gewinnen nichts, die Buchhaltung pro Strahl (Tupelsuche, Bildpunkt, Tabellenfenster) kostet 6–17 %, und große Pakete lassen bei wenigen Läufen SMs leer (1 Lauf = 1 Block). Der LM ruft die Jacobi meist mit wenigen Läufen auf; die Pakete sind deshalb nicht übernommen (der Code liegt als Diff im PR).
+
+**Startgrenzen (df64 umgesetzt).** `__launch_bounds__(128, B)` mit B Blöcken pro SM (Messschalter `MKO_ADJOINT_MIN_BLOCKS_FP64`, `MKO_ADJOINT_MIN_BLOCKS_DF64`); B = 4 begrenzt auf 128, B = 5 auf 96 Register:
+
+- **df64, B = 5** (Stack +150 B, z. B. C = 16: 848 → 1.000 B): `adjoint_device` [ms], Median aus 3 Runden:
+
+| S | Läufe | vorher | nachher | Faktor | `compute` vorher | nachher | Faktor |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 31 | 1 | 0,408 | 0,412 | 0,99 | 0,413 | 0,420 | 0,98 |
+| 31 | 10 | 0,498 | 0,522 | 0,95 | 0,518 | 0,535 | 0,97 |
+| 31 | 30 | 0,858 | 0,659 | 1,30 | 0,914 | 0,691 | 1,32 |
+| 31 | 100 | 1,662 | 1,403 | 1,18 | 1,763 | 1,491 | 1,18 |
+| 31 | 300 | 4,584 | 3,371 | 1,36 | 4,957 | 3,640 | 1,36 |
+| 31 | 1.000 | 13,51 | 10,32 | 1,31 | 14,86 | 11,74 | 1,27 |
+| 41 | 1 | 0,625 | 0,513 | 1,22 | 0,631 | 0,522 | 1,21 |
+| 41 | 10 | 0,646 | 0,616 | 1,05 | 0,674 | 0,633 | 1,07 |
+| 41 | 30 | 1,087 | 0,798 | 1,36 | 1,146 | 0,836 | 1,37 |
+| 41 | 100 | 2,233 | 1,793 | 1,25 | 2,358 | 1,927 | 1,22 |
+| 41 | 300 | 5,780 | 4,314 | 1,34 | 6,322 | 4,638 | 1,36 |
+| 41 | 1.000 | 16,45 | 13,29 | 1,24 | 18,87 | 14,94 | 1,26 |
+
+  Mit 1–10 Läufen (9–90 Blöcke für 82 SMs) bestimmt die Latenz eines Strahls die Zeit; dort ist der Unterschied im Rauschen (S = 41 mit einem Lauf: die Runden von main streuen 0,48–0,82 ms). B = 4 (128 Register) bringt 1,2–1,45 und ist bei 1.000 Läufen 4–5 % langsamer als B = 5.
+- **FP64:** B = 3, 4 oder 5 ändern die Zeit je nach Fall zwischen 0,87 und 1,15 (z. B. B = 4: S = 31, 100 Läufe 4,06 → 4,59 ms; S = 41, 1 Lauf 0,78 → 0,74 ms), über die Fälle kein Gewinn. Schon B = 3 (das die Register nicht senkt) ändert die Befehlsplanung von ptxas. FP64 bleibt deshalb ohne Grenze (B = 0, derselbe SASS wie main).
+- **sm_89 (RTX 6000 Ada):** dieselbe Registerdatei und Warp-Grenze, mehr SMs (142); die Wahl ist **nur auf sm_86 gemessen**. Prüfung auf herkules3 mit den Befehlen unter „RTX 6000 Ada: Messung nachholen“; schlechtere Werte dort wären per `-DMKO_ADJOINT_MIN_BLOCKS_DF64=0` ohne Codeänderung zu prüfen (pro Architektur getrennte Grenzen bräuchten getrennte Instanzen).
+
+**Startgrenze für RESIDUALS/MERIT in df64 (verworfen).** Nach diesem Befund lag es nahe, auch RESIDUALS und MERIT in df64 (112–119 Register, 4 Blöcke) auf 5 Blöcke zu begrenzen (96 Register, Stack +8 … +16 B). Kernel-Median aus 3 Runden, df64, S = 10/30/40, V = 441 und 10.000, alle drei Modi sowie die Synthese-Konfiguration (5 × 7, S = 30, V = 441 und 2.000): V = 10.000 bzw. 2.000 1,01–1,04-mal so schnell, V = 441 0,96–1,01. Anders als die adjungierte Jacobi (Aufzeichnung im Local Memory, ein Tupel pro Block) sind die Paket-Kernel mit 16 Warps pro SM offenbar schon ausgelastet. Die Startgrenzen sind seitdem pro Rechentyp einstellbar (`MKO_KERNEL_MIN_BLOCKS_FP64`, `MKO_KERNEL_MIN_BLOCKS_DF64`, `src/cuda/wavefront_block.hpp`), Standard für beide weiter keine (SASS identisch mit main, verglichen).
+
+**Folge für die Abnahme M5-T3** (Faktor FD/adjungiert der Jacobi): in df64 steigt er mit dem kürzeren Kernel um denselben Faktor; FP64 unverändert.
+
+### FD-Jacobi und Normalgleichungen
+
+Nsight Systems braucht keine Leistungszähler (`nsys profile --trace=cuda`, Kernelzeiten auf der GPU). `jacobian_throughput --surfaces 31 --runs 100 --type fp64,df64 --extra none` (P = 61, R = 1.020, Branch), Median pro Aufruf:
+
+| Abschnitt | FP64 | df64 |
+|---|---:|---:|
+| FD-Jacobi: `residuals_kernel` über 100 · 123 Varianten | 67,5 ms | 12,5 ms |
+| FD-Jacobi: `fd_difference_kernel` | 0,35 ms | 0,35 ms |
+| adjungiert: `adjoint_jacobian_kernel` (C = 32) | 4,11 ms | 1,21 ms |
+| Normalgleichungen: `gram_kernel` (beide Verfahren, immer FP64) | 0,92 ms | 0,92 ms |
+| Download A, g | 0,21 ms | 0,21 ms |
+
+- Die FD-Jacobi ist zu 99 % der Trace-Kernel (Optimierung dort: Teil 1); der Differenzkernel (53 Register, 9 Blöcke pro SM) ist speicherbegrenzt und klein.
+- Mit der adjungierten Jacobi in df64 wird der **Gram-Kernel** zum größten Posten auf der GPU (0,92 von 2,3 ms). Er rechnet 100 · 61 · 62/2 Skalarprodukte der Länge 1.020 (3,9·10⁸ Flop) in 0,92 ms, also ca. 0,42 TFLOPS bei ca. 0,56 TFLOPS FP64-Spitze der RTX 3090: nahe an der FP64-Grenze, ohne Tensor Cores oder einen anderen Zahlentyp (Numerikregeln) kaum schneller. Seine Belegung ist voll (38 Register, 6 Blöcke à 256 Threads = 48 Warps).
+- Upload des Batches und der Hilfsdaten: 256 kleine Kopien (Median 0,9 µs), zusammen ca. 11 ms über alle Aufrufe des Laufs; kein Engpass.
+
+### Offene Punkte
+
+- **Leistungszähler** freischalten (Maintainer, Administratorrechte) und die Annahmen prüfen: FP64-Pipeline nahe 100 % in RESIDUALS/MERIT und in der adjungierten Jacobi (FP64), Stall-Gründe der df64-Kernel, Local-Memory-Verkehr der Aufzeichnung (ADJOINT) und der Max-Reduktionen.
+- **RTX 6000 Ada:** Trace-Kernel, Paketgröße und die Startgrenze der adjungierten Jacobi (df64) auf sm_89 messen (Befehle unten).
 
 ## Adjungierte Jacobi im LM (M5-T3)
 
@@ -459,42 +586,24 @@ V = 10.000, 3 Felder × 3 Wellenlängen, Quadratur 10 × 8 (Kernel, Minimum [ms]
 
 V = 1.000 verhält sich gleich (Zweig/main 0,92 … 1,02). Die Tabellen aller Fälle erzeugt das Programm mit `--csv`; die Einzelwerte liegen im PR.
 
-## P100-Messung nachholen
+## RTX 6000 Ada: Messung nachholen
 
-Auf dem P100-Rechner (Linux, CUDA 12.x):
-
-```bash
-cmake --preset release-cuda && cmake --build --preset release-cuda --target trace_throughput
-./build/release-cuda/mikroptim --devices          # Index der P100 ablesen
-./build/release-cuda/bench/trace_throughput --device <P100-Index> --mode all --repeat 20 --warmup 3 \
-    --csv p100.csv --json p100.json
-./build/release-cuda/bench/trace_throughput --device <P100-Index> --surfaces 30 \
-    --variants 441,392157 --mode residuals,merit --repeat 5
-```
-
-Zu M7-T4 (Tupelpakete und Registergrenze) zusätzlich:
+Die Tesla P100 ist seit ADR-0015 keine Zielhardware mehr; ihre offenen Messungen entfallen. Auf herkules3 (RTX 6000 Ada, sm_89, Linux, CUDA 12.9 oder 13) sind nachzuholen:
 
 ```bash
-# Paketgröße: 1 entspricht der Abbildung vor M7-T4, 512 ist der Standard
+cmake --preset release-cuda && cmake --build --preset release-cuda --target trace_throughput jacobian_throughput
+./build/release-cuda/mikroptim --devices
+# Trace-Kernel (Übersicht, Teil 1 und 2 von M7-T4)
+./build/release-cuda/bench/trace_throughput --surfaces 10,30,40 --variants 441,10000     --mode residuals,merit,merit+extrema --type fp64,df64,fp32prefilter --repeat 20 --warmup 3 --csv ada_trace.csv
 for p in 1 128 256 512 1024; do
-  ./build/release-cuda/bench/trace_throughput --device <P100-Index> --surfaces 30 --variants 441,10000 \
-      --mode merit,merit+extrema --type fp64,df64 --pack-rays $p --repeat 20 --warmup 3 --csv p100_pack_$p.csv
+  ./build/release-cuda/bench/trace_throughput --surfaces 30 --variants 441,10000 --mode merit       --type fp64,df64 --pack-rays $p --repeat 20 --warmup 3 --csv ada_pack_$p.csv
 done
-# Registergrenze 96 (5 Blöcke pro SM) in einem zweiten Build
-cmake -S . -B build/minblocks5 -DCMAKE_BUILD_TYPE=Release -DMIKROPTIM_ENABLE_CUDA=ON \
-      -DCMAKE_CUDA_FLAGS="-DMKO_KERNEL_MIN_BLOCKS=5" && cmake --build build/minblocks5 --target trace_throughput
-./build/minblocks5/bench/trace_throughput --device <P100-Index> --surfaces 10,30,40 --variants 441,10000 \
-      --mode residuals,merit,merit+extrema --type fp64 --repeat 20 --warmup 3 --csv p100_minblocks5.csv
+# Adjungierte und FD-Jacobi (M5-T3, Startgrenze df64 aus M7-T4)
+./build/release-cuda/bench/jacobian_throughput --surfaces 31,41 --runs 1,10,30,100,300,1000     --type fp64,df64 --extra none --repeat 7 --warmup 2 --csv ada_jacobian.csv
+# Gegenprobe ohne Startgrenze der adjungierten Jacobi in df64 (zweiter Build)
+cmake -S . -B build/adjoint-nobound -DCMAKE_BUILD_TYPE=Release -DMIKROPTIM_ENABLE_CUDA=ON       -DCMAKE_CUDA_FLAGS="-DMKO_ADJOINT_MIN_BLOCKS_DF64=0" && cmake --build build/adjoint-nobound --target jacobian_throughput
+./build/adjoint-nobound/bench/jacobian_throughput --surfaces 31,41 --runs 1,10,30,100,300,1000     --type df64 --extra none --no-fd --repeat 7 --warmup 2 --csv ada_jacobian_nobound.csv
+ctest --preset release-cuda --output-on-failure
 ```
 
-Zu M5-T3 (adjungierte Jacobi, Abnahme „mindestens 10× für P ≥ 60 auf beiden GPUs“):
-
-```bash
-cmake --build --preset release-cuda --target jacobian_throughput
-./build/release-cuda/bench/jacobian_throughput --device <P100-Index> --runs 1,10,100,1000 --repeat 5 --csv p100_jacobian.csv
-ctest --preset release-cuda -R "CudaAdjointLm|CudaAdjointJacobian|AdjointLm" --output-on-failure
-```
-
-Lohnt die Registergrenze auf der P100 (mehr als einige Prozent), sollte sie pro Architektur voreingestellt werden (Frage an den Maintainer; die Bits sind mit `MultiTraceEngine.ResultFingerprint` zu prüfen).
-
-Unter Windows mit dem Visual-Studio-Generator liegt das Programm unter `build/release-cuda/bench/Release/trace_throughput.exe`. Dann die Zeile „Tesla P100“ in der Übersicht, eine Tabelle wie oben und den Vergleich mit der Schätzung (4–5·10⁸ Strahlen/s bei S = 30) ergänzen. Erwartung aus dem Spitzenwert (56 SMs · 32 FP64-Ergebnisse pro Takt · 2 Flop · 1,48 GHz ≈ 5,3 TFLOPS, ca. 8 × RTX 3090): bei gleicher Ausnutzung bis zu ca. 7·10⁸ Strahlen/s, wegen der geringen Belegung (siehe Profilnotiz) eher weniger.
+Ist die Startgrenze auf sm_89 langsamer, wären getrennte Grenzen pro Architektur nötig (eigene Kernel-Instanzen, `__CUDA_ARCH__` im Template-Argument); das ist dann eine Frage an den Maintainer.

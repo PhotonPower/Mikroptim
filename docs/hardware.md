@@ -54,12 +54,14 @@ Die Trace-Kernel `RESIDUALS` und `MERIT` laufen mit 128 Threads pro Block; seit 
 
 Auf der RTX 3090 begrenzt der FP64-Durchsatz (2 Ergebnisse pro Takt und SM), nicht die Belegung: Eine Registergrenze von 96 (`__launch_bounds__(128, 5)`) brachte dort weder in FP64 noch in df64 einen messbaren Gewinn (±2 %, [benchmarks.md](benchmarks.md#profiling-und-tuning-m7-t4)) und ist deshalb nicht voreingestellt. Auf der P100 (32 FP64-Ergebnisse pro Takt und SM) kann die Belegung begrenzen; zum Messen lässt sich die Grenze ohne Codeänderung setzen: `-DCMAKE_CUDA_FLAGS="-DMKO_KERNEL_MIN_BLOCKS=5"` beim Konfigurieren (`src/cuda/wavefront_block.hpp`; ohne den Schalter steht nur die Blockgröße im `__launch_bounds__`, denn schon ein ausdrückliches Minimum von 1 ändert die Registerzuteilung). Die Rechnung im PTX ändert sich dadurch nicht, nur die Registerzuteilung in ptxas; ob die Bits gleich bleiben, zeigt danach `MultiTraceEngine.ResultFingerprint` (Werte wie im Abschnitt „Mehrere GPUs“). Erst nach einer Messung auf der P100 als Standard übernehmen.
 
+Seit ADR-0015 (CUDA 13, sm_86 und sm_89) gilt die Tabelle für sm_86 und sm_89 gleich (64 K Register und höchstens 48 Warps pro SM auf beiden). Teil 2 von M7-T4 ([benchmarks.md, „Profiling und Tuning, Teil 2“](benchmarks.md#profiling-und-tuning-teil-2-m7-t4-cuda-13)): Die **adjungierte Jacobi in df64** ist latenzbegrenzt und läuft mit einer Startgrenze von 5 Blöcken (96 statt 159–168 Register) 1,2–1,4-mal so schnell; in FP64 und für RESIDUALS/MERIT (auch df64) bleibt es ohne Grenze. Messschalter in `CMAKE_CUDA_FLAGS`: `-DMKO_KERNEL_MIN_BLOCKS_FP64=N`, `-DMKO_KERNEL_MIN_BLOCKS_DF64=N` (RESIDUALS/MERIT, `-DMKO_KERNEL_MIN_BLOCKS=N` setzt beide), `-DMKO_ADJOINT_MIN_BLOCKS_FP64=N`, `-DMKO_ADJOINT_MIN_BLOCKS_DF64=N` (adjungierte Jacobi; Standard 0 bzw. 5). Alle Werte sind nur auf der RTX 3090 gemessen.
+
 ## Profiling mit Nsight Compute
 
 Nsight Compute (`ncu`) braucht Zugriff auf die Leistungszähler der GPU. Ohne ihn bricht jede Messung mit `ERR_NVGPUCTRPERM` ab (so am Arbeitsplatz-PC in M2-T6 und M7-T4). Freischalten (einmalig, mit Administratorrechten durch den Maintainer):
 
 - **Windows:** NVIDIA-Systemsteuerung → Menü „Desktop“ → „Entwicklereinstellungen aktivieren“; dann „Entwickler“ → „GPU-Leistungsindikatoren verwalten“ → „Allen Benutzern Zugriff auf die GPU-Leistungsindikatoren erlauben“.
-- **Linux (P100-Rechner):** Datei `/etc/modprobe.d/nvidia-profiling.conf` mit `options nvidia NVreg_RestrictProfilingToAdminUsers=0`, danach Treibermodul neu laden bzw. neu starten (`cat /proc/driver/nvidia/params | grep RmProfilingAdminOnly` zeigt `0`).
+- **Linux (herkules3):** Datei `/etc/modprobe.d/nvidia-profiling.conf` mit `options nvidia NVreg_RestrictProfilingToAdminUsers=0`, danach Treibermodul neu laden bzw. neu starten (`cat /proc/driver/nvidia/params | grep RmProfilingAdminOnly` zeigt `0`).
 
 Sinnvolle Messungen danach (Release-Build, ein Lauf genügt):
 
@@ -73,6 +75,8 @@ ncu --kernel-name regex:"merit_kernel|residuals_kernel" --launch-skip 3 --launch
 ```
 
 Zu prüfen: Auslastung der FP64-Pipeline (`sm__inst_executed_pipe_fp64`, auf der RTX 3090 erwartet nahe 100 % in FP64), erreichte gegen theoretische Belegung, Stall-Gründe (`smsp__pcsamp_warps_issue_stalled_*`: auf der P100 vermutlich Latenz der FP64-Befehle, dann `MKO_KERNEL_MIN_BLOCKS=5` messen), Local-Memory-Verkehr der Max-Reduktionen (`l1tex__t_bytes_pipe_lsu_mem_local`) und Lane-Ausnutzung (`smsp__thread_inst_executed_per_inst_executed`, nach M7-T4 erwartet nahe 32).
+
+Ohne Zähler liefert **Nsight Systems** die Kernelzeiten auf der GPU (keine Administratorrechte nötig), z. B. `nsys profile --trace=cuda -o jac ./build/release-cuda/bench/jacobian_throughput --surfaces 31 --runs 100 --extra none` und `nsys stats --report cuda_gpu_kern_sum jac.nsys-rep` (so in M7-T4, Teil 2). Register, Stack und Belegung: `cuobjdump --dump-resource-usage` auf die Bibliothek `mikroptim_cuda`, für die adjungierten Kernel auch `adjoint_kernel_info`/`adjoint_jacobian_kernel_info` (`blocks_per_sm`).
 
 ## Speicherreserve und Tranchen
 

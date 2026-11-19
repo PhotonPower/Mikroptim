@@ -484,16 +484,33 @@ constexpr int kReductionLanes = 128;
 constexpr int kReductionGroups = kReductionLanes / kWarpSize;
 static_assert(kReductionLanes % kWarpSize == 0);
 
-// Startgrenzen der Kernel RESIDUALS und MERIT. Standard: nur die Blockgröße (ptxas wählt die
-// Register frei). Messschalter für die P100 (M7-T4, docs/hardware.md): -DMKO_KERNEL_MIN_BLOCKS=5
-// in CMAKE_CUDA_FLAGS verlangt 5 residente Blöcke pro SM, also höchstens 96 Register; auf der
-// RTX 3090 ohne messbaren Gewinn. (Ein ausdrückliches Minimum von 1 ist nicht dasselbe wie
-// keines: ptxas teilt dann anders zu, z. B. 124 statt 96 Register für RESIDUALS auf sm_86.)
+// Startgrenzen der Kernel RESIDUALS und MERIT pro Rechentyp (Mindestzahl residenter Blöcke à
+// 128 Threads pro SM, 0 = keine, derselbe Code wie ohne Angabe; M7-T4, docs/benchmarks.md):
+// Standard für beide Typen keine. Auf der RTX 3090 gemessen und verworfen: 5 Blöcke (96 Register)
+// in FP64 ±2 %, in df64 −4 … +4 %. Messschalter (z. B. für sm_89) in CMAKE_CUDA_FLAGS:
+// -DMKO_KERNEL_MIN_BLOCKS_FP64=N, -DMKO_KERNEL_MIN_BLOCKS_DF64=N (-DMKO_KERNEL_MIN_BLOCKS=N
+// setzt beide). (Ein ausdrückliches Minimum von 1 ist nicht dasselbe wie keines: ptxas teilt dann
+// anders zu, z. B. 124 statt 96 Register für RESIDUALS auf sm_86.)
 #ifdef MKO_KERNEL_MIN_BLOCKS
-#define MKO_TRACE_LAUNCH_BOUNDS __launch_bounds__(kBlockThreads, MKO_KERNEL_MIN_BLOCKS)
-#else
-#define MKO_TRACE_LAUNCH_BOUNDS __launch_bounds__(kBlockThreads)
+#ifndef MKO_KERNEL_MIN_BLOCKS_FP64
+#define MKO_KERNEL_MIN_BLOCKS_FP64 MKO_KERNEL_MIN_BLOCKS
 #endif
+#ifndef MKO_KERNEL_MIN_BLOCKS_DF64
+#define MKO_KERNEL_MIN_BLOCKS_DF64 MKO_KERNEL_MIN_BLOCKS
+#endif
+#endif
+#ifndef MKO_KERNEL_MIN_BLOCKS_FP64
+#define MKO_KERNEL_MIN_BLOCKS_FP64 0
+#endif
+#ifndef MKO_KERNEL_MIN_BLOCKS_DF64
+#define MKO_KERNEL_MIN_BLOCKS_DF64 0
+#endif
+template <class R>
+constexpr int kTraceMinBlocks = MKO_KERNEL_MIN_BLOCKS_FP64;
+template <>
+constexpr int kTraceMinBlocks<df64> = MKO_KERNEL_MIN_BLOCKS_DF64;
+// Nur in Kernel-Templates mit dem Rechentyp R verwenden.
+#define MKO_TRACE_LAUNCH_BOUNDS __launch_bounds__(kBlockThreads, detail::kTraceMinBlocks<R>)
 
 // Shared Memory pro Block, das die Kernel höchstens belegen (ohne Opt-in auf beiden Karten).
 constexpr std::size_t kBlockMaxSharedBytes = 48 * 1024;
