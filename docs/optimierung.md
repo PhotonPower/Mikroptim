@@ -861,3 +861,42 @@ Standard w = (1, 1, 1) (`GlassSnapOptions::distance_weights`; die CLI verwendet 
 - M. Isshiki et al.: Global optimization with escape function (Lens design).
 - H. B. Nielsen: Damping parameter in Marquardt's method (1999).
 - J. Nocedal, S. J. Wright: Numerical Optimization (exakte Penalty-Funktionen).
+
+## 11. Monte-Carlo-Tolerierung (M8-T4)
+
+Ziel: Verteilung von RMS-Wellenfront und Strehl eines fertigen Entwurfs unter Fertigungstoleranzen, mit Kompensator. Toleranzsatz im Systemformat ([dateiformat.md, „Toleranzen“](dateiformat.md#toleranzen-ab-m8-t4)), Bibliothek `Mikroptim::tolerance` (`include/mikroptim/tolerance/`, [architektur.md](architektur.md#monte-carlo-tolerierung-m8-t4)), Kommandozeile `mikroptim tolerance` ([cli.md](cli.md#mikroptim-tolerance)).
+
+### Stichproben
+
+- **Zufallsgrößen.** Jede aufgelöste Toleranz k (`resolve_tolerances`) hat eine (Radius, Dicke, Brechzahl, Abbe-Zahl) oder zwei (Dezentrierung Δx, Δy; Verkippung α, β) unabhängige Zufallsgrößen ξ ∈ [−1, 1]; der Wert ist δ_k·ξ. Stichprobe i zieht ihre ξ in der Reihenfolge der Toleranzen aus einem eigenen `std::mt19937_64` mit Startwert `variant_seed(seed, i)` (wie der Variantengenerator, Abschnitt 4). Damit hängt jede Stichprobe nur von Startwert und Index ab, nicht von Tranchen, Batchgröße, Threads oder Backend.
+- **Verteilungen** nur mit exakten bzw. korrekt gerundeten Operationen (portabel bitgleich): gleichverteilt ξ = 2u − 1; „normal“ als Irwin-Hall-Näherung z = Σ₁¹² u_i − 6 (Mittel 0, Varianz 1, Exzess −0,1), neu gezogen, solange |z| > c, ξ = z/c, also σ = δ/c und abgeschnitten bei ±δ (c = `cutoff_sigma`, Standard 2, erlaubt 0,5 … 6). u = `unit_uniform` (53 Bit). Exakte Varianz von ξ aus der Irwin-Hall-Dichte: c = 2 → Var(ξ) = 0,1962 (abgeschnittene Normalverteilung 0,1934; die Irwin-Hall-Verteilung hat leichtere Ränder).
+- **Anwendung** (`ToleranceModel::apply`, Batch mit voller Pupille, `make_non_coaxial`), ausgehend von der nominellen Variante:
+  - Radius: c′ = c/(1 + ε) bzw. in Passen c′ = c + N·Δc₁ (Δc₁ aus der Pfeilhöhe am Rand, dateiformat.md).
+  - Dicke: + δ auf das letzte Teilstück des Spalts nach der Fläche.
+  - Brechzahl und Abbe-Zahl pro Glas: n′(λ) = n_ref + Δn + (n(λ) − n_ref)/(1 + e), n_ref = n(λ_ref) des Batches (`paraxial_index`); ohne Abbe-Toleranz n(λ) + Δn. Die Hauptdispersion und damit 1/ν skaliert mit 1/(1 + e); das Glasmodell selbst bleibt unverändert.
+  - Dezentrierung und Verkippung einer Fläche: Werte der Flächentransformation (ADR-0011), zur Transformation der Datei addiert (Verkippung um den schon dezentrierten Scheitel, Drehungen zusammengesetzt).
+  - Elemente danach in Toleranzreihenfolge als starrer Körper: x → P + R(x − P) + (Δx, Δy, 0), R = R_y(β)R_x(α), P = (0, 0, z_P) auf der Achse (nominelle Scheitellagen z_s = Σ Dicken). Pro Fläche neuer Scheitel und neue Drehung R·R_s; die Drehung wird in R_y(β′)R_x(α′)R_z(γ) zerlegt, R_z(γ) entfällt (wirkungslos bei Kugel und Ebene mit kreisförmigem Rand): α′ = atan2(−n_y, √(n_x² + n_z²)), β′ = atan2(n_x, n_z) mit der Normalen n = R R_s e_z. Die axiale Verschiebung δz des Scheitels geht in die Dicken (davor + δz, danach − δz; nach der letzten Fläche in den Arbeitsabstand, den der Kompensator ohnehin neu setzt). Ohne Drehung wird nur verschoben (bitgleich). Die Elementbewegung rechnet mit den nominellen Scheitellagen; Dickentoleranzen innerhalb des Elements verschieben den Drehpunkt also nicht (Fehler zweiter Ordnung).
+  - Grenzen 0 und ξ = 0 lassen die Variante bitgleich (Test `ToleranceModel.ZeroDeviatesLeaveBatchBitIdentical`).
+
+### Kompensator und Bewertung
+
+- **Tranchen** von höchstens `chunk` Stichproben (Standard 4.096; nur Speicher und Laufzeit): Stichproben schreiben (`write_samples`), mit Kompensator den Arbeitsabstand aller Stichproben gemeinsam mit dem gebündelten LM optimieren (eine Variable `working_distance` ohne Schranken, Start beim Arbeitsabstand der Stichprobe, Merit wie in der Optimierung: Strahlresiduen in Wellen mit weichem Versagen, keine Zusatzresiduen; CPU `optimize_lm_cpu`, GPU `optimize_lm_gpu`), dann OPD und Status über RESIDUALS mit hartem Versagen. Die nominelle Bewertung läuft genauso mit ξ = 0, also ebenfalls kompensiert.
+- **Pro Tupel** (Feld, Wellenlänge) aus OPD und Status der Pupillenquadratur (`tuple_quality`, [numerik.md, Abschnitt 16](numerik.md#16-tolerierung-rms-und-strehl-aus-der-quadratur-m8-t4)): RMS nach Abzug von Kolben und Kippung [Wellen bei λ_ref] und Strehl bei der Wellenlänge des Tupels.
+- **Pro Stichprobe**: RMS gesamt √(Σ ŵ_f ŵ_λ RMS²) mit den normierten Gewichten der Merit, kleinster Strehl über die Tupel mit Gewicht > 0, Arbeitsabstand, Kompensation, Status und Zyklen des LM, Zahl hart versagter Strahlen.
+- **Verteilungen** (`distribution_stats`): Mittel, Standardabweichung (n − 1), Minimum, Maximum über die endlichen Werte; Perzentile 50/90/95/99 % nach dem nächsten Rang ohne Interpolation in der schlechten Richtung (RMS: Wert, den p % nicht überschreiten, x_(⌈pn⌉); Strehl: Wert, den mindestens p % erreichen, x_(n+1−⌈pn⌉)); NaN zählt dort als schlechtester Wert. Ausbeute = Anteil mit kleinstem Strehl ≥ Schwelle (Standard 0,8).
+
+### Determinismus
+
+Stichprobe i hängt nur von (seed, i) ab; der LM bündelt Läufe ohne Kopplung (Abschnitt 4), RESIDUALS ist pro Variante unabhängig von der Batchgröße (ADR-0007), die Bewertung summiert in fester Reihenfolge. Ergebnisse sind daher für jede Tranchengröße und Threadzahl bitgleich, auf demselben Gerät auch auf der GPU. CPU und GPU stimmen innerhalb der Toleranzen überein (ohne Kompensator RMS und Strehl ≤ 3,3·10⁻¹², mit Kompensator Arbeitsabstand ≤ 1,6·10⁻¹⁰ mm, gemessen auf der RTX 3090).
+
+### Abnahme (M8-T4)
+
+| Prüfung | Orakel | Ergebnis (Test) |
+|---|---|---|
+| Verteilung über 10.000 Stichproben, `testsystem_toleranz.json` (alle acht Typen, 26 Zufallsgrößen), Kompensator Arbeitsabstand, Startwert 2026 | – | RMS nominal 0,0275, Mittel 0,0945, 95 % ≤ 0,214 Wellen; kleinster Strehl nominal 0,960, Mittel 0,615, ≥ 0,044 bei 95 %; Ausbeute (S ≥ 0,8) 39,1 %; keine versagten Strahlen. CPU 1,7 s, RTX 3090 0,5 s (`ToleranceAnalysis.TenThousandSamplesReproducible`, `CudaTolerance.TenThousandSamplesReproducible`) |
+| Reproduzierbar mit festem Startwert | bitgleich | zweiter Lauf mit Tranchen zu 777 (GPU 1.234) und einem Thread: erste 2.500 (GPU 3.000) Stichproben bitgleich; anderer Startwert andere Werte |
+| Kompensator | verschobene planparallele Platte: Kompensation = nominal − δ, RMS wie nominal | ≤ 1,08·10⁻⁶ mm, RMS relativ ≤ 2,0·10⁻⁵ (300 Stichproben, `ToleranceAnalysis.CompensatorRecoversShiftedPlate`) |
+| Strehl der Quadratur | direkte Summe der PSF (M8-T2) auf dem Raster 256², Kippung abgezogen | ≤ 1,7·10⁻³ bei Strehl 0,14 … 0,98 (`ToleranceAnalysis.QuadratureStrehlMatchesDirectPsfSum`) |
+| RMS und Strehl eines Tupels | Defokus A ρ²: RMS A/√12, Strehl sinc²(πA/λ); Kolben und Kippung; versagte Strahlen undurchlässig | ≤ 10⁻¹³ (`ToleranceQuality.*`) |
+| Zufallsgrößen | Mittel und Varianz gegen Gleichverteilung und abgeschnittene Irwin-Hall-Dichte (c = 0,5 … 3) | innerhalb 5 Standardfehlern bei 200.000 Ziehungen (`ToleranceModel.*DeviateMoments`) |
+| Anwendung | geschlossene Formeln pro Typ, Elementkippung um den Drehpunkt, Zusammensetzung zweier Drehungen | `ToleranceModel.*` |

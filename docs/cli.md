@@ -13,6 +13,9 @@ mikroptim insert <system.json> -o <neu.json> (--meniscus I,POS,C0,GLAS [--thickn
                  --split I,C_S[,ANTEIL] [--free-glass]) [--no-variables]
 mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log <protokoll.json>]
                 [--quiet] [--max-elements N] [--max-iterations N] [--gpu [--device N]] ...
+mikroptim tolerance <system.json> [--samples N] [--seed n] [--compensator wd|none] [--threshold S]
+                    [--json] [--histogram DATEI.csv [--bins K]] [--samples-file DATEI.csv]
+                    [--rings N] [--spokes M] [--chunk K] [--max-iterations N] [--gpu [--device N]]
 ```
 
 | Aufruf | Wirkung |
@@ -25,6 +28,7 @@ mikroptim synth <start.json> --target-na NA [-o <ergebnis.json>] [--json] [--log
 | `mikroptim snap …` | Glasvariablen auf Katalog-Gläser einrasten, übrige Variablen reoptimieren (M6-T5; Abschnitt [`mikroptim snap`](#mikroptim-snap)) |
 | `mikroptim insert …` | Einfüge-Operator A oder B anwenden, neues System schreiben (M6-T2; Abschnitt [`mikroptim insert`](#mikroptim-insert)) |
 | `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
+| `mikroptim tolerance …` | Monte-Carlo-Tolerierung mit dem Toleranzsatz der Systemdatei: Verteilung von RMS-Wellenfront und Strehl, Kompensator Arbeitsabstand (M8-T4; Abschnitt [`mikroptim tolerance`](#mikroptim-tolerance)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio). Mit dem Python-Paket (M9-T1, [python/README.md](../python/README.md)) sind dieselben Unterbefehle auch als `python -m mikroptim <befehl> …` bzw. `mikroptim.run_cli([...])` erreichbar (Ausgabe erst am Ende des Befehls).
 
@@ -1483,3 +1487,53 @@ Glasvorauswahl Achromat (Paare): 39 Gläser, 2 ohne Buchdahl-Fit übersprungen
 
 Exit-Codes: 0 Erfolg, 1 Fehler beim Laden (auch unbekanntes festes Glas), 2 ungültige Kommandozeile.
 
+## `mikroptim tolerance`
+
+Monte-Carlo-Tolerierung (M8-T4, Verfahren: [optimierung.md, Abschnitt 11](optimierung.md#11-monte-carlo-tolerierung-m8-t4); Bewertung: [numerik.md, Abschnitt 16](numerik.md#16-tolerierung-rms-und-strehl-aus-der-quadratur-m8-t4)). Der Toleranzsatz steht im Abschnitt `tolerances` der Systemdatei ([dateiformat.md](dateiformat.md#toleranzen-ab-m8-t4)); Stichproben laufen als Varianten im Batch (volle Pupille), pro Stichprobe wird der Arbeitsabstand neu optimiert (Kompensator) und RMS-Wellenfront (nach Abzug von Kolben und Kippung) und Strehl pro Feld und Wellenlänge bewertet.
+
+| Option | Bedeutung | Standard |
+|---|---|---|
+| `--samples N` | Zahl der Stichproben (≥ 1) | 1000 |
+| `--seed n` | Startwert; Stichprobe i hängt nur von n und i ab | 0 |
+| `--compensator X` | `wd` bzw. `working_distance` (Arbeitsabstand pro Stichprobe mit dem LM) oder `none` | `tolerances.compensator`, sonst `wd` |
+| `--threshold S` | Strehl-Schwelle der Ausbeute (Anteil der Stichproben, deren kleinster Strehl über alle Tupel ≥ S ist), 0 … 1 | 0,8 |
+| `--json` | Ausgabe im Format `mikroptim.tolerance/1` | – |
+| `--histogram D`, `--bins K` | Histogramm von kleinstem Strehl (über [0, 1]) und RMS gesamt (über [0, größter Wert]) mit K gleich breiten Klassen als CSV nach D (`quantity,bin,lower,upper,count,fraction`) | K = 20 |
+| `--samples-file D` | Werte pro Stichprobe als CSV nach D: `index,rms_waves,strehl_min,working_distance_mm,compensation_mm,failed_rays,compensator_status`, dann `rms_f<F>_l<L>,strehl_f<F>_l<L>` pro Tupel (17 signifikante Stellen) | – |
+| `--rings N`, `--spokes M` | Pupillenquadratur von Bewertung und Kompensator | 10, 8 |
+| `--chunk K` | Stichproben pro Tranche (nur Speicher und Laufzeit, Ergebnisse bitgleich) | 4096 |
+| `--max-iterations N` | Zyklen des LM pro Stichprobe beim Kompensator | 100 |
+| `--gpu`, `--device N` | RESIDUALS und LM auf der GPU (`mko::cuda::use_gpu`, FP64) | CPU, Gerät 0 |
+
+Exit-Codes wie `mikroptim trace`: 0 Erfolg, 1 Fehler beim Laden oder Rechnen (auch: Datei ohne Abschnitt `tolerances`), 2 ungültige Kommandozeile, 3 GPU-Backend nicht verfügbar.
+
+**Text** (`data/systems/testsystem_toleranz.json --samples 10000 --seed 2026`, Ausschnitt):
+
+```
+System: Testsystem Toleranz
+  Toleranzsatz: 8 Einträge, 18 Toleranzen, 26 Zufallsgrößen pro Stichprobe
+  Stichproben: 10000 (Startwert 2026, 3 Tranchen zu höchstens 4096)
+  Kompensator: Arbeitsabstand (LM pro Stichprobe)
+  Backend: CPU, FP64
+  Quadratur 10 Ringe x 8 Speichen, volle Pupille; RMS nach Abzug von Kolben und Kippung in Wellen bei 546.070 nm, Strehl bei der Wellenlänge des Tupels
+  Laufzeit: 1.68 s
+
+  Kennzahl                  Nominal     Mittel        Std       50 %       90 %       95 %       99 %
+  RMS gesamt [Wellen]      0.027530   0.094456   0.061418   0.081059   0.183234   0.214383   0.274690
+  Strehl (kleinster)       0.959883   0.615116   0.304479   0.698789   0.123770   0.044302   0.008654
+  (RMS: Wert, den p % der Stichproben nicht überschreiten; Strehl: Wert, den mindestens p % erreichen)
+  Arbeitsabstand nominal 18.556989 mm, Kompensation [mm]: Mittel 6.104e-03, Std 7.601e-02, min -2.342e-01, max 2.734e-01
+  Ausbeute (Strehl >= 0.80 in allen Tupeln): 39.11 % (3911 von 10000)
+  Stichproben mit versagten Strahlen: 0
+
+  Pro Feld und Wellenlänge (RMS in Wellen, Perzentile wie oben)
+  Feld  Winkel   λ [nm]  RMS nom.    Mittel      95 % Strehl nom.    Mittel      95 %
+     0   0.000   486.13   0.01973   0.09193   0.20972     0.98077   0.64193   0.05416
+     …
+```
+
+Mit `--gpu` (RTX 3090) dieselben Zahlen in 0,52 s.
+
+**JSON** (`mikroptim.tolerance/1`): `format`, `mikroptim_version`, `system`, `file`, `backend` (`cpu`/`gpu`), `device` (`index`, `name` oder `null`), `settings` (`samples`, `seed`, `compensator`, `strehl_threshold`, `rings`, `spokes`, `chunk`), `tolerances[]` (aufgelöste Toleranzen: `type`, `item`, `surface` bzw. `element` [erste, letzte], `limit` in `unit` – `mm`, `rad`, `1` (relativ bzw. Δn) oder `1/mm` (Passen als Δc) –, `distribution`, `cutoff_sigma`, `pivot_z_mm`), `draws`, `reference_nm`, `nominal` (`rms_waves`, `strehl_min`, `working_distance_mm`, `compensation_mm`, `failed_rays`), Verteilungen `rms_waves`, `strehl_min`, `compensation_mm` (je `count`, `mean`, `std`, `min`, `max`, `p50`, `p90`, `p95`, `p99`), `yield`, `yield_samples`, `failed_samples`, `tuples[]` (`field`, `field_angle_deg`, `wavelength`, `wavelength_nm`, `weight` ŵ_f ŵ_λ, `nominal_rms_waves`, `nominal_strehl`, `rms_waves`, `strehl`), `chunks`, `elapsed_seconds`, `warnings`. Nicht endliche Werte stehen als `null`.
+
+**Tests:** `CliTolerance.*` (JSON bitgleich zu `run_tolerance_analysis`, CSV-Dateien, Text, Fehler, `--gpu`), ctest `cli_tolerance_json`, `cli_tolerance_no_tolerances`, `cli_tolerance_gpu_json`.

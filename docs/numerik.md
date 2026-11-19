@@ -1019,3 +1019,15 @@ k = 1: Achromat (Paare), k = 2: Apochromat (Tripel). Gauß mit Pivotsuche; verwo
 
 **Grenzen.** Dünne Elemente in Kontakt (Gewichte für getrennte Elemente aus den Randstrahlhöhen), nur Farblängsfehler; Farbquerfehler, Sphärochromasie und Monochromatfehler gehen erst im Trace ein. Die Rangliste ist ein Startpunkt für Operator B und die Glasvariablen, keine Entscheidung.
 
+
+## 16. Tolerierung: RMS und Strehl aus der Quadratur (M8-T4)
+
+Die Monte-Carlo-Tolerierung ([optimierung.md, Abschnitt 11](optimierung.md#11-monte-carlo-tolerierung-m8-t4)) bewertet jede Stichprobe direkt aus der OPD des Modus RESIDUALS (Pupillenquadratur, Abschnitt 8, volle Pupille, hartes Versagen), ohne Raster und FFT (`tuple_quality`, `include/mikroptim/tolerance/tolerance_analysis.hpp`).
+
+Pro Tupel (Feld f, Wellenlänge λ) mit Stützstellen k (ρ_k, φ_k, Gewicht W_k, Σ W_k = 1), x_k = ρ_k sin φ_k, y_k = ρ_k cos φ_k und der Menge K der Strahlen mit Status `Ok`:
+
+- **Kolben und Kippung:** gewichtete kleinste Quadrate OPD_k ≈ c₀ + t_x x_k + t_y y_k über K; 3 × 3-Normalgleichungen (Summen in aufsteigender Reihenfolge k), Cholesky. Ist ein Pivot ≤ 10⁻¹²·Σ_K W (Achsfall mit x = 0, weniger als drei Strahlen), wird nur der Kolben c₀ = Σ_K W·OPD / Σ_K W abgezogen. Kippung in der Pupille entspricht einer Verschiebung des Bildpunkts; sie zählt als Verzeichnung bzw. Bildversatz, nicht als Bildfehler.
+- **Rest** e_k = OPD_k − c₀ − t_x x_k − t_y y_k; **RMS** = √(Σ_K W e² / Σ_K W) [mm], ausgegeben in Wellen bei λ_ref.
+- **Strehl** S = |Σ_K W_k exp(2πi e_k/λ)|² / (Σ_alle W_k)² mit der Vakuumwellenlänge λ des Tupels. Versagte Strahlen sind undurchlässig (Normierung über alle Stützstellen), ohne gültigen Strahl ist RMS = NaN und S = 0. Das ist der Strehl im durch die Kippung verschobenen Bildpunkt wie `PsfResult::strehl` (Abschnitt „Beugung“), nur mit der Gauß-Quadratur statt des kartesischen Rasters.
+
+**Genauigkeit.** Die radiale Gauß-Regel mit N Ringen ist exakt für Polynome in u = ρ² bis Grad 2N − 1, die volle Regel mit M Speichen für cos/sin(mφ) bis m = M − 1. Der RMS ist damit exakt, solange e² in diesen Grenzen liegt (bei 10 × 8 z. B. Defokus, Koma, Astigmatismus und sphärische Aberration dritter und fünfter Ordnung); für den Strehl ist der Integrand e^{iφ(ρ, φ)} kein Polynom, der Fehler wächst mit der Phasenvariation. Prüfungen: Defokus A ρ² gegen RMS = A/√12 und S = sinc²(πA/λ) bis A = 1 λ (≤ 10⁻¹³); gestörte Systeme gegen die direkte Summe der PSF über das EVAL-Raster 256² mit der Standardquadratur 10 × 8: ≤ 1,7·10⁻³ bei Strehl 0,14 … 0,98 (Toleranz `kToleranceStrehlVsPsf`). Bei sehr großen Aberrationen (viele Wellen) mehr Ringe und Speichen wählen (`--rings`, `--spokes`); Maréchal S ≈ exp(−(2π·RMS/λ)²) gilt nur für kleine RMS.

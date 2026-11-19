@@ -1,0 +1,38 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Testsystem Toleranz",
+  "description": "Frei erfundenes Testsystem (kein reales Objektiv): Kittglied aus CaF2 und einem Flint als Buchdahl-Modell, f ca. 20 mm, NA 0,075, zwei Felder, drei Wellenlängen; Krümmungen und Arbeitsabstand mit mikroptim optimize auf kleinste Wellenfront bei f = 20 mm gebracht (RMS nominal 0,02 bis 0,04 Wellen). Toleranzsatz mit allen Toleranztypen in der Größe üblicher Fertigungstoleranzen; Abnahme und Beispiel der Monte-Carlo-Tolerierung (M8-T4).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json"],
+  "spectrum": {
+    "wavelengths_nm": [486.13, 546.07, 656.27],
+    "weights": [1.0, 1.0, 1.0],
+    "reference_nm": 546.07
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [0.0, 1.0],
+    "field_weights": [1.0, 1.0]
+  },
+  "surfaces": [
+    { "type": "stop", "semi_diameter": 1.5, "thickness": 2.0, "material": "AIR" },
+    { "type": "sphere", "curvature": 0.0782447064, "thickness": 2.5, "material": "CAF2", "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": -0.1081305142, "thickness": 1.2, "material": { "model": "buchdahl", "n0": 1.62, "nu": [-0.12, 0.02] }, "semi_diameter": 3.0 },
+    { "type": "sphere", "curvature": -0.0603061240, "thickness": 18.5533755, "material": "AIR", "semi_diameter": 3.0 }
+  ],
+  "tolerances": {
+    "distribution": "normal",
+    "cutoff_sigma": 2.0,
+    "compensator": "working_distance",
+    "items": [
+      { "type": "radius", "surfaces": "all", "fringes": 3.0, "comment": "Passe bei 546,07 nm (Standard)" },
+      { "type": "thickness", "surfaces": [0, 1, 2], "delta": 0.02 },
+      { "type": "index", "surfaces": [1, 2], "delta": 0.0005 },
+      { "type": "abbe", "surfaces": [1, 2], "relative": 0.005 },
+      { "type": "decenter", "surfaces": [1, 2, 3], "delta": 0.005, "distribution": "uniform" },
+      { "type": "tilt", "surfaces": [1, 2, 3], "arcmin": 1.0 },
+      { "type": "element_decenter", "elements": "all", "delta": 0.01 },
+      { "type": "element_tilt", "element": [1, 3], "arcmin": 2.0, "pivot": "center" }
+    ]
+  }
+}

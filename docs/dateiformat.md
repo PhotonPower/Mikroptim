@@ -26,6 +26,7 @@ Beispiel: [data/systems/einzellinse_bk7.json](../data/systems/einzellinse_bk7.js
 | `ghost_plates` | object[] | nein | Geisterplatten (M4-T5), siehe unten |
 | `variables` | object | nein | Optimierungsvariablen (ab M3-T1), siehe [Variablen](#variablen-ab-m3-t1) |
 | `constraints` | object | nein | Nebenbedingungen (ab M3-T3), siehe [Nebenbedingungen](#nebenbedingungen-ab-m3-t3) |
+| `tolerances` | object | nein | Toleranzsatz der Monte-Carlo-Tolerierung (ab M8-T4), siehe [Toleranzen](#toleranzen-ab-m8-t4) |
 
 ### Flächen
 
@@ -259,6 +260,61 @@ Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `constraints.items[1].mode
 
 Modell: `mko::Constraints` mit Einträgen `mko::ConstraintSpec` (`include/mikroptim/model/constraints.hpp`), wie sie in der Datei stehen (fehlende Felder bleiben leer, damit das Schreiben die Form erhält; Standardwerte über `*_or_default()`), `check_constraints(system)` (von `validate_system` aufgerufen), `constraint_target(system, type)` (Sollwert aus `target`, bei `petzval` leer) und `constraint_bound(system, spec)` (Sollwert bzw. bei `petzval` `max_curvature`). Die aufgelösten Bedingungen und Residuen liefert `include/mikroptim/optim/paraxial_residuals.hpp` ([optimierung.md](optimierung.md#22-paraxiale-nebenbedingungen-ab-m3-t3)); die paraxialen Typen kennzeichnet `is_paraxial` (falsch für `ghost_penalty`). `ghost_penalty`: Felder `plate_selection`/`plates`, `order_weight`, `order_factor`, `smoothing` (Standardwerte `kDefaultGhostOrderWeight` = 1, `kDefaultGhostOrderFactor` = 2, `kDefaultGhostSmoothing` = 10⁻⁶ mm), aufgelöst in Strafterme pro Koeffizient von `make_ghost_penalty` (`include/mikroptim/optim/ghost_penalty.hpp`). `glass_hull`: Feld `margin` (`margin_or_default()`, Standard `kDefaultGlassHullMargin` = 0), `weight_or_default()` liefert bei diesem Typ `kDefaultGlassHullWeight` = 10⁴; Strafe aus `make_glass_hull_penalty` (`include/mikroptim/optim/glass_variables.hpp`). Mechanische Typen (`is_mechanical`): Felder `surface_selection`/`surfaces`, `medium` (`ConstraintMedium`), `semi_diameter`, `thickness`, `angle`, `clearance` (Standard `kDefaultMechanicalClearance` = 0), `height` (`EdgeHeight`, Standard `SemiDiameter`); `constraint_surfaces(system, spec)` liefert die gewählten Dateiflächen, `constraint_bound` die Grenze; aufgelöst pro Fläche von `make_mechanical_constraints` (`include/mikroptim/optim/mechanical_constraints.hpp`).
 
+### Toleranzen (ab M8-T4)
+
+Optionaler Abschnitt `tolerances`: Fertigungstoleranzen für die Monte-Carlo-Tolerierung (`mikroptim tolerance`, [cli.md](cli.md#mikroptim-tolerance); Verfahren: [optimierung.md, Abschnitt 11](optimierung.md#11-monte-carlo-tolerierung-m8-t4)). Beispiel mit allen Typen: [data/systems/testsystem_toleranz.json](../data/systems/testsystem_toleranz.json).
+
+```json
+"tolerances": {
+  "distribution": "normal",
+  "cutoff_sigma": 2.0,
+  "compensator": "working_distance",
+  "items": [
+    { "type": "radius", "surfaces": "all", "fringes": 3.0 },
+    { "type": "thickness", "surfaces": [0, 1, 2], "delta": 0.02 },
+    { "type": "index", "surfaces": [1, 2], "delta": 0.0005 },
+    { "type": "abbe", "surfaces": [1, 2], "relative": 0.005 },
+    { "type": "decenter", "surfaces": [1, 2, 3], "delta": 0.005, "distribution": "uniform" },
+    { "type": "tilt", "surfaces": [1, 2, 3], "arcmin": 1.0 },
+    { "type": "element_decenter", "elements": "all", "delta": 0.01 },
+    { "type": "element_tilt", "element": [1, 3], "arcmin": 2.0, "pivot": "center" }
+  ]
+}
+```
+
+| Feld | Typ | Pflicht | Bedeutung |
+|---|---|---|---|
+| `distribution` | string | nein | Standardverteilung aller Einträge: `"normal"` (Standard) oder `"uniform"` |
+| `cutoff_sigma` | number | nein | Standard für c: Normalverteilung mit σ = δ/c, abgeschnitten bei ±δ; 0,5 ≤ c ≤ 6, Standard 2 |
+| `compensator` | string | nein | `"working_distance"` (Standard: Arbeitsabstand pro Stichprobe neu optimiert) oder `"none"` |
+| `items` | object[] | ja | Toleranzen, siehe unten (darf leer sein: Stichproben = nominales System) |
+
+Einträge von `items`:
+
+| Typ | Auswahl | Grenze ±δ | Wirkung (Wert x = δ·ξ, ξ ∈ [−1, 1]) |
+|---|---|---|---|
+| `radius` | `surface`/`surfaces` (nur Typ `sphere`) | `relative` (ΔR/R, < 1) oder `fringes` (Passen, optional `test_wavelength_nm`, Standard 546,07 nm) | relativ: c′ = c/(1 + x); Passen: c′ = c + x·Δc₁ mit Δc₁ = (λ_t/2)·w(1 + w)/h², w = √(1 − c²h²), h = `semi_diameter` (eine Passe = Pfeilhöhenänderung λ_t/2 am Rand, linearisiert) |
+| `thickness` | `surface`/`surfaces` (nicht die letzte Fläche) | `delta` [mm] | Dicke nach der Fläche + x (bei Geisterplatten im Spalt das letzte Teilstück) |
+| `index` | `surface`/`surfaces` (Glas nach der Fläche) | `delta` [−] | n(λ) + x bei allen Wellenlängen und bei λ_ref |
+| `abbe` | `surface`/`surfaces` (Glas nach der Fläche) | `relative` (Δν/ν, < 1) | Dispersion n(λ) − n(λ_ref) geteilt durch 1 + x, also ν′ = ν(1 + x) bei festem n(λ_ref) |
+| `decenter` | `surface`/`surfaces` (nicht die Blende) | `delta` [mm] | Δx, Δy der Fläche (zwei unabhängige Ziehungen), ADR-0011 |
+| `tilt` | `surface`/`surfaces` (nicht die Blende) | `arcmin` oder `deg` (< 90°) | α, β um den Scheitel (zwei Ziehungen) |
+| `element_decenter` | `element` [erste, letzte] oder `elements` (Liste oder `"all"`) | `delta` [mm] | Starrkörperverschiebung aller Flächen des Elements um (Δx, Δy) |
+| `element_tilt` | wie `element_decenter` | `arcmin` oder `deg` | Drehung R_y(β)R_x(α) des Elements als starrer Körper um den Drehpunkt `pivot` auf der Achse: `"first"`, `"center"` (Standard), `"last"` (Scheitel der ersten Fläche, Mitte, Scheitel der letzten Fläche, nominelle Lagen) oder eine Zahl (Abstand vom Scheitel der ersten Fläche in +z [mm]) |
+
+Dazu in jedem Eintrag optional `distribution`, `cutoff_sigma` (überschreiben den Abschnitt) und `comment`. `"elements": "all"` wählt jede größte Folge von Flächen mit Glas nach `first` … `last − 1` und Luft nach `last` (Linsen und Kittglieder, ab Fläche 1). Flächenindizes sind Dateiflächen.
+
+Regeln (Fehler als `FormatError` mit JSON-Pfad, z. B. `tolerances.items[2].surfaces[1]`):
+
+- `type` ist Pflicht; unbekannte Typen, Verteilungen, Kompensatoren und Drehpunkte werden abgelehnt.
+- Flächentypen brauchen genau eines von `surface`/`surfaces`, Elementtypen genau eines von `element`/`elements`; das jeweils andere Paar ist verboten. Flächen existieren und passen zum Typ (siehe Tabelle; z. B. `index` nur mit Glas, `thickness` nicht an der letzten Fläche, weil der Arbeitsabstand der Kompensator ist; die Blende wird nicht bewegt); eine Liste ist nicht leer; `"all"` wählt die passenden Flächen und ist ein Fehler, wenn keine passt. Elemente erfüllen 1 ≤ erste ≤ letzte ≤ S − 1.
+- Die Grenze steht im Feld des Typs (Tabelle) und ist endlich und ≥ 0; bei `radius` genau eines von `relative` und `fringes`, `test_wavelength_nm` (> 0) nur mit `fringes`; bei Kippungen genau eines von `arcmin` und `deg`. Felder anderer Typen sind verboten (`pivot` nur bei `element_tilt`). Relative Radiustoleranz verlangt c ≠ 0 (`"all"` überspringt Flächen mit c = 0), Passen verlangen |c|·h < 1.
+- `cutoff_sigma` in [0,5; 6] im Abschnitt und in den Einträgen.
+- Jede Fläche höchstens einmal pro Typ (bei Elementtypen jede Fläche in höchstens einem Element desselben Typs); verschiedene Typen dürfen sich überlagern (z. B. `decenter` einer Fläche und `element_decenter` ihres Elements).
+- Unbekannte Felder werden mit Warnung ignoriert.
+
+Modell: `mko::Tolerances` mit Einträgen `mko::ToleranceSpec` (`include/mikroptim/model/tolerances.hpp`) wie in der Datei (Standardwerte über `*_or_default()`), aufgelöst und geprüft von `resolve_tolerances(system)` (von `validate_system` aufgerufen) in eine Liste `ResolvedTolerance` (eine pro Fläche bzw. Element: Typ, Grenze in internen Einheiten – Passen als Δc [1/mm], Winkel in rad –, Verteilung, c, Drehpunkt z_P); `nominal_vertex_z`, `all_elements`. Die Reihenfolge der aufgelösten Liste (Einträge in Dateireihenfolge, darin Flächen bzw. Elemente wie angegeben, bei `"all"` aufsteigend) legt die Ziehungen pro Stichprobe fest. Geschrieben wird in der Reihenfolge `distribution`, `cutoff_sigma`, `compensator`, `items`; Einträge `type`, `surface`/`surfaces`, `element`/`elements`, `delta`, `relative`, `fringes`, `test_wavelength_nm`, `arcmin`, `deg`, `pivot`, `distribution`, `cutoff_sigma`, `comment`, nur vorhandene Felder.
+
 ### Einlesen und Validierung
 
 API in `include/mikroptim/io/system_json.hpp` (Bibliothek `Mikroptim::model`), Datenmodell `mko::SystemDescription` in `include/mikroptim/model/system.hpp`:
@@ -289,6 +345,7 @@ Regeln beim Einlesen (erst die Struktur, danach `validate_system`):
 - Ob Glasnamen in den Katalogen existieren, prüft `validate_materials` mit einer vom Aufrufer gelieferten Abfrage (Fehler unter `surfaces[i].material` bzw. `ghost_plates[g].glass`), weil der Leser den Glaskatalog nicht kennt.
 - `variables`: Regeln im Abschnitt [Variablen](#variablen-ab-m3-t1).
 - `constraints`: Regeln im Abschnitt [Nebenbedingungen](#nebenbedingungen-ab-m3-t3).
+- `tolerances`: Regeln im Abschnitt [Toleranzen](#toleranzen-ab-m8-t4).
 - Unbekannte Felder werden ignoriert; als Warnung `"<pfad>: unbekanntes Feld wird ignoriert"` an `warnings` angehängt (die Bibliothek schreibt nichts auf stderr).
 
 Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relativ zu `base_dir` (Verzeichnis der Systemdatei) gesucht, danach in den Elternverzeichnissen aufwärts; so findet `data/systems/x.json` den Eintrag `data/glass/basis.json` im Repository-Wurzelverzeichnis. Nicht gefundene Einträge werfen `FormatError` unter `glass_catalogs[i]`.
