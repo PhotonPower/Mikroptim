@@ -21,6 +21,8 @@ mikroptim sensitivity <system.json> [--set file|default] [--json] [--top N] [--d
                       [--index dn] [--step h] [--rings N] [--spokes M] [--max-hemisphere v]
                       [--min-center mm] [--min-edge mm] [--min-air-edge mm] [--max-aspect v]
                       [--min-centering Z] [--manufacturability-only] [--gpu [--device N]]
+mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--semi-diameter MM]
+                  [--rtt-catalog NAME]
 ```
 
 | Aufruf | Wirkung |
@@ -35,6 +37,7 @@ mikroptim sensitivity <system.json> [--set file|default] [--json] [--top N] [--d
 | `mikroptim synth …` | Systemsynthese mit dem Homotopie-Controller: Apertur (und Feld) schrittweise öffnen, Elemente bei Bedarf einfügen, Beugungsziel prüfen (M6-T3; Abschnitt [`mikroptim synth`](#mikroptim-synth)) |
 | `mikroptim tolerance …` | Monte-Carlo-Tolerierung mit dem Toleranzsatz der Systemdatei: Verteilung von RMS-Wellenfront und Strehl, Kompensator Arbeitsabstand (M8-T4; Abschnitt [`mikroptim tolerance`](#mikroptim-tolerance)) |
 | `mikroptim sensitivity …` | Empfindlichkeit der Bildgüte für jede einzelne Toleranz (direkt bei ±δ und aus der Jacobi-Matrix) und einfache Herstellbarkeitsprüfungen (M10-T3; Abschnitt [`mikroptim sensitivity`](#mikroptim-sensitivity)) |
+| `mikroptim convert …` | Raytatouille (`*.rtt.json`) ↔ `mikroptim.system/1` für sequenzielle, koaxiale, sphärische Systeme; nicht abbildbare Stellen sind Fehler (M9-T2; Abschnitt [`mikroptim convert`](#mikroptim-convert)) |
 
 Das Programm liegt nach dem Bauen unter `build/<preset>/mikroptim` (Ninja, Makefiles) bzw. `build/<preset>/<Konfiguration>/mikroptim.exe` (Visual Studio). Mit dem Python-Paket (M9-T1, [python/README.md](../python/README.md)) sind dieselben Unterbefehle auch als `python -m mikroptim <befehl> …` bzw. `mikroptim.run_cli([...])` erreichbar (Ausgabe erst am Ende des Befehls).
 
@@ -1597,3 +1600,36 @@ Ohne Kompensator dominieren Radien, Dicken und Brechzahlen über den Defokus; ei
 **Python:** `mikroptim.run_cli(["sensitivity", …])`; in `mikroptim.design` die Lese-Aktion `sensitivity` (Filter `kinds`, `elements`) und das Feld `sensitivity` des Zustands ([entwurfssteuerung.md, Abschnitt 3.4](entwurfssteuerung.md#34-neu-empfindlichkeiten-und-herstellbarkeit-m10-t3)).
 
 **Tests:** `CliSensitivity.*` (JSON bitgleich zu `run_sensitivity_analysis` und `check_manufacturability`, Rangfolge, Standardsatz, nur Herstellbarkeit, Text, Fehler), ctest `cli_sensitivity_text`, `cli_sensitivity_default_json`, `cli_sensitivity_gpu_json`.
+
+## `mikroptim convert`
+
+Umwandlung zwischen Raytatouille (`*.rtt.json`, Schema 0.11) und `mikroptim.system/1` in beide Richtungen (M9-T2). Die Richtung ergibt sich aus dem Inhalt der Eingabe: `schema_version` → Raytatouille nach Mikroptim, `format` `mikroptim.system/…` → Mikroptim nach Raytatouille. Abbildungsregeln, Konventionen (Brechzahlen in Luft, Gläser, Krümmung ↔ Radius) und was nicht abbildbar ist: [dateiformat.md, Abschnitt „Raytatouille-Adapter“](dateiformat.md#raytatouille-adapter).
+
+```
+mikroptim convert <eingabe> -o <ausgabe> [--glass-catalog <katalog.json>]... [--semi-diameter MM]
+                  [--rtt-catalog NAME]
+```
+
+| Option | Bedeutung | Richtung |
+|---|---|---|
+| `-o DATEI` | Ausgabedatei (Pflicht, nicht die Eingabedatei) | beide |
+| `--glass-catalog K` | Mikroptim-Glaskatalog, in dem die Gläser `KATALOG:NAME` gesucht werden (mehrfach möglich); wird als Pfad relativ zur Ausgabedatei (sonst absolut) in `glass_catalogs` eingetragen. Ohne Katalog ist jedes Katalogglas ein Fehler | rtt → mko |
+| `--semi-diameter MM` | Halbdurchmesser für Flächen ohne Apertur (mit Warnung); sonst ist eine solche Fläche ein Fehler | rtt → mko |
+| `--rtt-catalog NAME` | Katalogname aller Gläser in den Referenzen `NAME:GLAS`; Standard: Dateistamm des Mikroptim-Katalogs, der das Glas enthält, in Großbuchstaben (`basis.json` → `BASIS`) | mko → rtt |
+
+Warnungen (entfallende Angaben ohne Wirkung auf die Strahlen) stehen auf stderr als `mikroptim convert: Warnung: <ort>: <meldung>`, die Ausgabedatei wird trotzdem geschrieben. Nicht abbildbare Stellen werden alle gemeldet, es entsteht keine Ausgabedatei:
+
+```
+$ mikroptim convert data/systems/testsystem_mehrlinser_dezentriert.json -o x.rtt.json
+mikroptim convert: data/systems/testsystem_mehrlinser_dezentriert.json: nicht abbildbar (7 Stellen):
+  surfaces[1].decenter: Dezentrierung nicht abbildbar (der Adapter übernimmt nur koaxiale Systeme)
+  surfaces[2].material: Buchdahl-Modellglas nicht abbildbar (Raytatouille kennt kein Buchdahl-Material; …)
+  …
+$ mikroptim convert data/systems/einzellinse_bk7.json -o einzellinse.rtt.json
+mikroptim convert: Warnung: description: Beschreibung entfällt (Raytatouille hat kein Feld dafür)
+Mikroptim → Raytatouille: einzellinse.rtt.json (3 Flächen, 1 Warnungen)
+$ mikroptim convert einzellinse.rtt.json -o einzellinse.json --glass-catalog data/glass/basis.json
+Raytatouille → Mikroptim: einzellinse.json (3 Flächen, 0 Warnungen)
+```
+
+Exit-Codes: 0 Erfolg (auch mit Warnungen), 1 nicht abbildbar, Datei- oder Formatfehler, 2 ungültige Kommandozeile. Tests: `RttCli.*` in `tests/test_raytatouille.cpp`.

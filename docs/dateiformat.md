@@ -352,6 +352,66 @@ Glaskataloge (`resolve_glass_catalogs`): Relative Einträge werden zuerst relati
 
 Schreiben: Der Schreiber validiert das Modell (keine unlesbaren Dateien), gibt die Felder in der Reihenfolge der Tabellen aus, Zahlen verlustfrei in kürzester Darstellung (`10.0`, `0.00967`), zwei Leerzeichen Einrückung, Listen und Objekte einzeilig, solange die Zeile höchstens 120 Zeichen hat. `curvature` wird nur bei `sphere` geschrieben, `nu` ohne verschwindenden dritten Koeffizienten, `decenter` und `tilt_deg` nur, wenn einer ihrer Werte ≠ 0 ist (nach `semi_diameter`). Variableneinträge in der Reihenfolge `type`, `surface`/`surfaces`, `plate`/`plates`, `order`/`orders`, `min`, `max`, `typical`, `comment`, nur vorhandene Felder; Nebenbedingungen in der Reihenfolge `type`, `mode`, `weight`, `reference_surface`, `offset`, `max_curvature`, `plate`/`plates`, `order_weight`, `order_factor`, `smoothing`, `margin`, `surface`/`surfaces`, `medium`, `semi_diameter`, `thickness`, `angle`, `clearance`, `height`, `comment`, nur vorhandene Felder (Standardwerte werden nicht ergänzt). Lesen → Schreiben → Lesen ergibt dasselbe Modell, Schreiben → Lesen → Schreiben denselben Text.
 
+## Raytatouille-Adapter (ab M9-T2) {#raytatouille-adapter}
+
+Umwandlung zwischen Raytatouille-Systemdateien (`*.rtt.json`, Schema 0.11, Beschreibung im Projekt [PhotonPower/Raytatouille](https://github.com/PhotonPower/Raytatouille), `docs/dateiformat.md` und `schema/raytatouille.schema.json`) und `mikroptim.system/1` in beide Richtungen (ADR-0008). Kommandozeile: [`mikroptim convert`](cli.md#mikroptim-convert); API in `include/mikroptim/io/raytatouille.hpp` (Bibliothek `Mikroptim::model`):
+
+```cpp
+SystemDescription system_from_rtt_json(std::string_view rtt_text, const RttImportOptions& options = {},
+                                       std::vector<std::string>* warnings = nullptr);
+std::string system_to_rtt_json(const SystemDescription& system, const RttExportOptions& options = {},
+                               std::vector<std::string>* warnings = nullptr);
+```
+
+Abgebildet wird der gemeinsame Teilumfang: **sequenziell, koaxial, sphärisch**, Objekt im Unendlichen, Blende als eigene erste Fläche in Luft. Grundsatz: Nichts wird still weggelassen.
+
+- **Fehler** (`mko::RttConversionError`, `issues()` mit Ort und Meldung, `what()` listet alle Stellen; der Adapter sammelt alle Stellen, bevor er abbricht): alles, was die Optik ändern würde. Orte sind bei Raytatouille-Eingaben JSON-Pointer (`/root/children/1/surfaces/0/shape/base/conic`), bei Mikroptim-Eingaben Pfade wie bei `FormatError` (`surfaces[2].decenter`).
+- **Warnungen** (`"<ort>: <meldung>"`): Angaben ohne Gegenstück und ohne Wirkung auf die Strahlen, die entfallen (Variablen, Merit-Funktion, Toleranzen, Beschreibung, Kommentare, ...), und Hinweise auf unterschiedliche Rechenweisen (Brechzahlen in Luft, siehe unten).
+
+### Konventionen
+
+Beide Formate sind rechtshändig mit +z als optischer Achse in Lichtrichtung, Längen in mm, Winkel in Grad, Radien bzw. Krümmungen positiv, wenn der Krümmungsmittelpunkt bei +z liegt ([numerik.md, Abschnitt 2](numerik.md#2-koordinaten-und-vorzeichen)). Ein Raytatouille-System mit Objekt im Unendlichen ist genau ein Mikroptim-System in Tracerichtung (vom Unendlichraum der Tubuslinse zur Objektebene des Mikroskops); es wird nichts umgedreht. Feldwinkel: Bei `angle_deg` steigt der Hauptstrahl eines Felds mit y > 0 in +y, wie d₀ = (0, sin θ, cos θ) in Mikroptim ([numerik.md, Abschnitt 4](numerik.md#4-startstrahlen)); y wird θ.
+
+| Raytatouille | Mikroptim | Regel |
+|---|---|---|
+| `name` | `name` | fehlt: Dateiname (CLI) bzw. `fallback_name` |
+| `wavelengths[].um`, `weight` (Standard 1), `reference` | `spectrum.wavelengths_nm`, `weights`, `reference_nm` | Dezimalkomma der kürzesten Darstellung um drei Stellen verschoben (0,5876 µm ↔ 587,6 nm exakt, für Werte bis 15 Stellen beide Richtungen bitgleich); genau eine Referenz. Liegt `reference_nm` nicht in der Liste, hängt der Export sie mit Gewicht 0 an (Warnung) |
+| `aperture` `epd` (Wert D) bzw. `stop_size` | `surfaces[0].semi_diameter` = D/2 bzw. Radius der Blendenapertur | Export schreibt immer `epd` = 2a und die Blendenapertur a; weicht beim Import der Blendenradius von D/2 ab: Warnung, Pupillenradius D/2 |
+| `fields` `angle_deg`, `points[].y`, `weight` (Standard 1) | `source.field_angles_deg`, `field_weights` | `x` ≠ 0 und andere Feldarten sind Fehler |
+| `object` fehlt oder `at_infinity: true` | `source.type: "collimated"` | endliches Objekt bzw. Punktquelle: Fehler |
+| Element `stop` (erstes Element, eine ebene Fläche) | `surfaces[0]` (`stop`) | Blende auf einer Linsenfläche (`aperture.stop`) und eine Blende an anderer Stelle: Fehler (ADR-0006) |
+| `lens`, `plate` (N ≥ 2 Flächen, `material` als Text oder Liste je Segment) | N Flächen; Medium nach Fläche k = Segment k, nach der letzten Luft | Export schreibt immer `lens`; Liste nur, wenn die Segmente verschieden sind |
+| `thin_element` mit einer Fläche, ohne Interaktion | Fläche zwischen zwei Luftbereichen (Hilfsfläche, z. B. Frontfläche hinter Geisterplatten) | Interaktionen wie `ideal_lens`, Polarisator: Fehler |
+| `detector` (letztes Element, eben) | Bildebene: Dicke der letzten Fläche | Apertur der Bildfläche entfällt (Warnung); Flächen dahinter: Fehler |
+| Form fehlt oder `plane`; `conic` mit `radius` R, `conic` 0 | `plane`; `sphere` mit c = 1/R | Konik ≠ 0, `even_asphere`, `odd_asphere`, Forbes, Biconic, Toroid, Zylinder, Axicon, Zernike-Terme: Fehler. Eine `sphere` mit c = 0 wird als Ebene geschrieben (Warnung) |
+| Apertur `circular` mit `radius` | `semi_diameter` | fehlt die Apertur: Fehler oder mit `default_semi_diameter` (`--semi-diameter`) Warnung; Ring (`inner_radius` ≠ 0), Rechteck, Ellipse, Polygon, Obskurationen: Fehler |
+| Lage (`pose.position[2]`, alle Bezüge `absolute`, `relative_to_preceding`, `relative_to_sibling`, verschachtelte Baugruppen) | `thickness` = Abstand der Scheitel entlang z | `position` x, y ≠ 0 (Dezentrierung) und `rotation_deg` ≠ 0 (Verkippung) an irgendeinem Knoten: Fehler. Export: kanonische Form, alle Lagen `relative_to_preceding` (0, 0, t) |
+| `id` der Flächen | `comment` | Export nimmt den Kommentar als ID, wenn er eine ist (Zeichen `A-Za-z0-9_.:+-`, eindeutig), sonst erzeugte IDs `STO`, `L1.S1`, …, `IMG` und Warnung; Elementnamen aus dem gemeinsamen Präfix der IDs (`L1.S1` → `L1`), sonst `L1`, `L2`, …, Hilfsflächen `D1`, … |
+| `paths` | – | ein Pfad mit `"events": "auto"` ist Pflicht (explizite Ereignislisten: Fehler); weitere Pfade entfallen (Warnung) |
+| Param `{"value", "variable", "min", "max"}`, `{"param": NAME}` | Zahl | Variablen-Markierung und Bindung entfallen (Warnung); bei `values` der Wert der ersten Konfiguration; `expression`: Fehler |
+| `optimization`, `tolerances`, weitere `configurations` | – | Warnung |
+| `active: false` | – | Knoten wird nicht durchlaufen (Warnung), seine Lage zählt für relative Bezüge |
+| Interaktion `fresnel` (Standard), `ideal_anti_reflection`, `coating` | – | ohne Wirkung auf die Strahlen; die beiden letzten mit Warnung. Spiegel, Phasenschichten, Beugungseffizienz, Kristalle (`optic_axis`, Materialobjekt): Fehler |
+| – | `target`, `variables`, `constraints`, `tolerances`, `description` | Export: Warnung |
+| – | `decenter`, `tilt_deg` ≠ 0 | Export: Fehler (eine verlustfreie Abbildung auf Raytatouille-Posen ist möglich, aber nicht Teil von M9-T2) |
+| – | Geisterplatten | Export: Fehler bei Koeffizienten ≠ 0, sonst entfallen sie (Warnung) |
+| – | Buchdahl-Modellglas | Export: Fehler (vorher einrasten, `mikroptim snap`) |
+| – | Bildraum nicht Luft (Immersion) | Export: Fehler |
+
+**Krümmung und Radius.** Import c = 1/R. Der Export wählt unter den Doubles in wenigen ulp um 1/c eines mit 1/R = c, bei mehreren das mit der kürzesten Dezimaldarstellung; so kommen Radien aus Dateien (51,68 mm) und die meisten Krümmungen bitgleich zurück. Für manche Krümmungen gibt es kein solches R (die Binaden von R und c passen nicht zusammen, z. B. c = 0,0065); dann weicht 1/R um 1 ulp ab (Warnung), Paraxialdaten relativ um ~10⁻¹⁶.
+
+**Gläser.** Raytatouille referenziert `KATALOG:NAME`, Mikroptim nur `NAME` aus den Katalogen in `glass_catalogs`. Import: NAME muss in den Mikroptim-Katalogen existieren (`RttImportOptions::glass_exists`; CLI `--glass-catalog`), sonst Fehler; KATALOG wird nicht verlangt, weicht er vom Katalognamen in Mikroptim ab, gibt es eine Warnung. Export: KATALOG ist der Dateistamm des Mikroptim-Katalogs in Großbuchstaben (`data/glass/basis.json` → `BASIS:N-BK7`, Glasimport aus `schott.agf` → `schott.json` → `SCHOTT`), wie Raytatouille AGF-Dateien benennt; `--rtt-catalog` setzt ihn für alle Gläser. `CONST:n` ↔ `{"model": "constant", "n": n}` (komplexe Brechzahlen: Fehler), `AIR`/`VACUUM` ↔ `"AIR"`.
+
+**Brechzahlen und Luft.** Mikroptim rechnet wie üblich relativ zu Luft (n_Luft = 1, Katalogbrechzahlen relativ zu Luft, Wellenlängen in Luft). Raytatouille rechnet absolut: `AIR` ist Ciddor-Luft (n ≈ 1,00027 bei 20 °C, 1 atm), Katalogglas n_abs = n_rel · n_Luft, ausgewertet bei λ_vac/n_Luft, `CONST:` und `VACUUM` absolut; die EFL ist dort 1/Φ absolut, also bei einem System in Luft um den Faktor n_Luft kleiner. Der Adapter rechnet nichts um, sondern wählt die Umgebung so, dass beide Programme dasselbe System beschreiben:
+
+- Export ohne Katalogglas: `"environment": {"medium": "VACUUM"}`, Zwischenräume = Umgebung. Dann rechnen beide mit denselben Zahlen (n = 1 außen, CONST unverändert), die Paraxialdaten stimmen überein.
+- Export mit Katalogglas: Umgebung Luft (Standard, nicht geschrieben). Raytatouille rechnet dann relativ n_rel(λ_vac/n_Luft); die verbleibende Abweichung ist die Verschiebung der Wellenlänge um den Faktor n_Luft (Δn ≈ 5·10⁻⁶ im Sichtbaren). Konstante Brechzahlen im selben System rechnet Raytatouille dann absolut (Warnung).
+- Import: Umgebung `VACUUM` oder `AIR` (Standard) wird Luft; andere Medien, Temperatur und Druck ≠ 20 °C, 1 atm (Warnung, entfallen) haben kein Gegenstück. `CONST:` in Luft bzw. Katalogglas in `VACUUM` gibt eine Warnung.
+
+Querabgleich (Test `RttImport.CrossCheckWithPublishedRaytatouilleValues`): Mit n_Luft aus der veröffentlichten EFL des Plankonvex-Singlets der Raytatouille-Doku (100,0527 mm, R = 51,68 mm, `CONST:1.5168`) liefert Mikroptim mit n_rel = 1,5168/n_Luft die Schnittweite 97,4421 mm (Doku: Bildfläche im paraxialen Fokus bei z = 106,442 mm, also 97,442 mm hinter der Linse) und für das Skript-Singlet (R₁ = 100, R₂ = −100, d = 5 mm) EFL/n_Luft = 97,6314 mm (Doku: 97,631 mm).
+
+**Roundtrip.** Raytatouille → Mikroptim → Raytatouille gibt für Dateien in der kanonischen Form denselben JSON-Inhalt, Mikroptim → Raytatouille → Mikroptim dieselben Flächen, Spektren, Felder und Gläser (Kommentare werden zu Flächen-IDs, `sphere` mit c = 0 zu `plane`); Paraxialdaten bitgleich, bei 1-ulp-Krümmungen innerhalb `kParaxialRelative` (Tests `RttRoundtrip.*` über alle abbildbaren Systeme unter `data/systems/`).
+
 ## Glasdaten: `mikroptim.glass/1` {#glasdaten}
 
 Beispiel: [data/glass/basis.json](../data/glass/basis.json).
