@@ -197,12 +197,18 @@ Die Kittkrümmung aus der Vorauswahl hilft leicht; der Start beim Zielglas schad
 
 **Lauf auf der Zielspezifikation (29.10.2026, herkules3):** Die Farbstufen liefen mit #74 ohne Absturz, die Farbregel griff aber nicht: Alle Linsen der Zielspezifikation haben Glasvariablen (Buchdahl), die Regel berücksichtigte nur Katalogglas. Seitdem nimmt die Vorauswahl die Dispersion einer Glasvariablen direkt (gleiche Buchdahl-Koordinate wie der Katalog-Fit). Erneuter Lauf steht aus.
 
-Noch offen: Filter nach entwurfssteuerung.md §5.3 (Transmission, Autofluoreszenz), Startradien des ganzen Glieds aus den Brechkraftanteilen, Abnahme gegen Bruteforce-Raytrace, Elementbudget und schrittweises Öffnen des Spektrums in den Farbstufen der Zielspezifikation.
+**M11-T5g: Filter, Startradien, Bruteforce-Abnahme** ([numerik.md, Abschnitt 15](numerik.md#15-algebraische-glasvorauswahl-m11-t5)).
+- *Filter:* dieselbe Filterbeschreibung wie die Glasabfrage (M10-T5): Bereiche n_d, ν_d, P_g,F, ΔP_g,F im Kern (`GlassCandidateFilter`, `filter_dispersions`, CLI `--nd/--vd/--pgf/--dpgf`, `--only`, `--exclude`). Glasregeln (u. a. `af_forbidden` gegen Autofluoreszenz) und Transmission wertet `glass_preselect` in `mikroptim.design` über `glass_query` aus. Vorauswahl mit Filter = Vorauswahl ohne Filter, nachgefiltert.
+- *Startradien des ganzen Glieds:* `thin_member_shape`. Die Krümmungen des dünnen Kittglieds bzw. -tripels folgen aus den Brechkräften der Vorauswahl. Die Biegung macht die Seidel-Sphärik S_I = 0 (flachere der beiden Lösungen) oder die Koma S_II = 0. Geprüft gegen die klassische Biegung der Einzellinse und gegen den Aberrationsbericht.
+- *Spektraler Rest:* Rang nach der Streuung des Brechkraftrests über das Spektrum, mit allen nicht korrigierten Buchdahl-Termen (Option, `--wavelengths`, `--spectrum`). Der Koeffizient des sekundären Spektrums allein übersieht den ω³-Anteil anomaler Gläser (CaF₂).
+- *Bruteforce-Abnahme:* 563 lösbare Paare der Testkataloge als Kittglied (f = 100 mm, NA 0,05, g … C) mit beiden Startformen optimiert. Der beste Vorschlag nach spektralem Rest (SYN-11 + CaF₂) ist **Rang 1** nach Merit, bei NA 0,025 Rang 3, bei NA 0,1 Rang 6. Nach dem Koeffizienten allein wäre es SYN-04 + SYN-07 mit den Rängen 6, 2 und 54. Bei größerer NA überwiegen Monochromatfehler stark gekrümmter Glieder, und die Vorauswahl ist dort nur ein grober Filter.
+
+Noch offen: Elementbudget in den Farbstufen der Zielspezifikation. Startradien und spektraler Rest werden in Operator B und in der Farbregel noch nicht genutzt (dort Rang nach dem Koeffizienten, Achromat-Start M11-T5e mit fester vorderer Außenkrümmung).
 
 **Abnahme.**
 - Orakel: Für zwei Gläser entspricht das Ergebnis dem dünnen Achromat (`achromat_split_curvature`).
 - Ein konstruiertes Glastripel mit bekannter Lösung wird gefunden.
-- Rangliste gegen Bruteforce-Raytrace an einem Kittglied (frei erfunden, NA 0,05): Der beste Kandidat der Vorauswahl liegt unter den besten fünf nach Merit.
+- Rangliste gegen Bruteforce-Raytrace an einem Kittglied (frei erfunden, NA 0,05): Der beste Kandidat der Vorauswahl liegt unter den besten fünf nach Merit. Erfüllt (M11-T5g): Rang 1 von 563.
 
 ## 6. Toleranzbewusste Optimierung (M11-T6)
 

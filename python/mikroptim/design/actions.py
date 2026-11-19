@@ -108,6 +108,11 @@ def read_action(a: dict, system_path) -> dict:
     if name == "glass_preselect":
         args = ["glasses", "--system", system_path, "--order", int(a.get("order", 1)),
                 "--top", int(a.get("top", 10))]
+        if a.get("spectrum"):
+            args.append("--spectrum")
+        if a.get("bending"):
+            args += ["--bending", a["bending"]]
+        fixed = None
         if "element" in a:
             data = read_system(system_path)
             elems = elements(data)
@@ -119,10 +124,30 @@ def read_action(a: dict, system_path) -> dict:
                 raise ActionError("precondition",
                                   f"Element {k} hat kein Katalogglas (Glasvariable oder Modell)")
             args += ["--fixed", glass]
+            fixed = glass
+        if "filter" in a:
+            # derselbe Glasfilter wie glass_query (M11-T5g): Kandidaten = Treffer der Abfrage,
+            # das feste Glas bleibt
+            from .glass_query import QueryError, glass_query
+            flt = {k: v for k, v in a["filter"].items() if k != "max_results"}
+            if "partner_of_element" in flt:
+                raise ActionError("invalid_parameter",
+                                  "glass_preselect: partner_of_element im Filter nicht erlaubt "
+                                  "(element hält das Glas fest)")
+            try:
+                hits = glass_query(system_path, flt, limit=None)
+            except QueryError as e:
+                raise ActionError(e.code, str(e)) from None
+            names = [g["name"] for g in hits["glasses"]]
+            if fixed is not None and fixed not in names:
+                names.append(fixed)
+            if not names:
+                return {"order": int(a.get("order", 1)), "results": [], "candidates": 0}
+            args += ["--only", ",".join(names)]
         rep = cli_json(args)
-        return {"order": rep["order"], "results": [
-            {key: r[key] for key in ("glasses", "powers", "power_sum", "residual")}
-            for r in rep["results"]]}
+        keys = ("glasses", "powers", "power_sum", "residual", "spectral_residual", "curvatures")
+        return {"order": rep["order"], "candidates": rep["glasses"], "results": [
+            {key: r[key] for key in keys if key in r} for r in rep["results"]]}
     if name == "glass_query":
         _require(a, "filter")
         from .glass_query import QueryError, glass_query

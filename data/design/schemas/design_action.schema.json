@@ -1258,7 +1258,7 @@
       "required": [
         "action"
       ],
-      "description": "Algebraische Glasvorauswahl (M11-T5): Paare (order 1) oder Tripel (order 2) dünner Elemente für Farbkorrektur; mit element ist das Glas dieses Elements fest (Aufspalten einer Linse).",
+      "description": "Algebraische Glasvorauswahl (M11-T5): Paare (order 1) oder Tripel (order 2) dünner Elemente für Farbkorrektur; mit element ist das Glas dieses Elements fest (Aufspalten einer Linse). filter: Kandidaten wie glass_query (ohne partner_of_element); spectrum: Rang nach dem spektralen Rest über das Spektrum des Systems; bending: Biegung der Startkrümmungen (curvatures) des dünnen Glieds (M11-T5g).",
       "properties": {
         "action": {
           "const": "glass_preselect"
@@ -1272,6 +1272,18 @@
         "element": {
           "type": "integer",
           "minimum": 0
+        },
+        "filter": {
+          "$ref": "#/$defs/glass_filter"
+        },
+        "spectrum": {
+          "type": "boolean"
+        },
+        "bending": {
+          "enum": [
+            "spherical",
+            "coma"
+          ]
         },
         "top": {
           "type": "integer",

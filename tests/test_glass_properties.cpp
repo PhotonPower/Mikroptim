@@ -178,7 +178,8 @@ TEST(CliGlasses, ListWithRangeFilters) {
     }
     ASSERT_EQ(run({basis, "--list"}, out, err), mko::cli::kExitOk) << err;
     EXPECT_NE(out.find("N-BK7"), std::string::npos);
-    EXPECT_EQ(run({cat, "--nd", "1.5,1.6"}, out, err), mko::cli::kExitUsage);
+    // ohne --list filtern die Bereiche die Kandidaten der Vorauswahl (M11-T5g)
+    EXPECT_EQ(run({cat, "--nd", "1.5,1.6"}, out, err), mko::cli::kExitOk) << err;
     EXPECT_EQ(run({cat, "--list", "--nd", "1.5"}, out, err), mko::cli::kExitUsage);
     EXPECT_EQ(run({cat, "--list", "--nd", "1.5,x"}, out, err), mko::cli::kExitUsage);
 }

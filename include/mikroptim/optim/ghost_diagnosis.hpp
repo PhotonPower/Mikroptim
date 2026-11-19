@@ -9,6 +9,7 @@
 
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
+#include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/optim/extra_residuals.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/trace_extra_residuals.hpp"
@@ -34,11 +35,7 @@ enum class GhostOperator {
 // "none", "A", "B", "B_anomalous"
 const char* to_string(GhostOperator op);
 
-// Linien für Abbezahl und Teildispersion [nm] (g, F, d, C).
-inline constexpr double kLineG = 435.8343;
-inline constexpr double kLineF = 486.1327;
-inline constexpr double kLineD = 587.5618;
-inline constexpr double kLineC = 656.2725;
+// Linien für Abbezahl und Teildispersion (g, F, d, C): kLineG … kLineC aus glass_properties.hpp.
 
 // Glasdaten einer Geisterplatte. Werte, die nicht auswertbar sind (Wellenlänge außerhalb des
 // Katalogbereichs, dispersionsfreies Glas), sind NaN.

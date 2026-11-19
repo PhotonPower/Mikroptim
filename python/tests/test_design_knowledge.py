@@ -271,6 +271,45 @@ def test_partner_of_element_uses_preselection_order(catalog_system, brute):
     assert names(res) == expected
 
 
+def test_glass_preselect_filter_matches_glass_query(catalog_system, brute):
+    """M11-T5g: Filter der Vorauswahl = Filter von glass_query. Ergebnis gleich der ungefilterten
+    Vorauswahl, aus der Kombinationen mit einem Glas außerhalb der Treffer gestrichen sind; das
+    feste Glas (element) bleibt auch außerhalb des Filters."""
+    from mikroptim.design.actions import read_action
+    by = {g["name"]: g for g in brute}
+    cases = [({"vd": [40, None]}, None), ({"rule": "not_af_forbidden"}, None),
+             ({"rule": "merte_pair", "partner": "N-BK7"}, 2), ({"nd": [1.5, 1.7]}, 2),
+             ({"exclude": ["CAF2", "SYN-04"], "dPgF": [None, 0.01]}, None)]
+    for order in (1, 2):
+        for flt, element in cases:
+            allowed = {g["name"] for g in glass_query(catalog_system, flt, limit=None)["glasses"]}
+            args = ["glasses", "--system", str(catalog_system), "--order", str(order),
+                    "--top", "100000", "--json"]
+            act = {"action": "glass_preselect", "order": order, "top": 50, "filter": flt}
+            if element is not None:
+                args += ["--fixed", "N-BK7"]  # Element 2 ist N-BK7
+                act["element"] = element
+                allowed.add("N-BK7")
+            full = json.loads(mikroptim.run_cli(args)[1])["results"]
+            expected = [r["glasses"] for r in full if all(n in allowed for n in r["glasses"])]
+            out = read_action(act, catalog_system)
+            assert [r["glasses"] for r in out["results"]] == expected[:50], (order, flt)
+            for r in out["results"]:
+                assert len(r["curvatures"]) == order + 2
+            assert all(by[n] for r in out["results"] for n in r["glasses"])
+    # Spektrum des Systems: Rang nach dem spektralen Rest
+    out = read_action({"action": "glass_preselect", "order": 1, "top": 5, "spectrum": True},
+                      catalog_system)
+    res = [r["spectral_residual"] for r in out["results"]]
+    assert res == sorted(res) and len(res) == 5
+    with pytest.raises(Exception, match="partner_of_element"):
+        read_action({"action": "glass_preselect", "filter": {"partner_of_element": 2}},
+                    catalog_system)
+    empty = read_action({"action": "glass_preselect", "filter": {"nd": [3.0, 4.0]}},
+                        catalog_system)
+    assert empty["results"] == [] and empty["candidates"] == 0
+
+
 def test_transmission_filter_matches_brute_force(tmp_path, brute):
     """Reintransmission aus dem Katalog (frei erfundene Kurven an einer Kopie des synthetischen
     Katalogs), auf eine andere Dicke umgerechnet."""

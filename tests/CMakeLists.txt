@@ -62,6 +62,7 @@ add_executable(mikroptim_tests
     test_memetic.cpp
     test_multi_gpu_split.cpp
     test_glass_preselection.cpp
+    test_glass_preselection_raytrace.cpp
     test_paraxial.cpp
     test_smooth_extrema.cpp
     test_paraxial_residuals.cpp

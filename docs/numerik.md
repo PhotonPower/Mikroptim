@@ -1002,7 +1002,7 @@ $$\mathrm{OSC} = \frac{f_{\mathrm{real}}}{f'}\cdot\frac{l' - l'_P}{L' - l'_P} - 
 
 ## 15. Algebraische Glasvorauswahl (M11-T5)
 
-Implementiert in `include/mikroptim/glass/glass_preselection.hpp` (`catalog_dispersions`, `preselect_glasses` → `PreselectedGlasses`, Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses` ([cli.md](cli.md#mikroptim-glasses)), Aktion `glass_preselect` in `mikroptim.design`.
+Implementiert in `include/mikroptim/glass/glass_preselection.hpp` (`catalog_dispersions`, `preselect_glasses` → `PreselectedGlasses`; ab M11-T5g `filter_dispersions`, `thin_member_shape`, `thin_member_seidel`; Bibliothek `Mikroptim::glass`), Kommandozeile `mikroptim glasses` ([cli.md](cli.md#mikroptim-glasses)), Aktion `glass_preselect` in `mikroptim.design`.
 
 **Dispersionskoeffizienten.** Aus dem 3-Term-Buchdahl-Fit (Abschnitt 10, 400–700 nm) n(ω) = n₀ + ν₁ω + ν₂ω² + ν₃ω³. Ein dünnes Element hat φ(ω) = (n(ω) − 1)·K, also φ(ω) = φ₀(1 + η₁ω + η₂ω² + η₃ω³) mit **η_j = ν_j/(n₀ − 1)** (Robb und Mercado). Gläser, deren Bereich den Fitbereich nicht abdeckt, werden übersprungen und gemeldet.
 
@@ -1020,6 +1020,50 @@ k = 1: Achromat (Paare), k = 2: Apochromat (Tripel). Gauß mit Pivotsuche; verwo
 | Paar gegen den dünnen Achromat `achromat_split_curvature` mit ν = 1/η | ≤ 10⁻¹² |
 | konstruiertes Tripel (φ = 1,5; −1; 0,5, tertiäres Spektrum 0) unter Störgläsern | Rang 1, exakt |
 | paraxiale Probe: dünne gekittete Glieder aus Katalog-Gläsern (synthetisch + Basis), Spanne der Schnittweiten über g, F, e, d, C bei f = 100 mm | Einzellinse N-BK7 2,36 mm, bestes Paar 0,0162 mm, bestes Tripel 0,0040 mm |
+
+**Spektraler Rest (M11-T5g).** Der Koeffizient |Σ w_iφ_iη_{i,k+1}|/|φ| beschreibt nur den führenden nicht korrigierten Term. Bei Paaren mit stark anomalem Glas (CaF₂: ν₃ = 7,1·10⁻³) trägt über g … C auch ω³ bei. Mit einem Spektrum (Option `wavelengths_nm`, CLI `--wavelengths` bzw. `--spectrum`) wird deshalb nach der Streuung des relativen Brechkraftrests über die Wellenlängen sortiert:
+
+$$\rho(\omega) = \frac{1}{\varphi}\sum_i w_i\varphi_i\sum_{j=k+1}^{3}\eta_{ij}\,\omega^j,\qquad \sigma_\rho = \sqrt{\frac{1}{L}\sum_{l=1}^{L}\bigl(\rho(\omega_l) - \bar\rho\bigr)^2}$$
+
+(ω_l: Buchdahl-Koordinaten der L Wellenlängen, gleich gewichtet; Abzug des Mittelwerts = beste Fokussierung). σ_ρ ist der relative Farblängsfehler des dünnen Glieds nach der Fokussierung. Bei Tripeln bleibt nur ω³, die Rangfolge ist dann dieselbe wie nach dem Koeffizienten. Ohne Spektrum bleibt der Rang wie bisher (Standard, auch in Operator B und der Farbregel).
+
+**Filter der Kandidaten (M11-T5g).** `filter_dispersions` mit `GlassCandidateFilter`: Bereiche auf n_d, ν_d, P_g,F, ΔP_g,F mit derselben Beschreibung und Auswertung wie die Glasabfrage (`GlassPropertyFilter`, Abschnitt 17), dazu Namenslisten `only` und `exclude`; feste Gläser bleiben immer. Die Glasregeln der Wissensbasis und die Transmission wertet `mikroptim.design` mit `glass_query` aus und reicht die Treffer als `--only` durch. Weil jede Kombination für sich bewertet wird, ist die Vorauswahl auf den gefilterten Gläsern gleich der ungefilterten, aus der die Kombinationen mit einem Glas außerhalb des Filters gestrichen sind (Test `GlassPreselection.CandidateFilterEqualsPostFiltering`, Python `test_glass_preselect_filter_matches_glass_query`).
+
+**Startradien des ganzen Glieds (M11-T5g).** `thin_member_shape` macht aus den Brechkräften K_i des Ergebnisses Krümmungen für ein dünnes Kittglied bzw. -tripel (Elemente in Kontakt, Blende am Glied, kollimiert einfallend wie im Tracer). Mit Brechzahlen n_i (in der Kommandozeile n₀ des Buchdahl-Fits bei 546,074 nm) liegt die Folge bis auf die Biegung c₁ fest:
+
+$$c_{i+1} = c_i - \frac{K_i}{n_i - 1}.$$
+
+Seidel-Summen der dünnen Linse nach Welford (*Aberrations of Optical Systems*, Kap. 7) mit Formfaktor B_i = (c_i + c_{i+1})/(c_i − c_{i+1}), Konjugationsfaktor C_i = (u_i + u_i′)/(u_i − u_i′), u_i = −y Σ_{j<i} K_j, u_i′ = u_i − y K_i, Randstrahlhöhe y und Lagrange-Invariante H = n(ū y − u ȳ) wie in Abschnitt 14:
+
+$$S_I = \sum_i \frac{y^4K_i^3}{4}\left[\left(\frac{n_i}{n_i-1}\right)^2 + \frac{n_i+2}{n_i(n_i-1)^2}B_i^2 + \frac{4(n_i+1)}{n_i(n_i-1)}B_iC_i + \frac{3n_i+2}{n_i}C_i^2\right]$$
+
+$$S_{II} = \sum_i \frac{y^2K_i^2H}{2}\left[\frac{n_i+1}{n_i(n_i-1)}B_i + \frac{2n_i+1}{n_i}C_i\right]$$
+
+(Vorzeichen von S_II zu diesem H; Welford schreibt ein Minus mit seiner Konvention. Die Kittfläche zählt richtig: eine Luftschicht der Dicke 0 zwischen zwei Elementen ändert S_I und S_II nicht, weil A = n(u + yc) bei gleicher Krümmung erhalten bleibt.) Implementiert wird K B und K C statt B und C, damit Elemente mit K = 0 erlaubt sind. S_I ist quadratisch, S_II linear in c₁ (`spherical_coefficients`, `coma_coefficients`). Biegung:
+
+- `MinSpherical` (Standard, CLI `--bending spherical`): S_I = 0, wenn reell lösbar, und von beiden Lösungen die **flachere** (kleinere Σc_i²); sonst der Scheitel der Parabel (kleinstes |S_I|). Die flachere Lösung war in der Bruteforce-Abnahme (unten) nach der Optimierung bei 248 von 298 Paaren mit zwei Lösungen die bessere. Ein erster Ansatz mit der Lösung kleinerer Koma war es nur bei 46.
+- `ZeroComa` (`--bending coma`): S_II = 0.
+
+Die Startradien gelten für λ_ref und das dünne Glied. Dicken, Abstände zu anderen Gliedern und höhere Ordnungen gleicht danach die Optimierung aus.
+
+**Prüfungen M11-T5g** (Tests `GlassPreselection.*`, `GlassPreselectionRaytrace.*`, `CliGlasses.*`, Toleranzen `kThinMemberSeidel`, `kGlassPreselectionRaytraceTopRank`):
+
+| Prüfung | Ergebnis |
+|---|---|
+| Einzellinse: Biegung kleinster Sphärik B = 2(n² − 1)/(n + 2), komafrei B = (2n + 1)(n − 1)/(n + 1) (kollimiert, C = −1), n = 1,5; 1,7; 1,9 | ≤ 10⁻¹² |
+| beste drei Paare und Tripel, beide Biegungen, als Glied mit Dicken 0: paraxiale Brechkraft gegen φ; S_I, S_II gegen die Flächenbeiträge des Aberrationsberichts (Abschnitt 14) | Brechkraft ≤ 10⁻¹² relativ, Seidel ≤ 10⁻¹⁰ des größten Flächenbeitrags; S_I bzw. S_II der gewählten Biegung ≤ 10⁻¹⁰ |
+| spektraler Rest gegen die Streuung der Brechkraft des dünnen Glieds aus den Buchdahl-Brechzahlen | ≤ 10⁻¹² · Σ\|φ\|/φ |
+| Filter: 4 Filter × Paare/Tripel × mit/ohne festes Glas gegen Nachfiltern | gleiche Listen |
+| Bruteforce-Raytrace (unten) | bester Vorschlag Rang 1 von 563 |
+
+**Bruteforce-Abnahme.** Alle 741 Paare der 39 Gläser mit Buchdahl-Fit aus `synthetisch.json` und `basis.json`, davon 563 lösbar mit Σ|φ|/φ ≤ 10. Jedes Paar wird als Kittglied aufgebaut (frei erfunden: f = 100 mm, Blendenradius 5 mm, also NA 0,05, Blende am Glied, Linien g, F, e, d, C gleich gewichtet, λ_ref = e). Startradien aus `thin_member_shape`, bei zwei Lösungen von S_I = 0 beide als eigene Startform (861 Startformen, 5 nicht aufbaubar). Mittendicken so, dass die Randdicke bei 5,5 mm Höhe 1 mm beträgt, mindestens 1,5 mm. Dann 150 LM-Zyklen (drei Krümmungen und Arbeitsabstand, Brennweite als Gleichung, 6 Ringe, alle Startformen in einem Aufruf). Die Merit eines Paars ist die kleinere seiner Startformen. Die Rangfolge ändert sich mit 400 Zyklen und 10 Ringen nicht.
+
+| Rang der Vorauswahl nach | bester Vorschlag | Rang nach Raytrace, NA 0,05 | NA 0,025 | NA 0,1 |
+|---|---|---|---|---|
+| spektralem Rest (g … C) | SYN-11 + CaF₂ | **1** | 3 | 6 |
+| Koeffizient des sekundären Spektrums | SYN-04 + SYN-07 | 6 | 2 | 54 |
+
+Bei NA 0,05 belegen die Plätze 1–5 nach Raytrace die Vorschläge 1, 2, 5, 6 und 4 der Vorauswahl. Bei NA 0,1 überwiegen Monochromatfehler und Sphärochromasie stark gekrümmter Glieder. Dort gewinnen Paare mit kleinem Σ|φ|/φ (CaF₂ mit Σ|φ|/φ ≈ 3,2–3,6), und die Vorauswahl ist nur noch ein grober Filter. Eine Schätzung von Sphärochromasie und Farblängsfehler aus den Seidel-Formeln des dünnen Glieds sagte die Rangfolge nicht besser voraus (Erkundung, nicht übernommen).
 
 **Grenzen.** Dünne Elemente in Kontakt (Gewichte für getrennte Elemente aus den Randstrahlhöhen), nur Farblängsfehler; Farbquerfehler, Sphärochromasie und Monochromatfehler gehen erst im Trace ein. Die Rangliste ist ein Startpunkt für Operator B und die Glasvariablen, keine Entscheidung.
 
