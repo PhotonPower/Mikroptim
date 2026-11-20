@@ -207,6 +207,12 @@ def _thickness_homotopy(path, workdir, glass_gaps, air_gap, target, stages, cycl
         for g in glass_gaps:
             data["surfaces"][g]["thickness"] = t
         data["surfaces"][air_gap]["thickness"] = rest
+        # Geisterplatten im verkürzten Luftspalt bleiben im Spalt (wie set_stage in synth;
+        # M10-T7e: seit free_gaps Plattenspalte wieder freigibt, lehnte optimize das System
+        # sonst ab, „ghost_plates[k].distance … zwischen 0 und der Dicke des Luftspalts“)
+        for gp in data.get("ghost_plates", []):
+            if gp["after_surface"] == air_gap and gp["distance"] > rest:
+                gp["distance"] = rest
         nxt = _tmp_out(pathlib.Path(workdir))
         write_system(data, nxt)
         files.append(nxt)

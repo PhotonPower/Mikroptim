@@ -250,6 +250,25 @@ def test_insert_module_raises_thickness_to_bound(session, tmp_path):
     assert bad["results"][0]["status"] == "error"
 
 
+def test_thickness_homotopy_keeps_ghost_plates_in_gap(session):
+    """M10-T7e: Liegt eine Geisterplatte im Luftspalt hinter dem wachsenden Modul, bleibt sie im
+    verkürzten Spalt (wie set_stage in synth); vorher lehnte optimize das System ab (zweimal in
+    der Regel V3RS auf gestörten Starts, seit free_gaps Plattenspalte wieder freigibt)."""
+    c = with_variables(session)
+    [res] = apply_ok(session, c, {"action": "place_ghost_dictionary", "after_surface": 5,
+                                  "distance": 1.9, "glasses": ["N-BK7"], "max_order": 4,
+                                  "weight": 10.0})
+    c = res["new_candidates"][0]
+    [res] = apply_ok(session, c, {"action": "insert_module", "module": "generic.null_meniscus",
+                                  "after_surface": 5, "position": 0.5,
+                                  "glasses": [{"name": "N-BK7"}], "thickness": 0.4,
+                                  "stages": 2, "cycles": 0})
+    data = load(session, res["new_candidates"][0])
+    assert data["surfaces"][7]["thickness"] == pytest.approx(1.1)
+    [plate] = data["ghost_plates"]
+    assert plate["after_surface"] == 7 and plate["distance"] == pytest.approx(1.1)
+
+
 def test_insert_module_thickness_homotopy(session):
     c = with_variables(session)
     [res] = apply_ok(session, c, {"action": "insert_module", "module": "generic.null_meniscus",
