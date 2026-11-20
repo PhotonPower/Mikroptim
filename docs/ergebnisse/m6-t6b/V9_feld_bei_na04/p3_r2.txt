@@ -1,0 +1,89 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4050, Feldanteil 0.272, 3 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4050  0.272   0  -        converged_step        43  4.608557e-03  4.509929e-03  0.06853   7.538e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4050  0.272   0  -        converged_step        35  4.580101e-03  4.524125e-03  0.06827   8.363e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4050  0.272   0  -        converged_step        68  4.606680e-03  4.535194e-03  0.06836   8.377e-05   3  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4250  0.272   0  0.02000  converged_step        82  6.614302e-03  6.540706e-03  0.07794   1.840e-04   3  shrink (Delta 0.01000)
+      4  aperture         0.4150  0.272   0  0.01000  converged_step        39  5.576467e-03  5.505093e-03  0.07369   1.307e-04   3  shrink (Delta 0.00500)
+      5  aperture         0.4100  0.272   0  0.00500  converged_step        46  5.073321e-03  4.994485e-03  0.07087   1.033e-04   3  grow (Delta 0.01000)
+      6  aperture         0.4200  0.272   0  0.01000  converged_step        69  6.102861e-03  6.034511e-03  0.07624   1.587e-04   3  shrink (Delta 0.00500)
+      7  aperture         0.4150  0.272   0  0.00500  converged_step        51  5.563050e-03  5.480688e-03  0.07337   1.249e-04   3  shrink (Delta 0.00250)
+      8  aperture         0.4125  0.272   0  0.00250  converged_step        31  5.265246e-03  5.191402e-03  0.07136   1.165e-04   3  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 7 im Abstand 0.1 mm, Glas wie Platte 3 (buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138)), dominante Ordnung 10; Biegung aus dem Vorzeichen der Korrektur
+      9  insertion        0.4100  0.272   0  -        -                      -  -             -             -         -             3  ok: Operator A: Meniskus nach Fläche 7 bei 0.1 mm, c0 = -0.898071/mm, Glas buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138) (Platte 3, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     10  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.035019e+02  1.534175e+01  3.91873   7.699e-03   3  ok, Zweig 0, Stufe 0.03125
+     11  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.102695e-01  1.091871e-01  0.25392   6.044e-03   3  ok, Zweig 0, Stufe 0.0625
+     12  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.271644e-01  1.256290e-01  0.29826   6.145e-03   3  ok, Zweig 0, Stufe 0.125
+     13  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.658713e-01  1.631761e-01  0.36883   6.759e-03   3  ok, Zweig 0, Stufe 0.25
+     14  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.915267e-01  1.879728e-01  0.37096   8.550e-03   3  ok, Zweig 0, Stufe 0.5
+     15  insertion_stage  0.4100  0.272   0  -        max_iterations       500  9.576406e+01  9.501928e+00  3.10268   6.852e-03   3  ok, Zweig 1, Stufe 0.03125
+     16  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.047951e-01  1.038713e-01  0.24160   5.927e-03   3  ok, Zweig 1, Stufe 0.0625
+     17  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.184075e-01  1.171179e-01  0.28093   5.975e-03   3  ok, Zweig 1, Stufe 0.125
+     18  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.530241e-01  1.507145e-01  0.35277   6.193e-03   3  ok, Zweig 1, Stufe 0.25
+     19  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.113343e-01  2.067658e-01  0.42451   6.721e-03   3  ok, Zweig 1, Stufe 0.5
+     20  penalty          0.4100  0.272   0  -        converged_step        52  4.969746e-02  1.998492e-02  0.08761   1.347e-03   4  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     21  penalty          0.4100  0.272   0  -        converged_step        14  3.170582e-01  1.998492e-02  0.08761   1.347e-03   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+     22  penalty          0.4100  0.272   0  -        converged_step       349  2.821111e+00  3.238633e-02  0.17256   1.377e-03   4  ok: Gewichte der einseitigen Bedingungen ×1
+     23  aperture         0.4300  0.272   0  0.02000  max_iterations       500  1.949931e-01  1.900230e-01  0.40941   7.336e-03   4  shrink (Delta 0.01000)
+     24  aperture         0.4200  0.272   0  0.01000  max_iterations       500  1.900757e-01  1.848015e-01  0.41334   7.182e-03   4  shrink (Delta 0.00500)
+     25  aperture         0.4150  0.272   0  0.00500  converged_step        36  2.832526e+00  4.334679e-02  0.21019   1.392e-03   4  shrink (Delta 0.00250)
+     26  aperture         0.4125  0.272   0  0.00250  max_iterations       500  2.819497e+00  3.777789e-02  0.19189   1.388e-03   4  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 1 im Abstand 0.1 mm, Glas wie Platte 1 (CAF2), dominante Ordnung 2, 10; Biegung aus dem Vorzeichen der Korrektur
+     27  insertion        0.4100  0.272   0  -        -                      -  -             -             -         -             4  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.00482414/mm, Glas CAF2 (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     28  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.447088e-01  3.352404e-01  0.46452   6.624e-03   4  ok, Zweig 0, Stufe 0.03125
+     29  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.316821e-01  3.229819e-01  0.44862   7.616e-03   4  ok, Zweig 0, Stufe 0.0625
+     30  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.251250e-01  3.168039e-01  0.44043   8.256e-03   4  ok, Zweig 0, Stufe 0.125
+     31  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.036367e-01  2.978387e-01  0.34788   1.241e-02   4  ok, Zweig 0, Stufe 0.25
+     32  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.569406e-01  2.526554e-01  0.25582   1.315e-02   4  ok, Zweig 0, Stufe 0.5
+     33  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.363119e-01  3.259096e-01  0.43510   8.405e-03   4  ok, Zweig 1, Stufe 0.03125
+     34  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.317745e-01  3.229685e-01  0.43550   8.581e-03   4  ok, Zweig 1, Stufe 0.0625
+     35  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.246228e-01  3.163416e-01  0.43166   8.958e-03   4  ok, Zweig 1, Stufe 0.125
+     36  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.222415e-01  3.143327e-01  0.42878   9.388e-03   4  ok, Zweig 1, Stufe 0.25
+     37  insertion_stage  0.4100  0.272   0  -        max_iterations       500  3.051130e-01  2.993802e-01  0.34611   1.283e-02   4  ok, Zweig 1, Stufe 0.5
+     38  penalty          0.4100  0.272   0  -        max_iterations       500  4.224178e-02  1.092804e-02  0.10485   7.955e-05   5  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     39  penalty          0.4100  0.272   0  -        max_iterations       500  2.168555e-01  1.141293e-01  0.25891   2.390e-03   5  ok: Gewichte der einseitigen Bedingungen ×0.1
+     40  penalty          0.4100  0.272   0  -        max_iterations       500  2.275843e-01  2.213667e-01  0.34897   7.981e-03   5  ok: Gewichte der einseitigen Bedingungen ×1
+     41  aperture         0.4300  0.272   0  0.02000  max_iterations       500  1.935041e-01  1.887117e-01  0.28484   1.039e-02   5  shrink (Delta 0.01000)
+     42  aperture         0.4200  0.272   0  0.01000  max_iterations       500  2.314317e-01  2.255008e-01  0.32635   9.852e-03   5  shrink (Delta 0.00500)
+     43  aperture         0.4150  0.272   0  0.00500  max_iterations       500  1.820172e-01  1.773400e-01  0.28829   9.223e-03   5  shrink (Delta 0.00250)
+     44  aperture         0.4125  0.272   0  0.00250  max_iterations       500  1.793740e-01  1.747950e-01  0.28682   9.087e-03   5  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 9 im Abstand 0.1 mm, Glas wie Platte 4 (CAF2), dominante Ordnung 5, 6, 10, 4; Biegung aus dem Vorzeichen der Korrektur
+     45  insertion        0.4100  0.272   0  -        -                      -  -             -             -         -             5  ok: Operator A: Meniskus nach Fläche 9 bei 0.1 mm, c0 = -0.209453/mm, Glas CAF2 (Platte 4, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     46  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.916167e-01  2.706105e-01  0.37319   6.310e-03   5  ok, Zweig 0, Stufe 0.03125
+     47  insertion_stage  0.4100  0.272   0  -        max_iterations       500  5.947403e-02  5.434809e-02  0.16814   5.606e-04   5  ok, Zweig 0, Stufe 0.0625
+     48  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.791924e-02  2.558856e-02  0.10658   7.525e-04   5  ok, Zweig 0, Stufe 0.125
+     49  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.226663e-02  1.097344e-02  0.07900   6.893e-04   5  ok, Zweig 0, Stufe 0.25
+     50  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.385930e-02  1.365982e-02  0.08549   8.549e-04   5  ok, Zweig 0, Stufe 0.5
+     51  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.761101e-01  2.637852e-01  0.37544   7.584e-03   5  ok, Zweig 1, Stufe 0.03125
+     52  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.796129e-01  1.717622e-01  0.27035   5.415e-03   5  ok, Zweig 1, Stufe 0.0625
+     53  insertion_stage  0.4100  0.272   0  -        max_iterations       500  1.403258e-01  1.327187e-01  0.22648   3.780e-03   5  ok, Zweig 1, Stufe 0.125
+     54  insertion_stage  0.4100  0.272   0  -        max_iterations       500  7.104321e-02  6.633402e-02  0.15428   1.500e-03   5  ok, Zweig 1, Stufe 0.25
+     55  insertion_stage  0.4100  0.272   0  -        max_iterations       500  2.223493e-02  2.161893e-02  0.10687   7.419e-04   5  ok, Zweig 1, Stufe 0.5
+     56  penalty          0.4100  0.272   0  -        max_iterations       500  2.079001e-03  1.612825e-03  0.05478   1.333e-05   6  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     57  penalty          0.4100  0.272   0  -        max_iterations       500  1.885792e-03  1.807965e-03  0.05719   1.882e-05   6  ok: Gewichte der einseitigen Bedingungen ×0.1
+     58  penalty          0.4100  0.272   0  -        max_iterations       500  2.097131e-03  1.901835e-03  0.05924   1.787e-05   6  ok: Gewichte der einseitigen Bedingungen ×1
+     59  aperture         0.4300  0.272   0  0.02000  max_iterations       500  3.408228e-03  3.150703e-03  0.07728   1.882e-05   6  keep (Delta 0.02000)
+     60  aperture         0.4500  0.272   0  0.02000  max_iterations       500  5.511051e-03  5.108344e-03  0.09853   2.320e-05   6  shrink (Delta 0.01000)
+     61  aperture         0.4400  0.272   0  0.01000  max_iterations       500  4.563313e-03  4.158207e-03  0.08902   2.022e-05   6  keep (Delta 0.01000)
+     62  aperture         0.4500  0.272   0  0.01000  max_iterations       500  6.126088e-03  5.570833e-03  0.10300   2.311e-05   6  shrink (Delta 0.00500)
+     63  aperture         0.4450  0.272   0  0.00500  max_iterations       500  3.430286e-03  3.259079e-03  0.07665   3.274e-05   6  keep (Delta 0.00500)
+     64  aperture         0.4500  0.272   0  0.00500  max_iterations       500  3.724681e-03  3.538297e-03  0.07988   3.515e-05   6  keep (Delta 0.00500)
+     65  aperture         0.4550  0.272   0  0.00500  max_iterations       500  3.996217e-03  3.799568e-03  0.08270   3.802e-05   6  keep (Delta 0.00500)
+     66  aperture         0.4600  0.272   0  0.00500  max_iterations       500  4.323706e-03  4.109669e-03  0.08601   4.071e-05   6  keep (Delta 0.00500)
+     67  aperture         0.4650  0.272   0  0.00500  max_iterations       500  4.719060e-03  4.476309e-03  0.08986   4.342e-05   6  keep (Delta 0.00500)
+     68  aperture         0.4700  0.272   0  0.00500  max_iterations       500  4.996482e-03  4.743178e-03  0.09216   4.860e-05   6  keep (Delta 0.00500)
+     69  aperture         0.4750  0.272   0  0.00500  max_iterations       500  5.483468e-03  5.184732e-03  0.09603   5.599e-05   6  shrink (Delta 0.00250)
+     70  aperture         0.4725  0.272   0  0.00250  max_iterations       500  5.134061e-03  4.876691e-03  0.09307   5.303e-05   6  keep (Delta 0.00250)
+     71  aperture         0.4750  0.272   0  0.00250  max_iterations       500  5.310450e-03  5.041964e-03  0.09429   5.763e-05   6  keep (Delta 0.00250)
+     72  aperture         0.4775  0.272   0  0.00250  max_iterations       500  5.455561e-03  5.182761e-03  0.09520   6.228e-05   6  stop (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 9 im Abstand 0.1 mm, Glas wie Platte 5 (buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657)), dominante Ordnung 8; Biegung aus dem Vorzeichen der Korrektur
+
+Status: max_elements (Apertur 0.475: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00518276); Bedarf (Operator A), aber höchste Elementzahl 6 erreicht)
+Endpunkt: NA 0.4750, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 3 -> 6 (3 Einfügungen), Optimierungen: 70, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                1187.3
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r2_log.json

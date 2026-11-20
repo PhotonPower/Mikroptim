@@ -29,7 +29,9 @@
 #   --python         zusätzlich Python-Paket in einer venv bauen und pytest ausführen
 #   --m6t6           zusätzlich den langen Lauf der Zielspezifikation mit aktuellen Standards und
 #                    Farbregel (tools/m6t6_zielspezifikation.py --aktuell --farbregel)
-#   --m6t6-dokumentiert  ebenso, aber wie im dokumentierten Lauf (synth --stall 0, ohne Farbregel)
+#   --m6t6-dokumentiert  ebenso, aber wie im dokumentierten Lauf M6-T6 (synth --stall 0, ohne
+#                    Farbregel, alte Referenzsphäre last_surface; Standard des Skripts seit M6-T6b:
+#                    image_infinite)
 #   --force          lokale Änderungen im Klon verwerfen (git reset --hard; sonst Abbruch)
 #   --no-pull        Klon nicht aktualisieren (vorhandenen Stand testen)
 #
@@ -69,10 +71,10 @@ while [[ $# -gt 0 ]]; do
         --no-bench) DO_BENCH=0; shift ;;
         --python) DO_PYTHON=1; shift ;;
         --m6t6) DO_M6T6=1; shift ;;
-        --m6t6-dokumentiert) DO_M6T6=1; M6T6_ARGS=(); shift ;;
+        --m6t6-dokumentiert) DO_M6T6=1; M6T6_ARGS=(--referenzsphaere last_surface); shift ;;
         --force) FORCE=1; shift ;;
         --no-pull) DO_PULL=0; shift ;;
-        -h|--help) sed -n '2,41p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
         *) echo "Unbekannte Option: $1" >&2; exit 2 ;;
     esac
 done

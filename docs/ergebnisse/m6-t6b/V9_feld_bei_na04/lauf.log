@@ -1,0 +1,219 @@
+=== Versuch 1 2026-11-20T00:24:50+01:00
+p1_r0: Exit 0, 696 s
+  p1_r0: goal_reached, Punkt 0.4000, 3 Elemente
+p2_r0: Exit 0, 55 s
+  p2_r0: step_too_small, Punkt 0.2562, 3 Elemente
+p2_r0_relax: Exit 0, 1 s
+p2_r1: Exit 0, 19 s
+  p2_r1: step_too_small, Punkt 0.2719, 3 Elemente
+p2_r1_relax: Exit 0, 2 s
+p2_r2: Exit 0, 25 s
+  p2_r2: step_too_small, Punkt 0.2719, 3 Elemente
+  kein Fortschritt: mu x0.5
+p2_r2_relax: Exit 0, 24 s
+p2_r3: Exit 0, 27 s
+  p2_r3: step_too_small, Punkt 0.2719, 3 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p2_r3_relax: Exit 0, 1 s
+  kein Spalt für ein erzwungenes Einfügen, Abbruch
+p3_r0: Exit 0, 18 s
+  p3_r0: step_too_small, Punkt 0.4050, 3 Elemente
+p3_r0_relax: Exit 0, 2 s
+p3_r1: Exit 0, 21 s
+  p3_r1: step_too_small, Punkt 0.4050, 3 Elemente
+  kein Fortschritt: mu x0.5
+p3_r1_relax: Exit 0, 1 s
+p3_r2: Exit 1, 475 s
+Traceback (most recent call last):
+  File "tools\m6t6_zielspezifikation.py", line 1273, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "tools\m6t6_zielspezifikation.py", line 1218, in main
+    p3, r3 = synth_loop(r, 'p3', p3_in,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", line 582, in synth_loop
+    out = runner.synth(name, cur, opts)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", line 378, in synth
+    self.run(name, args)
+  File "tools\m6t6_zielspezifikation.py", line 366, in run
+    raise RuntimeError(f'{name}: mikroptim endete mit {r.returncode}, siehe {text}')
+RuntimeError: p3_r2: mikroptim endete mit 1, siehe docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r2.txt
+=== Exit 1 2026-11-20T00:47:39+01:00
+=== Versuch 2 2026-11-20T00:47:39+01:00
+p1_r0: vorhanden, übersprungen
+  p1_r0: goal_reached, Punkt 0.4000, 3 Elemente
+p2_r0: vorhanden, übersprungen
+  p2_r0: step_too_small, Punkt 0.2562, 3 Elemente
+p2_r0_relax: vorhanden, übersprungen
+p2_r1: vorhanden, übersprungen
+  p2_r1: step_too_small, Punkt 0.2719, 3 Elemente
+p2_r1_relax: vorhanden, übersprungen
+p2_r2: vorhanden, übersprungen
+  p2_r2: step_too_small, Punkt 0.2719, 3 Elemente
+  kein Fortschritt: mu x0.5
+p2_r2_relax: vorhanden, übersprungen
+p2_r3: vorhanden, übersprungen
+  p2_r3: step_too_small, Punkt 0.2719, 3 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p2_r3_relax: vorhanden, übersprungen
+  kein Spalt für ein erzwungenes Einfügen, Abbruch
+p3_r0: vorhanden, übersprungen
+  p3_r0: step_too_small, Punkt 0.4050, 3 Elemente
+p3_r0_relax: vorhanden, übersprungen
+p3_r1: vorhanden, übersprungen
+  p3_r1: step_too_small, Punkt 0.4050, 3 Elemente
+  kein Fortschritt: mu x0.5
+p3_r1_relax: vorhanden, übersprungen
+p3_r2: Exit 0, 1187 s
+  p3_r2: max_elements, Punkt 0.4750, 6 Elemente
+p3_r2_relax: Exit 0, 34 s
+p3_r3: Exit 0, 613 s
+  p3_r3: max_elements, Punkt 0.6325, 9 Elemente
+p3_r3_relax: Exit 0, 3 s
+p3_r4: Exit 0, 92 s
+  p3_r4: max_elements, Punkt 0.6325, 12 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p3_r4_relax: Exit 0, 3 s
+p3_r4_ins9_insert: Exit 0, 0 s
+p3_r4_ins9: Exit 0, 1 s
+  erzwungen: Spalt 9, F = 7.3362e-01
+p3_r4_ins11_insert: Exit 0, 0 s
+p3_r4_ins11: Exit 0, 3 s
+  erzwungen: Spalt 11, F = 7.3117e-01
+p3_r4_ins13_insert: Exit 0, 0 s
+p3_r4_ins13: Exit 0, 3 s
+  erzwungen: Spalt 13, F = 7.3400e-01
+p3_r5: Exit 0, 47 s
+  p3_r5: max_elements, Punkt 0.6325, 16 Elemente
+p3_r5_relax: Exit 0, 0 s
+p3_r6: Exit 0, 156 s
+  p3_r6: max_elements, Punkt 0.6325, 19 Elemente
+  kein Fortschritt: mu x0.5
+p3_r6_relax: Exit 0, 5 s
+p3_r7: Exit 0, 203 s
+  p3_r7: max_elements, Punkt 0.6325, 22 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p3_r7_relax: Exit 0, 8 s
+p3_r7_ins9_insert: Exit 0, 0 s
+p3_r7_ins9: Exit 0, 5 s
+  erzwungen: Spalt 9, F = 1.1486e+01
+p3_r7_ins17_insert: Exit 0, 0 s
+p3_r7_ins17: Exit 0, 3 s
+  erzwungen: Spalt 17, F = 1.0338e+01
+p3_r7_ins19_insert: Exit 0, 0 s
+p3_r7_ins19: Exit 0, 6 s
+  erzwungen: Spalt 19, F = 1.1000e+01
+p3_r7_ins21_insert: Exit 0, 0 s
+p3_r7_ins21: Exit 0, 51 s
+  erzwungen: Spalt 21, F = 1.1303e+01
+p3_r7_ins23_insert: Exit 0, 0 s
+p3_r7_ins23: Exit 0, 1 s
+  erzwungen: Spalt 23, F = 1.1452e+01
+p3_r8: Exit 0, 251 s
+  p3_r8: start_rejected, Punkt 0.6325, 25 Elemente
+p3_r8_relax: Exit 0, 18 s
+p3_r9: Exit 0, 28 s
+  p3_r9: start_rejected, Punkt 0.6325, 25 Elemente
+  kein Fortschritt: mu x0.5
+p3_r9_relax: Exit 0, 21 s
+p3_r10: Exit 0, 25 s
+  p3_r10: start_rejected, Punkt 0.6325, 25 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p3_r10_relax: Exit 0, 19 s
+p3_r10_ins21_insert: Exit 0, 0 s
+p3_r10_ins21: Exit 0, 22 s
+  erzwungen: Spalt 21, F = 1.4492e-02
+p3_r10_ins23_insert: Exit 0, 0 s
+p3_r10_ins23: Exit 0, 19 s
+  erzwungen: Spalt 23, F = 1.4300e-02
+p3_r10_ins33_insert: Exit 0, 0 s
+p3_r10_ins33: Exit 0, 21 s
+  erzwungen: Spalt 33, F = 2.2608e-02
+p3_r10_ins37_insert: Exit 0, 0 s
+p3_r10_ins37: Exit 0, 24 s
+  erzwungen: Spalt 37, F = 1.4634e-02
+p3_r10_ins39_insert: Exit 0, 0 s
+p3_r10_ins39: Exit 0, 26 s
+  erzwungen: Spalt 39, F = 1.4253e-02
+p3_r11: Exit 0, 19 s
+  p3_r11: start_rejected, Punkt 0.6325, 26 Elemente
+p3_r11_relax: Exit 0, 25 s
+p3_r12: Exit 0, 21 s
+  p3_r12: start_rejected, Punkt 0.6325, 26 Elemente
+  kein Fortschritt: mu x0.5
+p3_r12_relax: Exit 0, 21 s
+p3_r13: Exit 0, 6 s
+  p3_r13: start_rejected, Punkt 0.6325, 26 Elemente
+  kein Fortschritt, Abbruch
+p4_r0: Exit 0, 18 s
+  p4_r0: start_rejected, Punkt 0.0000, 26 Elemente
+p4_r0_relax: Exit 0, 0 s
+p4_r1: Exit 0, 23 s
+  p4_r1: start_rejected, Punkt 0.0000, 26 Elemente
+  kein Fortschritt: mu x0.5
+p4_r1_relax: Exit 0, 26 s
+p4_r2: Exit 0, 24 s
+  p4_r2: start_rejected, Punkt 0.0000, 26 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p4_r2_relax: Exit 0, 0 s
+p4_r2_split26_insert: Exit 0, 0 s
+p4_r2_split26: Exit 0, 10 s
+  erzwungen (B): Linse 26, F = 4.8959e-01
+p4_r2_split28_insert: Exit 0, 0 s
+p4_r2_split28: Exit 0, 0 s
+  erzwungen (B): Linse 28, F = 6.1232e-01
+p4_r2_split34_insert: Exit 0, 0 s
+p4_r2_split34: Exit 0, 24 s
+  erzwungen (B): Linse 34, F = 5.7254e-01
+p4_r2_split36_insert: Exit 0, 0 s
+p4_r2_split36: Exit 0, 0 s
+  erzwungen (B): Linse 36, F = 7.2177e-01
+p4_r2_split46_insert: Exit 0, 0 s
+p4_r2_split46: Exit 0, 1 s
+  erzwungen (B): Linse 46, F = 2.6723e+00
+p4_r3: Exit 0, 10 s
+  p4_r3: start_rejected, Punkt 0.0000, 27 Elemente
+p4_r3_relax: Exit 0, 0 s
+p5_r0: Exit 0, 30 s
+  p5_r0: start_rejected, Punkt 0.0000, 27 Elemente
+p5_r0_relax: Exit 0, 21 s
+p5_r1: Exit 0, 15 s
+  p5_r1: start_rejected, Punkt 0.0000, 27 Elemente
+  kein Fortschritt: mu x0.5
+p5_r1_relax: Exit 0, 8 s
+p5_r2: Exit 0, 8 s
+  p5_r2: start_rejected, Punkt 0.0000, 27 Elemente
+  kein Fortschritt: erzwungenes Einfügen
+p5_r2_relax: Exit 0, 0 s
+p5_r2_split29_insert: Exit 0, 0 s
+p5_r2_split29: Exit 0, 0 s
+  erzwungen (B): Linse 29, F = 1.2643e-01
+p5_r2_split43_insert: Exit 0, 0 s
+p5_r2_split43: Exit 0, 0 s
+  erzwungen (B): Linse 43, F = 1.2643e-01
+p5_r2_split45_insert: Exit 0, 0 s
+p5_r2_split45: Exit 0, 0 s
+  erzwungen (B): Linse 45, F = 1.2643e-01
+p5_r3: Exit 0, 12 s
+  p5_r3: start_rejected, Punkt 0.0000, 28 Elemente
+p5_r3_relax: Exit 0, 11 s
+p6_s0: Exit 0, 19 s
+p6_s1: Exit 0, 19 s
+p6_s2: Exit 0, 19 s
+p7: Exit 0, 39 s
+p8_pupille: Exit 0
+p8_unendlich: Exit 0
+p8_psf: Exit 0
+p8_vektor: Exit 0
+p8_vollfeld_pupille: Exit 0
+p8_vollfeld_unendlich: Exit 0
+p8_vollfeld_psf: Exit 0
+p8_vollfeld_vektor: Exit 0
+z2_s0: Exit 0, 11 s
+z2_pupille: Exit 0
+z2_unendlich: Exit 0
+z2_psf: Exit 0
+z2_vektor: Exit 0
+fertig: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p7.json
+=== Exit 0 2026-11-20T01:43:26+01:00

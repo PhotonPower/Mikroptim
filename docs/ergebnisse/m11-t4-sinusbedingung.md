@@ -11,7 +11,7 @@ Bericht zur Abnahme von M11-T4 ([Meilensteinplan](../plan/meilensteine.md#m11-t4
 
 ## Ablauf
 
-`python tools/m6t6_zielspezifikation.py --osc-versuch [--osc-gewicht W] [--osc-strahlsuche] --gpu` (Ausgabe in `docs/ergebnisse/m11-t4/mit` bzw. `ohne`, im Repository verkleinert auf Start, Synthese-Ergebnis, Nachoptimierung und `m11t4_osc.json`):
+`python tools/m6t6_zielspezifikation.py --osc-versuch --referenzsphaere last_surface [--osc-gewicht W] [--osc-strahlsuche] --gpu` (seit M6-T6b ist `image_infinite` der Standard des Skripts; `last_surface` stellt die Konvention dieses Berichts und den F12-Schutz wieder her; Ausgabe in `docs/ergebnisse/m11-t4/mit` bzw. `ohne`, im Repository verkleinert auf Start, Synthese-Ergebnis, Nachoptimierung und `m11t4_osc.json`):
 
 1. Start `data/systems/zielspezifikation_start.json` (Einzellinse, NA 0,3, 546 nm, Geisterplatten blendennah und bildnah, Nebenbedingungen von M6-T6 einschließlich Petzval), **nur das Achsfeld**.
 2. `paraxial_focus` mit Gewicht 100/mm² gegen die Falle F12: Die Hilfsebene vor dem Objekt ist die letzte Fläche, die Referenzsphäre der Merit hat dort den Radius des Arbeitsabstands, und der LM kann den Fokus in ihren Scheitel legen (M6-T6, Befund F12). Die Bedingung kostet bei 0,1 mm Randstrahlhöhe eine Welle², die Falle (2,7 mm Defokus) rund 700 Wellen²; eine Fokusverschiebung von einigen µm für den Ausgleich der Restsphärik bleibt praktisch frei.

@@ -1,0 +1,25 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r17_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6175, Feldanteil 0.272, 15 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6175  0.272   0  -        max_iterations       500  4.643712e-03  4.551186e-03  0.08229   6.248e-06  15  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6175  0.272   0  -        converged_step        23  4.706228e-03  4.660875e-03  0.08326   6.300e-06  15  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6175  0.272   0  -        converged_step        28  4.737541e-03  4.677741e-03  0.08332   6.782e-06  15  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.6375  0.272   0  0.02000  max_iterations       500  7.566950e-03  7.417940e-03  0.10010   9.734e-06  15  shrink (Delta 0.01000)
+      4  aperture         0.6275  0.272   0  0.01000  converged_step        37  5.744134e-03  5.685017e-03  0.09040   6.745e-06  15  shrink (Delta 0.00500)
+      5  aperture         0.6225  0.272   0  0.00500  converged_step       198  5.231228e-03  5.166222e-03  0.08668   6.596e-06  15  shrink (Delta 0.00250)
+      6  aperture         0.6200  0.272   0  0.00250  converged_step        35  5.008108e-03  4.957232e-03  0.08539   6.447e-06  15  grow (Delta 0.00500)
+      7  aperture         0.6250  0.272   0  0.00500  converged_step       337  5.548299e-03  5.468632e-03  0.08865   6.910e-06  15  shrink (Delta 0.00250)
+      8  aperture         0.6225  0.272   0  0.00250  converged_step        36  5.308431e-03  5.255505e-03  0.08729   6.844e-06  15  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.62: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.0052555); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.6200, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 15 -> 15 (0 Einfügungen), Optimierungen: 9, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                45.0
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r18.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r18_log.json

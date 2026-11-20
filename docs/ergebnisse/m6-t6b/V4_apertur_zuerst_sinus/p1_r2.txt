@@ -1,0 +1,45 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4350, Feldanteil 0.100, 3 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4350  0.100   0  -        converged_step        27  4.742656e-03  4.636285e-03  0.07344   3.705e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4350  0.100   0  -        converged_step        15  4.761886e-03  4.671611e-03  0.07379   3.758e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4350  0.100   0  -        converged_step       340  4.783860e-03  4.671318e-03  0.07370   3.811e-05   3  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4550  0.100   0  0.02000  converged_step       133  6.324362e-03  6.210945e-03  0.06988   1.197e-04   3  shrink (Delta 0.01000)
+      4  aperture         0.4450  0.100   0  0.01000  converged_step       188  5.542290e-03  5.424627e-03  0.07230   7.691e-05   3  shrink (Delta 0.00500)
+      5  aperture         0.4400  0.100   0  0.00500  converged_step       140  5.183901e-03  5.065094e-03  0.07271   5.995e-05   3  keep (Delta 0.00500)
+      6  aperture         0.4450  0.100   0  0.00500  converged_step       354  5.511267e-03  5.396137e-03  0.06983   8.474e-05   3  shrink (Delta 0.00250)
+      7  aperture         0.4425  0.100   0  0.00250  converged_step       351  5.343683e-03  5.226323e-03  0.07110   7.297e-05   3  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 1 im Abstand 0.1 mm, Glas wie Platte 1 (CAF2), dominante Ordnung 2; Biegung aus dem Vorzeichen der Korrektur
+      8  insertion        0.4400  0.100   0  -        -                      -  -             -             -         -             3  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.0819086/mm, Glas CAF2 (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      9  insertion_stage  0.4400  0.100   0  -        max_iterations       500  5.512932e-03  5.411345e-03  0.08416   4.823e-06   3  ok, Zweig 0, Stufe 0.03125
+     10  insertion_stage  0.4400  0.100   0  -        converged_step        37  5.503491e-03  5.402000e-03  0.08414   4.670e-06   3  ok, Zweig 0, Stufe 0.0625
+     11  insertion_stage  0.4400  0.100   0  -        converged_step        30  5.501741e-03  5.402236e-03  0.08415   4.893e-06   3  ok, Zweig 0, Stufe 0.125
+     12  insertion_stage  0.4400  0.100   0  -        converged_step        76  5.498285e-03  5.399840e-03  0.08412   5.072e-06   3  ok, Zweig 0, Stufe 0.25
+     13  insertion_stage  0.4400  0.100   0  -        converged_step       142  5.490891e-03  5.392220e-03  0.08399   5.000e-06   3  ok, Zweig 0, Stufe 0.5
+     14  insertion_stage  0.4400  0.100   0  -        max_iterations       500  4.912949e-03  4.821182e-03  0.07885   4.746e-06   3  ok, Zweig 1, Stufe 0.03125
+     15  insertion_stage  0.4400  0.100   0  -        converged_step        31  4.874571e-03  4.779188e-03  0.07906   4.294e-06   3  ok, Zweig 1, Stufe 0.0625
+     16  insertion_stage  0.4400  0.100   0  -        converged_step        43  4.873180e-03  4.779614e-03  0.07907   4.533e-06   3  ok, Zweig 1, Stufe 0.125
+     17  insertion_stage  0.4400  0.100   0  -        converged_step        50  4.870514e-03  4.778269e-03  0.07905   4.751e-06   3  ok, Zweig 1, Stufe 0.25
+     18  insertion_stage  0.4400  0.100   0  -        converged_step        52  4.864919e-03  4.773106e-03  0.07894   4.791e-06   3  ok, Zweig 1, Stufe 0.5
+     19  penalty          0.4400  0.100   0  -        converged_step        40  4.420866e-03  4.358360e-03  0.07668   4.224e-06   4  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     20  penalty          0.4400  0.100   0  -        converged_step        82  4.433615e-03  4.381424e-03  0.07700   3.973e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+     21  penalty          0.4400  0.100   0  -        converged_step        77  4.479349e-03  4.383537e-03  0.07705   3.939e-06   4  ok: Gewichte der einseitigen Bedingungen ×1
+     22  aperture         0.4600  0.100   0  0.02000  converged_step       413  6.315599e-03  6.178640e-03  0.09002   6.866e-06   4  shrink (Delta 0.01000)
+     23  aperture         0.4500  0.100   0  0.01000  converged_step        88  5.229025e-03  5.109918e-03  0.08138   6.269e-06   4  shrink (Delta 0.00500)
+     24  aperture         0.4450  0.100   0  0.00500  converged_step        84  4.765849e-03  4.653589e-03  0.07743   6.086e-06   4  keep (Delta 0.00500)
+     25  aperture         0.4500  0.100   0  0.00500  converged_step        40  5.223352e-03  5.101807e-03  0.08109   6.356e-06   4  grow (Delta 0.01000)
+     26  aperture         0.4600  0.100   0  0.01000  max_iterations       500  6.360961e-03  6.223749e-03  0.09055   6.867e-06   4  shrink (Delta 0.00500)
+     27  aperture         0.4550  0.100   0  0.00500  converged_step        51  5.757794e-03  5.629114e-03  0.08557   6.519e-06   4  shrink (Delta 0.00250)
+     28  aperture         0.4525  0.100   0  0.00250  converged_step        47  5.476104e-03  5.349931e-03  0.08316   6.459e-06   4  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.45: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00534993); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4500, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 3 -> 4 (1 Einfügungen), Optimierungen: 28, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                241.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r2_log.json

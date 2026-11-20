@@ -1,0 +1,19 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p5_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6225, Feldanteil 0.272, 18 Glaselement(e)
+  Ziel                                        NA 0.6225, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6225  0.272   0  -        max_iterations       500  1.979128e-02  1.959843e-02  0.22082   2.204e-05  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6225  0.272   0  -        max_iterations       500  1.961135e-02  1.958127e-02  0.21948   2.233e-05  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6225  0.272   0  -        converged_step        31  1.963756e-02  1.960699e-02  0.21975   2.207e-05  18  ok: Gewichte der einseitigen Bedingungen ×1
+
+Status: start_rejected (Startpunkt nicht annehmbar (F_B = 0.019607 > F_max = 0.00510204); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.6225, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.6225)
+Glaselemente: 18 -> 18 (0 Einfügungen), Optimierungen: 3, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                80.2
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p5_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p5_r2_log.json

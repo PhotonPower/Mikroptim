@@ -1,0 +1,31 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V6_start_z2alt\p2_final.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 9 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  6.332136e-04  6.216369e-04  0.03132   1.322e-06   9  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        converged_step        17  6.385069e-04  6.237690e-04  0.03138   1.328e-06   9  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        max_iterations       500  6.833359e-04  6.235237e-04  0.03134   1.343e-06   9  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.5200  1.000   0  0.02000  max_iterations       500  7.838231e-03  7.646611e-03  0.07802   1.650e-05   9  shrink (Delta 0.01000)
+      4  aperture         0.5100  1.000   0  0.01000  max_iterations       500  1.570797e-03  1.520244e-03  0.04057   5.419e-06   9  keep (Delta 0.01000)
+      5  aperture         0.5200  1.000   0  0.01000  max_iterations       500  7.413010e-03  7.273527e-03  0.08544   1.307e-05   9  shrink (Delta 0.00500)
+      6  aperture         0.5150  1.000   0  0.00500  max_iterations       500  5.593540e-03  5.470749e-03  0.07336   1.099e-05   9  shrink (Delta 0.00250)
+      7  aperture         0.5125  1.000   0  0.00250  max_iterations       500  3.721641e-03  3.653920e-03  0.03942   1.116e-05   9  keep (Delta 0.00250)
+      8  aperture         0.5150  1.000   0  0.00250  max_iterations       500  3.741013e-03  3.670907e-03  0.04208   1.054e-05   9  keep (Delta 0.00250)
+      9  aperture         0.5175  1.000   0  0.00250  max_iterations       500  3.840483e-03  3.766749e-03  0.04435   1.063e-05   9  keep (Delta 0.00250)
+     10  aperture         0.5200  1.000   0  0.00250  max_iterations       500  4.049893e-03  3.966806e-03  0.04555   1.111e-05   9  keep (Delta 0.00250)
+     11  aperture         0.5225  1.000   0  0.00250  max_iterations       500  4.332388e-03  4.249869e-03  0.04824   1.172e-05   9  keep (Delta 0.00250)
+     12  aperture         0.5250  1.000   0  0.00250  max_iterations       500  4.575917e-03  4.484959e-03  0.04977   1.197e-05   9  keep (Delta 0.00250)
+     13  aperture         0.5275  1.000   0  0.00250  max_iterations       500  4.958457e-03  4.864056e-03  0.05202   1.275e-05   9  keep (Delta 0.00250)
+     14  aperture         0.5300  1.000   0  0.00250  max_iterations       500  5.435734e-03  5.336729e-03  0.05951   1.398e-05   9  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.5275: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00533673); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5275, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 9 -> 9 (0 Einfügungen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                277.9
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V6_start_z2alt\p3_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V6_start_z2alt\p3_r0_log.json

@@ -1,0 +1,24 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V3_farbe_frueh\p3_r9_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5250, Feldanteil 0.272, 11 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5250  0.272   0  -        converged_step       153  4.225941e-03  4.195555e-03  0.11546   9.192e-06  11  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5250  0.272   0  -        converged_step        29  4.290817e-03  4.264062e-03  0.11457   1.547e-05  11  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5250  0.272   0  -        converged_step       125  4.303547e-03  4.275977e-03  0.11421   1.462e-05  11  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.5450  0.272   0  0.02000  max_iterations       500  1.113786e-02  1.103581e-02  0.13996   8.158e-05  11  shrink (Delta 0.01000)
+      4  aperture         0.5350  0.272   0  0.01000  max_iterations       500  6.298387e-03  6.246137e-03  0.12178   3.388e-05  11  shrink (Delta 0.00500)
+      5  aperture         0.5300  0.272   0  0.00500  converged_step       156  4.970965e-03  4.935663e-03  0.11550   2.133e-05  11  keep (Delta 0.00500)
+      6  aperture         0.5350  0.272   0  0.00500  max_iterations       500  5.953653e-03  5.913029e-03  0.12266   2.883e-05  11  shrink (Delta 0.00250)
+      7  aperture         0.5325  0.272   0  0.00250  converged_step        73  5.327460e-03  5.288388e-03  0.12085   2.239e-05  11  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.53: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00528839); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5300, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 11 -> 11 (0 Einfügungen), Optimierungen: 8, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                113.5
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V3_farbe_frueh\p3_r10.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V3_farbe_frueh\p3_r10_log.json

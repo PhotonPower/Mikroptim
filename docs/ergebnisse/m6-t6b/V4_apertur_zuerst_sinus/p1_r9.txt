@@ -1,0 +1,23 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r8_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4575, Feldanteil 0.100, 5 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4575  0.100   0  -        converged_step        19  5.088955e-03  4.975752e-03  0.07903   6.324e-06   5  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4575  0.100   0  -        converged_step        24  5.092467e-03  4.986764e-03  0.07923   6.276e-06   5  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4575  0.100   0  -        converged_step        39  5.115566e-03  4.988011e-03  0.07925   6.320e-06   5  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4775  0.100   0  0.02000  converged_step       203  7.188332e-03  6.959410e-03  0.09368   6.443e-06   5  shrink (Delta 0.01000)
+      4  aperture         0.4675  0.100   0  0.01000  converged_step       238  5.987840e-03  5.812176e-03  0.08573   6.233e-06   5  shrink (Delta 0.00500)
+      5  aperture         0.4625  0.100   0  0.00500  converged_step       259  5.649842e-03  5.516007e-03  0.08454   5.642e-06   5  shrink (Delta 0.00250)
+      6  aperture         0.4600  0.100   0  0.00250  converged_step       214  5.380621e-03  5.250142e-03  0.08191   5.948e-06   5  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.4575: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00525014); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4575, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 5 -> 5 (0 Einfügungen), Optimierungen: 7, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                35.5
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r9.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V4_apertur_zuerst_sinus\p1_r9_log.json

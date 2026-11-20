@@ -44,11 +44,11 @@ Die Spezifikation lässt Punkte offen (spezifikation.md, „Offene Punkte“). F
 
 ```
 cmake --preset release-cuda && cmake --build --preset release-cuda
-python tools/m6t6_zielspezifikation.py --gpu            # Lauf, Ausgabe in docs/ergebnisse/m6-t6/
+python tools/m6t6_zielspezifikation.py --gpu --referenzsphaere last_surface   # Lauf, Ausgabe in docs/ergebnisse/m6-t6/
 python tools/m6t6_zielspezifikation.py --tabellen       # Tabellen dieses Berichts
 ```
 
-Eine Stufe, deren Ergebnisdatei existiert, wird übersprungen (Fortsetzung nach Abbruch). Der Lauf schreibt alle Zwischenstände nach [`docs/ergebnisse/m6-t6/`](m6-t6/) (pro synth-Lauf Protokoll als Text und JSON `mikroptim.synth/1` und Ergebnisdatei, pro Nachoptimierung Ein- und Ausgabe, `m6t6_lauf.json` als Zusammenfassung); im Repository liegt die mit `--archiv` verkleinerte Fassung (Abschnitt 9).
+Seit M6-T6b rechnet das Skript standardmäßig mit der Referenzsphäre `image_infinite` (ADR-0017); dieser Bericht verwendet die alte Konvention `last_surface` (Lauf mit neuer Konvention: [Bericht M6-T6b](m6-t6b-zielspezifikation-adr0017.md)). Eine Stufe, deren Ergebnisdatei existiert, wird übersprungen (Fortsetzung nach Abbruch). Der Lauf schreibt alle Zwischenstände nach [`docs/ergebnisse/m6-t6/`](m6-t6/) (pro synth-Lauf Protokoll als Text und JSON `mikroptim.synth/1` und Ergebnisdatei, pro Nachoptimierung Ein- und Ausgabe, `m6t6_lauf.json` als Zusammenfassung); im Repository liegt die mit `--archiv` verkleinerte Fassung (Abschnitt 9).
 
 **Bausteine des Skripts** (Gegenmaßnahmen zu den Befunden in Abschnitt 6):
 

@@ -1,0 +1,107 @@
+Glas-Einrasten: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p6_s2.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p7.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Glaselemente                                1
+  Glas-Hülle                                  39 Gläser, Dimension 3
+  Nachbarn je Element                         3
+  Kombinationen (Läufe)                       3 von 3 (alle)
+  Zyklen höchstens                            500
+
+Kandidaten (nächste Katalog-Gläser, Abstand im normierten (n0, nu1, nu2)-Raum der Glas-Hülle)
+  Fläche 10: kontinuierlich n0 = 1.7840264, nu1 = -1.950127e-01, nu2 = 1.373919e-01, Abstand zur Hülle 1.295e-05
+       0  SYN-29        1.505685e-05
+       1  SYN-25        6.710811e-02
+       2  SYN-26        6.905725e-02
+
+Kombinationen (sortiert nach Summe d²; Merit in Wellen² bei 546.070 nm)
+  Lauf  Gläser                          Summe d²      eingerastet      reoptimiert  Zyklen  Status             versagt
+     0  SYN-29                         2.267e-10  3.091528734e-02  2.103449665e-02     500  max_iterations           0  bester
+     1  SYN-25                         4.503e-03  6.880158699e+01  2.623693678e-02     500  max_iterations           0
+     2  SYN-26                         4.769e-03  1.181808423e+02  3.139687337e-02     500  max_iterations           0
+
+Ergebnis
+  Gewählte Gläser                             Fläche 10: SYN-29
+  Bester Lauf                                 0
+  Status                                      max_iterations
+  Merit kontinuierlich [Wellen²]              2.871137201e-02
+  Merit eingerastet, ohne Reopt. [Wellen²]    3.091528734e-02
+  Merit eingerastet, reoptimiert [Wellen²]    2.103449665e-02
+  Verschlechterung [Wellen²]                  -7.676875e-03
+  Verschlechterung relativ                    -2.673810e-01
+  Versagte Strahlen kontinuierlich/Ergebnis   0 / 0
+
+Variablen (ohne Glas)
+  Name    Einheit            vorher          nachher
+  c[14]   1/mm      2.461129446e-01  2.456341284e-01
+  c[15]   1/mm     -7.747059479e-02 -7.802382280e-02
+  t[0]    mm               0.500000         0.500000
+  t[14]   mm               1.086080         1.085461
+  w       mm               0.300000         0.300000
+  t[6]    mm               0.272579         0.271188
+  t[8]    mm               0.486371         0.487869
+  t[11]   mm               0.448102         0.448523
+  t[13]   mm               0.100000         0.100000
+  t[4]    mm               0.100000         0.100000
+  t[17]   mm               0.100000         0.100000
+  t[19]   mm               0.100000         0.100000
+  t[2]    mm               0.100000         0.100000
+  c[12]   1/mm     -1.312272448e-02 -1.158218861e-02
+  c[13]   1/mm     -2.725973665e-01 -2.735862639e-01
+  t[12]   mm               2.922480         2.893054
+  c[9]    1/mm     -3.270452369e-01 -3.275019448e-01
+  c[11]   1/mm      1.900632792e-01  1.903501467e-01
+  t[9]    mm               0.820123         0.794621
+  t[10]   mm               0.515910         0.537139
+  c[5]    1/mm      1.465139123e-01  1.469649166e-01
+  c[6]    1/mm      1.557586170e-01  1.545946329e-01
+  t[5]    mm               0.500000         0.500000
+  c[20]   1/mm      8.151598651e-02  8.065885357e-02
+  c[21]   1/mm      4.936539752e-01  4.921675747e-01
+  t[20]   mm               0.949781         0.960315
+  c[18]   1/mm      4.985669168e-01  4.976893526e-01
+  c[19]   1/mm      5.913504152e-02  5.862737588e-02
+  t[18]   mm               1.077399         1.076646
+  c[16]   1/mm     -7.747095926e-02 -7.802462419e-02
+  c[17]   1/mm      1.470845961e-01  1.488007511e-01
+  t[16]   mm               0.520084         0.514804
+  c[3]    1/mm      2.513074988e-02  2.503438999e-02
+  c[4]    1/mm     -8.548338719e-02 -8.569160382e-02
+  t[3]    mm               0.500000         0.500000
+  c[7]    1/mm      4.427308354e-02  4.431559599e-02
+  c[8]    1/mm     -8.260842971e-02 -8.322591774e-02
+  t[7]    mm               0.488001         0.489613
+  c[1]    1/mm      6.658099501e-02  6.554858824e-02
+  c[2]    1/mm      1.925724149e-02  2.003713036e-02
+  t[1]    mm               0.500000         0.500000
+  c[10]   1/mm     -5.400782572e-01 -5.276245451e-01
+  t[15]   mm               0.100000         0.100000
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm; vorher = kontinuierlich, nachher = eingerastet)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           404.660        16      0.380202      0.194217                   0 / 0
+     0         0.000           435.830        16      0.016429      0.022483                   0 / 0
+     0         0.000           486.130        16      0.161660      0.116657                   0 / 0
+     0         0.000           546.070        16      0.095968      0.087488                   0 / 0
+     0         0.000           587.560        16      0.023938      0.035682                   0 / 0
+     0         0.000           656.270        16      0.085118      0.070161                   0 / 0
+     0         0.000           706.520        16      0.138554      0.147268                   0 / 0
+     1         3.045           404.660       128      0.629215      0.434413                   0 / 0
+     1         3.045           435.830       128      0.130049      0.123224                   0 / 0
+     1         3.045           486.130       128      0.148365      0.102354                   0 / 0
+     1         3.045           546.070       128      0.089592      0.082720                   0 / 0
+     1         3.045           587.560       128      0.092601      0.088262                   0 / 0
+     1         3.045           656.270       128      0.218436      0.204874                   0 / 0
+     1         3.045           706.520       128      0.301709      0.308942                   0 / 0
+     2         4.345           404.660       128      0.697635      0.466521                   0 / 0
+     2         4.345           435.830       128      0.152591      0.149826                   0 / 0
+     2         4.345           486.130       128      0.270351      0.230672                   0 / 0
+     2         4.345           546.070       128      0.191512      0.184828                   0 / 0
+     2         4.345           587.560       128      0.109190      0.113208                   0 / 0
+     2         4.345           656.270       128      0.161342      0.143981                   0 / 0
+     2         4.345           706.520       128      0.252851      0.263129                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p7.json

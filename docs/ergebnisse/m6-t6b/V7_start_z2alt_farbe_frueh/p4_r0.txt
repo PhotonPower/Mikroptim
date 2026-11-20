@@ -1,0 +1,33 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p4_in.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 9 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        converged_step       267  1.010196e+00  9.747541e-01  0.84330   1.299e-03   9  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        converged_step       401  1.054097e+00  1.042834e+00  0.89839   1.301e-03   9  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        max_iterations       500  1.027989e+00  1.027420e+00  0.87781   1.344e-03   9  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.5000  1.000   0  -        -                      -  -             -             -         -             9  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = 0.0449442/mm, Glas buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657) (Platte 2, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      4  insertion_stage  0.5000  1.000   0  -        max_iterations       500  5.131321e+00  5.062241e+00  0.94218   9.843e-04   9  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.5000  1.000   0  -        max_iterations       500  9.499723e-01  9.481626e-01  1.12644   2.251e-04   9  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.5000  1.000   0  -        max_iterations       500  9.405935e-01  9.386864e-01  1.11386   2.582e-04   9  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.5000  1.000   0  -        max_iterations       500  5.998842e-01  5.994704e-01  0.95933   1.393e-04   9  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.5000  1.000   0  -        max_iterations       500  4.959314e-01  4.954875e-01  0.88400   1.277e-04   9  ok, Zweig 0, Stufe 0.5
+      9  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.276980e+00  1.275062e+00  1.19129   6.130e-04   9  ok, Zweig 1, Stufe 0.03125
+     10  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.253108e+00  1.252062e+00  1.18308   5.905e-04   9  ok, Zweig 1, Stufe 0.0625
+     11  insertion_stage  0.5000  1.000   0  -        converged_step       246  4.452945e-01  4.443869e-01  0.88398   1.013e-04   9  ok, Zweig 1, Stufe 0.125
+     12  insertion_stage  0.5000  1.000   0  -        converged_step       346  3.034568e-01  3.025472e-01  0.82201   9.901e-05   9  ok, Zweig 1, Stufe 0.25
+     13  insertion_stage  0.5000  1.000   0  -        max_iterations       500  7.003820e-01  4.983785e-01  1.02817   2.582e-04   9  ok, Zweig 1, Stufe 0.5
+     14  penalty          0.5000  1.000   0  -        max_iterations       500  3.172498e-01  3.110563e-01  0.75032   7.035e-05  10  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     15  penalty          0.5000  1.000   0  -        max_iterations       500  3.235050e-01  3.203428e-01  0.76109   7.089e-05  10  ok: Gewichte der einseitigen Bedingungen ×0.1
+     16  penalty          0.5000  1.000   0  -        max_iterations       500  3.251756e-01  3.211334e-01  0.76676   7.024e-05  10  ok: Gewichte der einseitigen Bedingungen ×1
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.321133 > F_max = 0.00510204); Bedarf (Operator A), aber höchste Elementzahl 10 erreicht)
+Endpunkt: NA 0.5000, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 9 -> 10 (1 Einfügungen), Optimierungen: 16, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                329.2
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p4_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V7_start_z2alt_farbe_frueh\p4_r0_log.json
