@@ -1,0 +1,145 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B3_LMRS_claude-haiku-5-5_w1/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "7": {
+      "parent": 6,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Homotopie bei NA 0,4175 blockiert (step_too_small), RMS 0,43 weit über Ziel 0,0714, 11 mechanische Fehler (Flächen 7, 8, 10 berühren sich am Rand), Hintergruppe ohne Elemente; Weiterarbeit an diesem Kandidaten lohnt nicht."
+    },
+    "8": {
+      "parent": 4,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "optimize"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "optimize"
+    },
+    "15": {
+      "parent": 14,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "16": {
+      "parent": 15,
+      "status": "open",
+      "action": "optimize"
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "optimize"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "optimize"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "23": {
+      "parent": 22,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "RMS 0,0504 ≤ 0,0714 bei Feldklasse 5 erreicht; weitere Strukturänderungen würden das Ergebnis mit zwei verbleibenden Aktionen riskieren. Mechanische Fehler (Randdicke, Halbkugel) sind als offener Punkt für die Fertigungsvorbereitung markiert."
+    }
+  },
+  "next_id": 24,
+  "decisions": 11
+}

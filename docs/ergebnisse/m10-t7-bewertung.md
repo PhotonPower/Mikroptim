@@ -10,6 +10,8 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **M10-T7d (Abschnitt 12):** E14 behoben (`free_gaps` gibt Spalte mit Geisterplatten nicht mehr frei), je drei Claude-Läufe pro Modell und Benchmark. **B1 erreichen alle drei Modelle in 9 von 9 Läufen** (RMS-Median Opus 0,0097, Haiku 0,0112, Sonnet 0,0130; Regel 0,0154). B2/B3 erreicht keiner; auf B2 ist Opus vorn (Median 0,678, bester 0,783). Die Regel V3RS ändert sich mit dem Fix über einen anderen Pfad durch ihre Stufen: B2 0,790 → 0,453, B3 Ziel → 0,600 (neue Referenz, alte Werte daneben). Kosten 7,17 $, kumuliert 19,80 $.
 
+**M10-T7e (Abschnitt 13):** Operator A senkt im kurzen Plattenspalt die Schranke der Teilstücke (Plattenspalte wieder frei), E19 mit zweitem Versuch nach `optimize`, gestörte Starts für die Regel, `insert_module` mit Standardglas und angehobener Dicke. Fehler der Modelle 108 → 11 von 272 bzw. 400 Aktionen. **Erstmals B2 am Ziel (Haiku, NA 0,950, RMS 0,037)**, B3 Opus 2/3 und Haiku 1/3. Die Regel V3RS erreicht ungestört wieder B2 0,790 und B3, mit fünf gestörten Starts aber nur B1 (5/5), B2 Median 0,458, B3 Median 0,410. Kosten 4,02 $ (kumuliert 23,82 $).
+
 **Stand M10-T7: abgeschlossen bis auf V4 (Mensch) und B4 (private Systeme).** Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
 
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
@@ -567,3 +569,91 @@ python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --archiv --tabelle
 ```
 
 Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7d/<B>_<Variante> <ziel>`).
+
+## 13. M10-T7e: Werkzeugverbesserungen und Nachmessung
+
+Freigabe Maintainer 2026-11-20: die vier Fragen aus 12.5 umsetzen und kurz nachmessen. Einstellungen wie in Abschnitt 12 (`image_infinite`, `--effort medium`, ohne `strict`, 12 Entscheidungen, Rückfall auf die Regel, System-Prompt unverändert). Ergebnisse, Protokolle und beste Systeme unter [`m10-t7e/`](m10-t7e/), Kürzel `LMRS_<modell>_w<N>` und `V3RS_s<k>` (gestörter Start k). Bis zu acht Läufe liefen gleichzeitig auf der CPU; die Zeiten sind nur Orientierung. Code-Stand: `main` ef4829c plus dieser PR.
+
+### 13.1 Umsetzung
+
+| Nr. | Frage (12.5) | Umsetzung | Test |
+|---|---|---|---|
+| 1 | Operator A im kurzen Plattenspalt | Ist der Spalt T kürzer als 2 × untere Schranke + Dicke, setzt Operator A den Meniskus in die Mitte und gibt beiden Teilstücken eigene Dickeneinträge mit der Schranke max(min((T − d)/2, t_k), Plattenlage im Teilstück) – genau (T − d)/2, wenn der Optimierer den Spalt auf die Plattenlage geschoben hat; Warnung im Protokoll. Option `shrink_short_gap` (C++), `synth --shrink-short-gaps`; ohne Option bitgleich. `mikroptim.design` setzt sie immer, und `free_gaps` gibt Plattenspalte wieder frei (Schranke = Plattenlage, `include_ghost_plate_gaps: false` = Sperre aus M10-T7d) | `InsertionInit.MeniscusShortPlateGapLowersPieceBounds` (Merit-Invarianz ≤ 10⁻¹² relativ, Schranken, Platten), `test_free_gaps_releases_plate_gaps_without_e14` (B1: `free_gaps` + `optimize` + `synth_segment` → `goal_reached` mit Warnung; ohne Option kein Ziel), `test_optimize_widening_and_ghost_plate_gaps`, `test_free_gaps_skips_gap_thinner_than_plate` |
+| 2 | E19 | `synth_segment` mit `start_rejected` und „kein Bedarf“: erst `optimize` (`start_retry_cycles`, Standard 20), dann zweiter Versuch; zählt nur, wenn der Start angenommen wird. Bericht `start_retry`, Verlauf | `test_synth_segment_retries_after_start_rejected_e19` |
+| 3 | V3RS mit gestörten Starts | `tools/m10t7_bewertung.py --gestoerte-starts N --stoer-sigma σ --stoer-seed S`: Radien r(1 + σξ), Dicken und Arbeitsabstand t(1 + σξ) der Variablen der Datei, in den Schranken, nicht unter Plattenlagen, deterministisch; Zusammenfassung als Gruppe `<tag>_s*` | `test_perturbed_starts_within_bounds_and_summary` |
+| 4 | Modellfehler beim Einfügen | `insert_module` ohne `glasses`: erstes Katalogglas der Glasregel des Moduls, sonst (Paarregel, keine Regel) das hochbrechendste Katalogglas. Dicke unter ihrer Schranke (Arbeitsabstand nach der Schale): Einfügen ohne untere Dickenschranken, danach auf die Schranke anheben. Beides als `warnings` in Bericht und Verlauf | `test_insert_module_default_glass`, `test_insert_module_raises_thickness_to_bound` |
+
+**Während der Nachmessung gefunden und behoben:** (a) Die Dicken-Homotopie von `insert_module` ließ eine Geisterplatte im verkürzten Luftspalt stehen, `optimize` lehnte das System ab („ghost_plates[k].distance … zwischen 0 und der Dicke des Luftspalts“). Seit Plattenspalte wieder frei sind, trat das in der Regel auf zwei gestörten Starts von B2 auf (Null-Meniskus-Stufe). Jetzt rückt die Platte mit wie bei `set_stage` in `synth`; die beiden Läufe sind neu gerechnet (vorher 0,448 und 0,795, nachher 0,448 und 0,805). Test `test_thickness_homotopy_keeps_ghost_plates_in_gap`. (b) Die Bewertung brach mit `TypeError` ab, wenn die Gegenprobe (`eval`) für ein Tupel keinen RMS lieferte (Haiku B2 w3); RMS AP ist dann leer. Test `test_assess_tolerates_eval_tuple_without_value`. Haiku B2 w3 ist danach neu gerechnet (ein früherer Versuch kollidierte außerdem mit einem parallelen Lauf derselben Wiederholung und ist verworfen).
+
+### 13.2 Ergebnisse
+
+Ziel = NA ≥ Soll-NA, RMS ≤ 1/14 Welle, keine versagten Strahlen. Median über die Läufe, in Klammern die Spanne. „vorher“ = Abschnitt 12.2 (#112).
+
+| Bench. | Variante | Ziel vorher | Ziel jetzt | NA Median vorher | NA Median jetzt (Spanne) | RMS Median jetzt (Spanne) | Elemente jetzt | Kosten/Lauf [$] |
+|---|---|---|---|---|---|---|---|---|
+| B1 | Regel V3RS | ja | ja | 0,600 | 0,600 | 0,0154 | 4 | – |
+| B1 | Regel V3RS, 5 gestörte Starts | – | **5/5** | – | 0,600 (0,600–0,600) | 0,0155 (0,0152–0,0168) | 4 | – |
+| B1 | Haiku 5.5 | 3/3 | **3/3** | 0,600 | 0,600 (0,600–0,600) | 0,0110 (0,0061–0,0138) | 4 (3–5) | 0,01 |
+| B2 | Regel V3RS | nein | nein | 0,453 | **0,790** | 0,0907 | 4 | – |
+| B2 | Regel V3RS, 5 gestörte Starts | – | 0/5 | – | 0,458 (0,448–0,828) | 0,0808 | 5 (4–5) | – |
+| B2 | Haiku 5.5 | 0/3 | **1/3** | 0,453 | **0,798** (0,353–0,950) | 0,0370 (0,0356–0,0441) | 6 (5–7) | 0,02 |
+| B2 | Opus 5.5 | 0/3 | 0/3 | 0,678 | **0,945** (0,628–0,950) | 0,0830 (0,0755–0,0894) | 6 | 0,64 |
+| B3 | Regel V3RS | nein (0,600) | **ja** | 0,600 | 0,850 | 0,0595 | 4 | – |
+| B3 | Regel V3RS, 5 gestörte Starts | – | 0/5 | – | 0,410 (0,405–0,668) | 0,0822 | 7 (5–7) | – |
+| B3 | Haiku 5.5 | 0/3 | **1/3** | 0,445 | **0,850** (0,850–0,850) | 0,0764 (0,0504–0,0794) | 7 (7–10) | 0,02 |
+| B3 | Opus 5.5 | 0/3 | **2/3** | 0,375 | **0,850** (0,355–0,850) | 0,0445 (0,0439–0,0456) | 6 (3–6) | 0,64 |
+
+Einzelläufe (NA / RMS / Elemente / erster Schritt):
+
+| Bench. | Variante | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| B1 | Haiku w | **0,600** / 0,0138 / 3 / öffnen | **0,600** / 0,0061 / 4 / öffnen | **0,600** / 0,0110 / 5 / `optimize` | | |
+| B2 | Haiku w | 0,798 / 0,0356 / 5 / `free_gaps` | **0,950** / 0,0370 / 7 / `free_gaps` | 0,353 / 0,0441 / 6 / öffnen | | |
+| B2 | Opus w | 0,950 / 0,0755 / 6 / öffnen | 0,628 / 0,0894 / 6 / öffnen | 0,945 / 0,0830 / 6 / öffnen | | |
+| B3 | Haiku w | **0,850** / 0,0504 / 7 / `insert_module` | 0,850 / 0,0794 / 7 / öffnen | 0,850 / 0,0764 / 10 / öffnen | | |
+| B3 | Opus w | 0,355 / 0,0439 / 6 / `free_gaps` | **0,850** / 0,0445 / 3 / `set_constraint` | **0,850** / 0,0456 / 6 / öffnen | | |
+| B2 | V3RS s | 0,448 / 0,0799 / 5 | 0,453 / 0,0808 / 4 | 0,458 / 0,0789 / 4 | 0,805 / 0,0908 / 5 | 0,828 / 0,0918 / 5 |
+| B3 | V3RS s | 0,405 / 0,0822 / 5 | 0,665 / 0,0910 / 7 | 0,410 / 0,0727 / 7 | 0,668 / 0,0917 / 6 | 0,410 / 0,0734 / 7 |
+
+B1 mit gestörten Starts: alle fünf am Ziel, RMS 0,0152–0,0168, 4 Elemente.
+
+**Kosten dieser Runde** (Kostendatei `m10-t7e-arbeit/claude_cost.json`, Obergrenze 50 $): **4,02 $** in 223 Anfragen – Opus 3,84 $ (93), Haiku 0,18 $ (130), einschließlich der verworfenen Versuche von Haiku B2 w3. **Kumuliert: 23,82 $** von 200 $ Gesamtfreigabe.
+
+### 13.3 Wirkung der Änderungen
+
+- **Fehler der Modelle beim Einfügen fast verschwunden.** In den 15 vergleichbaren Claude-Läufen (Haiku B1–B3, Opus B2–B3) scheiterten vorher 108 von 272 Aktionen (51 `insert_module` unter der Schranke, 39 ohne `glasses`), jetzt 11 von 400 (6 `set_constraint`, 3 Schalen mit negativem Arbeitsabstand, 1 leerer Glasfilter, 1 `start_from_skeleton`). Statt der Fehler stehen 29 angehobene Dicken und 13 Standardgläser als Warnungen in den Berichten. Die Modelle nutzen ihre 12 Entscheidungen damit für den Entwurf: auf B2/B3 entstehen Systeme mit 6–10 Elementen (Median 6–7), vorher 3–6 (Median 3–5).
+- **Kurzer Plattenspalt** (Frage 1): 12 Warnungen in 7 Claude-Läufen, also hätte Operator A dort vorher abgelehnt (E14 in anderer Form). In der Regel trat er nicht auf (sie öffnet vor `free_gaps`).
+- **E19** (Frage 2): Der zweite Versuch lief achtmal in vier Läufen; einmal nahm `synth` den Start danach an (Haiku B3 w2), siebenmal nicht (fünfmal in Haiku B2 w3, der bei NA 0,353 blieb). 20 LM-Zyklen auf den Variablen der Datei reichen meist nicht; der Startpunkt liegt dann nicht knapp, sondern strukturell über F_max. Die Option bleibt (sie kostet nur Rechenzeit und ist abschaltbar).
+- **Regel V3RS**: Mit wieder freien Plattenspalten nimmt die Regel ihren alten Pfad (B2 0,790, B3 Ziel – dieselben Zahlen wie vor M10-T7d, Abschnitt 11.1). **Mit gestörten Starts (σ = 2 %) zerfällt das:** B1 bleibt 5/5, aber B2 0/5 mit Median 0,458 (zwei Starts bei 0,81–0,83, drei bei 0,45), B3 0/5 mit Median 0,410 (keiner über 0,67). Der ungestörte Start ist für B2/B3 ein günstiger Pfad, nicht typisch. Das bestätigt 12.4: die Regel ist stark pfadabhängig, und ihre Referenz sollte der Median über gestörte Starts sein, nicht ein Einzellauf.
+
+### 13.4 Rangfolge und Folgerungen
+
+- **B1:** Regel 5/5 (gestört) und Haiku 3/3; RMS-Median Haiku 0,0110 gegen Regel 0,0155.
+- **B2:** Erstmals ein Ziel-Treffer auf B2: **Haiku w2 mit NA 0,950 und RMS 0,0370** (7 Elemente). Opus erreicht in zwei von drei Läufen NA 0,945–0,950, aber mit RMS 0,076–0,083 knapp über 1/14 Welle. Median NA: Opus 0,945 > Haiku 0,798 > Regel 0,458 (gestört).
+- **B3:** Opus 2/3, Haiku 1/3 am Ziel (vorher 0/9 Modellläufe in Abschnitt 12), alle sechs Läufe bis auf einen bei NA 0,850. Regel gestört 0/5.
+- **Insgesamt:** Gegen die Regel mit gestörten Starts sind beide Modelle auf B2 und B3 deutlich besser (Median NA 0,80–0,95 gegen 0,41–0,46). Die größte Einzelwirkung hatten nach den Zahlen die robusten Einfügeoperationen (Frage 4) und die freien Plattenspalte (Frage 1); E19 half wenig. Haiku kostet weiter etwa 1/30 von Opus.
+
+**Offen und Fragen an den Maintainer:**
+
+1. **Referenz der Regel:** künftig V3RS als Median über fünf gestörte Starts (σ = 2 %) statt des Einzellaufs? Der Einzellauf liegt auf B2/B3 am oberen Rand der Streuung.
+2. **E19:** Der zweite Versuch nach 20 Zyklen wirkt selten. Mehr Zyklen, erweiterte Variablen (`curvatures_and_gaps`) im zweiten Versuch, oder eine weichere Annahmeschwelle nach Strukturänderungen?
+3. Die drei Schalen mit negativem Arbeitsabstand nach dem Nachfokussieren (`insert_aplanatic_shell`) sind kein Schrankenfall; dafür müsste `insert_module` die Dicke der Schale verkleinern. Gewünscht?
+4. Weiter offen in M10-T7: V4 (Mensch, mindestens B2) und B4 (private Patentsysteme, nur lokal).
+
+### 13.5 Reproduktion
+
+```bash
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --varianten V3RS
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --varianten V3RS \
+    --gestoerte-starts 5 --stoer-sigma 0.02
+KOSTEN=docs/ergebnisse/m10-t7e-arbeit/claude_cost.json
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --benchmarks B1,B2,B3 --varianten LM \
+    --decider claude --model claude-haiku-5-5 --effort medium --max-usd 50 --cost-file $KOSTEN \
+    --wiederholung 1-3
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --benchmarks B2,B3 --varianten LM \
+    --decider claude --model claude-opus-5-5 --effort medium --max-usd 50 --cost-file $KOSTEN \
+    --wiederholung 1-3
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --archiv --zusammenfassung
+```
+
+Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7e/<B>_<Variante> <ziel>`). Eine Wiederholung nicht in zwei Prozessen gleichzeitig rechnen: Das Skript legt die Sitzung im Arbeitsverzeichnis neu an und überschreibt die des anderen Prozesses.
