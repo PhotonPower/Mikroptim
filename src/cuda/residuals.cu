@@ -288,10 +288,11 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
     const std::size_t static_bytes = df ? residuals_static_shared<df64>(options.extrema)
                                         : residuals_static_shared<double>(options.extrema);
     const bool transforms = view.decenter_tilt != nullptr; // nicht koaxial (M8-T3)
-    const std::vector<TuplePack> packs = make_tuple_packs(
-        layout, view.shape, options.pack_rays, 0,
-        detail::kBlockMaxSharedBytes - std::min(static_bytes, detail::kBlockMaxSharedBytes),
-        transforms);
+    const std::size_t budget =
+        detail::kBlockMaxSharedBytes - std::min(static_bytes, detail::kBlockMaxSharedBytes);
+    const std::vector<TuplePack> packs =
+        make_tuple_packs(layout, view.shape, options.pack_rays, 0, budget, transforms);
+    check_tuple_packs(packs, layout, view.shape, 0, budget, transforms); // Absicherung, s. dort
     const std::size_t dynamic = pack_dynamic_bytes(packs, view.shape, 0, transforms);
     const auto P = static_cast<int>(packs.size());
     // Platz für F · L Pakete (höchstens so viele), damit der Puffer zur Abschätzung der
@@ -351,7 +352,10 @@ void DeviceResiduals::run(const DeviceSystemBatch& batch, const ResidualLayout& 
             fin.out = region_ptr<double>(buffer_, out.surface_max);
             detail::launch_extrema_finalize(fin);
         }
-        MKO_CUDA_CHECK(cudaDeviceSynchronize());
+        detail::synchronize_checked(
+            "Kernel RESIDUALS",
+            [&] { return detail::launch_context(view.shape, P, dynamic, options.extrema, df); },
+            __FILE__, __LINE__);
     }
 
     layout_ = out;

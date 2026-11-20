@@ -394,9 +394,11 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
                                     std::to_string(limit) + ")");
     }
     const bool transforms = view.decenter_tilt != nullptr; // nicht koaxial (M8-T3)
-    const std::vector<TuplePack> packs = make_tuple_packs(
-        layout, view.shape, options.pack_rays, bytes_per_ray(soft),
-        kMeritMaxSharedBytes - std::min(static_bytes, kMeritMaxSharedBytes), transforms);
+    const std::size_t budget = kMeritMaxSharedBytes - std::min(static_bytes, kMeritMaxSharedBytes);
+    const std::vector<TuplePack> packs = make_tuple_packs(layout, view.shape, options.pack_rays,
+                                                          bytes_per_ray(soft), budget, transforms);
+    // Absicherung vor dem Start (check_tuple_packs)
+    check_tuple_packs(packs, layout, view.shape, bytes_per_ray(soft), budget, transforms);
     const std::size_t dynamic =
         pack_dynamic_bytes(packs, view.shape, bytes_per_ray(soft), transforms);
     const auto P = static_cast<int>(packs.size());
@@ -473,7 +475,13 @@ void DeviceMerit::run(const DeviceSystemBatch& batch, const ResidualLayout& layo
             ext.out = region_ptr<double>(buffer_, out.surface_max);
             detail::launch_extrema_finalize(ext);
         }
-        MKO_CUDA_CHECK(cudaDeviceSynchronize());
+        detail::synchronize_checked(
+            "Kernel MERIT",
+            [&] {
+                return detail::launch_context(view.shape, P, dynamic, options.extrema,
+                                              options.precision == Precision::Df64);
+            },
+            __FILE__, __LINE__);
     }
 
     layout_ = out;

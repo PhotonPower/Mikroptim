@@ -30,6 +30,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <type_traits>
 
 namespace mko::cuda::detail {
@@ -450,6 +451,18 @@ inline void launch_extrema_finalize(const ExtremaFinalizeArgs<R>& a) {
     const auto grid = static_cast<unsigned>((n + kFinalizeThreads - 1) / kFinalizeThreads);
     extrema_finalize_kernel<R><<<grid, kFinalizeThreads>>>(a);
     MKO_CUDA_CHECK(cudaGetLastError());
+}
+
+// Kenngrößen eines Laufs RESIDUALS oder MERIT für Fehlermeldungen (synchronize_checked).
+inline std::string launch_context(const BatchShape& shape, int packs, std::size_t dynamic,
+                                  bool extrema, bool df64) {
+    return "V=" + std::to_string(shape.variants) + ", S=" + std::to_string(shape.surfaces) +
+           ", F=" + std::to_string(shape.fields) + ", L=" + std::to_string(shape.wavelengths) +
+           ", G=" + std::to_string(shape.ghost_plates) +
+           ", K=" + std::to_string(shape.ghost_terms) +
+           ", Pakete/Variante=" + std::to_string(packs) + ", dynamisches Shared Memory " +
+           std::to_string(dynamic) + " B, Extrema " + (extrema ? "ja" : "nein") + ", " +
+           (df64 ? "df64" : "FP64");
 }
 
 // Zeiger auf einen Bereich des Ausgabepuffers (nullptr für leere Bereiche).

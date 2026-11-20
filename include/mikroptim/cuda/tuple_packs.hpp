@@ -117,4 +117,88 @@ inline std::size_t pack_dynamic_bytes(const std::vector<TuplePack>& packs, const
     return bytes;
 }
 
+// Prüft die Pakete eines Laufs gegen Ablage und Form, bevor ein Kernel sie benutzt (Absicherung
+// nach dem nicht reproduzierten "illegal memory access" in M6-T10, docs/architektur.md,
+// "Kernel-Abbildung"): mindestens ein Paket; jedes Paket hat 1 … kMaxPackTuples Tupel; die Pakete
+// decken die Tupel 0 … F·L − 1 lückenlos und ohne Überlappung in aufsteigender Reihenfolge ab;
+// rays = Σ n_f der Tupel; first_row = offset(f0, l0); das Brechzahlenfenster
+// [first_wavelength, first_wavelength + wavelengths) liegt in [0, L) und enthält die
+// Wellenlängen aller Tupel; der Bedarf an dynamischem Shared Memory (pack_table_bytes plus
+// bytes_per_ray pro Strahl) ist höchstens dynamic_budget; shape passt zur Ablage (F, L).
+// Verletzungen wären Zugriffe außerhalb der Puffer im Kernel; sie werfen std::logic_error mit
+// Paketnummer und Befund (Programmierfehler, kein Eingabefehler).
+inline void check_tuple_packs(const std::vector<TuplePack>& packs, const ResidualLayout& layout,
+                              const BatchShape& shape, std::size_t bytes_per_ray,
+                              std::size_t dynamic_budget, bool transforms = false) {
+    const int F = layout.fields();
+    const int L = layout.wavelengths();
+    const auto fail = [](std::size_t i, const std::string& what) {
+        throw std::logic_error("check_tuple_packs: Paket " + std::to_string(i) + ": " + what);
+    };
+    if (shape.fields != F || shape.wavelengths != L) {
+        throw std::logic_error("check_tuple_packs: Form (" + std::to_string(shape.fields) +
+                               " Felder, " + std::to_string(shape.wavelengths) +
+                               " Wellenlängen) passt nicht zur Ablage (" + std::to_string(F) +
+                               ", " + std::to_string(L) + ")");
+    }
+    if (packs.empty()) {
+        throw std::logic_error("check_tuple_packs: keine Pakete");
+    }
+    int next = 0; // erwartetes erstes Tupel des nächsten Pakets
+    for (std::size_t i = 0; i < packs.size(); ++i) {
+        const TuplePack& p = packs[i];
+        if (p.tuples < 1 || p.tuples > kMaxPackTuples) {
+            fail(i, std::to_string(p.tuples) + " Tupel (erlaubt 1 … " +
+                        std::to_string(kMaxPackTuples) + ")");
+        }
+        if (p.first_tuple != next) {
+            fail(i, "erstes Tupel " + std::to_string(p.first_tuple) + ", erwartet " +
+                        std::to_string(next));
+        }
+        if (p.first_tuple + p.tuples > F * L) {
+            fail(i, "Tupel bis " + std::to_string(p.first_tuple + p.tuples - 1) +
+                        " außerhalb von 0 … " + std::to_string(F * L - 1));
+        }
+        if (p.wavelengths < 1 || p.first_wavelength < 0 || p.first_wavelength + p.wavelengths > L) {
+            fail(i, "Brechzahlenfenster [" + std::to_string(p.first_wavelength) + ", " +
+                        std::to_string(p.first_wavelength + p.wavelengths) +
+                        ") außerhalb von [0, " + std::to_string(L) + ")");
+        }
+        std::int64_t rays = 0;
+        for (int j = 0; j < p.tuples; ++j) {
+            const int t = p.first_tuple + j;
+            const int l = t % L;
+            if (l < p.first_wavelength || l >= p.first_wavelength + p.wavelengths) {
+                fail(i, "Wellenlänge " + std::to_string(l) + " von Tupel " + std::to_string(t) +
+                            " nicht im Brechzahlenfenster");
+            }
+            rays += layout.samples(t / L);
+        }
+        if (rays != p.rays) {
+            fail(i, std::to_string(p.rays) + " Strahlen, die Tupel haben " + std::to_string(rays));
+        }
+        const std::int64_t row = layout.offset(p.first_tuple / L, p.first_tuple % L);
+        if (p.first_row != row) {
+            fail(i,
+                 "erste Zeile " + std::to_string(p.first_row) + ", Ablage " + std::to_string(row));
+        }
+        if (p.first_row + p.rays > layout.rays_per_variant()) {
+            fail(i, "Zeilen bis " + std::to_string(p.first_row + p.rays) + " über " +
+                        std::to_string(layout.rays_per_variant()) + " Strahlen pro Variante");
+        }
+        const std::size_t need = pack_table_bytes(shape.surfaces, shape.ghost_plates,
+                                                  shape.ghost_terms, p.wavelengths, transforms) +
+                                 static_cast<std::size_t>(p.rays) * bytes_per_ray;
+        if (need > dynamic_budget) {
+            fail(i, std::to_string(need) + " Byte dynamisches Shared Memory über dem Budget " +
+                        std::to_string(dynamic_budget));
+        }
+        next = p.first_tuple + p.tuples;
+    }
+    if (next != F * L) {
+        throw std::logic_error("check_tuple_packs: Pakete decken nur " + std::to_string(next) +
+                               " von " + std::to_string(F * L) + " Tupeln ab");
+    }
+}
+
 } // namespace mko::cuda

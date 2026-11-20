@@ -339,6 +339,40 @@ TEST(CudaFdJacobian, TranchesMatchSingleTranche) {
     EXPECT_TRUE(identical(a.download(), b.download()));
 }
 
+// Absicherung nach M6-T10 (einmal "an illegal memory access" in src/cuda/residuals.cu bei 16
+// Glaselementen und 6 Geisterplatten, nicht reproduziert; docs/hardware.md, "Fehlersuche auf dem
+// Gerät"): das archivierte System dieses Laufs (33 Dateiflächen, 6 Geisterplatten à 10
+// Koeffizienten, 123 Variablen, 3 Felder) in einer und in drei Tranchen bitgleich, die
+// Tranchengrenzen fallen dabei zwischen die Läufe (Differenzkernel pro Tranche). Unter
+// compute-sanitizer (memcheck, racecheck, initcheck, synccheck) ohne Befund.
+TEST(CudaFdJacobian, ManySurfacesAndGhostPlatesInTranches) {
+    MKO_REQUIRE_GPU();
+    const FdProblem p = mko::test::make_fd_problem(mko::load_system(
+        MKO_SOURCE_DIR "/docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_start.json"));
+    const mko::BatchShape shape = p.base.shape();
+    EXPECT_EQ(shape.ghost_plates, 6);
+    EXPECT_EQ(shape.ghost_terms, 10);
+    EXPECT_GE(shape.surfaces, 39);
+    ASSERT_EQ(p.set.size(), 123);
+    const std::vector<double> x0 = run_vectors(p, 3);
+    const FdJacobianOptions opt;
+    const int n = mko::fd_variant_count(FdScheme::Central, p.set.size());
+    const ResidualLayout layout(p.base.topology(), opt.quadrature);
+    TraceEngine big(0);
+    TraceEngine small(0, limited_to(run_bytes(p.base.topology(), n + n / 2, layout)));
+    DeviceFdJacobian a;
+    a.compute(big, p.set, p.base, x0, opt);
+    EXPECT_EQ(a.run_info().tranches, 1);
+    DeviceFdJacobian b;
+    b.compute(small, p.set, p.base, x0, opt);
+    EXPECT_EQ(b.run_info().tranches, 3);
+    const FdJacobian ja = a.download();
+    EXPECT_TRUE(identical(ja, b.download()));
+    // Endliche Residuen am Startpunkt (der Lauf hat wirklich gerechnet)
+    EXPECT_TRUE(std::all_of(ja.residuals.begin(), ja.residuals.end(),
+                            [](double r) { return std::isfinite(r); }));
+}
+
 // Gerätepfad gegen die Differenzbildung auf dem Host aus den Residuen der Engine (run mit
 // Download): Bei allen vier Schablonen (Schranken) und Zusatzresiduen sind zentrale und
 // gekürzte Spalten bitgleich ((r_a − r_b)/(d_a − d_b) lässt keine FMA-Kontraktion zu),
