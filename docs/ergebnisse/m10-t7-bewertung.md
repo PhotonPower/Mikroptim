@@ -4,6 +4,8 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **Fortschreibung M10-T7b (Abschnitt 9):** Bewertung mit den Operatoren aus M10-T4 wiederholt (Stand `main` 9cc89a7 plus PR), Regel V3 mit Stufen bei Stillstand, Befunde E6–E8 behoben. Ergebnis: **B3 erreicht die Regel mit der Referenzsphäre nach ADR-0017 (V3RS): NA 0,85, RMS 0,060, 4 Elemente** – der erste Lauf, der B3 löst; mit alter Sphäre kommt V3 bis NA 0,833 (alt 0,448). **B2: V3RS bis NA 0,79** (alte Sphäre 0,41; Ziel 0,95). Entscheidende Schritte: Geisterplatten-Wörterbuch und Null-Meniskus mit Dicken-Homotopie an der Stelle größter Randstrahlhöhe. Kein lokales Modell ist besser als die Regel; gpt-oss:20b erreichte B1 nur auf dem Zwischenstand 8d3aa3c. Claude-Läufe weiter ausstehend (kein `ANTHROPIC_API_KEY`). Die Abschnitte 1–8 beschreiben den Stand von M10-T7 (717a8ff).
 
+**Ab M10-T7c (Entscheidung Maintainer 2026-11-20):** Alle Benchmarks rechnen mit `reference_sphere: image_infinite` (ADR-0017); **V3RS ist die Referenz der Regel.** Neue Läufe schreibt das Skript nach `docs/ergebnisse/m10-t7c`; die Varianten `V0`, `V1`, `V3`, `V3AL`, `LM` liefern dort die Kürzel `V0RS`, `V1RS`, `V3RS`, `V3ALRS`, `LMRS_<modell>`, die alte Konvention bleibt als `<V>-alt` abrufbar (Kürzel wie in diesem Bericht). Die Zahlen und Dateien dieses Berichts (Abschnitte 1–9) bleiben unverändert; Einzelheiten in [entwurfssteuerung.md, Abschnitt 8](../entwurfssteuerung.md#8-bewertung) und Abschnitt 10 unten.
+
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
 
 **Kurzfassung.**
@@ -163,7 +165,7 @@ python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:
 python tools/m10t7_bewertung.py --neu-bewerten --archiv --tabelle
 ```
 
-Seit M10-T7b schreibt das Skript standardmäßig nach `docs/ergebnisse/m10-t7b` (Abschnitt 9.5); für den Stand von M10-T7 `--out docs/ergebnisse/m10-t7`. Vorhandene Ergebnisse werden übersprungen; zum Neurechnen die Datei `<out>/<B>_<Variante>.json` löschen. Das Arbeitsverzeichnis (`--work`, Standard `docs/ergebnisse/m10-t7-arbeit`) gehört nicht ins Repository.
+Seit M10-T7b schreibt das Skript standardmäßig nach `docs/ergebnisse/m10-t7b` (Abschnitt 9.5), seit M10-T7c nach `docs/ergebnisse/m10-t7c` mit `image_infinite` (Abschnitt 10); für den Stand von M10-T7 `--out docs/ergebnisse/m10-t7 --referenzsphaere last_surface --num-ctx 32768`. Vorhandene Ergebnisse werden übersprungen; zum Neurechnen die Datei `<out>/<B>_<Variante>.json` löschen. Das Arbeitsverzeichnis (`--work`, Standard `docs/ergebnisse/m10-t7-arbeit`) gehört nicht ins Repository.
 
 ## 9. M10-T7b: Wiederholung mit den Operatoren aus M10-T4
 
@@ -301,12 +303,37 @@ Weitere Kennzahlen der neuen Läufe (vollständige Tabelle: `python tools/m10t7_
 
 ### 9.5 Reproduktion
 
+Seit M10-T7c (Abschnitt 10) sind Standardverzeichnis und Standardkonvention andere; für den Stand dieses Abschnitts:
+
 ```bash
-python tools/m10t7_bewertung.py --varianten V0,V1,V3,V3AL,V0RS,V3RS             # --out Standard docs/ergebnisse/m10-t7b
-python tools/m10t7_bewertung.py --varianten LM --decider ollama --model qwen3:14b --no-think
-python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:20b --think
-python tools/m10t7_bewertung.py --archiv --tabelle
-python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7                # alt gegen neu
+O=docs/ergebnisse/m10-t7b
+python tools/m10t7_bewertung.py --out $O --varianten V0-alt,V1-alt,V3-alt,V3AL-alt,V0RS,V3RS
+python tools/m10t7_bewertung.py --out $O --varianten LM-alt --decider ollama --model qwen3:14b --no-think --num-ctx 32768
+python tools/m10t7_bewertung.py --out $O --varianten LM-alt --decider ollama --model gpt-oss:20b --think --num-ctx 32768
+python tools/m10t7_bewertung.py --out $O --archiv --tabelle
+python tools/m10t7_bewertung.py --out $O --vergleich docs/ergebnisse/m10-t7       # alt gegen neu
 ```
 
 Jede Sitzung lässt sich ohne Modell wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7b/<B>_<Variante> <ziel>`; geprüft an B1 V3AL: bestes System bitgleich).
+
+## 10. M10-T7c: Benchmarks mit `image_infinite`, V3RS als Referenz
+
+**Entscheidung Maintainer 2026-11-20:** Die Benchmarks der Entwurfssteuerung rechnen ab jetzt mit `reference_sphere: image_infinite` (ADR-0017, Empfehlung aus Abschnitt 9.3); **V3RS ist die neue Referenz der Regel.** Umgesetzt in `tools/m10t7_bewertung.py`, ohne neue Läufe:
+
+- Standard `--referenzsphaere image_infinite` für alle Varianten; das Skript setzt das Feld in der Startkopie (`start_<B>_rs.json` im Arbeitsverzeichnis). Startsysteme unter `data/systems/` und die Ergebnisdateien unter `m10-t7/`, `m10-t7b/` bleiben unverändert.
+- Ergebnis-Kürzel nach Konvention: `V0` → `V0RS`, `V1` → `V1RS`, `V3` → `V3RS`, `V3AL` → `V3ALRS`, `LM` → `LMRS_<modell>`. Die alte Konvention (`last_surface`, Startdatei ohne Feld, bitgleich zu M10-T7b) bleibt als `V0-alt`, `V3-alt`, `LM-alt`, … mit den Kürzeln dieses Berichts (`V0`, `V3`, `LM_<modell>`) abrufbar, ebenso global mit `--referenzsphaere last_surface`; `V0RS`/`V3RS` sind weiter gültige Namen. Jede neue Ergebnisdatei nennt die Konvention im Feld `reference_sphere`; die Tabelle (`--tabelle`) nennt V3RS als Referenz der Regel.
+- Standard-Ergebnisverzeichnis `docs/ergebnisse/m10-t7c` (Arbeitsverzeichnis `m10-t7c-arbeit`, nicht im Repository); `--vergleich docs/ergebnisse/m10-t7b` stellt gleiche Kürzel gegenüber (z. B. V3RS gegen V3RS aus Abschnitt 9).
+- **Ollama-Kontext:** `--num-ctx` (Standard 65.536) statt fest 32.768; begrenzt auf das Modellmaximum laut `/api/show` (`OllamaDecider.model_context_length`), `0` = Maximum. Installiert (geprüft 2026-11-20): gpt-oss:20b 131.072 Tokens, qwen3:14b 40.960 Tokens – qwen3 läuft also mit 40.960, gpt-oss mit 65.536. Hintergrund: Der Abbruch von gpt-oss:20b auf B3 mit HTTP 500 (Abschnitt 9.2, E12) überschritt vermutlich 32.768 Tokens.
+
+**Neue Läufe** (Claude-Läufe aus Abschnitt 6 auf diesem Stand):
+
+```bash
+python tools/m10t7_bewertung.py --varianten V0,V1,V3,V3AL                  # V0RS … V3ALRS nach m10-t7c
+KOSTEN=docs/ergebnisse/m10-t7c-arbeit/claude_cost.json
+python tools/m10t7_bewertung.py --benchmarks B1,B2,B3 --varianten LM --decider claude \
+    --model claude-sonnet-5-5 --effort medium --max-usd 20 --cost-file $KOSTEN
+python tools/m10t7_bewertung.py --benchmarks B1,B2,B3 --varianten LM --decider claude \
+    --model claude-opus-5-5 --effort medium --max-usd 20 --cost-file $KOSTEN
+python tools/m10t7_bewertung.py --archiv --tabelle
+python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7b
+```

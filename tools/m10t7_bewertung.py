@@ -22,11 +22,23 @@ Varianten:
     V3  regelbasierte Strategie: mikroptim.design mit RuleDecider (ohne Modell); seit M10-T7b
         mit Stufen bei Stillstand (Spalte, aplanatische Schale, Wörterbuch, Null-Meniskus)
     V3AL wie V3, Homotopie-Abschnitte mit --augmented-lagrangian und --sine-condition (M10-T7b)
-    V0RS, V3RS  wie V0 bzw. V3 mit ``reference_sphere: image_infinite`` im Start (ADR-0017;
-        Bewertung mit trace dann in dieser Konvention, RMS AP wie immer durch die Austrittspupille)
     LM  Sprachmodell:            mikroptim.design mit OllamaDecider oder ClaudeDecider
                                  (--decider ollama|claude, --model, Rückfall auf die Regel)
     V4  Mensch:                  mikroptim.design mit HumanDecider (Eingabe auf der Konsole)
+
+Referenzsphäre (Entscheidung Maintainer 2026-11-20, M10-T7c): Alle Varianten rechnen
+standardmäßig mit ``reference_sphere: image_infinite`` im Start (ADR-0017; ``--referenzsphaere``
+wählt eine andere Art). Die Startsysteme unter ``data/systems/`` bleiben unverändert, das Feld
+setzt das Skript in der Kopie im Arbeitsverzeichnis. Das Ergebnis-Kürzel trägt die Konvention:
+``RS`` = ``image_infinite``, ``RSAP`` = ``image_exit_pupil``, ohne Zusatz = alte Konvention
+``last_surface`` (Startdatei ohne Feld, bitgleich zu M10-T7/M10-T7b). Also:
+
+    V3       → Ergebnis ``V3RS`` (Referenz der Regel), entsprechend V0RS, V1RS, V3ALRS, LMRS_<modell>
+    V3-alt   → Ergebnis ``V3`` (alte Konvention wie M10-T7b), entsprechend V0-alt, LM-alt, …
+    V0RS, V3RS  wie V0 bzw. V3 mit image_infinite unabhängig von --referenzsphaere (Namen aus
+        M10-T7b)
+
+Bewertung mit trace in der Konvention des Starts, RMS AP wie immer durch die Austrittspupille.
 
 Alle Läufe rechnen auf der CPU im Prozess (``mikroptim.run_cli``), damit Trace und lokales
 Sprachmodell nicht um die GPU konkurrieren. Ergebnisse pro Lauf als JSON unter --out
@@ -46,7 +58,11 @@ Beispiele:
     python tools/m10t7_bewertung.py --varianten LM --decider claude --model claude-opus-5-5 --max-usd 20
     python tools/m10t7_bewertung.py --tabelle
     python tools/m10t7_bewertung.py --benchmarks B4 --varianten V0,LM --decider ollama --model qwen3:14b
-    python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7   # alt gegen neu
+    python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7b  # alt gegen neu
+    python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7b --varianten V0-alt,V3-alt,V3RS
+
+Ollama: ``--num-ctx`` (Standard 65536) setzt die Kontextlänge; größer als das Maximum des
+Modells (``/api/show``) wird auf das Maximum begrenzt, 0 heißt Modellmaximum.
 """
 
 from __future__ import annotations
@@ -72,6 +88,14 @@ RMS_TARGET = 1.0 / 14.0
 V3AL_SYNTH = {"augmented_lagrangian": 5, "sine_condition": 13.1}
 #: relative Toleranz der NA (die Brennweite weicht über die Nebenbedingung leicht vom Soll ab)
 NA_TOLERANCE = 1e-3
+#: Referenzsphäre der Benchmarks (Entscheidung Maintainer 2026-11-20) und Kürzel im Ergebnisnamen
+DEFAULT_REFERENCE_SPHERE = "image_infinite"
+REFERENCE_SUFFIX = {"image_infinite": "RS", "image_exit_pupil": "RSAP", "last_surface": ""}
+#: Referenz der Regel in Bericht und Tabelle
+RULE_REFERENCE = "V3RS"
+VARIANTS = ("V0", "V1", "V2", "V3", "V3AL", "LM", "V4")
+#: Kontextlänge für Ollama (gpt-oss:20b brach in M10-T7b mit 32768 ab, E12)
+DEFAULT_NUM_CTX = 65536
 
 _TUBE = {"tube_focal_length": 164.5, "parfocal_max": 45.0}
 BENCHMARKS = {
@@ -210,7 +234,8 @@ def rank_key(a):
 
 def prepare_start(bench, work_root, name) -> dict:
     """Startsystem des Benchmarks im Arbeitsverzeichnis: Glaskataloge absolut, Feldwinkel mal
-    ``field_scale`` (B2, B3)."""
+    ``field_scale`` (B2, B3), ``reference_sphere`` aus ``bench`` (ADR-0017; bei
+    ``last_surface`` oder ohne Angabe bleibt die Datei ohne Feld, wie in M10-T7/M10-T7b)."""
     from mikroptim.design.files import read_system, resolve_catalogs, write_system
 
     data = resolve_catalogs(read_system(bench["start"]), pathlib.Path(bench["start"]).parent)
@@ -219,8 +244,9 @@ def prepare_start(bench, work_root, name) -> dict:
         src = data["source"]
         src["field_angles_deg"] = [a * k for a in src.get("field_angles_deg", [0.0])]
         data["name"] = f"{data.get('name', '')} (Feldwinkel × {k:g})"
-    if bench.get("reference_sphere"):  # ADR-0017 (Varianten …RS)
-        data["reference_sphere"] = bench["reference_sphere"]
+    rs = bench.get("reference_sphere")
+    if rs and rs != "last_surface":  # ADR-0017; last_surface: Datei ohne Feld wie M10-T7b
+        data["reference_sphere"] = rs
     path = pathlib.Path(work_root) / f"start_{name}.json"
     # atomar ersetzen: parallele Läufe desselben Benchmarks lasen sonst eine halb geschriebene
     # Datei (M10-T7b)
@@ -330,23 +356,60 @@ def usage_summary(log) -> dict:
 # --- Ablauf -------------------------------------------------------------------------------------
 
 
+def resolve_num_ctx(requested: int, model_max: int | None) -> int | None:
+    """Kontextlänge für Ollama: ``requested`` begrenzt auf das Modellmaximum; 0 heißt
+    Modellmaximum (``None``, wenn das Maximum unbekannt ist: dann gilt der Standard des
+    Entscheiders)."""
+    if requested <= 0:
+        return model_max
+    return min(requested, model_max) if model_max else requested
+
+
 def make_llm(args, ledger):
     from mikroptim import design
 
     if args.decider == "ollama":
-        return design.OllamaDecider(args.model, host=args.host, think=args.think,
-                                    keep_alive=args.keep_alive)
+        d = design.OllamaDecider(args.model, host=args.host, think=args.think,
+                                 keep_alive=args.keep_alive)
+        model_max = d.model_context_length()
+        n = resolve_num_ctx(args.num_ctx, model_max)
+        if n is not None:
+            d.options["num_ctx"] = n
+        print(f"Ollama {args.model}: num_ctx {d.options.get('num_ctx')} (Modellmaximum "
+              f"{model_max if model_max else 'unbekannt'})", flush=True)
+        return d
     return design.ClaudeDecider(args.model or "claude-opus-5-5", effort=args.effort,
                                 ledger=ledger, strict=not args.no_strict)
 
 
+def variant_config(variant, reference_sphere=DEFAULT_REFERENCE_SPHERE) -> tuple[str, str]:
+    """Variante der Kommandozeile → (Grundvariante, Referenzsphäre): ``<V>-alt`` rechnet mit der
+    alten Konvention ``last_surface``, ``V0RS``/``V3RS`` (Namen aus M10-T7b) immer mit
+    ``image_infinite``, sonst gilt ``reference_sphere`` (``--referenzsphaere``)."""
+    if variant.endswith("-alt"):
+        base, rs = variant[:-4], "last_surface"
+    elif variant in ("V0RS", "V3RS"):
+        base, rs = variant[:2], "image_infinite"
+    else:
+        base, rs = variant, reference_sphere
+    if base not in VARIANTS:
+        raise SystemExit(f"unbekannte Variante {variant}")
+    if rs not in REFERENCE_SUFFIX:
+        raise SystemExit(f"unbekannte Referenzsphäre {rs}")
+    return base, rs
+
+
 def tag_of(variant, args):
-    if variant != "LM":
-        return variant
+    """Ergebnis-Kürzel: Grundvariante plus Kürzel der Referenzsphäre (``V3RS``, ``V3`` für die
+    alte Konvention), bei LM zusätzlich das Modell (``LMRS_claude-opus-5-5``)."""
+    base, rs = variant_config(variant, getattr(args, "referenzsphaere", DEFAULT_REFERENCE_SPHERE))
+    tag = base + REFERENCE_SUFFIX[rs]
+    if base != "LM":
+        return tag
     model = args.model or "claude-opus-5-5"
     think = "" if args.decider != "ollama" or args.think is None else (
         "_think" if args.think else "_nothink")
-    return "LM_" + (model.replace(":", "-").replace("/", "-")) + think
+    return tag + "_" + (model.replace(":", "-").replace("/", "-")) + think
 
 
 def reassess(out) -> None:
@@ -408,11 +471,17 @@ def archive(out) -> None:
         p.write_text(json.dumps(r, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def main(argv=None) -> int:
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--benchmarks", default="B1,B2,B3")
-    ap.add_argument("--varianten", default="V0,V1,V3")
-    ap.add_argument("--out", default=str(ROOT / "docs" / "ergebnisse" / "m10-t7b"))
+    ap.add_argument("--varianten", default="V0,V1,V3",
+                    help="Varianten (V0, V1, V3, V3AL, LM, V4; <V>-alt = alte Konvention "
+                    "last_surface; V0RS/V3RS = image_infinite)")
+    ap.add_argument("--referenzsphaere", choices=list(REFERENCE_SUFFIX),
+                    default=DEFAULT_REFERENCE_SPHERE,
+                    help="reference_sphere der Starts (Standard image_infinite, Entscheidung "
+                    "Maintainer 2026-11-20; last_surface = Startdatei ohne Feld wie M10-T7b)")
+    ap.add_argument("--out", default=str(ROOT / "docs" / "ergebnisse" / "m10-t7c"))
     ap.add_argument("--work", default=None, help="Arbeitsverzeichnis der Läufe (Sitzungen, "
                     "Systeme); Standard: <out>/../<out>-arbeit (nicht im Repository)")
     ap.add_argument("--steps", type=int, default=None, help="Entscheidungen pro Sitzung")
@@ -423,6 +492,9 @@ def main(argv=None) -> int:
     th.add_argument("--think", dest="think", action="store_true", default=None)
     th.add_argument("--no-think", dest="think", action="store_false")
     ap.add_argument("--keep-alive", default="2m")
+    ap.add_argument("--num-ctx", type=int, default=DEFAULT_NUM_CTX,
+                    help="Ollama: Kontextlänge (begrenzt auf das Modellmaximum aus /api/show; "
+                    f"0 = Modellmaximum; Standard {DEFAULT_NUM_CTX})")
     ap.add_argument("--effort", default="medium")
     ap.add_argument("--max-usd", type=float, default=20.0)
     ap.add_argument("--no-strict", action="store_true",
@@ -436,7 +508,11 @@ def main(argv=None) -> int:
                     help="Protokolle und beste Systeme ins Ergebnisverzeichnis kopieren")
     ap.add_argument("--neu-bewerten", action="store_true",
                     help="vorhandene Ergebnisse mit den aktuellen Regeln neu bewerten")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv=None) -> int:
+    args = parser().parse_args(argv)
     out = pathlib.Path(args.out)
     work_root = pathlib.Path(args.work) if args.work else out.parent / f"{out.name}-arbeit"
     if args.neu_bewerten:
@@ -454,8 +530,11 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     from mikroptim import design
 
+    variants = args.varianten.split(",")
+    for v in variants:  # Tippfehler vor dem ersten Lauf melden
+        variant_config(v, args.referenzsphaere)
     ledger = None
-    if "LM" in args.varianten.split(",") and args.decider == "claude":
+    if any(variant_config(v)[0] == "LM" for v in variants) and args.decider == "claude":
         ledger = design.CostLedger(args.max_usd, args.cost_file or work_root / "claude_cost.json")
     llm = None
     try:
@@ -466,10 +545,10 @@ def main(argv=None) -> int:
             b_out = out / "private" if bench.get("private") else out
             b_work.mkdir(parents=True, exist_ok=True)
             b_out.mkdir(parents=True, exist_ok=True)
-            bench = prepare_start(bench, b_work, b)
-            for v in args.varianten.split(","):
+            for v in variants:
+                base, rs = variant_config(v, args.referenzsphaere)
                 tag = tag_of(v, args)
-                if bench.get("private") and v == "LM" and args.decider == "claude":
+                if bench.get("private") and base == "LM" and args.decider == "claude":
                     print(f"{b} {tag}: private Daten nur lokal (Ollama), übersprungen")
                     continue
                 res_path = b_out / f"{b}_{tag}.json"
@@ -478,37 +557,36 @@ def main(argv=None) -> int:
                     continue
                 work = b_work / b / tag
                 work.mkdir(parents=True, exist_ok=True)
-                steps = args.steps or bench["steps"]
+                # Startkopie pro Konvention (Namen wie M10-T7b: start_<B>.json alte Konvention,
+                # start_<B>_rs.json image_infinite)
+                start_name = b + ("_" + REFERENCE_SUFFIX[rs].lower() if REFERENCE_SUFFIX[rs] else "")
+                vb = prepare_start({**bench, "reference_sphere": rs}, b_work, start_name)
+                steps = args.steps or vb["steps"]
                 print(f"{b} {tag}: läuft …", flush=True)
-                if v == "V0":
-                    res = run_synth(bench, work)
-                elif v == "V1":
-                    res = run_synth(bench, work, beam=True)
-                elif v in ("V0RS", "V3RS"):
-                    # Referenzsphäre unabhängig von der letzten Fläche (ADR-0017)
-                    rs = prepare_start({**BENCHMARKS.get(b, bench), "reference_sphere":
-                                        "image_infinite"}, b_work, f"{b}_rs")
-                    res = (run_synth(rs, work) if v == "V0RS" else
-                           run_session(rs, work, design.RuleDecider(), None, steps))
-                elif v == "V3":
-                    res = run_session(bench, work, design.RuleDecider(), None, steps)
-                elif v == "V3AL":
-                    res = run_session(bench, work,
+                if base == "V0":
+                    res = run_synth(vb, work)
+                elif base == "V1":
+                    res = run_synth(vb, work, beam=True)
+                elif base == "V3":
+                    res = run_session(vb, work, design.RuleDecider(), None, steps)
+                elif base == "V3AL":
+                    res = run_session(vb, work,
                                       design.RuleDecider(synth_options=V3AL_SYNTH), None, steps)
-                elif v == "LM":
+                elif base == "LM":
                     if args.decider == "ollama" and not args.model:
                         raise SystemExit("--model fehlt")
                     llm = llm or make_llm(args, ledger)
-                    res = run_session(bench, work, llm, design.RuleDecider(), steps)
+                    res = run_session(vb, work, llm, design.RuleDecider(), steps)
                     res["decider"] = {k: v2 for k, v2 in llm.describe().items()
                                       if k not in ("trace", "usage")}
                     if ledger is not None:
                         res["ledger_spent_usd"] = ledger.spent_usd
-                elif v == "V4":  # Mensch auf der Kommandozeile, gleiche Werkzeuge und Prüfungen
-                    res = run_session(bench, work, design.HumanDecider(), None, steps)
+                elif base == "V4":  # Mensch auf der Kommandozeile, gleiche Werkzeuge und Prüfungen
+                    res = run_session(vb, work, design.HumanDecider(), None, steps)
                 else:
                     raise SystemExit(f"Variante {v}: im Skript nicht umgesetzt (V2: "
                                      "tools/m6t6_zielspezifikation.py)")
+                res["reference_sphere"] = rs
                 res.update({"benchmark": b, "variant": v, "tag": tag, "target_na": bench["na"]})
                 aborted = res.get("aborted") or ""
                 if any(k in aborted for k in ("Unavailable", "PrivacyError", "HTTPError", "URLError")):
@@ -574,7 +652,10 @@ def table(out) -> str:
             f"{'–' if rej is None else f'{100 * rej:.0f} %'} | "
             f"{f'{bad}/{len(ds)}' if ds else '–'} | "
             f"{fmt(r.get('fallback_decisions'))} | {tokens} | {cost} |")
-    head = ("| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP³ | Elemente | LM-Läufe¹ | Zeit [s] | "
+    note = (f"Referenz der Regel: {RULE_REFERENCE} (V3 mit `reference_sphere: image_infinite`, "
+            "ADR-0017; Kürzel RS = image_infinite, RSAP = image_exit_pupil, ohne Zusatz = "
+            "last_surface)\n\n")
+    head = note + ("| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP³ | Elemente | LM-Läufe¹ | Zeit [s] | "
             "Entsch. | abgelehnt² | Entsch. mit Fehler | Rückfälle | Tokens Prompt / Ausgabe | Kosten |\n"
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     return head + "\n" + "\n".join(rows)

@@ -95,6 +95,18 @@ class OllamaDecider(Decider):
                 self._digest = None
         return self._digest
 
+    def model_context_length(self) -> int | None:
+        """Größte Kontextlänge des Modells laut ``/api/show`` (``model_info``, Schlüssel
+        ``<architektur>.context_length``); ``None``, wenn der Server sie nicht nennt oder nicht
+        erreichbar ist (M10-T7c)."""
+        try:
+            info = self._post("/api/show", {"model": self.model}).get("model_info") or {}
+        except (OSError, ValueError):
+            return None
+        arch = info.get("general.architecture")
+        n = info.get(f"{arch}.context_length") if arch else None
+        return int(n) if isinstance(n, (int, float)) and n > 0 else None
+
     def unload(self) -> None:
         """Modell sofort aus dem Speicher nehmen (``keep_alive: 0``), z. B. nach einer Messreihe,
         wenn die GPU geteilt wird."""
