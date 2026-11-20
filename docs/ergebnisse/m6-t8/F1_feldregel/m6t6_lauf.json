@@ -1,0 +1,730 @@
+{
+ "start": "data/systems/zielspezifikation_start.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0",
+  "--field-rule"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p1": {
+   "result": "docs/ergebnisse/m6-t8/F1_feldregel/p1_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p1_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4325000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 3,
+     "insertions": 2,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 336.6426272392273,
+     "relaxed_gaps": [
+      3,
+      5
+     ],
+     "relax": "p1_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p1_r1",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4325000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 3,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 10.187398433685303,
+     "relaxed_gaps": [],
+     "relax": "p1_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p1_r2",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.47250000000000014,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 1,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 107.36286115646362,
+     "relaxed_gaps": [
+      3
+     ],
+     "relax": "p1_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "p1_r3",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4725000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 10.339540719985962,
+     "relaxed_gaps": [],
+     "relax": "p1_r3_relax",
+     "forced": [
+      {
+       "gap": 7,
+       "file": "docs/ergebnisse/m6-t8/F1_feldregel/p1_r3_ins7.json",
+       "merit": 0.002982999607
+      }
+     ]
+    },
+    {
+     "round": 4,
+     "synth": "p1_r4",
+     "status": "goal_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 5,
+     "insertions": 0,
+     "goal": {
+      "reached": true,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.04299303556576394,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.02123845164080018,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 0.30447784441939846,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.03387058826957648,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 0.43454317492290806,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.04299303556576394,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 23.646360397338867
+    }
+   ]
+  },
+  "p2": {
+   "result": "docs/ergebnisse/m6-t8/F1_feldregel/p2_r11_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.709375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 19,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 2866.7188351154327,
+     "relaxed_gaps": [
+      3,
+      5,
+      7,
+      43,
+      45,
+      47,
+      49
+     ],
+     "relax": "p2_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p2_r1",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.771875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 77.95606255531311,
+     "relaxed_gaps": [],
+     "relax": "p2_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p2_r2",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.834375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 79.3356626033783,
+     "relaxed_gaps": [],
+     "relax": "p2_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "p2_r3",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.865625,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 64.09194302558899,
+     "relaxed_gaps": [],
+     "relax": "p2_r3_relax"
+    },
+    {
+     "round": 4,
+     "synth": "p2_r4",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.9125,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 74.18628311157227,
+     "relaxed_gaps": [],
+     "relax": "p2_r4_relax"
+    },
+    {
+     "round": 5,
+     "synth": "p2_r5",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.94375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 65.2016019821167,
+     "relaxed_gaps": [],
+     "relax": "p2_r5_relax"
+    },
+    {
+     "round": 6,
+     "synth": "p2_r6",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.975,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 73.83810663223267,
+     "relaxed_gaps": [],
+     "relax": "p2_r6_relax"
+    },
+    {
+     "round": 7,
+     "synth": "p2_r7",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.13266075789185527,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.0422056747903001,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 3.0447784441939842,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.0626343360825273,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 4.34543174922908,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.13266075789185527,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 98.6629912853241,
+     "relaxed_gaps": [],
+     "relax": "p2_r7_relax"
+    },
+    {
+     "round": 8,
+     "synth": "p2_r8",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.12307616247750156,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.04154817620450619,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 3.0447784441939842,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.04813924490697732,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 4.34543174922908,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.12307616247750156,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 44.38592529296875,
+     "relaxed_gaps": [],
+     "relax": "p2_r8_relax"
+    },
+    {
+     "round": 9,
+     "synth": "p2_r9",
+     "status": "goal_not_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.1595033984913652,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.033907415124500705,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 3.0447784441939842,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.036317226554209374,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 4.34543174922908,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.1595033984913652,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 0.5,
+     "seconds": 45.47507357597351,
+     "relaxed_gaps": [],
+     "relax": "p2_r9_relax",
+     "forced": [
+      {
+       "gap": 9,
+       "file": "docs/ergebnisse/m6-t8/F1_feldregel/p2_r9_ins9.json",
+       "merit": 0.002360204627
+      },
+      {
+       "gap": 13,
+       "file": "docs/ergebnisse/m6-t8/F1_feldregel/p2_r9_ins13.json",
+       "merit": 0.5380107248
+      },
+      {
+       "gap": 19,
+       "file": "docs/ergebnisse/m6-t8/F1_feldregel/p2_r9_ins19.json",
+       "merit": 60926888.59
+      }
+     ]
+    },
+    {
+     "round": 10,
+     "synth": "p2_r10",
+     "status": "goal_not_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 25,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.1940775378688339,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.03090233200463996,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 3.0447784441939842,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.025128065869264873,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 4.34543174922908,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.1940775378688339,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 45.78403639793396,
+     "relaxed_gaps": [],
+     "relax": "p2_r10_relax"
+    },
+    {
+     "round": 11,
+     "synth": "p2_r11",
+     "status": "goal_not_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 25,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.22165849425188375,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.028845147298543043,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 3.0447784441939842,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.02311881225015969,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 4.34543174922908,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.22165849425188375,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 39.39787483215332,
+     "relaxed_gaps": [],
+     "relax": "p2_r11_relax"
+    }
+   ]
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t8/F1_feldregel/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t8/F1_feldregel/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/F1_feldregel/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/F1_feldregel/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/F1_feldregel/z2_vektor.json"
+   },
+   "aperture": 0.5,
+   "field": 1.0
+  }
+ },
+ "times": {
+  "p1_r0": 336.6426272392273,
+  "p1_r0_relax": 1.7065620422363281,
+  "p1_r1": 10.187398433685303,
+  "p1_r1_relax": 18.108129262924194,
+  "p1_r2": 107.36286115646362,
+  "p1_r2_relax": 10.384639024734497,
+  "p1_r3": 10.339540719985962,
+  "p1_r3_relax": 0.49532389640808105,
+  "p1_r3_ins7_insert": 0.014604568481445312,
+  "p1_r3_ins7": 18.653385877609253,
+  "p1_r4": 23.646360397338867,
+  "p2_r0": 2866.7188351154327,
+  "p2_r0_relax": 15.603941917419434,
+  "p2_r1": 77.95606255531311,
+  "p2_r1_relax": 19.37467098236084,
+  "p2_r2": 79.3356626033783,
+  "p2_r2_relax": 19.35973882675171,
+  "p2_r3": 64.09194302558899,
+  "p2_r3_relax": 18.467310190200806,
+  "p2_r4": 74.18628311157227,
+  "p2_r4_relax": 19.487324476242065,
+  "p2_r5": 65.2016019821167,
+  "p2_r5_relax": 18.402104139328003,
+  "p2_r6": 73.83810663223267,
+  "p2_r6_relax": 19.493125677108765,
+  "p2_r7": 98.6629912853241,
+  "p2_r7_relax": 18.615923166275024,
+  "p2_r8": 44.38592529296875,
+  "p2_r8_relax": 17.8054838180542,
+  "p2_r9": 45.47507357597351,
+  "p2_r9_relax": 18.45125675201416,
+  "p2_r9_ins9_insert": 0.02411174774169922,
+  "p2_r9_ins9": 18.632235527038574,
+  "p2_r9_ins13_insert": 0.020097970962524414,
+  "p2_r9_ins13": 14.403403043746948,
+  "p2_r9_ins19_insert": 0.02218937873840332,
+  "p2_r9_ins19": 32.33076572418213,
+  "p2_r10": 45.78403639793396,
+  "p2_r10_relax": 19.218761920928955,
+  "p2_r11": 39.39787483215332,
+  "p2_r11_relax": 17.278945684432983,
+  "z2_s0": 25.095653295516968,
+  "z2_pupille": 0.18443989753723145,
+  "z2_unendlich": 0.18263912200927734,
+  "z2_psf": 0.2089390754699707,
+  "z2_vektor": 0.28107190132141113
+ }
+}

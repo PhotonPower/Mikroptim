@@ -132,6 +132,8 @@ $$\frac{dx}{dp} \approx -\,(J^\top J + \mu D)^{-1} J^\top \frac{\partial r}{\par
 
 Der Prädiktor senkt die Merit am Start eines Schritts um zwei bis drei Größenordnungen (z. B. NA 0,36: 0,38 statt ≈ 500), spart aber **keine LM-Zyklen**: Die Läufe enden durch das Stagnationsfenster (mindestens etwa 20 Zyklen) oder am Iterationslimit, nicht weil der Start schlecht war. Abgelehnte Schritte bei NA ≈ 0,44 liegen am fehlenden Element (F_B über der Schwelle), nicht am Prädiktor; eine Wiederholung ohne Prädiktor brachte dort nichts und wurde wieder entfernt. Ohne Stagnationsabbruch führt der Prädiktor zu einem besseren Endsystem (RMS 0,0047 statt 0,0154 Wellen). Das Abnahmeziel −30 % Zyklen ist damit nicht erreicht; der Prädiktor bleibt eine Option (Standard aus). Die Tangente lohnt sich erst, wenn die Zahl der Zyklen pro Schritt von der Startgüte abhängt (z. B. mit einem kürzeren Stagnationsfenster nach gutem Start).
 
+**Nachtrag M6-T8:** Der Prädiktor arbeitet auch in der gemeinsamen Apertur-/Feld-Phase (`--joint-aperture-field`, Sekante in t). Dazu kamen die Feldregel (Bedarf aus Feldfehlern statt aus den Geisterplatten) und „Einfügen nur mit Verbesserung“; Festlegungen in [optimierung.md](optimierung.md#gemeinsame-apertur-feld-homotopie-und-feldregel-m6-t8), Messung im [Bericht M6-T8](ergebnisse/m6-t8-apertur-feld.md).
+
 ## 4. Sinusbedingung als Residuum (M11-T4)
 
 **Problem.** Lineare Koma wächst mit dem Feld. Bei reiner Achsoptimierung ist sie in der Merit unsichtbar, und die rotationssymmetrischen Geisterplatten zeigen keinen Bedarf (F4). Ein kleines Feld von Anfang an hilft, kostet aber Feldpunkte und verschiebt das Problem in die Kopplung von Apertur und Feld (F5).

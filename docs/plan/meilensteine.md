@@ -270,6 +270,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** Bericht `docs/ergebnisse/m6-t6b-zielspezifikation-adr0017.md` mit Kandidaten, Linsenzahl, Wellenfrontfehler pro Feld und Wellenlänge, Strehl, Laufzeit, Vergleich mit M6-T6 und M6-T7.
 - **Stand:** gerechnet (neun Varianten). Ziel nicht erreicht. Bestes beugungsbegrenztes System 9 El., NA 0,5, volles Feld, 546 nm, ≤ 0,033 Wellen (M6-T6-Aufbau unter der neuen Merit); NA 0,855 bei 10 % Feld mit 5 El. beugungsbegrenzt; polychromatisch 405–707 nm bei 27 % Feld ≤ 0,108 Wellen (12 El.), bei vollem Feld ≤ 0,26 Wellen (11 El.). F11/F12 erledigt; neuer Engpass F14: Feldstufe ab der Einzellinse endet bei 27 % Feld. M11-T7: CMA bei allen vier Startwerten besser als `starts`.
 
+### M6-T8 – Gemeinsame Apertur-/Feld-Homotopie und Feldregel
+- **Abhängig von:** M6-T3, M6-T7 (Befunde F14/F15 aus M6-T6b)
+- **Inhalt:** Ursache von F14 (Feldstufe endet ab der Einzellinse bei 27 % Feld) diagnostizieren; Optionen (Standard aus, bisherige Läufe bitgleich): gemeinsamer Homotopie-Parameter für Apertur und Feld (`--joint-aperture-field`, Bahn NA(t), φ(t) = φ₀ + t^p (φ₁ − φ₀)) und Bedarfskriterium für Feldfehler (Feldregel `--field-rule`: Operator A in der Feldlinsenlage, wenn die Geisterplatten keinen Bedarf zeigen und Feldfehler dominieren); Skript `--gemeinsam`, `--feldregel`, `--ab-p2`, `--bis p2`.
+- **Abnahme:** Unit-Tests mit Mock-Homotopie und am optischen Modell, CLI-Test, Bitgleichheit ohne Option; Messung ab der Einzellinse und ab dem NA-0,855-System aus M6-T6b, Bericht `docs/ergebnisse/m6-t8-apertur-feld.md`.
+- **Stand:** umgesetzt und gemessen (`--joint-aperture-field`, `--field-rule`, zusätzlich `--insertion-improve` gegen Einfüge-Serien, F16). F14: Feldfehler für die Geisterplatten unsichtbar (blendennah bzw. Normierungsradius 6× zu groß), daher kein Bedarf. Mit Feldregel ab der Einzellinse bei NA 0,5 **100 % Feld**, beugungsbegrenzt (0,039/0,022/0,059 Wellen), aber 25 El.; ab NA 0,855 nur 23 % Feld (NA 0,869, gemeinsam + Feldregel + Verbesserung). F15 nicht bearbeitet.
+
 ---
 
 ## M7 – Performance

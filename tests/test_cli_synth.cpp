@@ -398,5 +398,78 @@ TEST(CliSynth, AugmentedLagrangian) {
               cli::kExitError);
 }
 
+// Gemeinsame Apertur-/Feld-Homotopie und Feldregel (M6-T8): Optionen im JSON nur mit der
+// Option (ohne sie ist das Protokoll wie bisher), Schritte "aperture_field", Fehler der
+// Kommandozeile.
+TEST(CliSynth, JointApertureFieldAndFieldRule) {
+    const std::vector<std::string> base{
+        kStart, "--target-na",    "0.31", "--start-field",    "0.5", "--target-field",
+        "1",    "--max-elements", "1",    "--max-iterations", "40",  "--merit-factor",
+        "10",   "--json"};
+    const SynthCliResult off = synth(base);
+    ASSERT_EQ(off.code, cli::kExitOk) << off.err;
+    const nlohmann::json jo = nlohmann::json::parse(off.out);
+    EXPECT_FALSE(jo["options"].contains("joint_aperture_field"));
+    EXPECT_FALSE(jo["options"].contains("field_rule"));
+    bool aperture = false;
+    for (const auto& s : jo["result"]["steps"]) {
+        EXPECT_NE(s["kind"], "aperture_field");
+        aperture = aperture || s["kind"] == "aperture";
+    }
+    EXPECT_TRUE(aperture);
+
+    std::vector<std::string> on = base;
+    on.insert(on.end(), {"--joint-aperture-field", "--joint-field-exponent", "0.5", "--joint-step",
+                         "0.5,0.125,0.5", "--field-rule", "--field-ratio", "3"});
+    const SynthCliResult r = synth(on);
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_EQ(j["options"]["joint_aperture_field"]["field_exponent"], 0.5);
+    EXPECT_EQ(j["options"]["joint_aperture_field"]["step"]["initial"], 0.5);
+    EXPECT_EQ(j["options"]["joint_aperture_field"]["step"]["min"], 0.125);
+    EXPECT_EQ(j["options"]["field_rule"]["ratio"], 3.0);
+    EXPECT_EQ(j["options"]["field_rule"]["min_rms_waves"], 0.05);
+    EXPECT_TRUE(j["options"]["field_rule"]["glass"].is_null());
+    int joint_steps = 0;
+    for (const auto& s : j["result"]["steps"]) {
+        EXPECT_NE(s["kind"], "aperture");
+        EXPECT_NE(s["kind"], "field");
+        joint_steps += s["kind"] == "aperture_field" ? 1 : 0;
+    }
+    EXPECT_GT(joint_steps, 0);
+    if (j["result"]["status"] == "goal_reached" || j["result"]["status"] == "goal_not_reached") {
+        EXPECT_EQ(j["result"]["point"]["field"], 1.0);
+        EXPECT_EQ(j["result"]["point"]["aperture"], 0.31);
+    }
+
+    const SynthCliResult text =
+        synth({kStart, "--target-na", "0.31", "--start-field", "0.5", "--target-field", "1",
+               "--max-elements", "1", "--max-iterations", "40", "--merit-factor", "10",
+               "--joint-aperture-field", "--field-rule", "--quiet"});
+    ASSERT_EQ(text.code, cli::kExitOk) << text.err;
+    EXPECT_NE(text.out.find("Apertur und Feld gemeinsam"), std::string::npos);
+    EXPECT_NE(text.out.find("Feldregel"), std::string::npos);
+
+    EXPECT_FALSE(jo["options"].contains("insertion_improve"));
+    std::vector<std::string> improve = base;
+    improve.insert(improve.end(), {"--insertion-improve", "3"});
+    const SynthCliResult ri = synth(improve);
+    ASSERT_EQ(ri.code, cli::kExitOk) << ri.err;
+    EXPECT_EQ(nlohmann::json::parse(ri.out)["options"]["insertion_improve"]["attempts"], 3);
+    EXPECT_EQ(synth({kStart, "--insertion-improve", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--insertion-improve", "2", "--beam", "2"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--joint-aperture-field", "--beam", "2"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--joint-field-exponent", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--joint-step", "0.1,0.01"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--field-ratio", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--field-min-rms", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--field-glass", "AIR"}).code, cli::kExitUsage);
+    const SynthCliResult unknown = synth({kStart, "--field-glass", "GIBT-ES-NICHT"});
+    EXPECT_EQ(unknown.code, cli::kExitError);
+    EXPECT_NE(unknown.err.find("--field-glass"), std::string::npos);
+    EXPECT_NE(synth({"--help"}).out.find("--joint-aperture-field"), std::string::npos);
+    EXPECT_NE(synth({"--help"}).out.find("--field-rule"), std::string::npos);
+}
+
 } // namespace
 } // namespace mko::test

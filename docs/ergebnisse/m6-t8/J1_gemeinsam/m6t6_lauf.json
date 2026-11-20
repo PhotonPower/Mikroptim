@@ -1,0 +1,144 @@
+{
+ "start": "data/systems/zielspezifikation_start.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p2": {
+   "result": "docs/ergebnisse/m6-t8/J1_gemeinsam/p2_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.359375,
+      "field": 0.3671875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 3,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 1041.3150508403778,
+     "relaxed_gaps": [
+      3,
+      5,
+      7
+     ],
+     "relax": "p2_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p2_r1",
+     "status": "start_rejected",
+     "point": {
+      "aperture": 0.359375,
+      "field": 0.3671875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 1.185964822769165,
+     "relaxed_gaps": [],
+     "relax": "p2_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p2_r2",
+     "status": "start_rejected",
+     "point": {
+      "aperture": 0.359375,
+      "field": 0.3671875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 0.2937905788421631,
+     "relaxed_gaps": [],
+     "relax": "p2_r2_relax",
+     "forced": []
+    }
+   ],
+   "joint": [
+    "--joint-aperture-field"
+   ]
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_vektor.json"
+   },
+   "aperture": 0.359375,
+   "field": 0.3671875,
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/J1_gemeinsam/z2_vollfeld_vektor.json"
+   }
+  }
+ },
+ "times": {
+  "p2_r0": 1041.3150508403778,
+  "p2_r0_relax": 0.19689321517944336,
+  "p2_r1": 1.185964822769165,
+  "p2_r1_relax": 0.20610570907592773,
+  "p2_r2": 0.2937905788421631,
+  "p2_r2_relax": 0.1984243392944336,
+  "z2_s0": 24.164390325546265,
+  "z2_pupille": 0.1339406967163086,
+  "z2_unendlich": 0.1475059986114502,
+  "z2_psf": 0.17640304565429688,
+  "z2_vektor": 0.26210474967956543,
+  "z2_vollfeld_pupille": 0.1510019302368164,
+  "z2_vollfeld_unendlich": 0.15566682815551758,
+  "z2_vollfeld_psf": 0.1650543212890625,
+  "z2_vollfeld_vektor": 0.2326514720916748
+ }
+}

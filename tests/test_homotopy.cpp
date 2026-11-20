@@ -5,6 +5,8 @@
 #include "homotopy_mock.hpp"
 #include "insertion_test_systems.hpp"
 #include "mikroptim/glass/buchdahl_fit.hpp"
+#include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
@@ -416,6 +418,188 @@ TEST(HomotopyControl, FieldAndSpectrumPhases) {
     EXPECT_EQ(r.point.spectrum, 2);
 }
 
+// Gemeinsame Apertur-/Feld-Homotopie (M6-T8): eine Phase über t, Punkte auf der Diagonale
+// NA(t) = 0,3 + 0,16 t, φ(t) = 0,1 + 0,9 t; Schrittweite in t wie bei der Apertur (Δ₀ = 1/4,
+// Aperturschritt 0,04 schnell, dann Δ = 1/2 behalten), keine Apertur- und Feldschritte.
+TEST(HomotopyControl, JointApertureFieldDiagonal) {
+    MockModel m({});
+    HomotopyOptions o = mock_options(0.46);
+    o.target_field = 1.0;
+    o.joint_aperture_field = true;
+    o.joint_step = {0.25, 1.0 / 64.0, 0.5, 2.0, 0.5};
+    HomotopyPoint start = mock_point(0.3);
+    start.field = 0.1;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), start, o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_TRUE(steps_of(r, HomotopyStepKind::Aperture).empty());
+    EXPECT_TRUE(steps_of(r, HomotopyStepKind::Field).empty());
+    const auto j = steps_of(r, HomotopyStepKind::ApertureField);
+    ASSERT_EQ(j.size(), 3U); // t = 0,25 → 0,75 → 1
+    const std::vector<double> t{0.25, 0.75, 1.0};
+    const std::vector<double> deltas{0.25, 0.5, 0.5};
+    for (std::size_t i = 0; i < j.size(); ++i) {
+        EXPECT_DOUBLE_EQ(j[i]->point.aperture, 0.3 + 0.16 * t[i]) << i;
+        EXPECT_DOUBLE_EQ(j[i]->point.field, 0.1 + 0.9 * t[i]) << i;
+        EXPECT_DOUBLE_EQ(j[i]->delta, deltas[i]) << i;
+        EXPECT_TRUE(j[i]->accepted);
+    }
+    EXPECT_EQ(j[0]->action, HomotopyAction::Grow); // Aperturschritt 0,04: schnell
+    EXPECT_EQ(j[1]->action, HomotopyAction::Keep); // 0,08: langsam
+    // Endpunkt genau das Ziel (nicht nur bis auf Rundung)
+    EXPECT_EQ(r.point.aperture, 0.46);
+    EXPECT_EQ(r.point.field, 1.0);
+    EXPECT_EQ(std::string(to_string(HomotopyStepKind::ApertureField)), "aperture_field");
+    const auto doc = nlohmann::json::parse(homotopy_result_json(r));
+    EXPECT_EQ(doc["steps"][static_cast<std::size_t>(j[0]->index)]["kind"], "aperture_field");
+}
+
+// Exponent p < 1: das Feld läuft voraus, φ(t) = φ₀ + t^p (φ₁ − φ₀).
+TEST(HomotopyControl, JointApertureFieldExponent) {
+    MockModel m({});
+    HomotopyOptions o = mock_options(0.5);
+    o.target_field = 1.0;
+    o.joint_aperture_field = true;
+    o.joint_field_exponent = 0.5;
+    o.joint_step = {0.25, 1.0 / 64.0, 0.25, 2.0, 0.5};
+    HomotopyPoint start = mock_point(0.3);
+    start.field = 0.0;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), start, o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    const auto j = steps_of(r, HomotopyStepKind::ApertureField);
+    ASSERT_EQ(j.size(), 4U);
+    for (std::size_t i = 0; i < j.size(); ++i) {
+        const double t = 0.25 * static_cast<double>(i + 1);
+        EXPECT_DOUBLE_EQ(j[i]->point.aperture, 0.3 + 0.2 * t) << i;
+        EXPECT_DOUBLE_EQ(j[i]->point.field, std::sqrt(t)) << i;
+    }
+    EXPECT_GT(j[0]->point.field, 0.25); // voraus gegenüber der Diagonale
+}
+
+// Ablehnung, Halbieren in t und Einfügen am letzten guten Punkt der Bahn; danach weiter bis zum
+// Ziel. Kapazität eines Elements NA 0,4 (t = 0,5), jedes weitere +0,2.
+TEST(HomotopyControl, JointApertureFieldInsertsOnPath) {
+    MockSpec spec;
+    spec.capacity0 = 0.4;
+    spec.capacity_step = 0.2;
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.5);
+    o.target_field = 1.0;
+    o.joint_aperture_field = true;
+    o.joint_step = {0.375, 0.1, 0.5, 2.0, 0.5};
+    HomotopyPoint start = mock_point(0.3);
+    start.field = 0.1;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), start, o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.insertions, 1);
+    const auto j = steps_of(r, HomotopyStepKind::ApertureField);
+    // t = 0,375 angenommen (NA 0,375); 0,75 → abgelehnt, Δ 0,1875; 0,5625 abgelehnt,
+    // Δ 0,09375 < 0,1 → Einfügen bei t = 0,375; danach Δ₀: t = 0,75, 1
+    ASSERT_EQ(j.size(), 5U);
+    EXPECT_TRUE(j[0]->accepted);
+    EXPECT_FALSE(j[1]->accepted);
+    EXPECT_EQ(j[1]->action, HomotopyAction::Shrink);
+    EXPECT_FALSE(j[2]->accepted);
+    EXPECT_EQ(j[2]->action, HomotopyAction::Insert);
+    const auto ins = steps_of(r, HomotopyStepKind::Insertion);
+    ASSERT_EQ(ins.size(), 1U);
+    EXPECT_DOUBLE_EQ(ins[0]->point.aperture, 0.375);
+    EXPECT_DOUBLE_EQ(ins[0]->point.field, 0.1 + 0.9 * 0.375);
+    EXPECT_TRUE(j[3]->accepted);
+    EXPECT_DOUBLE_EQ(j[3]->point.aperture, 0.3 + 0.2 * 0.75);
+    EXPECT_DOUBLE_EQ(j[3]->delta, 0.375);
+    EXPECT_EQ(r.point.aperture, 0.5);
+    EXPECT_EQ(r.point.field, 1.0);
+}
+
+// Ohne Option bzw. wenn sich nur ein Parameter ändert: dieselben Schritte wie bisher (Apertur,
+// dann Feld), bitgleiche Protokolle.
+TEST(HomotopyControl, JointApertureFieldOffOrSingleParameterUnchanged) {
+    const auto run = [](bool joint, double target_field) {
+        MockSpec spec;
+        spec.capacity0 = 0.42;
+        spec.capacity_step = 0.2;
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.5);
+        o.target_field = target_field;
+        o.joint_aperture_field = joint;
+        HomotopyPoint start = mock_point(0.3);
+        start.field = 0.1;
+        HomotopyResult r = run_homotopy(m, MockModel::start(0.3), start, o);
+        for (HomotopyStep& s : r.steps) {
+            s.seconds = 0.0;
+        }
+        r.seconds = 0.0;
+        return homotopy_result_json(r);
+    };
+    const std::string off = run(false, 1.0);
+    EXPECT_EQ(nlohmann::json::parse(off)["steps"].dump().find("aperture_field"), std::string::npos);
+    EXPECT_NE(run(true, 1.0), off);
+    // nur die Apertur ändert sich: mit und ohne Option gleich
+    EXPECT_EQ(run(true, 0.1), run(false, 0.1));
+}
+
+// Einfügen nur mit Verbesserung (M6-T8): Variante 0 verschlechtert F_B (× 4) und wird verworfen,
+// Variante 1 übernommen; ohne Option wird Variante 0 übernommen; verbessert keine, Abbruch.
+TEST(HomotopyControl, InsertionMustImprove) {
+    const auto run = [](bool improve, int bad) {
+        MockSpec spec;
+        spec.capacity0 = 0.4;
+        spec.capacity_step = 0.2;
+        spec.alternatives = 3;
+        spec.bad_options = bad;
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.5);
+        o.insertion_must_improve = improve;
+        o.insertion_attempts = 3;
+        return run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    };
+    const HomotopyResult off = run(false, 1);
+    EXPECT_GE(off.insertions, 1);
+    EXPECT_EQ(
+        off.steps[static_cast<std::size_t>(steps_of(off, HomotopyStepKind::Insertion)[0]->index) +
+                  1]
+            .kind,
+        HomotopyStepKind::InsertionStage); // Variante 0 übernommen, kein Vermerk
+    for (const HomotopyStep& s : off.steps) {
+        EXPECT_EQ(s.operation.find("verworfen"), std::string::npos);
+    }
+
+    const HomotopyResult r = run(true, 1);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.insertions, 2); // Variante 0 versucht und verworfen, Variante 1 übernommen
+    const auto ins = steps_of(r, HomotopyStepKind::Insertion);
+    ASSERT_EQ(ins.size(), 3U); // Variante 0, Vermerk „verworfen“, Variante 1
+    EXPECT_NE(ins[1]->operation.find("Einfügen verworfen"), std::string::npos);
+    EXPECT_FALSE(ins[1]->accepted);
+    EXPECT_EQ(r.elements, 2);
+    EXPECT_EQ(r.system.surfaces.back().semi_diameter, 1.0); // Variante 1
+
+    const HomotopyResult none = run(true, 3);
+    EXPECT_EQ(none.status, HomotopyStatus::StepTooSmall);
+    EXPECT_NE(none.message.find("kein Einfügen verbessert F_B (3 Varianten"), std::string::npos)
+        << none.message;
+    EXPECT_EQ(none.elements, 1); // Zustand vor dem Einfügen
+    EXPECT_EQ(steps_of(none, HomotopyStepKind::Insertion).size(), 6U);
+
+    MockModel m({});
+    HomotopyOptions bad = mock_options(0.5);
+    bad.insertion_attempts = 0;
+    EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), bad),
+                 std::invalid_argument);
+}
+
+TEST(HomotopyControl, JointApertureFieldInvalidOptions) {
+    MockModel m({});
+    HomotopyOptions o = mock_options(0.5);
+    o.target_field = 1.0;
+    o.joint_aperture_field = true;
+    o.joint_field_exponent = 0.0;
+    EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o), std::invalid_argument);
+    o.joint_field_exponent = 1.0;
+    o.joint_step.min = 1.0; // Δ_min > Δ₀
+    EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o), std::invalid_argument);
+}
+
 TEST(HomotopyControl, MaxSteps) {
     MockModel m({});
     HomotopyOptions o = mock_options(0.6);
@@ -705,6 +889,108 @@ TEST(OpticalHomotopy, ColorRuleRecommendsSplit) {
     const HomotopyNeed nr = mr.diagnose(mr.start_system(), mr.start_point());
     EXPECT_EQ(nr.recommendation, GhostOperator::B) << nr.text;
     EXPECT_NE(nr.text.find("RMS-Verhältnis"), std::string::npos) << nr.text;
+}
+
+// Feldregel (M6-T8): Mehrlinser ohne Geisterplatten mit drei Feldern. Ohne Regel kein Bedarf;
+// mit Regel Operator A im Luftspalt mit dem größten mittleren |ȳ/y| (Orakel: Aberrationsbericht
+// der Datei), Merit nach dem Einfügen unverändert, Glas der Linse vor dem Spalt bzw. vorgegeben.
+TEST(OpticalHomotopy, FieldRuleRecommendsMeniscusAtFieldPosition) {
+    LoadedSystem start = load_residual_system("testsystem_mehrlinser.json");
+    start.system.target = Target{};
+    start.system.target->focal_length = compute_paraxial(start.system, start.catalog).focal_length;
+    OpticalHomotopyModel plain(start, OpticalHomotopyOptions{});
+    const HomotopyPoint p = plain.start_point();
+    EXPECT_EQ(plain.diagnose(plain.start_system(), p).recommendation, GhostOperator::None);
+
+    // Orakel: RMS am Rand gegen Achse und Lage aus dem Bericht
+    const WavefrontResult wf = evaluate_wavefront(start);
+    double rms_axis = 0.0;
+    double rms_edge = 0.0;
+    for (int k = 0; k < wf.wavelengths; ++k) {
+        rms_axis = std::max(rms_axis, wf.at(0, k).rms_waves);
+        rms_edge = std::max(rms_edge, wf.at(wf.fields - 1, k).rms_waves);
+    }
+    ASSERT_GT(rms_edge, rms_axis) << "Testsystem: Feldfehler sollen überwiegen";
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    const AberrationReport rep = compute_aberrations(start.system, start.catalog, ao);
+    int best = -1;
+    double best_ratio = -1.0;
+    for (std::size_t s = 0; s + 1 < start.system.surfaces.size(); ++s) {
+        if (start.system.surfaces[s].material.kind != MaterialKind::Air) {
+            continue;
+        }
+        const double r = 0.5 * (std::abs(rep.surfaces[s].ybar / rep.surfaces[s].y) +
+                                std::abs(rep.surfaces[s + 1].ybar / rep.surfaces[s + 1].y));
+        if (r > best_ratio) {
+            best_ratio = r;
+            best = static_cast<int>(s);
+        }
+    }
+    ASSERT_GE(best, 1);
+
+    OpticalHomotopyOptions o;
+    o.field_rule = true;
+    o.field_ratio = 0.5 * rms_edge / rms_axis; // sicher erfüllt
+    o.field_min_rms = 0.0;
+    OpticalHomotopyModel m(start, o);
+    const HomotopyNeed need = m.diagnose(m.start_system(), p);
+    ASSERT_EQ(need.recommendation, GhostOperator::A) << need.text;
+    EXPECT_EQ(need.field_gap, best) << need.text;
+    EXPECT_EQ(need.field_candidates.front(), best);
+    EXPECT_NE(need.text.find("Feldregel"), std::string::npos);
+    // Varianten (Einfügen nur mit Verbesserung): die übrigen Spalte in der Reihenfolge der Eignung
+    const std::vector<HomotopyNeed> variants = m.insertion_options(m.start_system(), p, need, 3);
+    ASSERT_EQ(variants.size(), std::min<std::size_t>(3, need.field_candidates.size()));
+    for (std::size_t k = 0; k < variants.size(); ++k) {
+        EXPECT_EQ(variants[k].field_gap, need.field_candidates[k]);
+    }
+    const HomotopyInsertion ins = m.insert(m.start_system(), p, need);
+    EXPECT_EQ(ins.op, GhostOperator::A);
+    EXPECT_EQ(ins.plate, -1);
+    EXPECT_EQ(ins.first_surface, best + 1);
+    ASSERT_EQ(ins.branches.size(), 2U); // Sattelzweige wie Operator A
+    EXPECT_NE(ins.text.find("(Feldregel)"), std::string::npos) << ins.text;
+    const SystemDescription& b = ins.branches[0];
+    const auto f = static_cast<std::size_t>(best);
+    const MaterialSpec& before = start.system.surfaces[f - 1].material;
+    EXPECT_EQ(b.surfaces[f + 1].material.kind, before.kind);
+    EXPECT_EQ(b.surfaces[f + 1].material.name, before.name);
+    EXPECT_EQ(b.surfaces[f + 1].material.n, before.n);
+    EXPECT_EQ(b.surfaces[f + 1].material.n0, before.n0);
+    EXPECT_DOUBLE_EQ(b.surfaces[f].thickness, 0.5 * start.system.surfaces[f].thickness);
+    EXPECT_EQ(b.surfaces[f + 1].thickness, 0.0);
+
+    // Merit unverändert (ein Zweig, c₀ ohne Störung)
+    OpticalHomotopyOptions one = o;
+    one.saddle_delta = 0.0;
+    OpticalHomotopyModel m1(start, one);
+    const HomotopyInsertion ins1 = m1.insert(m1.start_system(), p, need);
+    ASSERT_EQ(ins1.branches.size(), 1U);
+    EXPECT_DOUBLE_EQ(ins1.branches[0].surfaces[f + 1].curvature,
+                     start.system.surfaces[f + 1].curvature);
+    const auto merit = [&](const SystemDescription& d) {
+        const LoadedSystem l = m1.load(m1.realize(d, p));
+        return make_cpu_merit({}, {}, 1)(make_system_batch(l, 1)).at(0);
+    };
+    EXPECT_LE(relative_change(merit(m1.start_system()), merit(ins1.branches[0])),
+              kInsertionMeritRelative);
+
+    // vorgegebenes Glas; Kriterium nicht erfüllt: kein Bedarf
+    OpticalHomotopyOptions g = o;
+    g.field_glass = MaterialSpec{MaterialKind::Catalog, "N-BK7", 1.0, 1.0, {}};
+    OpticalHomotopyModel mg(start, g);
+    const HomotopyInsertion insg =
+        mg.insert(mg.start_system(), p, mg.diagnose(mg.start_system(), p));
+    EXPECT_EQ(insg.branches[0].surfaces[f + 1].material.name, "N-BK7");
+    OpticalHomotopyOptions high = o;
+    high.field_ratio = 2.0 * rms_edge / rms_axis;
+    OpticalHomotopyModel mh(start, high);
+    EXPECT_EQ(mh.diagnose(mh.start_system(), p).recommendation, GhostOperator::None);
+    OpticalHomotopyOptions bad = o;
+    bad.field_ratio = 0.0;
+    EXPECT_THROW(OpticalHomotopyModel(start, bad), std::invalid_argument);
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

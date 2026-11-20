@@ -225,6 +225,64 @@ HomotopySolve finish_solve(const Prepared& pr, SystemDescription& system, const 
     return s;
 }
 
+// Name eines Glases für das Protokoll (Katalogname, Brechzahl oder Buchdahl-Koordinaten).
+std::string material_label(const MaterialSpec& m) {
+    switch (m.kind) {
+    case MaterialKind::Catalog:
+        return m.name;
+    case MaterialKind::Constant:
+        return "n=" + number(m.n);
+    case MaterialKind::Buchdahl:
+        return "buchdahl(n0=" + number(m.n0) + ")";
+    case MaterialKind::Air:
+        break;
+    }
+    return "AIR";
+}
+
+// Plan des Operators A der Feldregel (M6-T8): erster Spalt aus need.field_gap und
+// need.field_candidates, für den ein Glas feststeht (field_glass bzw. die Linse vor dem Spalt,
+// sonst dahinter); Vorderfläche in der Spaltmitte, c₀ = Krümmung der Fläche hinter dem Spalt.
+MeniscusPlan field_meniscus_plan(const SystemDescription& realized, const HomotopyNeed& need,
+                                 const OpticalHomotopyOptions& o) {
+    std::vector<int> order{need.field_gap};
+    for (const int g : need.field_candidates) {
+        if (g != need.field_gap) {
+            order.push_back(g);
+        }
+    }
+    const auto& surf = realized.surfaces;
+    for (const int g : order) {
+        if (g < 0 || static_cast<std::size_t>(g) + 1 >= surf.size()) {
+            continue;
+        }
+        const auto i = static_cast<std::size_t>(g);
+        if (surf[i].material.kind != MaterialKind::Air || !(surf[i].thickness > 0.0)) {
+            continue;
+        }
+        std::optional<MaterialSpec> glass = o.field_glass;
+        if (!glass && i >= 1 && surf[i - 1].material.kind != MaterialKind::Air) {
+            glass = surf[i - 1].material;
+        }
+        if (!glass && i + 2 < surf.size() && surf[i + 1].material.kind != MaterialKind::Air) {
+            glass = surf[i + 1].material;
+        }
+        if (!glass) {
+            continue;
+        }
+        MeniscusPlan plan;
+        plan.insertion.after_surface = g;
+        plan.insertion.position = 0.5 * surf[i].thickness;
+        plan.insertion.curvature = surf[i + 1].curvature;
+        plan.insertion.glass = *glass;
+        plan.insertion.thickness = o.meniscus.thickness;
+        plan.insertion.curvature_variables = o.meniscus.curvature_variables;
+        plan.reason = need.text;
+        return plan;
+    }
+    throw std::invalid_argument("Homotopie (optisch): Feldregel ohne Luftspalt mit Glas");
+}
+
 } // namespace
 
 bool is_one_sided(const ConstraintSpec& spec) {
@@ -272,6 +330,11 @@ OpticalHomotopyModel::OpticalHomotopyModel(const LoadedSystem& start,
         !(options_.petzval_margin >= 0.0) || !(options_.petzval_margin < 1.0) ||
         !(options_.glass_hull_margin >= 0.0)) {
         invalid("ungültige Optionen (Dicke, Stufen, Spalt, Faktoren, Vorhalt)");
+    }
+    if (!(options_.field_ratio > 0.0) || !std::isfinite(options_.field_ratio) ||
+        !(options_.field_min_rms >= 0.0) || !std::isfinite(options_.field_min_rms) ||
+        (options_.field_glass && options_.field_glass->kind == MaterialKind::Air)) {
+        invalid("ungültige Feldregel (Faktor > 0, kleinster RMS ≥ 0, Glas nicht Luft)");
     }
     // Glasvariablen: Startgläser einmal in Buchdahl-Materialien umwandeln (wie optimize)
     (void)convert_glass_variables(start_, like_.catalog);
@@ -603,6 +666,111 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     return n;
 }
 
+// Feldregel (M6-T8): Operator A in der Feldlinsenlage, wenn Feldfehler dominieren; leer sonst.
+std::optional<HomotopyNeed> OpticalHomotopyModel::field_need(const SystemDescription& system,
+                                                             const HomotopyPoint& p) const {
+    const SystemDescription realized = realize(system, p);
+    if (realized.source.type != SourceType::Collimated) {
+        return std::nullopt;
+    }
+    // Felder mit Gewicht > 0: kleinster und größter Feldwinkel
+    const std::vector<double>& angles = realized.source.field_angles_deg;
+    const std::vector<double>& weights = realized.source.field_weights;
+    int lo = -1;
+    int hi = -1;
+    for (std::size_t f = 0; f < angles.size(); ++f) {
+        if (!(weights.at(f) > 0.0)) {
+            continue;
+        }
+        const int fi = static_cast<int>(f);
+        if (lo < 0 || std::abs(angles[f]) < std::abs(angles[static_cast<std::size_t>(lo)])) {
+            lo = fi;
+        }
+        if (hi < 0 || std::abs(angles[f]) > std::abs(angles[static_cast<std::size_t>(hi)])) {
+            hi = fi;
+        }
+    }
+    if (lo < 0 || hi == lo ||
+        !(std::abs(angles[static_cast<std::size_t>(hi)]) >
+          std::abs(angles[static_cast<std::size_t>(lo)]))) {
+        return std::nullopt;
+    }
+    // Feldfehler dominieren? Größter RMS über die Wellenlängen am kleinsten und größten Feld
+    double rms_lo = 0.0;
+    double rms_hi = 0.0;
+    double worst = 0.0;
+    try {
+        const WavefrontResult wf = evaluate_wavefront(load(realized));
+        for (int f = 0; f < wf.fields; ++f) {
+            for (int k = 0; k < wf.wavelengths; ++k) {
+                const double r = wf.at(f, k).rms_waves;
+                if (!std::isfinite(r)) {
+                    return std::nullopt;
+                }
+                worst = std::max(worst, r);
+                if (f == lo) {
+                    rms_lo = std::max(rms_lo, r);
+                }
+                if (f == hi) {
+                    rms_hi = std::max(rms_hi, r);
+                }
+            }
+        }
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    if (!(worst >= options_.field_min_rms) || !(rms_hi >= options_.field_ratio * rms_lo)) {
+        return std::nullopt;
+    }
+    // Feldlinsenlage: Luftspalte nach |ȳ|/|y| (Mittel der beiden Spaltflächen) absteigend
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    AberrationReport rep;
+    try {
+        rep = compute_aberrations(realized, like_.catalog, ao);
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    const auto ratio = [&](std::size_t s) {
+        const SurfaceAberration& a = rep.surfaces.at(s);
+        return std::abs(a.y) > 0.0 ? std::abs(a.ybar) / std::abs(a.y)
+                                   : std::numeric_limits<double>::infinity();
+    };
+    const auto& surf = realized.surfaces;
+    std::vector<std::pair<double, int>> gaps;
+    for (std::size_t s = 0; s + 1 < surf.size(); ++s) {
+        // Platz für den Mindestspalt vor und hinter dem Meniskus (Vorderfläche in der Mitte);
+        // dünnere Spalte (z. B. hinter einem eben eingefügten Meniskus) brachten im Versuch
+        // Kollisionen der Ränder (M6-T8)
+        if (surf[s].material.kind != MaterialKind::Air ||
+            !(surf[s].thickness >= 2.0 * options_.min_air_gap) || !(surf[s].thickness > 0.0)) {
+            continue;
+        }
+        const double r = 0.5 * (ratio(s) + ratio(s + 1));
+        if (std::isfinite(r)) {
+            gaps.emplace_back(r, static_cast<int>(s));
+        }
+    }
+    if (gaps.empty()) {
+        return std::nullopt;
+    }
+    std::stable_sort(gaps.begin(), gaps.end(),
+                     [](const auto& a, const auto& b) { return a.first > b.first; });
+    const SeidelWaves w = rep.waves();
+    HomotopyNeed n;
+    n.recommendation = GhostOperator::A;
+    n.field_gap = gaps.front().second;
+    for (const auto& g : gaps) {
+        n.field_candidates.push_back(g.second);
+    }
+    n.text = "Feldregel (RMS Rand/Achse " + number(rms_hi) + "/" + number(rms_lo) +
+             " Wellen, W131 = " + number(w.W131) + ", W222 = " + number(w.W222) +
+             ", W220 = " + number(w.W220) + "): Operator A im Luftspalt nach Fläche " +
+             std::to_string(n.field_gap) + " (|ȳ/y| = " + number(gaps.front().first) + ")";
+    return n;
+}
+
 HomotopyNeed OpticalHomotopyModel::diagnose(const SystemDescription& system,
                                             const HomotopyPoint& p) {
     if (options_.color_rule) {
@@ -610,6 +778,18 @@ HomotopyNeed OpticalHomotopyModel::diagnose(const SystemDescription& system,
             return *c;
         }
     }
+    HomotopyNeed n = ghost_need(system, p);
+    if (n.recommendation == GhostOperator::None && options_.field_rule) {
+        if (std::optional<HomotopyNeed> f = field_need(system, p)) {
+            f->diagnosis = std::move(n.diagnosis);
+            return *f;
+        }
+    }
+    return n;
+}
+
+HomotopyNeed OpticalHomotopyModel::ghost_need(const SystemDescription& system,
+                                              const HomotopyPoint& p) const {
     HomotopyNeed n;
     if (system.ghost_plates.empty()) {
         n.text = "keine Geisterplatten";
@@ -664,7 +844,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
         }
     }
     if (need.recommendation == GhostOperator::A) {
-        MeniscusPlan plan = meniscus_from_diagnosis(realized, need.diagnosis, options_.meniscus);
+        MeniscusPlan plan = need.field_gap >= 0 ? field_meniscus_plan(realized, need, options_)
+                                                : meniscus_from_diagnosis(realized, need.diagnosis,
+                                                                          options_.meniscus);
         // Startkrümmungen innerhalb der Schranken des neuen Krümmungseintrags halten: c₀ kommt
         // aus einer vorhandenen Fläche (deren Schranken weiter sein können), die Sattelstarts
         // liegen bei c₀ ± δ. Ohne Begrenzung lehnt der Lader einen Start außerhalb der Schranken
@@ -691,7 +873,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
             plan.insertion.curvature = c0;
         }
         InsertionResult r = insert_meniscus(system, plan.insertion);
-        scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
+        if (plan.plate >= 0) {
+            scale_ghost_penalty(r.system, plan.plate, options_.penalty_raise);
+        }
         ins.first_surface = r.first_new_surface;
         ins.new_surfaces = r.new_surfaces;
         ins.plate = plan.plate;
@@ -738,12 +922,17 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                 glass_name = pr.glass.name;
             }
         }
+        if (plan.plate < 0) {
+            glass_name = material_label(plan.insertion.glass);
+        }
         ins.text =
             "Operator A: Meniskus nach Fläche " + std::to_string(plan.insertion.after_surface) +
             " bei " + number(plan.insertion.position) +
             " mm, c0 = " + number(plan.insertion.curvature) + "/mm, Glas " + glass_name +
-            " (Platte " + std::to_string(plan.plate) + ", mu x" + number(options_.penalty_raise) +
-            "), Dicke bis " + number(options_.element_thickness) + " mm, " +
+            (plan.plate >= 0 ? " (Platte " + std::to_string(plan.plate) + ", mu x" +
+                                   number(options_.penalty_raise) + ")"
+                             : std::string(" (Feldregel)")) +
+            ", Dicke bis " + number(options_.element_thickness) + " mm, " +
             std::to_string(ins.branches.size()) + (ins.branches.size() == 1 ? " Zweig" : " Zweige");
         return ins;
     }
@@ -932,6 +1121,23 @@ std::vector<HomotopyNeed> OpticalHomotopyModel::insertion_options(const SystemDe
                                                                   const HomotopyNeed& need,
                                                                   int max) {
     std::vector<HomotopyNeed> out{need};
+    if (need.field_gap >= 0) {
+        // Feldregel (M6-T8): die übrigen Spalte in absteigender Eignung
+        for (const int g : need.field_candidates) {
+            if (static_cast<int>(out.size()) >= max) {
+                break;
+            }
+            if (g == need.field_gap) {
+                continue;
+            }
+            HomotopyNeed n = need;
+            n.field_gap = g;
+            n.text =
+                "Variante der Feldregel: Operator A im Luftspalt nach Fläche " + std::to_string(g);
+            out.push_back(std::move(n));
+        }
+        return out;
+    }
     const GhostDiagnosis& d = need.diagnosis;
     const int rec = d.recommended_position;
     if (max <= 1 || need.recommendation == GhostOperator::None || rec < 0 ||

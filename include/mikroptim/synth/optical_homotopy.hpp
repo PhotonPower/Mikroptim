@@ -109,6 +109,21 @@ struct OpticalHomotopyOptions {
     double color_seidel = 0.25;
     double color_min_rms = 0.05;
     //   (c) der Punkt eine Spektrumstufe > 0 der Spektrum-Homotopie ist (spectra nicht leer).
+    // Feldregel (M6-T8, Befund F14 aus M6-T6b): Meldet die Geisterdiagnose keinen Bedarf (die
+    // Platten sehen Feldfehler kaum: blendennah bzw. mit zu großem Normierungsradius) und
+    // dominieren Feldfehler, empfiehlt diagnose Operator A im Luftspalt mit dem größten
+    // Verhältnis |ȳ|/|y| von paraxialem Haupt- zu Randstrahl (Mittel der beiden Spaltflächen,
+    // Feldlinsenlage; nur Spalte ≥ 2·min_air_gap), Glas field_glass bzw. das der Linse vor dem
+    // Spalt (sonst dahinter), Vorderfläche in der Spaltmitte, c₀ = Krümmung der Fläche hinter dem
+    // Spalt; danach wie Operator A aus der Diagnose (innere Homotopie, Sattelzweige). Feldfehler
+    // dominieren, wenn die Quelle kollimiert ist, mindestens zwei Felder Gewicht > 0 haben, der
+    // größte RMS über Felder und Wellenlängen (getracte Wellenfront am Punkt, mit Geisterplatten)
+    // mindestens field_min_rms Wellen ist und der größte RMS am größten Feldwinkel mindestens
+    // field_ratio-mal der am kleinsten. Standard aus.
+    bool field_rule = false;
+    double field_ratio = 1.5;
+    double field_min_rms = 0.05;
+    std::optional<MaterialSpec> field_glass{};
     // Strafgewicht μ der Quellplatte nach dem Einfügen mal penalty_raise.
     double penalty_raise = 10.0;
     // Mechanische Bedingungen mit Standardauswahl (bzw. "all") gelten nach dem Einfügen auch für
@@ -189,6 +204,9 @@ public:
 private:
     std::optional<HomotopyNeed> color_need(const SystemDescription& system,
                                            const HomotopyPoint& point) const;
+    std::optional<HomotopyNeed> field_need(const SystemDescription& system,
+                                           const HomotopyPoint& point) const;
+    HomotopyNeed ghost_need(const SystemDescription& system, const HomotopyPoint& point) const;
     LoadedSystem like_; // Kataloge
     SystemDescription start_;
     OpticalHomotopyOptions options_;

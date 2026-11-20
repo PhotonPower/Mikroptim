@@ -1,0 +1,47 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\p2_r3_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.3731, Feldanteil 0.429, 2 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Apertur und Feld gemeinsam                  Feld(t) = F0 + t^1.000 (F1 - F0), Schritt 3.125e-02 / 3.906e-03 / 2.500e-01
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.3731  0.429   0  -        converged_step         8  5.043709e-03  5.040759e-03  0.05815   1.126e-04   2  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.3731  0.429   0  -        converged_step        16  5.045880e-03  5.040686e-03  0.05814   1.126e-04   2  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.3731  0.429   0  -        converged_step        37  5.064654e-03  5.036944e-03  0.05810   1.129e-04   2  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture_field   0.3770  0.447   0  0.03125  converged_step        69  5.228891e-03  5.202363e-03  0.06033   1.126e-04   2  shrink (Delta 0.01562)
+      4  aperture_field   0.3750  0.438   0  0.01562  converged_step        40  5.266149e-03  5.239169e-03  0.06018   1.148e-04   2  shrink (Delta 0.00781)
+      5  aperture_field   0.3740  0.433   0  0.00781  converged_step        38  5.169086e-03  5.141722e-03  0.05912   1.141e-04   2  shrink (Delta 0.00391)
+      6  aperture_field   0.3736  0.431   0  0.00391  converged_step        39  5.120315e-03  5.092886e-03  0.05857   1.138e-04   2  grow (Delta 0.00781)
+      7  aperture_field   0.3745  0.435   0  0.00781  converged_step        57  4.916526e-03  4.890079e-03  0.05736   1.092e-04   2  keep (Delta 0.00781)
+      8  aperture_field   0.3755  0.440   0  0.00781  converged_step        36  5.036457e-03  5.010363e-03  0.05840   1.109e-04   2  grow (Delta 0.01562)
+      9  aperture_field   0.3775  0.449   0  0.01562  converged_step        37  5.294282e-03  5.268682e-03  0.06070   1.141e-04   2  shrink (Delta 0.00781)
+     10  aperture_field   0.3765  0.444   0  0.00781  converged_step        36  5.158883e-03  5.132983e-03  0.05946   1.127e-04   2  shrink (Delta 0.00391)
+     11  aperture_field   0.3760  0.442   0  0.00391  converged_step        35  5.096841e-03  5.070854e-03  0.05892   1.118e-04   2  grow (Delta 0.00781)
+     12  aperture_field   0.3770  0.447   0  0.00781  converged_step        37  5.223968e-03  5.198207e-03  0.06003   1.135e-04   2  shrink (Delta 0.00391)
+     13  aperture_field   0.3765  0.444   0  0.00391  converged_step        36  5.158439e-03  5.132551e-03  0.05944   1.127e-04   2  insert (Delta 0.00195): Operator A (Meniskus ohne Brechkraft) nach Fläche 1 im Abstand 0.1 mm, Glas wie Platte 2 (buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657)), dominante Ordnung 2; Biegung aus dem Vorzeichen der Korrektur
+     14  insertion        0.3760  0.442   0  -        -                      -  -             -             -         -             2  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = 0.142926/mm, Glas buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657) (Platte 2, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     15  insertion_stage  0.3760  0.442   0  -        converged_step        75  6.872809e-03  6.821832e-03  0.06261   1.550e-04   2  ok, Zweig 0, Stufe 0.03125
+     16  insertion_stage  0.3760  0.442   0  -        converged_step        27  6.865623e-03  6.814636e-03  0.06241   1.563e-04   2  ok, Zweig 0, Stufe 0.0625
+     17  insertion_stage  0.3760  0.442   0  -        converged_step        30  6.852635e-03  6.801921e-03  0.06213   1.570e-04   2  ok, Zweig 0, Stufe 0.125
+     18  insertion_stage  0.3760  0.442   0  -        converged_step        29  6.834035e-03  6.783481e-03  0.06188   1.576e-04   2  ok, Zweig 0, Stufe 0.25
+     19  insertion_stage  0.3760  0.442   0  -        converged_step        35  6.794207e-03  6.743940e-03  0.06148   1.575e-04   2  ok, Zweig 0, Stufe 0.5
+     20  insertion_stage  0.3760  0.442   0  -        converged_step        48  6.858167e-03  6.807362e-03  0.06247   1.560e-04   2  ok, Zweig 1, Stufe 0.03125
+     21  insertion_stage  0.3760  0.442   0  -        converged_step        28  6.852705e-03  6.801910e-03  0.06234   1.569e-04   2  ok, Zweig 1, Stufe 0.0625
+     22  insertion_stage  0.3760  0.442   0  -        converged_step        30  6.840944e-03  6.790224e-03  0.06212   1.575e-04   2  ok, Zweig 1, Stufe 0.125
+     23  insertion_stage  0.3760  0.442   0  -        converged_step        29  6.822144e-03  6.771432e-03  0.06182   1.583e-04   2  ok, Zweig 1, Stufe 0.25
+     24  insertion_stage  0.3760  0.442   0  -        converged_step        45  6.783940e-03  6.733356e-03  0.06119   1.596e-04   2  ok, Zweig 1, Stufe 0.5
+     25  penalty          0.3760  0.442   0  -        converged_step         9  6.734440e-03  6.733356e-03  0.06119   1.596e-04   3  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     26  penalty          0.3760  0.442   0  -        converged_step         8  6.738940e-03  6.733356e-03  0.06119   1.596e-04   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+     27  penalty          0.3760  0.442   0  -        converged_step        35  6.776449e-03  6.725952e-03  0.06104   1.599e-04   3  ok: Gewichte der einseitigen Bedingungen ×1
+     28  insertion        0.3760  0.442   0  -        -                      -  -             -             -         -             2  -: Einfügen verworfen: F_B danach 0.00672595 ≥ 0.00507085 davor (Einfügen nur mit Verbesserung)
+
+Status: step_too_small (Apertur und Feld, t 0.0234375: Schrittweite unter Δ_min = 0.00390625 (letzter Versuch F_B = 0.00513255); kein Einfügen verbessert F_B (1 Varianten, F_B 0.00672595 ≥ 0.00507085))
+Endpunkt: NA 0.3760, Feldanteil 0.442, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 2 -> 2 (1 Einfügungen), Optimierungen: 27, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                16.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\p2_r4.json
+Protokoll geschrieben: docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\p2_r4_log.json
