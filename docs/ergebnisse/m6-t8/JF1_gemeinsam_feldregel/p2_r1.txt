@@ -1,0 +1,38 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t8\JF1_gemeinsam_feldregel\p2_r0_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.3594, Feldanteil 0.367, 11 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Apertur und Feld gemeinsam                  Feld(t) = F0 + t^1.000 (F1 - F0), Schritt 3.125e-02 / 3.906e-03 / 2.500e-01
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.3594  0.367   0  -        max_iterations       500  5.203890e-03  5.088957e-03  0.06334   9.804e-06  11  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.3594  0.367   0  -        converged_step       183  4.961766e-03  4.853468e-03  0.06370   9.915e-06  11  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.3594  0.367   0  -        converged_step        41  5.018274e-03  4.883023e-03  0.06420   9.914e-06  11  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture_field   0.3638  0.387   0  0.03125  max_iterations       500  6.200674e-03  6.079514e-03  0.07767   1.027e-05  11  shrink (Delta 0.01562)
+      4  aperture_field   0.3616  0.377   0  0.01562  max_iterations       500  7.311641e-03  7.044190e-03  0.08169   1.439e-05  11  shrink (Delta 0.00781)
+      5  aperture_field   0.3605  0.372   0  0.00781  max_iterations       500  5.615538e-03  5.491352e-03  0.06667   1.150e-05  11  shrink (Delta 0.00391)
+      6  aperture_field   0.3599  0.370   0  0.00391  max_iterations       500  4.995722e-03  4.899936e-03  0.06198   1.090e-05  11  keep (Delta 0.00391)
+      7  aperture_field   0.3605  0.372   0  0.00391  max_iterations       500  4.683130e-03  4.598759e-03  0.06079   1.054e-05  11  keep (Delta 0.00391)
+      8  aperture_field   0.3610  0.375   0  0.00391  max_iterations       500  4.452266e-03  4.377426e-03  0.06050   1.023e-05  11  keep (Delta 0.00391)
+      9  aperture_field   0.3616  0.377   0  0.00391  max_iterations       500  4.303990e-03  4.234698e-03  0.06083   9.979e-06  11  keep (Delta 0.00391)
+     10  aperture_field   0.3621  0.380   0  0.00391  max_iterations       500  4.218528e-03  4.154194e-03  0.06152   9.782e-06  11  keep (Delta 0.00391)
+     11  aperture_field   0.3627  0.382   0  0.00391  max_iterations       500  4.194195e-03  4.131387e-03  0.06232   9.643e-06  11  keep (Delta 0.00391)
+     12  aperture_field   0.3632  0.384   0  0.00391  max_iterations       500  4.218546e-03  4.156227e-03  0.06315   9.585e-06  11  keep (Delta 0.00391)
+     13  aperture_field   0.3638  0.387   0  0.00391  max_iterations       500  4.272922e-03  4.210643e-03  0.06405   9.601e-06  11  keep (Delta 0.00391)
+     14  aperture_field   0.3643  0.389   0  0.00391  max_iterations       500  4.333412e-03  4.270921e-03  0.06492   9.632e-06  11  keep (Delta 0.00391)
+     15  aperture_field   0.3649  0.392   0  0.00391  max_iterations       500  4.410065e-03  4.348402e-03  0.06601   9.701e-06  11  keep (Delta 0.00391)
+     16  aperture_field   0.3654  0.394   0  0.00391  max_iterations       500  4.490277e-03  4.428628e-03  0.06704   9.764e-06  11  keep (Delta 0.00391)
+     17  aperture_field   0.3660  0.397   0  0.00391  max_iterations       500  4.579216e-03  4.518325e-03  0.06819   9.843e-06  11  keep (Delta 0.00391)
+     18  aperture_field   0.3665  0.399   0  0.00391  max_iterations       500  4.677967e-03  4.618302e-03  0.06947   9.923e-06  11  keep (Delta 0.00391)
+     19  aperture_field   0.3671  0.402   0  0.00391  max_iterations       500  4.775807e-03  4.716575e-03  0.07063   1.001e-05  11  keep (Delta 0.00391)
+     20  aperture_field   0.3676  0.404   0  0.00391  converged_step       380  4.873130e-03  4.813821e-03  0.07173   1.007e-05  11  keep (Delta 0.00391)
+     21  aperture_field   0.3682  0.407   0  0.00391  converged_step        95  4.977345e-03  4.917335e-03  0.07288   1.013e-05  11  keep (Delta 0.00391)
+     22  aperture_field   0.3687  0.409   0  0.00391  converged_step        90  5.080496e-03  5.020394e-03  0.07397   1.020e-05  11  keep (Delta 0.00391)
+     23  aperture_field   0.3693  0.412   0  0.00391  converged_step        83  5.182360e-03  5.122059e-03  0.07501   1.027e-05  11  insert (Delta 0.00195): Feldregel (RMS Rand/Achse 0.0749209/0.0448205 Wellen, W131 = -0.183244, W222 = 0.258578, W220 = 0.005092): Operator A im Luftspalt nach Fläche 13 (|ȳ/y| = 0.172953)
+     24  insertion        0.3687  0.409   0  -        -                      -  -             -             -         -            11  ok: Operator A: Meniskus nach Fläche 13 bei 0.154166 mm, c0 = 0.399509/mm, Glas buchdahl(n0=1.80668) (Feldregel), Dicke bis 0.5 mm, 2 Zweige
+     25  insertion_stage  0.3687  0.409   0  -        max_iterations       500  4.540250e-03  4.489969e-03  0.07046   9.095e-06  11  ok, Zweig 0, Stufe 0.03125
+     26  insertion_stage  0.3687  0.409   0  -        max_iterations       500  4.045042e-03  3.991701e-03  0.06771   8.056e-06  11  ok, Zweig 0, Stufe 0.0625

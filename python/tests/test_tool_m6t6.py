@@ -87,3 +87,17 @@ def test_reference_sphere_default_and_f12_guard(tool):
     assert not tool.f12_guard(args("image_infinite"))
     assert not tool.f12_guard(args("image_exit_pupil"))
     assert tool.f12_guard(args("image_infinite", mit=True))
+
+
+def test_synth_options_field_rule(tool):
+    """M6-T8: --feldregel reicht synth --field-rule durch; ohne bleibt die Liste wie bisher."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=False, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[])
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.synth_options(args()) == ["--stall", "0"]
+    assert tool.synth_options(args(feldregel=True)) == ["--stall", "0", "--field-rule"]
+    assert tool.synth_options(args(feldregel=True, farbregel=True)) == [
+        "--color-rule", "--field-rule"]

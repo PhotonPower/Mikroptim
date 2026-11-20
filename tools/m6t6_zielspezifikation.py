@@ -333,6 +333,10 @@ def synth_options(args):
         opts.append('--split-achromat')
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
+    if getattr(args, 'feldregel', False):
+        opts.append('--field-rule')  # M6-T8
+    if getattr(args, 'einfuegen_verbessern', None):
+        opts += ['--insertion-improve', str(args.einfuegen_verbessern)]  # M6-T8
     for a in args.synth_arg:
         opts.extend(a.split())
     return opts
@@ -1043,8 +1047,13 @@ def archive(out_dir):
             os.remove(path)
             removed += 1
             continue
-        with open(path, encoding='utf-8') as f:
-            text = f.read()
+        with open(path, 'rb') as f:
+            raw = f.read()
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            # lauf.log unter Windows in der ANSI-Codepage der Konsole (M6-T8)
+            text = raw.decode('cp1252')
         root = ROOT
         for variant in (root + os.sep, root.replace('\\', '\\\\') + '\\\\', root + '/',
                         root.replace('\\', '/') + '/'):
@@ -1121,6 +1130,23 @@ def main():
     ap.add_argument('--sinusbedingung', type=float, default=None, metavar='W',
                     help='M6-T6b: synth --sine-condition W in allen Stufen (Residuum der '
                          'Sinusbedingung, M11-T4); Standard aus')
+    ap.add_argument('--gemeinsam', action='store_true',
+                    help='M6-T8: Stufen 1 und 2 als eine gemeinsame Apertur-/Feld-Homotopie '
+                         '(synth --joint-aperture-field): NA vom Start bis --na-feld und Feld '
+                         '10 -> 100 %% zugleich')
+    ap.add_argument('--gemeinsam-exponent', type=float, default=None, metavar='P',
+                    help='M6-T8: Feld(t) = 0,1 + t^P · 0,9 (synth --joint-field-exponent; '
+                         'Standard 1: Diagonale)')
+    ap.add_argument('--feldregel', action='store_true',
+                    help='M6-T8: Feldregel in allen synth-Läufen (synth --field-rule)')
+    ap.add_argument('--einfuegen-verbessern', type=int, default=None, metavar='N',
+                    help='M6-T8: Einfügen nur mit Verbesserung von F_B, bis N Varianten '
+                         '(synth --insertion-improve N)')
+    ap.add_argument('--ab-p2', action='store_true',
+                    help='M6-T8: Stufe 1 überspringen, die Startdatei ist ihr Ergebnis (z. B. '
+                         'p1_final.json von M6-T6b V2 bei NA 0,855); Feldstufe bei deren NA')
+    ap.add_argument('--bis', choices=['p2'], default=None,
+                    help='M6-T8: nach Stufe 2 (Feldstufe) und dem Zwischenkandidaten Z2 enden')
     ap.add_argument('--osc-gewicht', type=float, default=None,
                     help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
                          'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')
@@ -1169,24 +1195,73 @@ def main():
     start = r.path('p0_start.json')
     save(s, start)
     na1 = repr(args.na_feld)
-    p1, r1 = synth_loop(r, 'p1', start,
-                        ['--target-na', na1, '--start-field', '0.1', '--target-field', '0.1']
-                        + common, relax, lambda p: p['aperture'], args.na_feld,
-                        restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
-    stage('p1', {'result': p1, 'rounds': r1})
-    pt = last_point(r, r1)
+    if args.gemeinsam:
+        # M6-T8: Stufen 1 und 2 gemeinsam, (NA, Feld) vom Start (bzw. Endpunkt der vorigen Runde)
+        # geradlinig (bzw. mit Exponent) nach (na_feld, 100 %); Runden und erzwungenes Einfügen
+        # wie p1 und p2 zusammen
+        joint = ['--joint-aperture-field']
+        if args.gemeinsam_exponent:
+            joint += ['--joint-field-exponent', repr(args.gemeinsam_exponent)]
 
-    # Stufe 2: Feld 10 % -> 100 % bei dieser NA
-    def opts2(point):
-        f = 0.1 if point is None else point['field']
-        return ['--target-na', repr(pt['aperture']), '--start-field', repr(f),
-                '--target-field', '1'] + common
+        def opts12(point):
+            f = 0.1 if point is None else point['field']
+            return ['--target-na', na1, '--start-field', repr(f), '--target-field', '1'] + \
+                joint + common
 
-    p2, r2 = synth_loop(r, 'p2', p1, opts2, relax, lambda p: p['field'], 1.0,
-                        restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
-    stage('p2', {'result': p2, 'rounds': r2})
+        p2, r2 = synth_loop(r, 'p2', start, opts12, relax,
+                            lambda p: p['aperture'] + p['field'], args.na_feld + 1.0,
+                            restart=full_field, max_rounds=24 + 4 * extra, forced=4 + 2 * extra)
+        stage('p2', {'result': p2, 'rounds': r2, 'joint': joint})
+    else:
+        if args.ab_p2:
+            # M6-T8: Start ist schon das Ergebnis der Stufe 1 (NA = Pupillenradius/f)
+            p1 = start
+            pt = {'aperture': psf_numerical_aperture(s), 'field': 0.1}
+            stage('p1', {'result': p1, 'skipped': True, 'point': pt})
+        else:
+            p1, r1 = synth_loop(r, 'p1', start,
+                                ['--target-na', na1, '--start-field', '0.1', '--target-field',
+                                 '0.1'] + common, relax, lambda p: p['aperture'], args.na_feld,
+                                restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
+            stage('p1', {'result': p1, 'rounds': r1})
+            pt = last_point(r, r1)
+
+        # Stufe 2: Feld 10 % -> 100 % bei dieser NA
+        def opts2(point):
+            f = 0.1 if point is None else point['field']
+            return ['--target-na', repr(pt['aperture']), '--start-field', repr(f),
+                    '--target-field', '1'] + common
+
+        p2, r2 = synth_loop(r, 'p2', p1, opts2, relax, lambda p: p['field'], 1.0,
+                            restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
+        stage('p2', {'result': p2, 'rounds': r2})
     pt = last_point(r, r2)
     field = pt['field']
+
+    def z2_candidate():
+        # Zwischenkandidat: Ende der Feldstufe (volles Feld, monochromatisch), ohne
+        # Geisterplatten nachoptimiert und bewertet, am erreichten Feldanteil der Feldstufe
+        # (M6-T6b; im Lauf M6-T6 war er 1)
+        s = load(p2)
+        set_field(s, [a * field for a in FIELD_ANGLES], FIELD_WEIGHTS)
+        z2_in = r.path('z2_punkt.json')
+        save(s, z2_in)
+        z2 = polish(r, 'z2', z2_in, ['--max-iterations', '2000', '-q'] + rings, spectrum='mono')
+        stage('z2', {'result': z2, 'eval': evaluate(r, 'z2', z2), 'aperture': pt['aperture'],
+                     'field': field})
+        if field < 1.0:
+            # M6-T8: Z2 auch bei vollem Feld bewertet (Vergleichstabelle 0/70/100 %)
+            s = load(z2)
+            set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+            full = r.path('z2_vollfeld_in.json')
+            save(s, full)
+            summary['stages']['z2']['eval_full_field'] = evaluate(r, 'z2_vollfeld', full)
+            stage('z2', summary['stages']['z2'])
+
+    if args.bis == 'p2':
+        z2_candidate()
+        print('fertig (bis p2):', p2)
+        return 0
 
     # Stufe 3: Apertur -> 0,95 beim erreichten Feld
     def color_stages(cur, na):
@@ -1254,15 +1329,7 @@ def main():
     info['seconds_total'] = time.time() - t0
     stage('p8', info)
 
-    # Zwischenkandidat: Ende der Feldstufe (volles Feld, monochromatisch), ohne Geisterplatten
-    # nachoptimiert und bewertet
-    s = load(p2)
-    # am erreichten Feldanteil der Feldstufe (M6-T6b; im Lauf M6-T6 war er 1)
-    set_field(s, [a * field for a in FIELD_ANGLES], FIELD_WEIGHTS)
-    z2_in = r.path('z2_punkt.json')
-    save(s, z2_in)
-    z2 = polish(r, 'z2', z2_in, ['--max-iterations', '2000', '-q'] + rings, spectrum='mono')
-    stage('z2', {'result': z2, 'eval': evaluate(r, 'z2', z2)})
+    z2_candidate()
     print('fertig:', final)
     return 0
 

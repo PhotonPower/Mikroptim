@@ -102,6 +102,10 @@ void check_beam_options(const BeamOptions& o) {
     if (o.homotopy.augmented_lagrangian.rounds > 0) {
         invalid("Augmented Lagrangian (M11-T2) wird in der Strahlsuche nicht unterstützt");
     }
+    if (o.homotopy.joint_aperture_field || o.homotopy.insertion_must_improve) {
+        invalid("gemeinsame Apertur-/Feld-Homotopie und Einfügen mit Verbesserung (M6-T8) "
+                "werden in der Strahlsuche nicht unterstützt");
+    }
     if (o.beam_width < 1 || o.alternatives < 1 || o.perturbed_starts < 0) {
         invalid("verlangt Strahlbreite ≥ 1, Varianten ≥ 1 und gestörte Starts ≥ 0");
     }

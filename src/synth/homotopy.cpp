@@ -44,6 +44,8 @@ const char* to_string(HomotopyStepKind kind) {
         return "ghost_weight";
     case HomotopyStepKind::Goal:
         return "goal";
+    case HomotopyStepKind::ApertureField:
+        return "aperture_field";
     }
     return "?";
 }
@@ -142,6 +144,13 @@ void check_options_impl(const HomotopyOptions& o) {
     check_control(o.aperture_step, "Apertur");
     check_control(o.field_step, "Feld");
     check_control(o.spectrum_step, "Spektrumbreite");
+    check_control(o.joint_step, "Apertur und Feld");
+    if (o.insertion_attempts < 1) {
+        invalid("insertion_attempts muss ≥ 1 sein");
+    }
+    if (!finite_positive(o.joint_field_exponent)) {
+        invalid("Exponent des Feldes der gemeinsamen Homotopie muss endlich und > 0 sein");
+    }
 }
 
 } // namespace
@@ -260,15 +269,19 @@ public:
         r_.start_elements = model_.elements(s.system);
         elements_ = r_.start_elements;
         start_phase(s);
+        if (o_.joint_aperture_field && r_.target.aperture != s.point.aperture &&
+            r_.target.field != s.point.field) {
+            joint_phase(s);
+        }
         if (r_.target.aperture != s.point.aperture) {
-            continuous_phase(s, HomotopyStepKind::Aperture, r_.target.aperture, o_.aperture_step);
+            single_phase(s, HomotopyStepKind::Aperture, r_.target.aperture, o_.aperture_step);
         }
         if (r_.target.field != s.point.field) {
-            continuous_phase(s, HomotopyStepKind::Field, r_.target.field, o_.field_step);
+            single_phase(s, HomotopyStepKind::Field, r_.target.field, o_.field_step);
         }
         if (r_.target.spectrum_width != s.point.spectrum_width) {
-            continuous_phase(s, HomotopyStepKind::SpectrumWidth, r_.target.spectrum_width,
-                             o_.spectrum_step);
+            single_phase(s, HomotopyStepKind::SpectrumWidth, r_.target.spectrum_width,
+                         o_.spectrum_step);
         }
         spectrum_phase(s);
         finish_phase(s);
@@ -283,9 +296,15 @@ private:
 
     using Clock = std::chrono::steady_clock;
 
+    // F_B des zuletzt übernommenen Zustands (ohne Zweige der inneren Homotopie; M6-T8)
+    double good_fb_ = std::numeric_limits<double>::quiet_NaN();
+
     void emit(HomotopyStep step) {
         step.index = static_cast<int>(r_.steps.size());
         step.elements = elements_;
+        if (step.solved && step.accepted && step.kind != HomotopyStepKind::InsertionStage) {
+            good_fb_ = step.solve.wavefront + step.solve.ghost_penalty;
+        }
         r_.steps.push_back(std::move(step));
         if (o_.on_step) {
             o_.on_step(r_.steps.back());
@@ -387,8 +406,11 @@ private:
     // höchsten Elementzahl.
     // choose_at: Zweige zusätzlich an diesem Punkt bewerten (Spektrumphase: an der verworfenen
     // Stufe, sonst wählt die monochromatische Merit immer den Zweig ohne Farbkorrektur)
+    // before_fb (M6-T8, insertion_must_improve): F_B des guten Zustands; dann wird ein Einfügen
+    // nur übernommen, wenn F_B danach kleiner ist, sonst die nächste Variante versucht.
     void insert(State& s, const HomotopyNeed& need, HomotopyStatus no_need_status,
-                const std::string& no_need_message, const HomotopyPoint* choose_at = nullptr) {
+                const std::string& no_need_message, const HomotopyPoint* choose_at = nullptr,
+                const double* before_fb = nullptr) {
         if (need.recommendation == GhostOperator::None) {
             throw Stop{no_need_status,
                        no_need_message + "; keine Geisterplatte aktiv (kein Bedarf)"};
@@ -400,6 +422,42 @@ private:
                            "), aber höchste Elementzahl " + std::to_string(o_.max_elements) +
                            " erreicht"};
         }
+        if (before_fb == nullptr || !o_.insertion_must_improve) {
+            insert_once(s, need, no_need_status, no_need_message, choose_at);
+            return;
+        }
+        const std::vector<HomotopyNeed> options =
+            model_.insertion_options(s.system, s.point, need, o_.insertion_attempts);
+        std::string tried;
+        for (const HomotopyNeed& option : options) {
+            const State backup = s;
+            const int elements = elements_;
+            const double good = good_fb_;
+            insert_once(s, option, no_need_status, no_need_message, choose_at);
+            const HomotopySolve& last = r_.steps.back().solve;
+            const double after = last.wavefront + last.ghost_penalty;
+            if (std::isfinite(after) && last.failed_rays == 0 && after < *before_fb) {
+                return;
+            }
+            s = backup;
+            elements_ = elements;
+            good_fb_ = good;
+            HomotopyStep note;
+            note.kind = HomotopyStepKind::Insertion;
+            note.point = s.point;
+            note.recommendation = option.recommendation;
+            note.operation = "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
+                             number(*before_fb) + " davor (Einfügen nur mit Verbesserung)";
+            emit(note);
+            tried += (tried.empty() ? "" : ", ") + number(after);
+        }
+        throw Stop{no_need_status, no_need_message + "; kein Einfügen verbessert F_B (" +
+                                       std::to_string(options.size()) + " Varianten, F_B " + tried +
+                                       " ≥ " + number(*before_fb) + ")"};
+    }
+
+    void insert_once(State& s, const HomotopyNeed& need, HomotopyStatus no_need_status,
+                     const std::string& no_need_message, const HomotopyPoint* choose_at) {
         const auto t0 = Clock::now();
         HomotopyInsertion ins;
         try {
@@ -505,25 +563,56 @@ private:
                                                   : p.spectrum_width;
     }
 
-    // Stetiger Parameter (Apertur, Feld) mit Schrittweitensteuerung.
-    void continuous_phase(State& s, HomotopyStepKind kind, double target,
-                          const HomotopyStepControl& c) {
-        double delta = c.initial;
+    // Ein Parameter (Apertur, Feld, Spektrumbreite) ist selbst der Wert der Phase.
+    void single_phase(State& s, HomotopyStepKind kind, double target,
+                      const HomotopyStepControl& c) {
         const char* name = kind == HomotopyStepKind::Aperture ? "Apertur"
                            : kind == HomotopyStepKind::Field  ? "Feldanteil"
                                                               : "Spektrumbreite";
+        continuous_phase(s, kind, name, parameter(s.point, kind), target, c,
+                         [kind](HomotopyPoint& p, double v) { parameter(p, kind) = v; });
+    }
+
+    // Gemeinsame Apertur-/Feld-Homotopie (M6-T8): t = 0 … 1 auf der Bahn
+    // NA(t) = NA₀ + t·(NA₁ − NA₀), φ(t) = φ₀ + t^p·(φ₁ − φ₀); bei t = 1 genau das Ziel.
+    void joint_phase(State& s) {
+        const double a0 = s.point.aperture;
+        const double a1 = r_.target.aperture;
+        const double f0 = s.point.field;
+        const double f1 = r_.target.field;
+        const double p = o_.joint_field_exponent;
+        continuous_phase(s, HomotopyStepKind::ApertureField, "Apertur und Feld, t", 0.0, 1.0,
+                         o_.joint_step, [=](HomotopyPoint& q, double t) {
+                             if (t >= 1.0) {
+                                 q.aperture = a1;
+                                 q.field = f1;
+                                 return;
+                             }
+                             q.aperture = a0 + t * (a1 - a0);
+                             q.field = f0 + (p == 1.0 ? t : std::pow(t, p)) * (f1 - f0);
+                         });
+    }
+
+    // Stetiger Parameter mit Schrittweitensteuerung: Wert der Phase von `start` bis `target`,
+    // `apply` setzt einen Wert in den Punkt.
+    void continuous_phase(State& s, HomotopyStepKind kind, const char* name, double start,
+                          double target, const HomotopyStepControl& c,
+                          const std::function<void(HomotopyPoint&, double)>& apply) {
+        double delta = c.initial;
+        double current = start; // Wert des guten Zustands s
         // Prädiktor (M11-T3): letzter angenommener Zustand vor s und sein Parameterwert
         std::optional<State> prev;
         double prev_value = 0.0;
-        while (parameter(s.point, kind) != target) {
+        while (current != target) {
             State trial = s;
-            const double from = parameter(s.point, kind);
-            double& value = parameter(trial.point, kind);
-            value = target > from ? std::min(from + delta, target) : std::max(from - delta, target);
+            const double from = current;
+            double value =
+                target > from ? std::min(from + delta, target) : std::max(from - delta, target);
             // Rundungsreste der Summe nicht als eigenen Schritt gehen
             if (std::abs(target - value) <= 1e-6 * c.min) {
                 value = target;
             }
+            apply(trial.point, value);
             bool predicted = false;
             if (o_.predictor && prev && from != prev_value) {
                 const double ratio = (value - from) / (from - prev_value);
@@ -550,6 +639,7 @@ private:
                 emit(step);
                 prev = s;
                 prev_value = from;
+                current = value;
                 s = std::move(trial);
                 continue;
             }
@@ -569,12 +659,14 @@ private:
             step.operation = need.text;
             emit(step);
             prev.reset(); // neue Topologie: Sekante neu aufbauen
+            const double before = good_fb_;
             insert(s, need, HomotopyStatus::StepTooSmall,
                    std::string(name) + " " + number(from) + ": Schrittweite unter Δ_min = " +
                        number(c.min) + " (letzter Versuch F_B = " +
                        number(step.solve.wavefront + step.solve.ghost_penalty) + ")",
                    // Spektrumbreite: Zweige am verworfenen, farbigeren Punkt wählen
-                   kind == HomotopyStepKind::SpectrumWidth ? &trial.point : nullptr);
+                   kind == HomotopyStepKind::SpectrumWidth ? &trial.point : nullptr,
+                   std::isfinite(before) ? &before : nullptr);
             delta = c.initial;
         }
     }

@@ -1,0 +1,148 @@
+{
+ "start": "docs/ergebnisse/m6-t6b/V2_apertur_zuerst/p1_final.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0",
+  "--field-rule",
+  "--insertion-improve",
+  "4"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p1": {
+   "result": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/p0_start.json",
+   "skipped": true,
+   "point": {
+    "aperture": 0.8549999999999998,
+    "field": 0.1
+   }
+  },
+  "p2": {
+   "result": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/p2_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.8549999999999998,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 5,
+     "insertions": 3,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 450.7823977470398,
+     "relaxed_gaps": [],
+     "relax": "p2_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p2_r1",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.8549999999999998,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 5,
+     "insertions": 3,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 375.56048703193665,
+     "relaxed_gaps": [],
+     "relax": "p2_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p2_r2",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.8549999999999998,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 5,
+     "insertions": 2,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 257.17405223846436,
+     "relaxed_gaps": [],
+     "relax": "p2_r2_relax",
+     "forced": []
+    }
+   ]
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_vektor.json"
+   },
+   "aperture": 0.8549999999999998,
+   "field": 0.1,
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/FV855_feldregel_verbessern/z2_vollfeld_vektor.json"
+   }
+  }
+ },
+ "times": {
+  "p2_r0": 450.7823977470398,
+  "p2_r0_relax": 1.5082566738128662,
+  "p2_r1": 375.56048703193665,
+  "p2_r1_relax": 1.1397504806518555,
+  "p2_r2": 257.17405223846436,
+  "p2_r2_relax": 1.2977430820465088,
+  "z2_s0": 20.79115605354309,
+  "z2_pupille": 0.14032840728759766,
+  "z2_unendlich": 0.1352841854095459,
+  "z2_psf": 0.1566452980041504,
+  "z2_vektor": 0.23476696014404297,
+  "z2_vollfeld_pupille": 0.14055991172790527,
+  "z2_vollfeld_unendlich": 0.13099336624145508,
+  "z2_vollfeld_psf": 0.16535711288452148,
+  "z2_vollfeld_vektor": 0.22626495361328125
+ }
+}

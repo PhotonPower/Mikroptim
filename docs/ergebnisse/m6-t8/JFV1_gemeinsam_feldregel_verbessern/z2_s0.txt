@@ -1,0 +1,66 @@
+Optimierung: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\z2_s0_in.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\z2_s0.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Variablen                                   9
+  Nebenbedingungen (paraxial)                 3
+  Nebenbedingungen (mechanisch)               12
+  Läufe                                       1
+  Zyklen höchstens                            2000
+
+Ergebnis
+  Status                                      max_iterations
+  Zyklen                                      2000
+  Angenommene Schritte                        1295
+  Jacobi-Matrizen                             1296
+  Merit vorher [Wellen²]                      1.336427621e-01
+  Merit nachher [Wellen²]                     1.148172998e-02
+  Merit nachher/vorher                        8.591359e-02
+  Versagte Strahlen vorher/nachher            0 / 0
+  davon hart vorher/nachher                   0 / 0
+  Runden des Strafverfahrens                  1
+  w_fail am Ende [Wellen²]                    1.000e+06
+
+Variablen
+  Name    Einheit   untere Schranke           vorher          nachher   obere Schranke
+  c[3]    1/mm     -1.200000000e+00  5.001046252e-01  5.026755787e-01  1.200000000e+00
+  c[4]    1/mm     -1.200000000e+00  6.324343990e-01  6.269151774e-01  1.200000000e+00
+  t[0]    mm               0.500000        17.430848         6.615880        40.000000
+  t[3]    mm               0.400000         2.497902         2.544709         6.000000
+  w       mm               0.300000         0.400000         0.300000        10.000000  auf unterer Schranke
+  t[2]    mm               0.100000         0.436305         0.966898        10.000000
+  c[1]    1/mm     -1.200000000e+00  1.429196976e-01  1.350017596e-01  1.200000000e+00
+  c[2]    1/mm     -1.200000000e+00  5.970736591e-03 -6.460900477e-03  1.200000000e+00
+  t[1]    mm               0.500000         5.000000         5.000000         5.000000  auf oberer Schranke
+
+Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho; Residuum r = Wurzel(w) q)
+   Nr  Typ              Modus     Gewicht         Soll   Ist vorher  Ist nachher      r vorher     r nachher
+    0  focal_length     equal   1.000e+02     3.290000     3.295928     3.289980  5.917811e-02 -1.985285e-04
+    1  petzval          max     1.000e+04     0.007692            -            -  0.000000e+00  0.000000e+00
+    2  parfocal_length  max     1.000e+00    45.000000    25.765055    15.427487  0.000000e+00  0.000000e+00
+
+Mechanische Nebenbedingungen (Grenze und Ist in mm, Einfallswinkel in Grad; r = Wurzel(w) max(0, g))
+   Nr  Typ                  Fläche     Gewicht      Grenze  Ist vorher Ist nachher     r vorher    r nachher
+    3  max_semi_diameter    1        1.000e+04     10.0000      2.0189      1.6570    0.000e+00    0.000e+00
+    3  max_semi_diameter    2        1.000e+04     10.0000      1.5376      1.3126    0.000e+00    0.000e+00
+    3  max_semi_diameter    3        1.000e+04     10.0000      1.3910      1.1491    0.000e+00    0.000e+00
+    3  max_semi_diameter    4        1.000e+04     10.0000      0.5161      0.4331    0.000e+00    0.000e+00
+    4  min_edge_thickness   1-2      1.000e+04      0.3000      4.7146      4.8034    0.000e+00    0.000e+00
+    4  min_edge_thickness   3-4      1.000e+04      0.3000      2.7641      2.6681    0.000e+00    0.000e+00
+    5  min_edge_thickness   0-1      1.000e+04      0.1000     17.7285      6.8036    0.000e+00    0.000e+00
+    5  min_edge_thickness   2-3      1.000e+04      0.1000      1.1504      1.4669    0.000e+00    0.000e+00
+    6  min_center_thickness 0-1      1.000e+04      0.1000     17.4308      6.6159    0.000e+00    0.000e+00
+    6  min_center_thickness 2-3      1.000e+04      0.1000      0.4363      0.9669    0.000e+00    0.000e+00
+    7  min_center_thickness 1-2      1.000e+04      0.4000      5.0000      5.0000    0.000e+00    0.000e+00
+    7  min_center_thickness 3-4      1.000e+04      0.4000      2.4979      2.5447    0.000e+00    0.000e+00
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           546.070        16      0.106719      0.101965                   0 / 0
+     1         1.346           546.070       128      0.266647      0.108897                   0 / 0
+     2         1.921           546.070       128      0.554917      0.110407                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t8\JFV1_gemeinsam_feldregel_verbessern\z2_s0.json

@@ -1,0 +1,25 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t8\JFV855_gemeinsam_feldregel_verbessern\p2_r4_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.8623, Feldanteil 0.169, 24 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Apertur und Feld gemeinsam                  Feld(t) = F0 + t^1.000 (F1 - F0), Schritt 3.125e-02 / 3.906e-03 / 2.500e-01
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.8623  0.169   0  -        max_iterations       500  2.957127e-03  2.657094e-03  0.06839   6.957e-06  24  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.8623  0.169   0  -        max_iterations       500  3.631512e-03  3.317513e-03  0.07132   1.811e-05  24  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.8623  0.169   0  -        max_iterations       500  3.960648e-03  3.857535e-03  0.07348   2.563e-05  24  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture_field   0.8650  0.195   0  0.03125  max_iterations       500  2.488080e-02  2.466862e-02  0.10374   3.549e-04  24  shrink (Delta 0.01562)
+      4  aperture_field   0.8636  0.182   0  0.01562  max_iterations       500  1.300079e-02  1.284658e-02  0.09754   1.929e-04  24  shrink (Delta 0.00781)
+      5  aperture_field   0.8630  0.175   0  0.00781  max_iterations       500  8.056726e-03  7.931041e-03  0.08821   9.652e-05  24  shrink (Delta 0.00391)
+      6  aperture_field   0.8626  0.172   0  0.00391  max_iterations       500  5.773992e-03  5.658952e-03  0.08120   5.028e-05  24  stop (Delta 0.00195): Feldregel (RMS Rand/Achse 0.0812125/0.0347108 Wellen, W131 = 0.952235, W222 = 0.249347, W220 = 0.00513783): Operator A im Luftspalt nach Fläche 49 (|ȳ/y| = 0.266328)
+
+Status: max_elements (Apertur und Feld, t 0: Schrittweite unter Δ_min = 0.00390625 (letzter Versuch F_B = 0.00565895); Bedarf (Operator A), aber höchste Elementzahl 24 erreicht)
+Endpunkt: NA 0.8623, Feldanteil 0.169, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 24 -> 24 (0 Einfügungen), Optimierungen: 7, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                34.4
+Ergebnis geschrieben: docs\ergebnisse\m6-t8\JFV855_gemeinsam_feldregel_verbessern\p2_r5.json
+Protokoll geschrieben: docs\ergebnisse\m6-t8\JFV855_gemeinsam_feldregel_verbessern\p2_r5_log.json

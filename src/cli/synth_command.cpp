@@ -66,8 +66,18 @@ struct SynthArgs {
     std::optional<double> target_field;
     double rms_target = 1.0 / 14.0;
     double merit_factor = 1.0;
-    double extrema_beta = 0.0;            // M11-T1b
-    bool predictor = false;               // M11-T3
+    double extrema_beta = 0.0; // M11-T1b
+    bool predictor = false;    // M11-T3
+    // Gemeinsame Apertur-/Feld-Homotopie (M6-T8): Exponent p des Feldes, Schrittweite in t
+    bool joint = false;
+    double joint_exponent = 1.0;
+    HomotopyStepControl joint_step = HomotopyOptions{}.joint_step;
+    // Feldregel (M6-T8): Operator A in der Feldlinsenlage bei dominierenden Feldfehlern
+    bool field_rule = false;
+    double field_ratio = OpticalHomotopyOptions{}.field_ratio;
+    double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
+    std::string field_glass;
+    int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
     bool no_reference_warning = false;                   // --no-reference-warning
@@ -143,6 +153,21 @@ double non_negative(std::string_view option, std::string_view v) {
     return x;
 }
 
+// D0,DMIN,DMAX einer Schrittweitensteuerung (--step, --joint-step); grow und shrink bleiben.
+HomotopyStepControl parse_step_control(std::string_view option, std::string_view value) {
+    const std::string v(value);
+    const std::size_t c1 = v.find(',');
+    const std::size_t c2 = c1 == std::string::npos ? c1 : v.find(',', c1 + 1);
+    if (c2 == std::string::npos) {
+        throw UsageError(std::string(option) + " erwartet D0,DMIN,DMAX");
+    }
+    HomotopyStepControl c;
+    c.initial = positive(option, std::string_view(v).substr(0, c1));
+    c.min = positive(option, std::string_view(v).substr(c1 + 1, c2 - c1 - 1));
+    c.max = positive(option, std::string_view(v).substr(c2 + 1));
+    return c;
+}
+
 SynthArgs parse_args(std::span<const std::string_view> args) {
     SynthArgs a;
     bool have_file = false;
@@ -198,6 +223,33 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.split_start_target = true;
         } else if (arg == "--predictor") {
             a.predictor = true;
+        } else if (arg == "--joint-aperture-field") {
+            a.joint = true;
+        } else if (arg == "--joint-field-exponent") {
+            a.joint = true;
+            a.joint_exponent = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--joint-step") {
+            a.joint = true;
+            a.joint_step = parse_step_control(arg, next_value(args, i, arg));
+        } else if (arg == "--insertion-improve") {
+            a.insertion_improve = parse_int(arg, next_value(args, i, arg));
+            if (a.insertion_improve < 1) {
+                throw UsageError("--insertion-improve muss >= 1 sein");
+            }
+        } else if (arg == "--field-rule") {
+            a.field_rule = true;
+        } else if (arg == "--field-ratio") {
+            a.field_rule = true;
+            a.field_ratio = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--field-min-rms") {
+            a.field_rule = true;
+            a.field_min_rms = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--field-glass") {
+            a.field_rule = true;
+            a.field_glass = std::string(next_value(args, i, arg));
+            if (a.field_glass.empty() || a.field_glass == "AIR") {
+                throw UsageError("--field-glass erwartet einen Katalognamen");
+            }
         } else if (arg == "--sine-condition") {
             a.sine_condition = parse_sine_condition_weight(arg, next_value(args, i, arg));
         } else if (arg == "--reference-sphere") {
@@ -270,15 +322,7 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--spokes") {
             a.spokes = parse_int(arg, next_value(args, i, arg));
         } else if (arg == "--step") {
-            const std::string v(next_value(args, i, arg));
-            const std::size_t c1 = v.find(',');
-            const std::size_t c2 = c1 == std::string::npos ? c1 : v.find(',', c1 + 1);
-            if (c2 == std::string::npos) {
-                throw UsageError("--step erwartet D0,DMIN,DMAX");
-            }
-            a.step.initial = positive(arg, std::string_view(v).substr(0, c1));
-            a.step.min = positive(arg, std::string_view(v).substr(c1 + 1, c2 - c1 - 1));
-            a.step.max = positive(arg, std::string_view(v).substr(c2 + 1));
+            a.step = parse_step_control(arg, next_value(args, i, arg));
         } else if (arg == "--element-thickness") {
             a.optical.element_thickness = positive(arg, next_value(args, i, arg));
         } else if (arg == "--element-max-thickness") {
@@ -374,6 +418,12 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.predictor) {
         throw UsageError("--predictor gibt es nur ohne --beam");
     }
+    if (a.beam && a.joint) {
+        throw UsageError("--joint-aperture-field gibt es nur ohne --beam");
+    }
+    if (a.beam && a.insertion_improve > 0) {
+        throw UsageError("--insertion-improve gibt es nur ohne --beam");
+    }
     if (a.beam && a.al_rounds > 0) {
         throw UsageError("--augmented-lagrangian gibt es nur ohne --beam");
     }
@@ -422,6 +472,22 @@ void print_synth_usage(std::ostream& out) {
            "  --merit-factor K          Schwelle F_max = (K · Ziel)² (Standard 1)\n"
            "  --predictor               Start jedes Apertur-/Feldschritts aus der Sekante der\n"
            "                            beiden letzten Zustände (M11-T3; nicht mit --beam)\n"
+           "  --joint-aperture-field    Apertur und Feldanteil gemeinsam über t = 0 … 1 öffnen:\n"
+           "                            NA(t) linear, Feld(t) = F0 + t^P (F1 - F0) (M6-T8;\n"
+           "                            nicht mit --beam; Standard aus)\n"
+           "  --joint-field-exponent P  Exponent P des Feldes (Standard 1: Diagonale)\n"
+           "  --joint-step D0,DMIN,DMAX Schrittweite in t (Standard 0.03125,0.00390625,0.25)\n"
+           "  --insertion-improve N     Einfügen in den stetigen Phasen nur übernehmen, wenn F_B\n"
+           "                            danach kleiner ist; sonst bis zu N Varianten (M6-T8;\n"
+           "                            nicht mit --beam; Standard aus)\n"
+           "  --field-rule              Feldregel: ohne Geisterbedarf und bei dominierenden\n"
+           "                            Feldfehlern Operator A im Luftspalt mit größtem |ȳ/y|\n"
+           "                            (M6-T8; Standard aus)\n"
+           "  --field-ratio F           Feldfehler dominieren ab RMS Rand >= F x RMS Achse\n"
+           "                            (Standard 1.5; setzt --field-rule)\n"
+           "  --field-min-rms W         und größter RMS >= W Wellen (Standard 0.05)\n"
+           "  --field-glass GLAS        Glas des Meniskus der Feldregel (Standard: Linse vor\n"
+           "                            dem Spalt)\n"
            "  --augmented-lagrangian K[,T[,S]]\n"
            "                            einseitige Bedingungen mit Verschiebung theta statt\n"
            "                            Penalty-Fortsetzung: bis K Läufe mit Gewichten x S\n"
@@ -568,6 +634,20 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         o.spectrum_continuous = a.spectrum_continuous;
         o.color_ratio = a.color_ratio;
+        o.field_rule = a.field_rule;
+        o.field_ratio = a.field_ratio;
+        o.field_min_rms = a.field_min_rms;
+        if (!a.field_glass.empty()) {
+            if (!start.catalog.contains(a.field_glass)) {
+                err << "mikroptim synth: --field-glass: Glas \"" << a.field_glass
+                    << "\" nicht in den Katalogen der Startdatei\n";
+                return kExitError;
+            }
+            MaterialSpec g;
+            g.kind = MaterialKind::Catalog;
+            g.name = a.field_glass;
+            o.field_glass = g;
+        }
         o.split.start_at_target = a.split_start_target;
         o.split.achromat_start = a.split_achromat;
         o.lm.stall_window = a.stall_window;
@@ -639,6 +719,13 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.merit_factor = a.merit_factor;
         h.extrema_beta = a.extrema_beta;
         h.predictor = a.predictor;
+        h.joint_aperture_field = a.joint;
+        h.joint_field_exponent = a.joint_exponent;
+        h.joint_step = a.joint_step;
+        if (a.insertion_improve > 0) {
+            h.insertion_must_improve = true;
+            h.insertion_attempts = a.insertion_improve;
+        }
         h.augmented_lagrangian.rounds = a.al_rounds;
         h.augmented_lagrangian.tolerance = a.al_tolerance;
         h.al_penalty_scale = a.al_scale;
@@ -669,6 +756,19 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        std::to_string(a.starts.value_or(0)) + (a.prefilter ? ", Vorfilter" : ""));
             }
             kv(out, "Jacobi-Matrix", jacobian_text(a.jacobian));
+            if (a.joint) {
+                kv(out, "Apertur und Feld gemeinsam",
+                   "Feld(t) = F0 + t^" + fixed(a.joint_exponent, 3) + " (F1 - F0), Schritt " +
+                       sci(a.joint_step.initial, 3) + " / " + sci(a.joint_step.min, 3) + " / " +
+                       sci(a.joint_step.max, 3));
+            }
+            if (a.field_rule) {
+                kv(out, "Feldregel",
+                   "RMS Rand >= " + fixed(a.field_ratio, 3) +
+                       " x Achse, größter RMS >= " + fixed(a.field_min_rms, 4) + " Wellen" +
+                       (a.field_glass.empty() ? std::string(", Glas der Linse vor dem Spalt")
+                                              : ", Glas " + a.field_glass));
+            }
             if (a.tol_alpha > 0.0) {
                 kv(out, "Toleranzbewusst",
                    "alpha = " + fixed(a.tol_alpha, 4) + ", " +
@@ -768,6 +868,22 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                      {"element_thickness", o.element_thickness},
                      {"element_max_thickness", o.element_max_thickness},
                      {"saddle_delta", o.saddle_delta}};
+        // M6-T8: nur mit der Option (ohne sie bleibt das Protokoll wie bisher)
+        if (a.joint) {
+            options["joint_aperture_field"] = Json{{"field_exponent", a.joint_exponent},
+                                                   {"step", Json{{"initial", a.joint_step.initial},
+                                                                 {"min", a.joint_step.min},
+                                                                 {"max", a.joint_step.max}}}};
+        }
+        if (a.insertion_improve > 0) {
+            options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+        }
+        if (a.field_rule) {
+            options["field_rule"] =
+                Json{{"ratio", a.field_ratio},
+                     {"min_rms_waves", a.field_min_rms},
+                     {"glass", a.field_glass.empty() ? Json(nullptr) : Json(a.field_glass)}};
+        }
         if (beam) {
             options["beam"] = Json{{"width", bo.beam_width},
                                    {"seed", bo.seed},

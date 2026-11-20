@@ -98,6 +98,10 @@ struct HomotopyNeed {
     // Weitere Linsen der Farbregel in absteigender Eignung (falls split_lens am Zustand des
     // Einfügens nicht teilbar ist)
     std::vector<int> split_candidates{};
+    // Feldregel (M6-T8): Operator A im Luftspalt nach dieser Dateifläche, ohne Geisterdiagnose
+    // (−1: Empfehlung aus der Diagnose), weitere Spalte in absteigender Eignung
+    int field_gap = -1;
+    std::vector<int> field_candidates{};
 };
 
 // Ein angewandter Einfüge-Operator: Startsysteme der Zweige (Operator mit Dicke 0 eingefügt, die
@@ -224,10 +228,11 @@ enum class HomotopyStepKind {
     ExtremaSmoothing, // Stufe der β-Fortsetzung der Strahl-Extrema (M11-T1b)
     GhostWeight,      // Stufe der μ-Fortsetzung
     Goal,             // Prüfung des Ziels am realen System (ohne Optimierung)
+    ApertureField,    // Schritt der gemeinsamen Apertur-/Feld-Homotopie (M6-T8)
 };
 
 // "start", "penalty", "aperture", "field", "spectrum", "insertion", "insertion_stage",
-// "smoothing", "ghost_weight", "goal"
+// "smoothing", "spectrum_width", "extrema_smoothing", "ghost_weight", "goal", "aperture_field"
 const char* to_string(HomotopyStepKind kind);
 
 // Entscheidung der Schrittweitensteuerung.
@@ -302,6 +307,22 @@ struct HomotopyOptions {
     // Stetige Spektrumbreite (M11-T5f): kleiner Anfangsschritt, weil die Merit etwa quadratisch
     // mit der Breite wächst (Zielspezifikation: F_B 1,8 schon bei einem Viertel der Breite)
     HomotopyStepControl spectrum_step{1.0 / 32.0, 1.0 / 1024.0, 0.25, 2.0, 0.5};
+    // Gemeinsame Apertur-/Feld-Homotopie (M6-T8, Befund F14 aus M6-T6b): Unterscheiden sich
+    // Apertur und Feldanteil von Start und Ziel, führt eine Phase beide über einen Parameter
+    // t ∈ [0, 1] zum Ziel: NA(t) = NA₀ + t·(NA₁ − NA₀), φ(t) = φ₀ + t^p·(φ₁ − φ₀) mit
+    // p = joint_field_exponent (1: Diagonale im (NA, φ)-Raum; p < 1: das Feld läuft voraus).
+    // Schrittweite in t (joint_step), sonst wie die Aperturphase. Standard aus (erst Apertur,
+    // dann Feld). Nur im Controller ohne Strahlsuche.
+    bool joint_aperture_field = false;
+    double joint_field_exponent = 1.0;
+    HomotopyStepControl joint_step{1.0 / 32.0, 1.0 / 256.0, 0.25, 2.0, 0.5};
+    // Einfügen nur mit Verbesserung (M6-T8, Befund F16): In den stetigen Phasen wird ein
+    // Einfügen nur übernommen, wenn F_B nach der Penalty-Fortsetzung kleiner ist als F_B des
+    // guten Zustands davor; sonst wird es verworfen und die nächste Variante des Modells
+    // (insertion_options, höchstens insertion_attempts) versucht. Verbessert keine, endet der
+    // Lauf wie ohne Bedarf. Standard aus. Nur im Controller ohne Strahlsuche.
+    bool insertion_must_improve = false;
+    int insertion_attempts = 4;
 
     // Penalty-Fortsetzung der einseitigen Bedingungen am Start und nach jedem Einfügen:
     // Faktoren penalty_factor^{−(K−1)}, …, 1/penalty_factor, 1 (K = penalty_stages).

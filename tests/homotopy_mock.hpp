@@ -38,6 +38,7 @@ struct MockSpec {
     double branch0_capacity = 0.0; // Zweig 0 (Marke 0, mehr als ein Element) erreicht weniger
     int alternatives = 1;          // Varianten, die insertion_options höchstens liefert
     double option_bonus = 0.0;     // Variante k: F_B × (1 − option_bonus · k)
+    int bad_options = 0;           // Varianten k < bad_options: F_B × 4 nach dem Einfügen (M6-T8)
     double perturbation = 0.0;     // gestörte Starts: Marke ± perturbation
     double prefilter_max = std::numeric_limits<double>::infinity(); // Vorfilter: Marke ≤ Wert
     bool group_by_elements = false; // solve_all bündelt Systeme gleicher Flächenzahl
@@ -115,6 +116,9 @@ public:
         // Zweig 1 ist etwas besser
         fb *= 1.0 - 0.1 * system.surfaces.back().curvature / spec_.branch_spread;
         fb *= 1.0 - spec_.option_bonus * system.surfaces.back().semi_diameter;
+        if (e > 1 && system.surfaces.back().semi_diameter < spec_.bad_options) {
+            fb *= 4.0;
+        }
         s.wavefront = fb;
         s.merit = fb;
         s.start_merit = fb;

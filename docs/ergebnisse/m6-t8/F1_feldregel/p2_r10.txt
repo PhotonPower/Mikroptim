@@ -1,0 +1,30 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t8\F1_feldregel\p2_r9_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 25 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  1.371691e-03  1.237887e-03  0.04468   3.344e-06  25  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        max_iterations       500  1.361425e-03  1.234119e-03  0.04447   3.389e-06  25  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        converged_step        32  1.405909e-03  1.234536e-03  0.04448   3.381e-06  25  ok: Gewichte der einseitigen Bedingungen ×1
+      3  smoothing        0.5000  1.000   0  -        max_iterations       500  1.654317e-03  1.326376e-03  0.04887   7.839e-07  25  ok: ε ×0.1
+      4  goal             0.5000  1.000   0  -        -                      -  -             -             -         -            25  -: Ziel verfehlt: größter RMS 0.29941 Wellen (Ziel 0.07143)
+      5  ghost_weight     0.5000  1.000   0  -        max_iterations       500  1.951326e-03  1.593448e-03  0.05357   2.593e-07  25  ok: μ ×10
+      6  goal             0.5000  1.000   0  -        -                      -  -             -             -         -            25  -: Ziel verfehlt: größter RMS 0.24987 Wellen (Ziel 0.07143)
+      7  ghost_weight     0.5000  1.000   0  -        max_iterations       500  2.758044e-03  2.378555e-03  0.05794   1.396e-07  25  ok: μ ×100
+      8  goal             0.5000  1.000   0  -        -                      -  -             -             -         -            25  -: Ziel verfehlt: größter RMS 0.19408 Wellen (Ziel 0.07143)
+
+Status: goal_not_reached (Ziel am Endpunkt verfehlt (größter RMS 0.19408 Wellen); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5000, Feldanteil 1.000, Spektrumstufe 0, mu x100, eps x0.1 (Ziel NA 0.5000)
+Glaselemente: 25 -> 25 (0 Einfügungen), Optimierungen: 6, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.03090 Wellen, versagt 0
+  Feld 1 (3.0448 deg), 546.07 nm: RMS 0.02513 Wellen, versagt 0
+  Feld 2 (4.3454 deg), 546.07 nm: RMS 0.19408 Wellen, versagt 0
+  Laufzeit [s]                                45.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t8\F1_feldregel\p2_r10.json
+Protokoll geschrieben: docs\ergebnisse\m6-t8\F1_feldregel\p2_r10_log.json

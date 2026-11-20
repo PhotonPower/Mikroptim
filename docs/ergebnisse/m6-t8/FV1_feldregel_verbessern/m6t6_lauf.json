@@ -1,0 +1,624 @@
+{
+ "start": "data/systems/zielspezifikation_start.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0",
+  "--field-rule",
+  "--insertion-improve",
+  "4"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p1": {
+   "result": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p1_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p1_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4325000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 3,
+     "insertions": 2,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 297.42923974990845,
+     "relaxed_gaps": [
+      3,
+      5
+     ],
+     "relax": "p1_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p1_r1",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4325000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 3,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 10.07231593132019,
+     "relaxed_gaps": [],
+     "relax": "p1_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p1_r2",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.47250000000000014,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 1,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 118.11193776130676,
+     "relaxed_gaps": [
+      3
+     ],
+     "relax": "p1_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "p1_r3",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.4725000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 4,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 10.561856508255005,
+     "relaxed_gaps": [],
+     "relax": "p1_r3_relax",
+     "forced": [
+      {
+       "gap": 7,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p1_r3_ins7.json",
+       "merit": 0.002982999607
+      }
+     ]
+    },
+    {
+     "round": 4,
+     "synth": "p1_r4",
+     "status": "goal_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 5,
+     "insertions": 0,
+     "goal": {
+      "reached": true,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.04299303556576394,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.02123845164080018,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 0.30447784441939846,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.03387058826957648,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 0.43454317492290806,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.04299303556576394,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 1.0,
+     "seconds": 20.57159924507141
+    }
+   ]
+  },
+  "p2": {
+   "result": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.35,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 7,
+     "insertions": 7,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 672.970766544342,
+     "relaxed_gaps": [
+      15
+     ],
+     "relax": "p2_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "p2_r1",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.396875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 9,
+     "insertions": 6,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 482.8646705150604,
+     "relaxed_gaps": [],
+     "relax": "p2_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "p2_r2",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.396875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 9,
+     "insertions": 3,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 232.83350157737732,
+     "relaxed_gaps": [],
+     "relax": "p2_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "p2_r3",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.396875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 9,
+     "insertions": 3,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 232.84277939796448,
+     "relaxed_gaps": [],
+     "relax": "p2_r3_relax",
+     "forced": [
+      {
+       "gap": 3,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_r3_ins3.json",
+       "merit": 0.004623650533
+      }
+     ]
+    },
+    {
+     "round": 4,
+     "synth": "p2_r4",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 19,
+     "insertions": 20,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 1413.1516633033752,
+     "relaxed_gaps": [],
+     "relax": "p2_r4_relax"
+    },
+    {
+     "round": 5,
+     "synth": "p2_r5",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 19,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 47.42971086502075,
+     "relaxed_gaps": [],
+     "relax": "p2_r5_relax"
+    },
+    {
+     "round": 6,
+     "synth": "p2_r6",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.6,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 2,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 249.4170365333557,
+     "relaxed_gaps": [],
+     "relax": "p2_r6_relax"
+    },
+    {
+     "round": 7,
+     "synth": "p2_r7",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.6,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 21,
+     "insertions": 8,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 709.3543536663055,
+     "relaxed_gaps": [],
+     "relax": "p2_r7_relax",
+     "forced": [
+      {
+       "gap": 3,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_r7_ins3.json",
+       "merit": 0.00486163406
+      },
+      {
+       "gap": 5,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_r7_ins5.json",
+       "merit": 0.004907264702
+      },
+      {
+       "gap": 7,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_r7_ins7.json",
+       "merit": 0.004899832434
+      },
+      {
+       "gap": 9,
+       "file": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/p2_r7_ins9.json",
+       "merit": 0.004824369721
+      }
+     ]
+    },
+    {
+     "round": 8,
+     "synth": "p2_r8",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.6,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 22,
+     "insertions": 4,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 311.3271977901459,
+     "relaxed_gaps": [],
+     "relax": "p2_r8_relax"
+    },
+    {
+     "round": 9,
+     "synth": "p2_r9",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.6,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 22,
+     "insertions": 4,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 219.76110315322876,
+     "relaxed_gaps": [],
+     "relax": "p2_r9_relax"
+    },
+    {
+     "round": 10,
+     "synth": "p2_r10",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.63125,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 23,
+     "insertions": 8,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 426.6246213912964,
+     "relaxed_gaps": [],
+     "relax": "p2_r10_relax"
+    },
+    {
+     "round": 11,
+     "synth": "p2_r11",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.5,
+      "field": 0.63125,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 24,
+     "insertions": 2,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 143.19996547698975
+    }
+   ]
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_vektor.json"
+   },
+   "aperture": 0.5,
+   "field": 0.63125,
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t8/FV1_feldregel_verbessern/z2_vollfeld_vektor.json"
+   }
+  }
+ },
+ "times": {
+  "p1_r0": 297.42923974990845,
+  "p1_r0_relax": 1.775932788848877,
+  "p1_r1": 10.07231593132019,
+  "p1_r1_relax": 22.41210103034973,
+  "p1_r2": 118.11193776130676,
+  "p1_r2_relax": 12.662418365478516,
+  "p1_r3": 10.561856508255005,
+  "p1_r3_relax": 0.4865531921386719,
+  "p1_r3_ins7_insert": 0.01808452606201172,
+  "p1_r3_ins7": 17.54140567779541,
+  "p1_r4": 20.57159924507141,
+  "p2_r0": 672.970766544342,
+  "p2_r0_relax": 13.464228868484497,
+  "p2_r1": 482.8646705150604,
+  "p2_r1_relax": 5.081701040267944,
+  "p2_r2": 232.83350157737732,
+  "p2_r2_relax": 6.275977849960327,
+  "p2_r3": 232.84277939796448,
+  "p2_r3_relax": 12.727138757705688,
+  "p2_r3_ins3_insert": 0.01860952377319336,
+  "p2_r3_ins3": 11.073658227920532,
+  "p2_r4": 1413.1516633033752,
+  "p2_r4_relax": 0.45519042015075684,
+  "p2_r5": 47.42971086502075,
+  "p2_r5_relax": 0.8279368877410889,
+  "p2_r6": 249.4170365333557,
+  "p2_r6_relax": 14.769250392913818,
+  "p2_r7": 709.3543536663055,
+  "p2_r7_relax": 17.458219051361084,
+  "p2_r7_ins3_insert": 0.021352052688598633,
+  "p2_r7_ins3": 17.04237651824951,
+  "p2_r7_ins5_insert": 0.018631935119628906,
+  "p2_r7_ins5": 14.281524658203125,
+  "p2_r7_ins7_insert": 0.02111673355102539,
+  "p2_r7_ins7": 14.982274293899536,
+  "p2_r7_ins9_insert": 0.01939678192138672,
+  "p2_r7_ins9": 15.766030073165894,
+  "p2_r8": 311.3271977901459,
+  "p2_r8_relax": 0.32641053199768066,
+  "p2_r9": 219.76110315322876,
+  "p2_r9_relax": 10.087658882141113,
+  "p2_r10": 426.6246213912964,
+  "p2_r10_relax": 10.277103662490845,
+  "p2_r11": 143.19996547698975,
+  "z2_s0": 10.546522617340088,
+  "z2_pupille": 0.1717817783355713,
+  "z2_unendlich": 0.1797473430633545,
+  "z2_psf": 0.20187067985534668,
+  "z2_vektor": 0.2751600742340088,
+  "z2_vollfeld_pupille": 0.17339873313903809,
+  "z2_vollfeld_unendlich": 0.1719977855682373,
+  "z2_vollfeld_psf": 0.19950056076049805,
+  "z2_vollfeld_vektor": 0.2739598751068115
+ }
+}
