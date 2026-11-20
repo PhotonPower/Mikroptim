@@ -1,0 +1,47 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r7_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6325, Feldanteil 0.272, 23 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6325  0.272   0  -        max_iterations       500  6.960732e+00  6.755923e+00  1.66141   2.397e-04  23  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6325  0.272   0  -        max_iterations       500  7.683914e+00  6.749935e+00  1.75857   2.386e-04  23  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6325  0.272   0  -        max_iterations       500  1.257507e+01  6.801946e+00  1.80167   2.399e-04  23  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.6325  0.272   0  -        -                      -  -             -             -         -            23  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.000276551/mm, Glas buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657) (Platte 2, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      4  insertion_stage  0.6325  0.272   0  -        max_iterations      1683  1.152217e+01  1.147512e+01  1.89013   4.193e-04  23  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.6325  0.272   0  -        max_iterations       500  1.073093e+01  1.069938e+01  1.77635   3.953e-04  23  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.6325  0.272   0  -        max_iterations       500  1.019099e+01  1.015890e+01  1.75587   3.748e-04  23  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.6325  0.272   0  -        max_iterations       500  8.863328e+00  8.837558e+00  1.58937   3.344e-04  23  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.6325  0.272   0  -        max_iterations       500  8.863665e+00  8.832341e+00  1.61727   3.335e-04  23  ok, Zweig 0, Stufe 0.5
+      9  insertion_stage  0.6325  0.272   0  -        max_iterations      2279  1.289203e+10  3.473355e+02  21.82330   4.612e-04  23  ok, Zweig 1, Stufe 0.03125
+     10  insertion_stage  0.6325  0.272   0  -        converged_step      1222  7.952622e+00  3.954616e+03  1.17808   2.953e-04  23  ok, Zweig 1, Stufe 0.0625
+     11  insertion_stage  0.6325  0.272   0  -        converged_step        86  7.950970e+00  7.738137e+00  1.17767   2.951e-04  23  ok, Zweig 1, Stufe 0.125
+     12  insertion_stage  0.6325  0.272   0  -        converged_step       182  7.959431e+00  3.954603e+03  1.17343   2.949e-04  23  ok, Zweig 1, Stufe 0.25
+     13  insertion_stage  0.6325  0.272   0  -        converged_step       132  7.988959e+00  3.954593e+03  1.17762   2.945e-04  23  ok, Zweig 1, Stufe 0.5
+     14  penalty          0.6325  0.272   0  -        converged_step         8  7.740958e+00  3.954593e+03  1.17762   2.945e-04  24  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     15  penalty          0.6325  0.272   0  -        converged_step         8  7.763503e+00  3.954593e+03  1.17762   2.945e-04  24  ok: Gewichte der einseitigen Bedingungen ×0.1
+     16  penalty          0.6325  0.272   0  -        converged_step         8  7.988959e+00  3.954593e+03  1.17762   2.945e-04  24  ok: Gewichte der einseitigen Bedingungen ×1
+     17  insertion        0.6325  0.272   0  -        -                      -  -             -             -         -            24  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.00152246/mm, Glas CAF2 (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     18  insertion_stage  0.6325  0.272   0  -        max_iterations      1024  2.034383e+01  2.007262e+01  2.31111   8.738e-05  24  ok, Zweig 0, Stufe 0.03125
+     19  insertion_stage  0.6325  0.272   0  -        max_iterations       500  1.974010e+01  1.943096e+01  2.10289   8.652e-05  24  ok, Zweig 0, Stufe 0.0625
+     20  insertion_stage  0.6325  0.272   0  -        converged_step       145  1.974615e+01  1.940657e+01  2.10030   8.663e-05  24  ok, Zweig 0, Stufe 0.125
+     21  insertion_stage  0.6325  0.272   0  -        max_iterations       500  1.851376e+01  1.823406e+01  2.54006   7.853e-05  24  ok, Zweig 0, Stufe 0.25
+     22  insertion_stage  0.6325  0.272   0  -        max_iterations       500  1.411889e+00  1.392200e+00  1.35733   7.911e-06  24  ok, Zweig 0, Stufe 0.5
+     23  insertion_stage  0.6325  0.272   0  -        converged_step       108  3.037929e+01  3.145743e+03  2.46374   1.253e-04  24  ok, Zweig 1, Stufe 0.03125
+     24  insertion_stage  0.6325  0.272   0  -        max_iterations       500  2.983247e+01  2.893784e+01  2.29665   1.254e-04  24  ok, Zweig 1, Stufe 0.0625
+     25  insertion_stage  0.6325  0.272   0  -        converged_step        54  2.982700e+01  2.892835e+01  2.29028   1.254e-04  24  ok, Zweig 1, Stufe 0.125
+     26  insertion_stage  0.6325  0.272   0  -        converged_step        67  2.985063e+01  3.145480e+03  2.28062   1.254e-04  24  ok, Zweig 1, Stufe 0.25
+     27  insertion_stage  0.6325  0.272   0  -        converged_step        68  2.999213e+01  3.145464e+03  2.27023   1.254e-04  24  ok, Zweig 1, Stufe 0.5
+     28  penalty          0.6325  0.272   0  -        max_iterations       500  5.535933e-01  5.079461e-01  0.80338   4.475e-06  25  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     29  penalty          0.6325  0.272   0  -        max_iterations       500  3.262327e-01  3.101861e-01  0.65071   3.771e-06  25  ok: Gewichte der einseitigen Bedingungen ×0.1
+     30  penalty          0.6325  0.272   0  -        max_iterations       500  2.788732e-01  2.664482e-01  0.60905   3.464e-06  25  ok: Gewichte der einseitigen Bedingungen ×1
+
+Status: start_rejected (Startpunkt nicht annehmbar (F_B = 0.266448 > F_max = 0.00510204); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.6325, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 23 -> 25 (2 Einfügungen), Optimierungen: 29, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                251.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r8.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\p3_r8_log.json

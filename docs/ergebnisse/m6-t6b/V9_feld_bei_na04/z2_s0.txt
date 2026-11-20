@@ -1,0 +1,76 @@
+Optimierung: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t6b\V9_feld_bei_na04\z2_s0_in.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t6b\V9_feld_bei_na04\z2_s0.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Variablen                                   13
+  Nebenbedingungen (paraxial)                 3
+  Nebenbedingungen (mechanisch)               18
+  Läufe                                       1
+  Zyklen höchstens                            2000
+
+Ergebnis
+  Status                                      max_iterations
+  Zyklen                                      2000
+  Angenommene Schritte                        1514
+  Jacobi-Matrizen                             1514
+  Merit vorher [Wellen²]                      1.129308527e-02
+  Merit nachher [Wellen²]                     9.007068235e-04
+  Merit nachher/vorher                        7.975737e-02
+  Versagte Strahlen vorher/nachher            0 / 0
+  davon hart vorher/nachher                   0 / 0
+  Runden des Strafverfahrens                  1
+  w_fail am Ende [Wellen²]                    1.000e+06
+
+Variablen
+  Name    Einheit   untere Schranke           vorher          nachher   obere Schranke
+  c[5]    1/mm     -1.200000000e+00  7.909336306e-01  7.596259411e-01  1.200000000e+00
+  c[6]    1/mm     -1.200000000e+00  9.027646528e-01  9.444600654e-01  1.200000000e+00
+  t[0]    mm               0.500000        12.587533        38.149338        40.000000
+  t[5]    mm               0.400000         1.178587         1.022176         6.000000
+  w       mm               0.300000         0.637543         0.911960        10.000000
+  t[2]    mm               0.100000         0.100049         0.100000        10.000000  auf unterer Schranke
+  t[4]    mm               0.100000         0.417453         0.214765        10.000000
+  c[3]    1/mm     -1.200000000e+00  2.391764045e-01  2.524837672e-01  1.200000000e+00
+  c[4]    1/mm     -1.200000000e+00  1.784724686e-01  1.709173035e-01  1.200000000e+00
+  t[3]    mm               0.500000         2.251017         2.036216         5.000000
+  c[1]    1/mm     -1.200000000e+00  8.408176064e-02  9.334714476e-02  1.200000000e+00
+  c[2]    1/mm     -1.200000000e+00  1.348144682e-02  6.445988562e-03  1.200000000e+00
+  t[1]    mm               0.500000         4.936486         2.565558         5.000000
+
+Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho; Residuum r = Wurzel(w) q)
+   Nr  Typ              Modus     Gewicht         Soll   Ist vorher  Ist nachher      r vorher     r nachher
+    0  focal_length     equal   1.000e+02     3.290000     3.285914     3.289739 -4.091307e-02 -2.605479e-03
+    1  petzval          max     1.000e+04     0.007692            -            -  6.895819e-02  3.791233e-05
+    2  parfocal_length  max     1.000e+00    45.000000    22.108667    45.000012  0.000000e+00  1.227167e-05
+
+Mechanische Nebenbedingungen (Grenze und Ist in mm, Einfallswinkel in Grad; r = Wurzel(w) max(0, g))
+   Nr  Typ                  Fläche     Gewicht      Grenze  Ist vorher Ist nachher     r vorher    r nachher
+    3  max_semi_diameter    1        1.000e+04     10.0000      1.7700      2.2940    0.000e+00    0.000e+00
+    3  max_semi_diameter    2        1.000e+04     10.0000      1.5402      2.1130    0.000e+00    0.000e+00
+    3  max_semi_diameter    3        1.000e+04     10.0000      1.5189      2.0436    0.000e+00    0.000e+00
+    3  max_semi_diameter    4        1.000e+04     10.0000      1.1267      1.5274    0.000e+00    0.000e+00
+    3  max_semi_diameter    5        1.000e+04     10.0000      1.0014      1.2978    0.000e+00    0.000e+00
+    3  max_semi_diameter    6        1.000e+04     10.0000      0.5706      0.8208    0.000e+00    0.000e+00
+    4  min_edge_thickness   1-2      1.000e+04      0.3000      4.8252      2.3340    0.000e+00    0.000e+00
+    4  min_edge_thickness   3-4      1.000e+04      0.3000      2.1752      1.8368    0.000e+00    0.000e+00
+    4  min_edge_thickness   5-6      1.000e+04      0.3000      1.3203      1.5171    0.000e+00    0.000e+00
+    5  min_edge_thickness   0-1      1.000e+04      0.1000     12.7200     38.3978    0.000e+00    0.000e+00
+    5  min_edge_thickness   2-3      1.000e+04      0.1000      0.3781      0.6963    0.000e+00    0.000e+00
+    5  min_edge_thickness   4-5      1.000e+04      0.1000      0.9936      1.7840    0.000e+00    0.000e+00
+    6  min_center_thickness 0-1      1.000e+04      0.1000     12.5875     38.1493    0.000e+00    0.000e+00
+    6  min_center_thickness 2-3      1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 4-5      1.000e+04      0.1000      0.4175      0.2148    0.000e+00    0.000e+00
+    7  min_center_thickness 1-2      1.000e+04      0.4000      4.9365      2.5656    0.000e+00    0.000e+00
+    7  min_center_thickness 3-4      1.000e+04      0.4000      2.2510      2.0362    0.000e+00    0.000e+00
+    7  min_center_thickness 5-6      1.000e+04      0.4000      1.1786      1.0222    0.000e+00    0.000e+00
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           546.070        16      0.052551      0.022904                   0 / 0
+     1         0.828           546.070       128      0.069283      0.039302                   0 / 0
+     2         1.181           546.070       128      0.083846      0.024748                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V9_feld_bei_na04\z2_s0.json

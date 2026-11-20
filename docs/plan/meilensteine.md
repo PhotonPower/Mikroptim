@@ -264,6 +264,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Inhalt:** Referenzsphäre um den idealen Bildpunkt mit Radius bis zur paraxialen Austrittspupille (`image_exit_pupil`) oder unendlich (`image_infinite`), κ als feste Größe des Batches; optionales Feld `reference_sphere` (ohne Feld die alte Konvention `last_surface`, bitgleich); alle Pfade: CPU-Referenzen, RESIDUALS, MERIT, FD- und adjungierte Jacobi, df64, FP32-Vorfilter, EVAL (`--reference infinite`); CLI `--reference-sphere` für `trace`, `optimize`, `synth`; Skript `--referenzsphaere`, `--ohne-f12-schutz`.
 - **Abnahme:** analytische Orakel (reine Defokussierung, Falle F12 mit ideal fokussierender Geisterplatte), Unabhängigkeit von einer Hilfsebene hinter dem System, adjungiert gegen Richardson und FD, CPU gegen GPU, alte Konvention bitgleich zu main; Messung mit `--osc-versuch`, Bericht `docs/ergebnisse/m6-t7-referenzsphaere.md`.
 
+### M6-T6b – Lauf auf der Zielspezifikation mit ADR-0017
+- **Abhängig von:** M6-T6, M6-T7
+- **Inhalt:** M6-T6 mit der Referenzsphäre `image_infinite` wiederholen (Skript-Standard, F12-Schutz aus), Skriptfehler „NA vorgeben“ beheben, Variantenmatrix mit den neuen Mitteln (Farbregel, Sinusbedingung, erzwungenes Einfügen, Start aus dem M6-T6-Zwischenstand); Befunde F1–F13 einordnen; optional M11-T7 an einem neuen Zwischenstand.
+- **Abnahme:** Bericht `docs/ergebnisse/m6-t6b-zielspezifikation-adr0017.md` mit Kandidaten, Linsenzahl, Wellenfrontfehler pro Feld und Wellenlänge, Strehl, Laufzeit, Vergleich mit M6-T6 und M6-T7.
+- **Stand:** gerechnet (neun Varianten). Ziel nicht erreicht. Bestes beugungsbegrenztes System 9 El., NA 0,5, volles Feld, 546 nm, ≤ 0,033 Wellen (M6-T6-Aufbau unter der neuen Merit); NA 0,855 bei 10 % Feld mit 5 El. beugungsbegrenzt; polychromatisch 405–707 nm bei 27 % Feld ≤ 0,108 Wellen (12 El.), bei vollem Feld ≤ 0,26 Wellen (11 El.). F11/F12 erledigt; neuer Engpass F14: Feldstufe ab der Einzellinse endet bei 27 % Feld. M11-T7: CMA bei allen vier Startwerten besser als `starts`.
+
 ---
 
 ## M7 – Performance

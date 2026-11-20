@@ -1,0 +1,139 @@
+Glas-Einrasten: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t6b\V3_farbe_frueh\p6_s2.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t6b\V3_farbe_frueh\p7.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Glaselemente                                3
+  Glas-Hülle                                  39 Gläser, Dimension 3
+  Nachbarn je Element                         3
+  Kombinationen (Läufe)                       27 von 27 (alle)
+  Zyklen höchstens                            500
+
+Kandidaten (nächste Katalog-Gläser, Abstand im normierten (n0, nu1, nu2)-Raum der Glas-Hülle)
+  Fläche 18: kontinuierlich n0 = 1.7841326, nu1 = -1.954173e-01, nu2 = 1.382880e-01, Abstand zur Hülle 1.649e-06
+       0  SYN-29        4.669688e-03
+       1  SYN-25        6.678285e-02
+       2  SYN-26        6.720835e-02
+  Fläche 17: kontinuierlich n0 = 1.7219498, nu1 = -1.046103e-01, nu2 = 5.767670e-02, Abstand zur Hülle 4.172e-07
+       0  SYN-31        1.210438e-01
+       1  SYN-35        1.595332e-01
+       2  SYN-32        1.706064e-01
+  Fläche 6: kontinuierlich n0 = 1.7972745, nu1 = -1.953677e-01, nu2 = 1.442878e-01, Abstand zur Hülle 2.798e-06
+       0  SYN-26        2.738234e-02
+       1  SYN-29        4.748184e-02
+       2  SYN-28        5.123327e-02
+
+Kombinationen (sortiert nach Summe d²; Merit in Wellen² bei 546.070 nm)
+  Lauf  Gläser                          Summe d²      eingerastet      reoptimiert  Zyklen  Status             versagt
+     0  SYN-29, SYN-31, SYN-26         1.542e-02  1.785114046e+02  2.526454607e-03     500  max_iterations           0  bester
+     1  SYN-29, SYN-31, SYN-29         1.693e-02  4.316652437e+01  5.309623488e-03     500  max_iterations           0
+     2  SYN-29, SYN-31, SYN-28         1.730e-02  3.875667125e+01  3.012636203e-03     500  max_iterations           0
+     3  SYN-25, SYN-31, SYN-26         1.986e-02  1.801683160e+02  2.887225997e-03     500  max_iterations           0
+     4  SYN-26, SYN-31, SYN-26         1.992e-02  2.262546887e+02  3.374438134e-03     500  max_iterations           0
+     5  SYN-25, SYN-31, SYN-29         2.137e-02  1.058629952e+02  4.105308157e-03     500  max_iterations           0
+     6  SYN-26, SYN-31, SYN-29         2.142e-02  1.352193015e+01  6.185350574e-03     500  max_iterations           0
+     7  SYN-25, SYN-31, SYN-28         2.174e-02  5.663219541e+01  3.422343822e-03     500  max_iterations           0
+     8  SYN-26, SYN-31, SYN-28         2.179e-02  6.535738021e+01  4.294530964e-03     500  max_iterations           0
+     9  SYN-29, SYN-35, SYN-26         2.622e-02  1.816379451e+02  2.665483321e-03     500  max_iterations           0
+    10  SYN-29, SYN-35, SYN-29         2.773e-02  3.822984389e+01  6.025546264e-03     500  max_iterations           0
+    11  SYN-29, SYN-35, SYN-28         2.810e-02  3.961043414e+01  3.180988326e-03     500  max_iterations           0
+    12  SYN-29, SYN-32, SYN-26         2.988e-02  1.740006333e+02  2.665973370e-03     500  max_iterations           0
+    13  SYN-25, SYN-35, SYN-26         3.066e-02  1.765356736e+02  2.971450624e-03     500  max_iterations           0
+    14  SYN-26, SYN-35, SYN-26         3.072e-02  2.349000861e+02  3.558672165e-03     500  max_iterations           0
+    15  SYN-29, SYN-32, SYN-29         3.138e-02  6.504613767e+01  5.815230336e-03     500  max_iterations           0
+    16  SYN-29, SYN-32, SYN-28         3.175e-02  4.166814322e+01  2.819095539e-03     500  max_iterations           0
+    17  SYN-25, SYN-35, SYN-29         3.217e-02  9.610820338e+01  4.327370725e-03     500  max_iterations           0
+    18  SYN-26, SYN-35, SYN-29         3.222e-02  1.233575068e+01  5.473528959e-03     500  max_iterations           0
+    19  SYN-25, SYN-35, SYN-28         3.254e-02  5.125159736e+01  3.556653595e-03     500  max_iterations           0
+    20  SYN-26, SYN-35, SYN-28         3.259e-02  7.107942318e+01  4.805828827e-03     500  max_iterations           0
+    21  SYN-25, SYN-32, SYN-26         3.432e-02  2.021050699e+02  2.823669464e-03     500  max_iterations           0
+    22  SYN-26, SYN-32, SYN-26         3.437e-02  2.008943585e+02  3.369363123e-03     500  max_iterations           0
+    23  SYN-25, SYN-32, SYN-29         3.582e-02  1.462183422e+02  5.182634165e-03     500  max_iterations           0
+    24  SYN-26, SYN-32, SYN-29         3.588e-02  2.100864027e+01  6.110300765e-03     500  max_iterations           0
+    25  SYN-25, SYN-32, SYN-28         3.619e-02  8.394879472e+01  3.278123067e-03     500  max_iterations           0
+    26  SYN-26, SYN-32, SYN-28         3.625e-02  4.952201111e+01  4.145647976e-03     500  max_iterations           0
+
+Ergebnis
+  Gewählte Gläser                             Fläche 18: SYN-29, Fläche 17: SYN-31, Fläche 6: SYN-26
+  Bester Lauf                                 0
+  Status                                      max_iterations
+  Merit kontinuierlich [Wellen²]              3.303102560e-03
+  Merit eingerastet, ohne Reopt. [Wellen²]    1.785114046e+02
+  Merit eingerastet, reoptimiert [Wellen²]    2.526454607e-03
+  Verschlechterung [Wellen²]                  -7.766480e-04
+  Verschlechterung relativ                    -2.351268e-01
+  Versagte Strahlen kontinuierlich/Ergebnis   0 / 0
+
+Variablen (ohne Glas)
+  Name    Einheit            vorher          nachher
+  c[20]   1/mm      9.126897822e-01  9.055266351e-01
+  c[21]   1/mm      1.033006095e+00  1.040559955e+00
+  t[0]    mm               8.996417         0.500000
+  t[20]   mm               1.225856         1.219113
+  w       mm               0.334817         0.303336
+  t[7]    mm               1.013470         0.913253
+  t[9]    mm               0.253236         0.226495
+  t[11]   mm               0.691725         0.630132
+  t[13]   mm               0.684809         0.630917
+  t[15]   mm               1.440725         1.411512
+  t[19]   mm               0.172822         0.220738
+  t[2]    mm               0.135836         0.125336
+  t[4]    mm               0.100000         0.100000
+  c[8]    1/mm      2.370292019e-01  2.369079016e-01
+  c[9]    1/mm      7.828179027e-03  7.356360813e-03
+  t[8]    mm               0.875776         0.855699
+  c[5]    1/mm      7.161191578e-02  7.170004702e-02
+  c[7]    1/mm      2.777676020e-01  2.778301321e-01
+  t[5]    mm               1.310662         1.279718
+  t[6]    mm               0.500000         0.500000
+  c[1]    1/mm      1.171953416e-01  1.188236618e-01
+  c[2]    1/mm      1.313084335e-02  1.118757354e-02
+  t[1]    mm               1.253470         1.235384
+  c[10]   1/mm     -6.012130625e-02 -5.970165250e-02
+  c[11]   1/mm     -1.240934987e-03 -2.126357938e-03
+  t[10]   mm               3.660206         3.642331
+  c[16]   1/mm      2.261954975e-01  2.246834367e-01
+  c[19]   1/mm      1.212449892e-01  1.177605772e-01
+  t[16]   mm               0.987058         1.005884
+  t[17]   mm               0.764266         0.779256
+  t[18]   mm               0.984050         1.098132
+  c[18]   1/mm     -5.112555099e-01 -4.679540448e-01
+  c[17]   1/mm     -2.521348676e-01 -2.336797953e-01
+  c[6]    1/mm     -3.485504793e-01 -2.965538713e-01
+  c[3]    1/mm     -3.380210102e-03 -2.615167879e-03
+  c[4]    1/mm      2.544924376e-03  1.712204621e-03
+  t[3]    mm               0.400000         0.400000
+  c[14]   1/mm      4.207892116e-03  5.855075839e-03
+  c[15]   1/mm     -4.808761968e-03 -6.933616725e-03
+  t[14]   mm               1.454244         1.471097
+  c[12]   1/mm      3.500967031e-04  1.478893541e-03
+  c[13]   1/mm     -3.522782574e-04 -1.619894026e-03
+  t[12]   mm               0.706429         0.702007
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm; vorher = kontinuierlich, nachher = eingerastet)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           404.660        16      0.075247      0.039687                   0 / 0
+     0         0.000           435.830        16      0.025787      0.017473                   0 / 0
+     0         0.000           486.130        16      0.035885      0.014067                   0 / 0
+     0         0.000           546.070        16      0.018541      0.015795                   0 / 0
+     0         0.000           587.560        16      0.034546      0.019703                   0 / 0
+     0         0.000           656.270        16      0.038952      0.034801                   0 / 0
+     0         0.000           706.520        16      0.024617      0.053652                   0 / 0
+     1         0.828           404.660       128      0.161166      0.129542                   0 / 0
+     1         0.828           435.830       128      0.065461      0.066433                   0 / 0
+     1         0.828           486.130       128      0.047780      0.033305                   0 / 0
+     1         0.828           546.070       128      0.026407      0.022768                   0 / 0
+     1         0.828           587.560       128      0.041044      0.030509                   0 / 0
+     1         0.828           656.270       128      0.068231      0.060859                   0 / 0
+     1         0.828           706.520       128      0.085311      0.089051                   0 / 0
+     2         1.181           404.660       128      0.194422      0.147418                   0 / 0
+     2         1.181           435.830       128      0.092901      0.085929                   0 / 0
+     2         1.181           486.130       128      0.095255      0.076259                   0 / 0
+     2         1.181           546.070       128      0.063379      0.060076                   0 / 0
+     2         1.181           587.560       128      0.038361      0.044336                   0 / 0
+     2         1.181           656.270       128      0.037934      0.043550                   0 / 0
+     2         1.181           706.520       128      0.066808      0.070743                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V3_farbe_frueh\p7.json

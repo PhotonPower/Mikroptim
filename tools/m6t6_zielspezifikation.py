@@ -12,13 +12,19 @@ Aufruf (aus dem Wurzelverzeichnis des Repositorys, nach dem Release-Build):
                                            [--aktuell] [--farbregel] [--farb-budget N] [--farb-stufen N] [--farb-stetig]
                                            [--farbe-frueh] [--farbe-von-anfang zwei|voll]
                                            [--farb-achromat]
-                                           [--osc-versuch [--osc-gewicht W] [--referenzsphaere K]
-                                            [--ohne-f12-schutz]]
+                                           [--referenzsphaere K] [--sinusbedingung W]
+                                           [--osc-versuch [--osc-gewicht W]
+                                            [--ohne-f12-schutz | --mit-f12-schutz]]
                                            [--synth-arg ARG]...
 
 Ohne --aktuell rechnet `synth` wie im dokumentierten Lauf (`--stall 0`, vor M11-T1c). Mit
 --aktuell gelten die aktuellen Standards von `synth` (Stagnationsabbruch), mit --farbregel
 zusätzlich die Farbregel (M11-T5c, `--color-rule`); --synth-arg reicht weitere Optionen durch.
+
+Referenzsphäre (M6-T6b): Standard ist `image_infinite` (ADR-0017), die Startdatei bekommt das Feld
+`reference_sphere`. Die Läufe vor M6-T7 (Bericht M6-T6, M11-T4) rechnet
+`--referenzsphaere last_surface` nach; dann gilt im OSC-Versuch auch wieder der F12-Schutz.
+Bericht des Laufs mit neuer Konvention: docs/ergebnisse/m6-t6b-zielspezifikation-adr0017.md.
 
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
@@ -325,6 +331,8 @@ def synth_options(args):
         opts.append('--color-rule')
     if args.farb_achromat:
         opts.append('--split-achromat')
+    if getattr(args, 'sinusbedingung', None):
+        opts += ['--sine-condition', repr(args.sinusbedingung)]
     for a in args.synth_arg:
         opts.extend(a.split())
     return opts
@@ -413,11 +421,17 @@ def merit_after(text_path):
     return math.inf
 
 
+# Einstellungen des erzwungenen Einfügens (M6-T6b: --erzwungen-min-spalt, --erzwungen-blende);
+# Standard wie im dokumentierten Lauf M6-T6
+FORCED = {'min_gap': 0.7, 'stop_gap': False}
+
+
 def forced_insertion(runner, tag, src, relax_options, glass='SYN-36', thickness=0.4,
-                     min_gap=0.7, curvature_bound=1.2, log=print):
+                     min_gap=None, curvature_bound=1.2, log=print):
     """Erzwungenes Einfügen, wenn der Controller ohne aktive Geisterplatte stehen bleibt.
 
-    Für jeden Luftspalt ohne Geisterplatten (außer dem Blendenspalt) mit Dicke >= min_gap wird
+    Für jeden Luftspalt ohne Geisterplatten (außer dem Blendenspalt, mit FORCED['stop_gap'] auch
+    dort) mit Dicke >= min_gap (Standard FORCED['min_gap']) wird
     mit `mikroptim insert` eine Planplatte (c₀ = 0) der Dicke `thickness` aus `glass` in die
     Mitte gesetzt (Krümmungen variabel in ±curvature_bound, Dicke variabel), danach alle
     Kandidaten nachoptimiert; der mit der kleinsten Merit gewinnt. Liefert (Datei, Liste der
@@ -425,8 +439,10 @@ def forced_insertion(runner, tag, src, relax_options, glass='SYN-36', thickness=
     """
     s = load(src)
     gaps = plate_gaps(s)
+    if min_gap is None:
+        min_gap = FORCED['min_gap']
     cands = []
-    for i in range(1, len(s['surfaces']) - 1):
+    for i in range(0 if FORCED['stop_gap'] else 1, len(s['surfaces']) - 1):
         t = s['surfaces'][i]['thickness']
         if is_air(s['surfaces'][i]['material']) and i not in gaps and t >= min_gap:
             cands.append(i)
@@ -655,13 +671,30 @@ def polish(runner, name, src, relax_options, spectrum='erweitert'):
     return cur
 
 
+def psf_numerical_aperture(system):
+    """NA für `mikroptim eval --psf --na` aus der Datei: kollimierte Quelle mit Pupillenradius
+    a = f · NA (Konvention von synth), also NA = a / f mit f = target.focal_length."""
+    f = system.get('target', {}).get('focal_length', FOCAL)
+    return system['surfaces'][0]['semi_diameter'] / f
+
+
 def evaluate(runner, name, src, grid=256):
-    """mikroptim eval: Raster mit Referenz durch die Austrittspupille und durch den Scheitel,
-    skalare und vektorielle PSF (JSON)."""
+    """mikroptim eval: Raster mit Referenz durch die Austrittspupille und durch den Scheitel
+    (bzw. mit unendlichem Radius wie die Merit, wenn die Datei `image_infinite` hat), skalare und
+    vektorielle PSF (JSON).
+
+    Kann eval die NA der Pupillenabbildung nicht bestimmen (ein Feldstrahl versagt, etwa bei
+    vollem Feld eines bei 10 % Feld entworfenen Systems: „NA vorgeben“), wird die PSF mit der NA
+    der Datei (`psf_numerical_aperture`) wiederholt, statt den Lauf abzubrechen (Fehler aus
+    M6-T7); die Ausgabe nennt die Variante dann in `<name>_<key>_na.txt`.
+    """
     sub = 'e' + 'val'
+    system = load(src)
+    second = (['--reference', 'infinite'] if system.get('reference_sphere') == 'image_infinite'
+              else ['--reference', 'vertex'])
     variants = {
         'pupille': ['--reference', 'exit-pupil'],
-        'scheitel': ['--reference', 'vertex'],
+        'unendlich' if second[1] == 'infinite' else 'scheitel': second,
         'psf': ['--psf'],
         'vektor': ['--vector', '--polarization', 'unpolarized'],
     }
@@ -673,13 +706,28 @@ def evaluate(runner, name, src, grid=256):
             if runner.gpu:
                 args.append('--gpu')
             t0 = time.time()
-            with open(js, 'w', encoding='utf-8') as f, \
-                    open(runner.path(f'{name}_{key}_stderr.txt'), 'w', encoding='utf-8') as e:
+            err_path = runner.path(f'{name}_{key}_stderr.txt')
+            with open(js, 'w', encoding='utf-8') as f, open(err_path, 'w', encoding='utf-8') as e:
                 rc = subprocess.run(args, stdout=f, stderr=e, cwd=ROOT).returncode
+            if rc != 0 and key in ('psf', 'vektor'):
+                with open(err_path, encoding='utf-8', errors='replace') as e:
+                    needs_na = 'NA vorgeben' in e.read()
+                if needs_na:
+                    na = psf_numerical_aperture(system)
+                    with open(js, 'w', encoding='utf-8') as f, \
+                            open(err_path, 'w', encoding='utf-8') as e:
+                        rc = subprocess.run(args + ['--na', repr(na)], stdout=f, stderr=e,
+                                            cwd=ROOT).returncode
+                    with open(runner.path(f'{name}_{key}_na.txt'), 'w', encoding='utf-8') as f:
+                        f.write(f'NA der Pupillenabbildung nicht bestimmbar; --na {na!r} '
+                                f'(Datei: Pupillenradius / Brennweite)\n')
+                    print(f'{name}_{key}: NA nicht bestimmbar, wiederholt mit --na {na:.4f}',
+                          flush=True)
             runner.times[f'{name}_{key}'] = time.time() - t0
             save(runner.times, runner.times_file)
             print(f'{name}_{key}: Exit {rc}', flush=True)
             if rc != 0:
+                os.replace(js, js + '.fehler')  # kein unvollständiges JSON für die Fortsetzung
                 raise RuntimeError(f'{name}_{key}: mikroptim endete mit {rc}')
         out[key] = js
     return out
@@ -794,13 +842,29 @@ def tables(out_dir):
                 txt, worst = tuple_table(ev['pupille'], ev['psf'], ev['vektor'])
                 print(f'## {key} (Referenz Austrittspupille), größter RMS {fmt(worst)}\n')
                 print(txt)
-                txt, worst = tuple_table(ev['scheitel'])
-                print(f'\n## {key} (Referenz Scheitel), größter RMS {fmt(worst)}\n')
+                second = 'unendlich' if 'unendlich' in ev else 'scheitel'
+                txt, worst = tuple_table(ev[second])
+                label = 'unendlich, wie die Merit' if second == 'unendlich' else 'Scheitel'
+                print(f'\n## {key} (Referenz {label}), größter RMS {fmt(worst)}\n')
                 print(txt)
                 print()
         final = load(p8['final'])
         print('## Flächen des Endsystems\n')
         print(surface_table(final))
+
+
+def set_reference_sphere(system, kind):
+    """Feld reference_sphere der Startdatei (M6-T7, ADR-0017). Auch `last_surface` wird
+    ausdrücklich gesetzt: bitgleich zu einer Datei ohne Feld, aber ohne die Warnung der CLI."""
+    system['reference_sphere'] = kind
+
+
+def f12_guard(args):
+    """Hilfsbedingung paraxial_focus gegen die Falle F12 im OSC-Versuch: nur bei der alten
+    Konvention `last_surface` standardmäßig an (M6-T7: mit der neuen Konvention entbehrlich)."""
+    if args.mit_f12_schutz:
+        return True
+    return args.referenzsphaere == 'last_surface' and not args.ohne_f12_schutz
 
 
 def aperture_branch(args):
@@ -811,8 +875,7 @@ def aperture_branch(args):
     relax = ['--max-iterations', '1000', '-q'] + rings
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
-    if args.referenzsphaere:
-        s['reference_sphere'] = args.referenzsphaere  # M6-T7 (ADR-0017)
+    set_reference_sphere(s, args.referenzsphaere)  # M6-T7 (ADR-0017)
     start = r.path('a0_start.json')
     save(s, start)
 
@@ -840,7 +903,7 @@ def aperture_branch(args):
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
     full = r.path('a3_vollfeld_in.json')
     save(s, full)
-    summary = {'start': args.start, 'reference_sphere': args.referenzsphaere or 'last_surface',
+    summary = {'start': args.start, 'reference_sphere': args.referenzsphaere,
                'rounds': ra, 'point': pt, 'final': a2,
                'eval': evaluate(r, 'a3', a2), 'eval_full_field': evaluate(r, 'a3_vollfeld', full),
                'times': r.times, 'seconds_total': time.time() - t0}
@@ -896,9 +959,10 @@ def osc_branch(args):
     Zyklen, Residuum wie in der Synthese). Gewicht 0: ohne Residuum."""
     w = args.osc_gewicht
     tag = ('mit' if w > 0 else 'ohne') + ('_strahlsuche' if args.osc_strahlsuche else '')
-    if args.referenzsphaere:
+    guard = f12_guard(args)
+    if args.referenzsphaere != 'last_surface':
         tag += '_' + args.referenzsphaere
-    if args.ohne_f12_schutz:
+    if not guard:
         tag += '_ohne_f12'
     out = os.path.join(os.path.abspath(args.out), tag)
     r = Runner(os.path.abspath(args.exe), out, gpu=args.gpu, synth_options=synth_options(args))
@@ -906,14 +970,13 @@ def osc_branch(args):
     relax = ['--max-iterations', '1000', '-q'] + rings
     s = load(args.start)
     set_field(s, [0.0], [1.0])
-    if args.referenzsphaere:
-        # M6-T7 (ADR-0017): Referenzsphäre unabhängig von der letzten Fläche
-        s['reference_sphere'] = args.referenzsphaere
+    # M6-T7 (ADR-0017): Referenzsphäre unabhängig von der letzten Fläche
+    set_reference_sphere(s, args.referenzsphaere)
     # Gegen die Falle F12 (Fokus im Scheitel der Hilfsebene vor dem Objekt, Merit klein, reales
     # System defokussiert): Bildebene im paraxialen Fokus, schwach (0,1 mm Randstrahlhöhe kostet
     # eine Welle², die Falle mit 2,7 mm Defokus rund 700 Wellen²; die Fokuslage für den Ausgleich
     # der Restsphärik, einige µm, bleibt praktisch frei)
-    if not args.ohne_f12_schutz:
+    if guard:
         set_constraint(s, {'type': 'paraxial_focus', 'weight': 100.0,
                            'comment': 'M11-T4-Versuch: gegen F12 (Fokus in der Hilfsebene)'})
     if w > 0:
@@ -940,8 +1003,8 @@ def osc_branch(args):
     o2 = r.optimize('o2', prep, ['--max-iterations', '2000', '-q'] + rings)
     polished = osc_evaluate(r, 'o3', o2)
     summary = {'start': args.start, 'osc_weight': w, 'beam': bool(beam),
-               'reference_sphere': args.referenzsphaere or 'last_surface',
-               'f12_guard': not args.ohne_f12_schutz, 'rounds': ro,
+               'reference_sphere': args.referenzsphaere,
+               'f12_guard': guard, 'rounds': ro,
                'point': pt, 'synth_result': o1, 'elements_synth': glass_elements(load(o1)),
                'endpoint': endpoint, 'final': o2, 'elements': glass_elements(load(o2)),
                'polished': polished, 'times': r.times, 'seconds_total': time.time() - t0}
@@ -963,8 +1026,9 @@ def archive(out_dir):
     import re
     keep = re.compile(r'^(m6t6_.*\.json|[pa]\d+_r\d+_log\.json|[pa]\d+_r\d+\.txt|'
                       r'p0_start\.json|a0_start\.json|p6_s\d\.txt|p6_s2\.json|'
-                      r'p7\.(json|txt)|z2_s0\.(json|txt)|a2\.(json|txt)|'
-                      r'(p8|z2|a3)(_vollfeld)?_(pupille|scheitel|psf|vektor)\.json)$')
+                      r'p7\.(json|txt)|z2_s0\.(json|txt)|a2\.(json|txt)|lauf\.log|'
+                      r'(m\d)_s0\.(json|txt)|.*_na\.txt|'
+                      r'(p8|z2|a3|m\d)(_vollfeld)?_(pupille|scheitel|unendlich|psf|vektor)\.json)$')
     # Ergebnisdateien der Stufen (auch Neustart-Dateien, wenn eine Stufe dort endete)
     referenced = set()
     for summary in ('m6t6_lauf.json', 'm6t6_apertur_zweig.json'):
@@ -1038,12 +1102,25 @@ def main():
                          'Ausgabe in OUT/mit bzw. OUT/ohne')
     ap.add_argument('--osc-strahlsuche', action='store_true',
                     help='OSC-Versuch mit Strahlsuche (synth --beam 2 --alternatives 2)')
-    ap.add_argument('--referenzsphaere', default=None,
+    ap.add_argument('--referenzsphaere', default='image_infinite',
                     choices=['last_surface', 'image_exit_pupil', 'image_infinite'],
-                    help='M6-T7: Referenzsphäre der Merit (Feld reference_sphere der Startdatei; '
-                         'ohne Angabe wie die Datei, also last_surface)')
+                    help='M6-T7/M6-T6b: Referenzsphäre der Merit (Feld reference_sphere der '
+                         'Startdatei; Standard image_infinite, ADR-0017). Die Läufe vor M6-T7 '
+                         '(M6-T6, M11-T4) mit --referenzsphaere last_surface nachrechnen')
     ap.add_argument('--ohne-f12-schutz', action='store_true',
-                    help='OSC-Versuch ohne die Hilfsbedingung paraxial_focus gegen die Falle F12')
+                    help='OSC-Versuch ohne die Hilfsbedingung paraxial_focus gegen die Falle F12 '
+                         '(nur bei last_surface nötig; mit der neuen Konvention Standard)')
+    ap.add_argument('--mit-f12-schutz', action='store_true',
+                    help='OSC-Versuch mit paraxial_focus auch bei der neuen Konvention (M6-T7, E)')
+    ap.add_argument('--erzwungen-min-spalt', type=float, default=0.7, metavar='G',
+                    help='M6-T6b: kleinster Luftspalt [mm] für das erzwungene Einfügen (Standard 0,7)')
+    ap.add_argument('--erzwungen-blende', action='store_true',
+                    help='M6-T6b: erzwungenes Einfügen auch im Blendenspalt')
+    ap.add_argument('--erzwungen-mehr', type=int, default=0, metavar='N',
+                    help='M6-T6b: N erzwungene Einfügungen mehr in den Stufen 1–3 (Standard 0)')
+    ap.add_argument('--sinusbedingung', type=float, default=None, metavar='W',
+                    help='M6-T6b: synth --sine-condition W in allen Stufen (Residuum der '
+                         'Sinusbedingung, M11-T4); Standard aus')
     ap.add_argument('--osc-gewicht', type=float, default=None,
                     help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
                          'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')
@@ -1056,13 +1133,18 @@ def main():
         if os.path.abspath(args.out) == os.path.join(ROOT, 'docs', 'ergebnisse', 'm6-t6'):
             args.out = os.path.join(ROOT, 'docs', 'ergebnisse', 'm11-t4')
         return osc_branch(args)
+    FORCED['min_gap'] = args.erzwungen_min_spalt
+    FORCED['stop_gap'] = args.erzwungen_blende
+    extra = args.erzwungen_mehr
     r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu,
                synth_options=synth_options(args))
     rings = ['--rings', '16']
     relax = ['--max-iterations', '1000', '-q'] + rings
     common = ['--curvature-bound', '1.2', '--max-steps', '3000', '--max-iterations', '500',
               '--max-elements', '24'] + rings
-    summary = {'start': args.start, 'stages': {}}
+    summary = {'start': args.start, 'reference_sphere': args.referenzsphaere,
+               'synth_options': r.synth_options, 'na_field': args.na_feld,
+               'forced': dict(FORCED, extra=extra), 'stages': {}}
 
     def full_field(system, point):
         set_field(system, FIELD_ANGLES, FIELD_WEIGHTS)
@@ -1077,6 +1159,7 @@ def main():
     # Stufe 1: monochromatisch, Apertur 0,3 -> na_feld bei 10 % Feld (Petzval aktiv)
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    set_reference_sphere(s, args.referenzsphaere)  # M6-T6b (ADR-0017)
     if args.farbe_von_anfang:
         # polychromatisch ab dem Start (Zhang: Farbe früh im Entwurf); die Gläser werden so nicht
         # erst monochromatisch gewählt (Lauf v9: F_B ≈ 0,0017 + 48·w² über der Spektrumbreite w,
@@ -1089,7 +1172,7 @@ def main():
     p1, r1 = synth_loop(r, 'p1', start,
                         ['--target-na', na1, '--start-field', '0.1', '--target-field', '0.1']
                         + common, relax, lambda p: p['aperture'], args.na_feld,
-                        restart=full_field, max_rounds=12, forced=2)
+                        restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
     stage('p1', {'result': p1, 'rounds': r1})
     pt = last_point(r, r1)
 
@@ -1100,7 +1183,7 @@ def main():
                 '--target-field', '1'] + common
 
     p2, r2 = synth_loop(r, 'p2', p1, opts2, relax, lambda p: p['field'], 1.0,
-                        restart=full_field, max_rounds=12, forced=2)
+                        restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
     stage('p2', {'result': p2, 'rounds': r2})
     pt = last_point(r, r2)
     field = pt['field']
@@ -1133,7 +1216,8 @@ def main():
     p3, r3 = synth_loop(r, 'p3', p3_in,
                         ['--target-na', '0.95', '--start-field', repr(field), '--target-field',
                          repr(field)] + common, relax, lambda p: p['aperture'], 0.95,
-                        restart=full_field, max_rounds=16, forced=3, element_budget=3)
+                        restart=full_field, max_rounds=16 + 2 * extra, forced=3 + extra,
+                        element_budget=3)
     stage('p3', {'result': p3, 'rounds': r3})
     pt = last_point(r, r3)
     na = pt['aperture']
@@ -1173,6 +1257,8 @@ def main():
     # Zwischenkandidat: Ende der Feldstufe (volles Feld, monochromatisch), ohne Geisterplatten
     # nachoptimiert und bewertet
     s = load(p2)
+    # am erreichten Feldanteil der Feldstufe (M6-T6b; im Lauf M6-T6 war er 1)
+    set_field(s, [a * field for a in FIELD_ANGLES], FIELD_WEIGHTS)
     z2_in = r.path('z2_punkt.json')
     save(s, z2_in)
     z2 = polish(r, 'z2', z2_in, ['--max-iterations', '2000', '-q'] + rings, spectrum='mono')

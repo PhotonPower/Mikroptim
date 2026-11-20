@@ -1,0 +1,23 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5125, Feldanteil 0.272, 11 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5125  0.272   0  -        converged_step        46  4.916554e-03  4.837324e-03  0.08823   2.459e-06  11  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5125  0.272   0  -        converged_step       160  4.987293e-03  4.941587e-03  0.08936   2.525e-06  11  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5125  0.272   0  -        converged_step       203  5.020113e-03  4.976554e-03  0.08968   4.182e-06  11  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.5325  0.272   0  0.02000  converged_step       203  6.538460e-03  6.500826e-03  0.10410   5.625e-06  11  shrink (Delta 0.01000)
+      4  aperture         0.5225  0.272   0  0.01000  converged_step        57  5.397230e-03  5.348393e-03  0.09366   4.858e-06  11  shrink (Delta 0.00500)
+      5  aperture         0.5175  0.272   0  0.00500  max_iterations       500  5.632923e-03  5.588649e-03  0.09615   3.260e-06  11  shrink (Delta 0.00250)
+      6  aperture         0.5150  0.272   0  0.00250  converged_step       216  5.344753e-03  5.296415e-03  0.09321   4.734e-06  11  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.5125: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00529642); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.5125, Feldanteil 0.272, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 11 -> 11 (0 Einfügungen), Optimierungen: 7, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                44.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t6b\V5_basis_erzwungen\p3_r3_log.json
