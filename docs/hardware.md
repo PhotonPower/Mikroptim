@@ -10,11 +10,11 @@ Seit [ADR-0015](adr/0015-cuda13-ohne-p100.md) (Oktober 2026); die Tesla P100 (sm
 | Architektur | Ampere, sm_86 | Ada, sm_89 |
 | Speicher | 24 GB GDDR6X | 48 GB GDDR6 |
 | FP32 : FP64 | 64 : 1 (ca. 0,55 TFLOPS FP64) | 64 : 1 (ca. 1,4 TFLOPS FP64) |
-| Rolle | Entwicklung, Debugging, FP32-Vorfilterung, Produktionsläufe mit df64 | Produktionsläufe (df64), große Batches, Ollama |
+| Rolle | Entwicklung, Debugging, Tests, FP32-Vorfilterung | Tests, große Batches, Ollama |
 
 **Prüfen auf einem Rechner:** `tools/aktualisieren_und_testen.sh` holt `main`, baut für die Architektur des Rechnerprofils (`MIKROPTIM_RECHNER=herkules3` Standard, `rtx3090`, `cpu`), führt `ctest` und kurze Messläufe aus (Synthese mit Standard, `--stall 0`, `--predictor`, Farbregel, CPU und GPU) und legt Protokolle unter `ergebnisse_lokal/<Zeit>/` ab; `--m6t6` rechnet zusätzlich die Zielspezifikation mit aktuellen Standards und Farbregel.
 
-Beide Karten rechnen FP64 nur mit einem Bruchteil der FP32-Rate; Produktionsläufe deshalb mit df64 (M7-T1), FP64 bleibt Referenz. Die Abschnitte unten, die die P100 nennen, beschreiben den Stand bis Oktober 2026.
+Beide Karten rechnen FP64 nur mit einem Bruchteil der FP32-Rate; sie sind Entwicklungs- und Testsysteme. **Produktionsläufe** sind für Rechenkarten mit voller FP64-Rate vorgesehen (Entscheidung Maintainer, November 2026); FP64 bleibt der Standard im OPD-Pfad (AGENTS.md §6), df64 (M7-T1) ist eine Option für die Entwicklungskarten. Lange Läufe auf der RTX 3090 sind deshalb hinzunehmen. Die Abschnitte unten, die die P100 nennen, beschreiben den Stand bis Oktober 2026.
 
 **df64 auf der RTX 3090 (M7-T1).** Mit `TraceSettings::precision = Precision::Df64` rechnen die Kernel mit Paaren aus zwei float ([numerik.md, „Zahlentyp df64“](numerik.md#zahlentyp-df64-m7-t1)): ca. 48 Bit Genauigkeit bei FP32-Rate, OPD und Residuen weichen von FP64 typisch um einige 10⁻¹¹ mm ab (höchstens 10⁻⁹ mm, Abnahme M7-T1). Der Kernel ist damit auf der RTX 3090 etwa 4-mal so schnell wie in FP64 (S = 30: 3,5·10⁸ statt 8,3·10⁷ Strahlen/s, [benchmarks.md](benchmarks.md#df64-m7-t1); seit den Tupelpaketen von M7-T4 4,9·10⁸ statt 1,1·10⁸, [benchmarks.md](benchmarks.md#profiling-und-tuning-m7-t4)). Die Tesla P100 rechnet FP64 mit halber FP32-Rate; dort bringt df64 (ca. 10–20 FP32-Befehle pro Operation) nichts, sie bleibt FP64-Referenz. Ergebnisse aus df64 und FP64 sind nicht bitgleich; Läufe, die bitgleich reproduzierbar sein müssen (ADR-0007, Multi-GPU M7-T3), verwenden auf allen Geräten denselben Zahlentyp.
 
@@ -24,17 +24,15 @@ CUDA **12.x oder 13.x** (ADR-0015; vorher nur 12.x wegen der P100, ADR-0002). Di
 
 Architekturen: `CMAKE_CUDA_ARCHITECTURES = 86-real;89-real;89-virtual` (RTX 3090, RTX 6000 Ada; PTX für neuere Karten).
 
-**herkules3 (Stand Oktober 2026):** RHEL 10, GCC 14.3, CUDA 12.9, Treiber 590.48, 1 TB RAM, eine **NVIDIA RTX 6000 Ada Generation** (sm_89, 48 GB; FP64 wie bei der RTX 3090 nur ein kleiner Bruchteil der FP32-Leistung, also df64 für Produktionsläufe prüfen). Prüfsummen (`MultiTraceEngine.ResultFingerprint`): nativer sm_89-Code, Commit 6b0c0fa: FP64 RESIDUALS `9ac978dfd6b7f4d9`, MERIT `faadd36d370d1b61`; DF64 RESIDUALS `bdee239a360f2eb3`, MERIT `e41cd0be1aa9b6b1`; PREFILTER `198fcadd375e938f` (vorher über JIT aus sm_86-PTX, Commit 53a9015: FP64 RESIDUALS `f24dc992300ef8f0`, MERIT `ced499c6e65b1575` – zwischen Architekturen nicht bitgleich, seit ADR-0013 keine Anforderung). Die **Tesla P100** im älteren Server herkules ist ausgeschieden (nur offener Treiber 590 installiert, der Pascal nicht unterstützt; ADR-0015).
+**herkules3 (Stand Oktober 2026):** RHEL 10, GCC 14.3, CUDA 12.9, Treiber 590.48, 1 TB RAM, eine **NVIDIA RTX 6000 Ada Generation** (sm_89, 48 GB; FP64 wie bei der RTX 3090 nur ein kleiner Bruchteil der FP32-Leistung; Produktionsläufe gehören auf eine Rechenkarte mit voller FP64-Rate). Prüfsummen (`MultiTraceEngine.ResultFingerprint`): nativer sm_89-Code, Commit 6b0c0fa: FP64 RESIDUALS `9ac978dfd6b7f4d9`, MERIT `faadd36d370d1b61`; DF64 RESIDUALS `bdee239a360f2eb3`, MERIT `e41cd0be1aa9b6b1`; PREFILTER `198fcadd375e938f` (vorher über JIT aus sm_86-PTX, Commit 53a9015: FP64 RESIDUALS `f24dc992300ef8f0`, MERIT `ced499c6e65b1575` – zwischen Architekturen nicht bitgleich, seit ADR-0013 keine Anforderung). Die **Tesla P100** im älteren Server herkules ist ausgeschieden (nur offener Treiber 590 installiert, der Pascal nicht unterstützt; ADR-0015).
 
 **Host-Compiler und FMA:** Der System-GCC von RHEL 10 baut standardmäßig für x86-64-v3 (mit FMA) und fasst in C++ dann a·b + c zu FMA zusammen. Das brach auf herkules3 zwölf bitgleiche CPU-Vergleiche (z. B. `MeritCpu.EqualsSumOfCpuResiduals`). Seitdem setzt CMake `-ffp-contract=off` (GCC, Clang; Intel `-fp-model=precise`, MSVC `/fp:precise`), auch für den Host-Teil der `.cu`-Dateien; die CI baut zusätzlich mit `-march=x86-64-v3`.
 
-**Mehrere Toolkits unter Windows:** Liegt ein CUDA 13 im `PATH`, bricht CMake (richtigerweise) ab. Mit dem Visual-Studio-Generator wählt die Toolset-Option das Toolkit, z. B.
+**Mehrere Toolkits unter Windows:** Seit ADR-0015 sind CUDA 12.x und 13.x erlaubt; CMake nimmt das Toolkit aus dem `PATH`. Ein bestimmtes Toolkit wählt mit dem Visual-Studio-Generator die Toolset-Option, z. B.
 
 ```powershell
 cmake --preset release-cuda -T "cuda=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9"
 ```
-
-nvcc 12.9 warnt bei sm_60, dass die Offline-Kompilierung für Architekturen unter sm_75 künftig entfällt; das ist erwartet (ADR-0002) und kein Fehler.
 
 ## Bauen unter Windows
 
