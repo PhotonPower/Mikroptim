@@ -1,0 +1,146 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B2_LMRS_claude-haiku-5-5_w2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "optimize"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "12": {
+      "parent": 11,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "RMS 54,6 Wellen mit 34 versagten Strahlen, geometrisch unmögliche Flächen am Rand, Sphärik der Frontgruppe (−37) gegen Mittelgruppe (+50) unausgeglichen und Geisterplatten mit hohem Merit-Gewinn; die Verschlechterung gegenüber Eltern 11 rechtfertigt keinen weiteren Aufwand."
+    },
+    "13": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "optimize"
+    },
+    "15": {
+      "parent": 14,
+      "status": "finished",
+      "action": "synth_segment",
+      "reason": "Optische Spezifikation erreicht (NA 0,95, RMS max. 0,037 λ, Feldklasse 5 im Ziel); Mechanik-Fehler (Randberührungen, Randdicken) sind als Nacharbeit vor Fertigung vermerkt."
+    },
+    "16": {
+      "parent": 15,
+      "status": "open",
+      "action": "optimize"
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "optimize"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "optimize"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "remove_element"
+    },
+    "23": {
+      "parent": 22,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "RMS 1,29 Wellen statt ≤ 0,0714, Randstrahlversagen, mehrere Herstellbarkeitsfehler (Flächen berühren sich, Halbkugelverletzung), Geisterplatten 4/5 mit extremem Merit-Gewinn. Verschlechterung gegenüber dem Vorgänger ist anzunehmen."
+    }
+  },
+  "next_id": 24,
+  "decisions": 12
+}

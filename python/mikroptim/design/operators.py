@@ -207,6 +207,12 @@ def _thickness_homotopy(path, workdir, glass_gaps, air_gap, target, stages, cycl
         for g in glass_gaps:
             data["surfaces"][g]["thickness"] = t
         data["surfaces"][air_gap]["thickness"] = rest
+        # Geisterplatten im verkürzten Luftspalt bleiben im Spalt (wie set_stage in synth;
+        # M10-T7e: seit free_gaps Plattenspalte wieder freigibt, lehnte optimize das System
+        # sonst ab, „ghost_plates[k].distance … zwischen 0 und der Dicke des Luftspalts“)
+        for gp in data.get("ghost_plates", []):
+            if gp["after_surface"] == air_gap and gp["distance"] > rest:
+                gp["distance"] = rest
         nxt = _tmp_out(pathlib.Path(workdir))
         write_system(data, nxt)
         files.append(nxt)
@@ -216,9 +222,107 @@ def _thickness_homotopy(path, workdir, glass_gaps, air_gap, target, stages, cycl
     return cur, log
 
 
+#: Meldung der Kommandozeile, wenn ein Startwert unter der unteren Schranke seiner Variable liegt
+_BELOW_BOUND = "liegt unter der unteren Schranke"
+
+
+def _default_glasses(mod, system_path) -> tuple[list[str], str]:
+    """Standardglas, wenn ``glasses`` fehlt (M10-T7e; 44 Antworten der Modelle in M10-T7d): das
+    erste Katalogglas der Glasregel des Moduls (Wissensbasis; Regeln ohne Bezugsglas), sonst –
+    Paarregel, keine Regel oder kein Treffer – das hochbrechendste Katalogglas (wie die Regel
+    für Schale und Null-Meniskus). Rückgabe (Gläser, Warnung)."""
+    from .deciders import high_index_glass
+    from .glass_query import QueryError, resolve_glass
+
+    rule = mod.get("glass_rule")
+    rules = knowledge.rules()
+    if rule in rules and not rules[rule].get("needs_partner"):
+        try:
+            name = resolve_glass(system_path, {"rule": rule})
+            return [name], (f"glasses fehlte: {name} gewählt (erstes Katalogglas der Glasregel "
+                            f"{rule} des Moduls)")
+        except QueryError:
+            pass
+    name = high_index_glass(system_path)
+    if name is None:
+        raise ActionError("missing_parameter", f"{mod['template']}: glasses fehlt (und kein "
+                          "Katalogglas als Vorgabe)")
+    why = f"Glasregel {rule} ohne Treffer bzw. mit Bezugsglas" if rule else "keine Glasregel"
+    return [name], (f"glasses fehlte: {name} gewählt (hochbrechendstes Katalogglas, Vorgabe; "
+                    f"{why})")
+
+
+def _bound_targets(item, n_surfaces) -> list[int]:
+    """Dateiflächen, deren Dicke eine Dickenvariable bzw. der Arbeitsabstand betrifft."""
+    if item.get("type") == "working_distance":
+        return [n_surfaces - 1]
+    if "surface" in item:
+        return [int(item["surface"])]
+    if item.get("surfaces") == "all":
+        return list(range(n_surfaces - 1))
+    return [int(x) for x in item.get("surfaces", [])]
+
+
+def _insert_in_bounds(system_path, workdir, args, warnings) -> tuple[pathlib.Path, dict]:
+    """``_insert``; lehnt die Kommandozeile das Ergebnis ab, weil eine Dicke (z. B. der
+    Arbeitsabstand nach dem Nachfokussieren der Schale) unter der unteren Schranke ihrer
+    Variable liegt (M10-T7e; 81 Antworten der Modelle in M10-T7d), wird ohne die unteren
+    Schranken der Dicken eingefügt, danach werden die Schranken wiederhergestellt und jede Dicke
+    darunter auf die Schranke angehoben (Warnung in ``warnings``). Die Merit des Berichts
+    (``merit_after``) gilt vor dem Anheben."""
+    try:
+        return _insert(system_path, workdir, args)
+    except ToolError as e:
+        if _BELOW_BOUND not in str(e):
+            raise
+        first_error = e
+    data = read_system(system_path)
+    items = (data.get("variables") or {}).get("items", [])
+    saved = {k: it.pop("min") for k, it in enumerate(items)
+             if it.get("type") in ("thickness", "working_distance") and "min" in it}
+    if not saved:
+        raise first_error
+    relaxed = _tmp_out(pathlib.Path(workdir))
+    write_system(data, relaxed)
+    try:
+        out, rep = _insert(relaxed, workdir, args)
+    finally:
+        relaxed.unlink(missing_ok=True)
+    new = read_system(out)
+    sf = new["surfaces"]
+    new_items = new["variables"]["items"]
+    raised = set()
+    for k, lo in saved.items():
+        new_items[k]["min"] = lo
+        for j in _bound_targets(new_items[k], len(sf)):
+            t = float(sf[j]["thickness"])
+            if t < lo and j not in raised:
+                sf[j]["thickness"] = lo
+                raised.add(j)
+                what = "Arbeitsabstand" if j == len(sf) - 1 else f"Dicke nach Fläche {j}"
+                warnings.append(f"{what} {t:.4g} mm unter der unteren Schranke {lo:g} mm, auf "
+                                "die Schranke angehoben (merit_after gilt vor dem Anheben)")
+    write_system(new, out)
+    return out, rep
+
+
 def insert_module(a, system_path, workdir):
     """Modul aus der Vorlage einfügen. Vorlagen mit Dicke 0 lassen die Merit unverändert; mit
-    ``thickness`` folgt die Dicken-Homotopie (``stages`` Stufen, ``cycles`` LM-Zyklen)."""
+    ``thickness`` folgt die Dicken-Homotopie (``stages`` Stufen, ``cycles`` LM-Zyklen).
+
+    Robust gegen zwei häufige Fehler der Modelle (M10-T7e): Fehlt ``glasses``, wählt
+    ``_default_glasses`` ein Standardglas; liegt eine Dicke nach dem Einfügen unter ihrer
+    Schranke, hebt ``_insert_in_bounds`` sie an. Beides steht als Warnung im Bericht
+    (``warnings``) und im Verlauf des Zustands."""
+    warnings = []
+    outs = _insert_module(a, system_path, workdir, warnings)
+    if warnings:
+        for _, rep in outs:
+            rep["warnings"] = list(warnings)
+    return outs
+
+
+def _insert_module(a, system_path, workdir, warnings):
     _require(a, "module", "after_surface")
     try:
         mod = module(a["module"])
@@ -229,6 +333,9 @@ def insert_module(a, system_path, workdir):
     s = int(a["after_surface"])
     gap = _air_gap(data, s, allow_last=(kind == "aplanatic_shell"))
     glasses = [_glass_name(g, system_path) for g in a.get("glasses", [])]
+    if not glasses and (kind in ("aplanatic_shell", "petzval_group") or kind in NULL_TEMPLATES):
+        glasses, w = _default_glasses(mod, system_path)
+        warnings.append(w)
     group = a.get("group", mod["group"])
     if group is not None and group not in GROUPS:
         raise ActionError("invalid_parameter", f"group {group}: erlaubt sind {', '.join(GROUPS)}")
@@ -239,8 +346,8 @@ def insert_module(a, system_path, workdir):
             raise ActionError("missing_parameter", "aplanatic_shell: glasses fehlt (Glas der Schale)")
         pos = float(a.get("position", SHELL_POSITION * gap))
         t = float(a.get("thickness", SHELL_THICKNESS * (gap - pos)))
-        out, rep = _insert(system_path, workdir,
-                           ["--aplanatic-shell", f"{s},{pos!r},{t!r},{glasses[0]}"])
+        out, rep = _insert_in_bounds(system_path, workdir,
+                                     ["--aplanatic-shell", f"{s},{pos!r},{t!r},{glasses[0]}"], warnings)
         report.update({"position": pos, "thickness": t, "glass": glasses[0],
                        "surfaces": [rep["first_new_surface"], rep["first_new_surface"] + 1],
                        **{k: rep["details"][k] for k in ("intercept", "image_intercept",
@@ -250,7 +357,8 @@ def insert_module(a, system_path, workdir):
         _set_group(out, report["surfaces"], group)
         return [(out, report)]
     if kind == "petzval_group":
-        return _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report)
+        return _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report,
+                              warnings)
     if kind not in NULL_TEMPLATES:
         raise ActionError("invalid_parameter", f"Vorlage {kind} nicht für insert_module")
     if not glasses:
@@ -260,8 +368,8 @@ def insert_module(a, system_path, workdir):
         raise ActionError("precondition", f"Lage {pos} mm liegt nicht im Spalt (0, {gap})")
     c0 = float(data["surfaces"][s].get("curvature", 0.0))
     if kind == "null_meniscus":
-        out, rep = _insert(system_path, workdir,
-                           ["--meniscus", f"{s},{pos!r},{c0!r},{glasses[0]}"])
+        out, rep = _insert_in_bounds(system_path, workdir,
+                                     ["--meniscus", f"{s},{pos!r},{c0!r},{glasses[0]}"], warnings)
         first, glass_gaps, air_after = rep["first_new_surface"], [rep["first_new_surface"]], \
             rep["first_new_surface"] + 1
         report["glasses"] = glasses[:1]
@@ -273,8 +381,8 @@ def insert_module(a, system_path, workdir):
             report.update(info)
         else:
             g2 = glasses[1] if len(glasses) > 1 else _partner_glass(system_path, glasses[0])
-        out, rep = _insert(system_path, workdir,
-                           ["--null-doublet", f"{s},{pos!r},{c0!r},{glasses[0]},{g2}"])
+        out, rep = _insert_in_bounds(system_path, workdir,
+                                     ["--null-doublet", f"{s},{pos!r},{c0!r},{glasses[0]},{g2}"], warnings)
         first = rep["first_new_surface"]
         glass_gaps, air_after = [first, first + 1], first + 2
         report["glasses"] = [glasses[0], g2]
@@ -287,9 +395,12 @@ def insert_module(a, system_path, workdir):
         if semi > 0:
             c = min(c, MAX_HEMISPHERE / semi)
         g2 = glasses[1] if len(glasses) > 1 else glasses[0]
-        mid, rep1 = _insert(system_path, workdir, ["--meniscus", f"{s},{p1!r},{-c!r},{glasses[0]}"])
+        mid, rep1 = _insert_in_bounds(system_path, workdir,
+                                      ["--meniscus", f"{s},{p1!r},{-c!r},{glasses[0]}"],
+                                      warnings)
         files.append(mid)
-        out, rep = _insert(mid, workdir, ["--meniscus", f"{s + 2},{p2 - p1!r},{c!r},{g2}"])
+        out, rep = _insert_in_bounds(mid, workdir,
+                                     ["--meniscus", f"{s + 2},{p2 - p1!r},{c!r},{g2}"], warnings)
         first = s + 1
         glass_gaps, air_after = [s + 1, s + 3], s + 4
         rep["merit_before"] = rep1["merit_before"]
@@ -398,7 +509,7 @@ def _strong_curvature(system_path, data, s, pos, target_deg):
                   "marginal_slope": u, "cement_curvature": best}
 
 
-def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report):
+def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report, warnings):
     """Petzval-Gruppe: zwei Null-Menisken einfügen, dann Dicke ``thickness`` geben und die
     Brechkräfte so setzen, dass das erste Glied (Tracerichtung) die Brechkraft
     ``power``/f hat und das Paar in Dünnlinsennäherung afokal ist: φ₂ = −φ₁/(1 − d φ₁),
@@ -418,9 +529,11 @@ def _petzval_group(a, mod, system_path, workdir, data, s, gap, glasses, report):
     g2 = glasses[1] if len(glasses) > 1 else glasses[0]
     c0 = float(data["surfaces"][s].get("curvature", 0.0))
     files = []
-    mid, rep1 = _insert(system_path, workdir, ["--meniscus", f"{s},{p1!r},{c0!r},{glasses[0]}"])
+    mid, rep1 = _insert_in_bounds(system_path, workdir,
+                                  ["--meniscus", f"{s},{p1!r},{c0!r},{glasses[0]}"], warnings)
     files.append(mid)
-    nul, _ = _insert(mid, workdir, ["--meniscus", f"{s + 2},{spacing!r},{c0!r},{g2}"])
+    nul, _ = _insert_in_bounds(mid, workdir, ["--meniscus", f"{s + 2},{spacing!r},{c0!r},{g2}"],
+                               warnings)
     files.append(nul)
     f = cli_json(["trace", system_path])["paraxial"]["focal_length"]
     if not (f and math.isfinite(f) and f != 0):

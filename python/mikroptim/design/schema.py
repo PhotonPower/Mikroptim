@@ -115,6 +115,7 @@ ACTION_DEFS = {
                        "max_new_elements": {"type": "integer", "minimum": 0, "maximum": 4},
                        "augmented_lagrangian": {"type": "integer", "minimum": 1, "maximum": 20},
                        "sine_condition": {"type": "number", "minimum": 0},
+                       "start_retry_cycles": {"type": "integer", "minimum": 0, "maximum": 200},
                        "reason": _REASON}},
     "snap_glasses": {
         "type": "object", "additionalProperties": False, "required": ["action"],
@@ -128,6 +129,7 @@ ACTION_DEFS = {
                        "surfaces": {"oneOf": [{"const": "all"},
                                               {"type": "array", "items": _SURFACE}]},
                        "include_glass_thickness": {"type": "boolean"},
+                       "include_ghost_plate_gaps": {"type": "boolean"},
                        "max_gap": {"type": "number", "minimum": 0.1, "maximum": 40},
                        "reason": _REASON}},
     "insert_null_meniscus": {

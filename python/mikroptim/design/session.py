@@ -56,11 +56,26 @@ def _synth_outcome(reports) -> str:
     status = res.get("status")
     if not status:
         return ""
+    retry = (reports[0] or {}).get("start_retry")
+    # E19 (M10-T7e): zweiter Versuch nach optimize
+    again = ""
+    if retry:
+        n = retry.get("cycles")
+        again = (f", nach start_rejected optimize ({n} Zyklen) und zweiter Versuch"
+                 if retry.get("outcome") not in (None, "start_rejected", "error")
+                 else f", zweiter Versuch nach optimize ({n} Zyklen) ebenfalls abgelehnt")
     if status == "start_rejected":
         msg = str(res.get("message") or "")
-        return f" ({status}, Apertur nicht geöffnet: {msg[:240]})"
+        return f" ({status}, Apertur nicht geöffnet: {msg[:240]}{again})"
     ap = (res.get("point") or {}).get("aperture")
-    return f" ({status}" + (f", NA {ap:.4g})" if isinstance(ap, (int, float)) else ")")
+    return f" ({status}" + (f", NA {ap:.4g}" if isinstance(ap, (int, float)) else "") + again + ")"
+
+
+def _warnings(reports) -> str:
+    """Warnungen der Berichte (M10-T7e: angehobene Dicken, Standardglas, gesenkte Schranke im
+    kurzen Plattenspalt) für den Verlauf, gekürzt."""
+    ws = [w for rep in reports or [] for w in (rep or {}).get("warnings") or []]
+    return f" [Warnung: {'; '.join(ws)[:300]}]" if ws else ""
 
 
 class Session:
@@ -123,6 +138,7 @@ class Session:
                     line = f"#{e['candidate']}: {r['action']} → {r['new_candidates']}"
                     if r.get("action") == "synth_segment":
                         line += _synth_outcome(r.get("reports") or [])
+                    line += _warnings(r.get("reports"))
                     out.append(line)
         return out
 

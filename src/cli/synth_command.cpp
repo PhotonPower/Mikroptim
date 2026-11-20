@@ -415,6 +415,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
                                  "'");
             }
             a.jacobian = *m;
+        } else if (arg == "--shrink-short-gaps") {
+            a.optical.meniscus.shrink_short_gap = true;
         } else if (arg == "--curvature-bound") {
             const double c = positive(arg, next_value(args, i, arg));
             a.optical.meniscus.curvature_variables.min = -c;
@@ -654,7 +656,10 @@ void print_synth_usage(std::ostream& out) {
            "  --saddle-delta D          zwei Starts am Sattelpunkt, c0 +- D [1/mm] (0.002;\n"
            "                            0: ein Zweig)\n"
            "  --curvature-bound C       Schranken +-C [1/mm] der neuen Krümmungsvariablen\n"
-           "  --jacobian V              Jacobi-Matrix der LM-Läufe: fd (Standard) oder adjoint\n"
+           "  --shrink-short-gaps       Operator A in einem Plattenspalt unter 2 x Schranke:\n"
+           "                            Schranke der Teilstücke auf (T - Dicke)/2 senken\n"
+           "                            (Warnung im Protokoll) statt abzulehnen (M10-T7e)\n"
+           "  --jacobian V             Jacobi-Matrix der LM-Läufe: fd (Standard) oder adjoint\n"
            "  --tolerance-aware A       toleranzbewusst (M11-T6b): jeder Schritt minimiert\n"
            "                            (1-A)·F + A·Mittel F(gestört) über feste Störungen des\n"
            "                            Mikroptim-Standardsatzes der Beschreibung am Punkt;\n"

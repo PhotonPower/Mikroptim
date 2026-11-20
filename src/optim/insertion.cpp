@@ -16,10 +16,12 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace mko {
 
@@ -86,6 +88,55 @@ void extend_gap_constraints(SystemDescription& system, int gap, int added) {
         }
         c.surfaces.insert(it + 1, added);
         c.surface_selection = SurfaceSelection::List;
+    }
+}
+
+// Kurzer Plattenspalt (M10-T7e): Die Teilstücke `front` und `rear` eines mit Operator A geteilten
+// Spalts verlassen jeden Dickeneintrag, dessen untere Schranke über `lb` liegt, und erhalten je
+// einen eigenen Eintrag (Kopie des ersten solchen Eintrags) mit
+//   min_k = max(min(lb, t_k), größte distance einer Geisterplatte im Teilstück k)
+// (t_k Startdicke). So liegt der Startwert in den Schranken, und keine Schranke erlaubt eine
+// Dicke unter der Lage einer Platte im Teilstück (das System bliebe sonst nicht ladbar).
+void lower_piece_bounds(SystemDescription& system, int front, int rear, double lb) {
+    if (!system.variables) {
+        return;
+    }
+    std::vector<VariableSpec>& items = system.variables->items;
+    std::optional<VariableSpec> templ;
+    for (VariableSpec& v : items) {
+        if (v.type != VariableType::Thickness || !v.min || !(*v.min > lb) ||
+            std::find(v.surfaces.begin(), v.surfaces.end(), front) == v.surfaces.end()) {
+            continue;
+        }
+        if (!templ) {
+            templ = v;
+        }
+        std::erase(v.surfaces, front);
+        std::erase(v.surfaces, rear);
+        if (v.surfaces.size() == 1) {
+            v.selection = SurfaceSelection::One;
+        }
+    }
+    if (!templ) {
+        return;
+    }
+    std::erase_if(items, [](const VariableSpec& v) {
+        return v.type == VariableType::Thickness && v.surfaces.empty() &&
+               v.selection != SurfaceSelection::All && v.selection != SurfaceSelection::None;
+    });
+    for (const int k : {front, rear}) {
+        double m = std::min(lb, system.surfaces[sz(k)].thickness);
+        for (const GhostPlate& g : system.ghost_plates) {
+            if (g.after_surface == k) {
+                m = std::max(m, g.distance);
+            }
+        }
+        VariableSpec v = *templ;
+        v.selection = SurfaceSelection::One;
+        v.surfaces = {k};
+        v.min = m;
+        v.comment = "Teilstück eines kurzen Plattenspalts (Operator A, Schranke gesenkt)";
+        items.push_back(std::move(v));
     }
 }
 
@@ -312,6 +363,10 @@ InsertionResult insert_meniscus(const SystemDescription& system, const MeniscusI
         gp.distance = d - m.position - m.thickness;
     }
     extend_entries(r.system, VariableType::Thickness, i, i + 2);
+    if (m.piece_lower_bound) {
+        check_finite(*m.piece_lower_bound, "insert_meniscus: piece_lower_bound");
+        lower_piece_bounds(r.system, i, i + 2, *m.piece_lower_bound);
+    }
     extend_gap_constraints(r.system, i, i + 2);
     add_curvature_entry(r.system, m.curvature_variables, {i + 1, i + 2}, "Meniskus (Operator A)");
     validate_system(r.system);
@@ -599,14 +654,27 @@ MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
     double position = pr.distance;
     std::string shifted;
     if (lb > 0.0 && (position < lb || T - position - options.thickness < lb)) {
-        if (T - options.thickness < 2.0 * lb) {
-            invalid("Operator A: Spalt nach Fläche " + std::to_string(i) + " (" + num(T) +
-                    " mm) zu kurz für zwei Teilstücke mit der unteren Schranke " + num(lb) +
-                    " mm der Dickenvariable");
+        const double room = T - options.thickness;
+        if (room < 2.0 * lb && options.shrink_short_gap && room > 0.0) {
+            // Kurzer Plattenspalt (M10-T7e, Befund E14): Meniskus in die Mitte, beide
+            // Teilstücke mit der Schranke (T − Dicke)/2 statt der des Spalts
+            position = 0.5 * room;
+            plan.insertion.piece_lower_bound = position;
+            plan.warning = "Spalt nach Fläche " + std::to_string(i) + " (" + num(T) +
+                           " mm) kürzer als 2 x untere Schranke " + num(lb) +
+                           " mm, Schranke der Teilstücke auf " + num(position) + " mm gesenkt";
+            shifted = ", Lage von " + num(pr.distance) + " auf " + num(position) +
+                      " mm (Mitte); Warnung: " + plan.warning;
+        } else {
+            if (room < 2.0 * lb) {
+                invalid("Operator A: Spalt nach Fläche " + std::to_string(i) + " (" + num(T) +
+                        " mm) zu kurz für zwei Teilstücke mit der unteren Schranke " + num(lb) +
+                        " mm der Dickenvariable");
+            }
+            position = std::clamp(position, lb, T - options.thickness - lb);
+            shifted = ", Lage von " + num(pr.distance) + " auf " + num(position) +
+                      " mm verschoben (untere Schranke " + num(lb) + " mm der Spaltdicke)";
         }
-        position = std::clamp(position, lb, T - options.thickness - lb);
-        shifted = ", Lage von " + num(pr.distance) + " auf " + num(position) +
-                  " mm verschoben (untere Schranke " + num(lb) + " mm der Spaltdicke)";
     }
     plan.insertion.after_surface = i;
     plan.insertion.position = position;

@@ -554,6 +554,12 @@
           "minimum": 0,
           "description": "synth --sine-condition W (M11-T4): Gewicht der Sinusbedingung [Wellen²] in jedem LM-Lauf (seit M10-T7b)"
         },
+        "start_retry_cycles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "M10-T7e (E19): lehnt synth den Start ab, ohne dass eine Geisterplatte Bedarf meldet (start_rejected), erst optimize mit so vielen LM-Zyklen und dann ein zweiter Versuch (Standard 20; 0: aus)"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
@@ -634,6 +640,10 @@
         },
         "include_glass_thickness": {
           "type": "boolean"
+        },
+        "include_ghost_plate_gaps": {
+          "type": "boolean",
+          "description": "M10-T7e: auch Spalte mit Geisterplatten freigeben, untere Schranke = Plattenlage (Standard true; false: Plattenspalte bleiben fest wie in M10-T7d)"
         },
         "max_gap": {
           "type": "number",

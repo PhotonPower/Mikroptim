@@ -1271,6 +1271,7 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--min-air-gap G` | kleinster Luftspalt hinter einem eingefügten Meniskus (0,1 mm) |
 | `--saddle-delta D` | zwei Starts am Sattelpunkt mit c₀ ± D (0,002/mm; 0: ein Zweig) |
 | `--curvature-bound C` | Schranken ±C [1/mm] der neuen Krümmungsvariablen (Standard offen) |
+| `--shrink-short-gaps` | Operator A in einem Plattenspalt kürzer als 2 × untere Schranke der Spaltdicke: Meniskus in die Mitte, untere Schranke beider Teilstücke (T − Dicke)/2 statt Ablehnung; Warnung im Protokoll an der Einfüge-Entscheidung (M10-T7e, [optimierung.md, Abschnitt 6](optimierung.md)). Standard aus |
 | `-o DATEI` | Ergebnis am Endpunkt als Systemdatei (Pupille, Feldwinkel, Spektrum und Gewichte des Endpunkts, ohne Vorhalt; Kataloge relativ zum Verzeichnis der Datei) |
 | `--log DATEI` | Protokoll als JSON `mikroptim.synth/1` in eine Datei (zusätzlich zur Ausgabe) |
 | `--json` | Ausgabe als JSON statt Text |

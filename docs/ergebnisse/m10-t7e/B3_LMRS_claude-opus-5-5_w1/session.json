@@ -1,0 +1,147 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B3_LMRS_claude-opus-5-5_w1/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "synth_segment hat bei max_elements ohne Gewinn an Apertur aufgehört (NA 0,34 von 0,85). Die Mittelgruppe hat W040 ≈ 2,2 Wellen, das RMS liegt bei 0,51 Wellen, dazu kommen 10 geometrisch unmögliche Befunde. Gegenüber dem Elternkandidaten ist das eine Überkonstruktion ohne Verbesserung."
+    },
+    "8": {
+      "parent": 3,
+      "status": "open",
+      "action": "place_ghost_dictionary"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "optimize"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "insert_null_meniscus"
+    },
+    "15": {
+      "parent": 13,
+      "status": "open",
+      "action": "insert_null_meniscus"
+    },
+    "16": {
+      "parent": 15,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Das Aktionsbudget ist erschöpft. Der beste offene Kandidat 16 bleibt bei NA 0,355 mit RMS 0,150 Wellen und geometrischen Fehlern und erfüllt die Vorgabe nicht. Eine einzelne Aktion kann das nicht mehr beheben."
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "optimize"
+    },
+    "20": {
+      "parent": 19,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Homotopie steht dreimal bei NA 0,355 (max_elements). 9 Elemente, 10 Fehler mit unmöglicher Geometrie (Halbkugel, negative Randdicken). Front- und Mittelgruppe kompensieren W040 nur über große Einzelbeiträge. Keine Glasvariablen. Mit dem Restbudget ist die Soll-NA 0,85 nicht realistisch erreichbar."
+    },
+    "21": {
+      "parent": 16,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "23": {
+      "parent": 22,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Die Homotopie steht bei NA 0,355 (start_rejected, F_B > F_max). Die Frontgruppe (Flächen 10–16) ist mit Halbkugel- und Randdickenfehlern geometrisch unmöglich. Das RMS am Feldrand liegt mit 0,080 über dem Ziel, und 2 Aktionen reichen nicht für eine Reparatur und das Öffnen der Apertur auf 0,85. Weiter mit dem besten offenen Kandidaten."
+    }
+  },
+  "next_id": 24,
+  "decisions": 12
+}

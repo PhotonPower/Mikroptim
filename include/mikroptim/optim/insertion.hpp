@@ -85,6 +85,12 @@ struct MeniscusInsertion {
                                 // bringt sie danach auf die Mindestdicke)
     double semi_diameter = 0.0; // ≤ 0: größerer Halbdurchmesser der beiden Spaltflächen
     NewCurvatureVariables curvature_variables{}; // beide Meniskusflächen
+    // Untere Schranke der beiden Teilstücke (M10-T7e, kurzer Plattenspalt): gesetzt und kleiner
+    // als die Schranke der Dickenvariable des Spalts, erhalten beide Teilstücke einen eigenen
+    // Dickeneintrag mit min = min(piece_lower_bound, position, Dicke des hinteren Teilstücks)
+    // und den übrigen Angaben des alten Eintrags (max, typical); der Spalt verlässt dafür seinen
+    // alten Eintrag. Fehlt es (Standard), erben beide Teilstücke den Eintrag unverändert.
+    std::optional<double> piece_lower_bound;
 };
 
 // Fügt den Meniskus ein: Dateifläche i = after_surface behält Medium Luft und hat danach die
@@ -173,6 +179,11 @@ struct MeniscusInitOptions {
     double curvature_magnitude = 0.0;
     double thickness = 0.0;
     NewCurvatureVariables curvature_variables{};
+    // Kurzer Plattenspalt (M10-T7e): Ist der Spalt kürzer als 2 · Schranke + Dicke, wird die
+    // untere Schranke beider Teilstücke auf (T − Dicke)/2 gesenkt und der Meniskus in die Mitte
+    // gesetzt (MeniscusPlan::warning), statt mit std::invalid_argument abzubrechen. Standard
+    // aus: dann bitgleich zum Verhalten vor M10-T7e.
+    bool shrink_short_gap = false;
 };
 
 struct MeniscusPlan {
@@ -181,6 +192,7 @@ struct MeniscusPlan {
     int position = -1; // Index in diagnosis.positions
     double t4 = 0.0;   // ghost_profile_t4 der Platte
     std::string reason;
+    std::string warning; // nicht leer: Schranke der Teilstücke gesenkt (shrink_short_gap)
 };
 
 // Operator A aus dem Bericht: Lage = die empfohlene (oder options.position) mit after_surface
@@ -190,8 +202,12 @@ struct MeniscusPlan {
 // meniscus_saddle_starts bzw. ein Lauf mit −c₀ (docs/optimierung.md, Abschnitt 6). Liegt die
 // Lage näher als die untere Schranke einer Dickenvariable des Spalts an einem Spaltende, wird
 // sie in den Spalt verschoben, bis beide Teilstücke die Schranke einhalten (M10-T7b, Befund E6).
+// Ist der Spalt dafür zu kurz (T − Dicke < 2 · Schranke) und options.shrink_short_gap gesetzt,
+// liegt der Meniskus in der Mitte und beide Teilstücke erhalten die Schranke (T − Dicke)/2
+// (insertion.piece_lower_bound, Warnung in plan.warning; M10-T7e).
 // Wirft std::invalid_argument ohne aktive Platte an der Lage, wenn Bericht und System nicht
-// zusammenpassen oder der Spalt für zwei Teilstücke mit der Schranke zu kurz ist.
+// zusammenpassen oder der Spalt für zwei Teilstücke mit der Schranke zu kurz ist (ohne
+// shrink_short_gap bzw. bei T − Dicke ≤ 0).
 MeniscusPlan meniscus_from_diagnosis(const SystemDescription& system,
                                      const GhostDiagnosis& diagnosis,
                                      const MeniscusInitOptions& options = {});

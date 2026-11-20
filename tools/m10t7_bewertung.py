@@ -62,6 +62,16 @@ Beispiele:
     python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --varianten LM --decider claude         --model claude-haiku-5-5 --wiederholung 1-3     # Kürzel LMRS_<modell>_w1 … _w3
     python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --zusammenfassung  # x/n, Median
     python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7b --varianten V0-alt,V3-alt,V3RS
+    python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --varianten V3RS \
+        --gestoerte-starts 5 --stoer-sigma 0.02         # Kürzel V3RS_s1 … _s5 (M10-T7e)
+
+Gestörte Starts (M10-T7e, Entscheidung Maintainer 2026-11-20): ``--gestoerte-starts N`` rechnet
+jede Variante zusätzlich auf N leicht gestörten Kopien des Starts (Kürzel ``<tag>_s<k>``). Gestört
+werden nur Startwerte von Variablen der Datei: Radien r → r·(1 + σ ξ) (also c → c/(1 + σ ξ)) und
+Dicken bzw. Arbeitsabstand t → t·(1 + σ ξ), ξ standardnormal, danach auf die Schranken der
+Variable begrenzt (Dicken nicht unter die Lage einer Geisterplatte im Spalt); deterministisch aus
+``--stoer-seed``, Benchmark und k. Die Zusammenfassung (``--zusammenfassung``) fasst ``_s<k>`` wie
+Wiederholungen zusammen (Treffer x/N, Median, Spanne).
 
 Ollama: ``--num-ctx`` (Standard 65536) setzt die Kontextlänge; größer als das Maximum des
 Modells (``/api/show``) wird auf das Maximum begrenzt, 0 heißt Modellmaximum.
@@ -208,7 +218,10 @@ def assess(path, target_na) -> dict:
         # Fokus im Scheitel einer Hilfsebene täuscht in trace/Merit kleine OPD vor)
         try:
             ev = cli_json(["eval", p, "--grid", 64])
-            ev_rms = max(t["rms_opd_waves"] for t in ev["tuples"])
+            ev_all = [t["rms_opd_waves"] for t in ev["tuples"]]
+            # ein Tupel ohne Wert (alle Strahlen versagt) macht die Gegenprobe ungültig (M10-T7e:
+            # vorher TypeError, Lauf abgebrochen)
+            ev_rms = None if any(x is None for x in ev_all) else max(ev_all)
         except (RuntimeError, ValueError, KeyError):
             ev_rms = None
     f = tr["paraxial"]["focal_length"]
@@ -257,6 +270,80 @@ def prepare_start(bench, work_root, name) -> dict:
     write_system(data, tmp)
     os.replace(tmp, path)
     return {**bench, "start": path}
+
+
+def _covered(item, n_surfaces) -> list[int]:
+    """Dateiflächen einer Krümmungs- oder Dickenvariable (``surface``, Liste oder ``all``)."""
+    if "surface" in item:
+        return [int(item["surface"])]
+    if item.get("surfaces") == "all":
+        return list(range(n_surfaces if item.get("type") == "curvature" else n_surfaces - 1))
+    return [int(x) for x in item.get("surfaces", [])]
+
+
+def perturb_start(data, sigma, rng) -> dict:
+    """Leicht gestörter Start (M10-T7e): Startwerte der Krümmungs- und Dickenvariablen sowie des
+    Arbeitsabstands relativ um σ·ξ (ξ ~ N(0, 1) aus ``rng``) ändern – Radien r(1 + σξ), d. h.
+    c/(1 + σξ), Dicken t(1 + σξ) – und auf die Schranken der Variable begrenzen; eine Dicke nicht
+    unter die größte Lage einer Geisterplatte im Spalt. Nur Flächen, die eine Variable sind;
+    ebene Flächen (c = 0) bleiben eben. Rückgabe: Liste der Änderungen (Fläche, Art, alt, neu)."""
+    surf = data["surfaces"]
+    n = len(surf)
+    changes = []
+    done = set()
+    for it in (data.get("variables") or {}).get("items", []):
+        kind = it.get("type")
+        if kind == "working_distance":
+            targets = [n - 1]
+        elif kind in ("curvature", "thickness"):
+            targets = _covered(it, n)
+        else:
+            continue
+        lo = it.get("min", -math.inf)
+        hi = it.get("max", math.inf)
+        for j in targets:
+            if (kind, j) in done or not 0 <= j < n:
+                continue
+            done.add((kind, j))
+            xi = rng.gauss(0.0, 1.0)
+            if kind == "curvature":
+                if surf[j].get("type", "sphere") != "sphere":
+                    continue
+                old = float(surf[j].get("curvature", 0.0))
+                if old == 0.0:
+                    continue
+                new = min(max(old / (1.0 + sigma * xi), lo), hi)
+                surf[j]["curvature"] = new
+            else:
+                old = float(surf[j]["thickness"])
+                floor = max([g["distance"] for g in data.get("ghost_plates", [])
+                             if g["after_surface"] == j] or [0.0])
+                new = min(max(old * (1.0 + sigma * xi), lo, floor), hi)
+                surf[j]["thickness"] = new
+            if new == old:  # an der Schranke
+                continue
+            changes.append({"surface": j, "type": "curvature" if kind == "curvature"
+                            else "thickness", "old": old, "new": new})
+    return changes
+
+
+def prepare_perturbed(vb, work_root, name, k, sigma, seed) -> dict:
+    """Gestörte Kopie ``start_<name>_s<k>.json`` des vorbereiteten Starts ``vb``; Zufallsfolge
+    deterministisch aus Seed, Benchmark-Name und k."""
+    import random
+
+    from mikroptim.design.files import read_system, write_system
+
+    data = read_system(vb["start"])
+    rng = random.Random(f"{seed}:{name}:{k}")
+    changes = perturb_start(data, sigma, rng)
+    data["name"] = f"{data.get('name', '')} (gestört, sigma {sigma:g}, Start {k})"
+    path = pathlib.Path(work_root) / f"start_{name}_s{k}.json"
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    write_system(data, tmp)
+    os.replace(tmp, path)
+    return {**vb, "start": path, "perturbation": {"index": k, "sigma": sigma, "seed": seed,
+                                                    "changes": changes}}
 
 
 def run_synth(bench, work, beam=False) -> dict:
@@ -538,6 +625,14 @@ def parser() -> argparse.ArgumentParser:
                     help="Wiederholungen mit eigenem Kürzel <tag>_w<N> (M10-T7d), z. B. 1-3; "
                     "Läufe mit Modell sind nicht deterministisch, Ergebnisse werden nicht "
                     "überschrieben")
+    ap.add_argument("--gestoerte-starts", type=int, default=0, metavar="N",
+                    help="jede Variante zusätzlich auf N leicht gestörten Starts (Kürzel "
+                    "<tag>_s<k>, M10-T7e); gestört werden Startwerte der Krümmungs- und "
+                    "Dickenvariablen im Rahmen ihrer Schranken")
+    ap.add_argument("--stoer-sigma", type=float, default=0.02,
+                    help="relative Störung σ der Radien und Dicken (Standard 0,02)")
+    ap.add_argument("--stoer-seed", type=int, default=0,
+                    help="Seed der Störungen (deterministisch mit Benchmark und k)")
     ap.add_argument("--zusammenfassung", action="store_true",
                     help="Tabelle über Wiederholungen: Ziel-Treffer x/n, beste und mediane NA "
                     "und RMS, Elemente, Kosten pro Lauf")
@@ -564,14 +659,19 @@ def repetitions(spec) -> list:
     return out
 
 
-def rep_tag(tag, n) -> str:
-    """Kürzel einer Wiederholung: ``<tag>_w<N>``; ohne Nummer das Kürzel selbst."""
-    return tag if n is None else f"{tag}_w{n}"
+def rep_tag(tag, n, k=None) -> str:
+    """Kürzel einer Wiederholung ``<tag>_w<N>`` und eines gestörten Starts ``_s<k>``; ohne
+    Nummern das Kürzel selbst."""
+    tag = tag if n is None else f"{tag}_w{n}"
+    return tag if k is None else f"{tag}_s{k}"
 
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     reps = repetitions(args.wiederholung)
+    if args.gestoerte_starts < 0 or not args.stoer_sigma >= 0:
+        raise SystemExit("--gestoerte-starts und --stoer-sigma müssen ≥ 0 sein")
+    starts = list(range(1, args.gestoerte_starts + 1)) if args.gestoerte_starts else [None]
     out = pathlib.Path(args.out)
     work_root = pathlib.Path(args.work) if args.work else out.parent / f"{out.name}-arbeit"
     if args.neu_bewerten:
@@ -608,9 +708,9 @@ def main(argv=None) -> int:
             b_out = out / "private" if bench.get("private") else out
             b_work.mkdir(parents=True, exist_ok=True)
             b_out.mkdir(parents=True, exist_ok=True)
-            for v, n in ((v, n) for v in variants for n in reps):
+            for v, n, k in ((v, n, k) for v in variants for n in reps for k in starts):
                 base, rs = variant_config(v, args.referenzsphaere)
-                tag = rep_tag(tag_of(v, args), n)
+                tag = rep_tag(tag_of(v, args), n, k)
                 if bench.get("private") and base == "LM" and args.decider == "claude":
                     print(f"{b} {tag}: private Daten nur lokal (Ollama), übersprungen")
                     continue
@@ -624,6 +724,9 @@ def main(argv=None) -> int:
                 # start_<B>_rs.json image_infinite)
                 start_name = b + ("_" + REFERENCE_SUFFIX[rs].lower() if REFERENCE_SUFFIX[rs] else "")
                 vb = prepare_start({**bench, "reference_sphere": rs}, b_work, start_name)
+                if k is not None:
+                    vb = prepare_perturbed(vb, b_work, start_name, k, args.stoer_sigma,
+                                           args.stoer_seed)
                 steps = args.steps or vb["steps"]
                 print(f"{b} {tag}: läuft …", flush=True)
                 if base == "V0":
@@ -653,6 +756,8 @@ def main(argv=None) -> int:
                 res.update({"benchmark": b, "variant": v, "tag": tag, "target_na": bench["na"]})
                 if n is not None:
                     res["repetition"] = n
+                if k is not None:
+                    res["perturbation"] = vb["perturbation"]
                 aborted = res.get("aborted") or ""
                 if any(k in aborted for k in ("Unavailable", "PrivacyError", "HTTPError", "URLError")):
                     # Konfigurations- oder Serverfehler (SDK, Zugangsdaten, private Daten, Ollama): kein
@@ -734,6 +839,13 @@ def _median(xs):
     return xs[m] if len(xs) % 2 else 0.5 * (xs[m - 1] + xs[m])
 
 
+def summary_group(tag) -> str:
+    """Gruppe der Zusammenfassung: Kürzel ohne ``_w<N>``; gestörte Starts (``_s<k>``) bilden eine
+    eigene Gruppe ``<tag>_s*`` neben dem ungestörten Lauf (M10-T7e)."""
+    m = re.match(r"^(.*?)(_w\d+)?(_s\d+)?$", tag)
+    return m.group(1) + ("_s*" if m.group(3) else "")
+
+
 def summary(out) -> str:
     """Wiederholungen zusammenfassen (M10-T7d): pro Benchmark und Kürzel ohne ``_w<N>``
     Ziel-Treffer x/n, beste und mediane NA, bester und medianer RMS (max. über Felder, Wellen),
@@ -741,7 +853,7 @@ def summary(out) -> str:
     groups = {}
     for p in sorted(pathlib.Path(out).glob("B*_*.json")):
         r = json.loads(p.read_text(encoding="utf-8"))
-        base = re.sub(r"_w\d+$", "", r["tag"])
+        base = summary_group(r["tag"])
         groups.setdefault((r["benchmark"], base), []).append(r)
     rows = []
     for (b, tag), rs in sorted(groups.items()):
@@ -758,7 +870,9 @@ def summary(out) -> str:
                   ) if ranked else {}
         cost_s = ("–" if not cost else f"{fmt(sum(cost) / len(cost), 2)} ({fmt(min(cost), 2)}–"
                   f"{fmt(max(cost), 2)})")
-        el_s = "–" if not el else f"{fmt(_median(el))} ({min(el)}–{max(el)})"
+        med = _median(el)
+        med_s = "–" if med is None else (str(int(med)) if med == int(med) else fmt(med, 1))
+        el_s = "–" if not el else f"{med_s} ({min(el)}–{max(el)})"
         rows.append(f"| {b} | {tag} | {hits}/{len(rs)} | {fmt(top.get('na'), 3)} | "
                     f"{fmt(_median(na), 3)} | {fmt(top.get('rms_max_waves'))} | "
                     f"{fmt(_median(rms))} | {el_s} | {cost_s} |")

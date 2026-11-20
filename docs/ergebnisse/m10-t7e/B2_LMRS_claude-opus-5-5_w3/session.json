@@ -1,0 +1,170 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B2_LMRS_claude-opus-5-5_w3/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "optimize"
+    },
+    "11": {
+      "parent": 10,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Der Synthese-Abschnitt endete bei max_elements, ohne die NA zu erhöhen (0,7225 statt Soll 0,95). Das RMS liegt bei 0,198 Wellen (Ziel ≤ 0,0714). Die Frontgruppe ist mit 18 Herstellbarkeitsfehlern geometrisch unmöglich. Die Front-/Mittelbilanz W040 −2,33 gegen +2,30 hebt sich nur durch extreme Einzelbeiträge auf (Flächen 9 bis 11 bei ±4 bis 7 Wellen). Der Kandidat wird damit schlechter statt besser und wird verworfen."
+    },
+    "12": {
+      "parent": 7,
+      "status": "open",
+      "action": "place_ghost_dictionary"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "optimize"
+    },
+    "15": {
+      "parent": 14,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "16": {
+      "parent": 15,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "optimize"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "optimize"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "23": {
+      "parent": 22,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "24": {
+      "parent": 23,
+      "status": "open",
+      "action": "optimize"
+    },
+    "25": {
+      "parent": 24,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "26": {
+      "parent": 25,
+      "status": "open",
+      "action": "optimize"
+    },
+    "27": {
+      "parent": 26,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "28": {
+      "parent": 27,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Budget erschöpft. Ergebnis: NA 0,945 von 0,95, RMS am Rand nahe am Ziel. Die geometrischen Fehler der Frontmenisken (Flächen 11–14) und die negative Randdicke an Element 3 (Fläche 8) bleiben für eine spätere Überarbeitung offen."
+    }
+  },
+  "next_id": 29,
+  "decisions": 11
+}

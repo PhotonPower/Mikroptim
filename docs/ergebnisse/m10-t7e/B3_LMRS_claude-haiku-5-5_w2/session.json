@@ -1,0 +1,160 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B3_LMRS_claude-haiku-5-5_w2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "optimize"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "optimize"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "optimize"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "optimize"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "15": {
+      "parent": 14,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "16": {
+      "parent": 15,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "RMS 16,5 Wellen statt ≤0,0714, Homotopie bei NA 0,67 blockiert (step_too_small), 18 Fertigungsfehler (Randberührung, Halbkugel, negative Randdicken), Gruppenbilanz Mitte W040 +4,06 und Front W131 -1,53 nicht korrigierbar; Verschlechterung gegenüber Elternkandidat 15 durch das eingefügte Modul."
+    },
+    "17": {
+      "parent": 14,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "optimize"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "optimize"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "23": {
+      "parent": 22,
+      "status": "open",
+      "action": "optimize"
+    },
+    "24": {
+      "parent": 23,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "25": {
+      "parent": 24,
+      "status": "open",
+      "action": "optimize"
+    },
+    "26": {
+      "parent": 25,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Budget aufgebraucht; bester Kandidat mit NA 0,85 und RMS nahe Ziel, Herstellbarkeitsbefunde dokumentiert."
+    }
+  },
+  "next_id": 27,
+  "decisions": 12
+}

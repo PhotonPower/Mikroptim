@@ -1,0 +1,129 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B2_LMRS_claude-opus-5-5_w2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "optimize"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "optimize"
+    },
+    "9": {
+      "parent": 8,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "NA bleibt bei 0,61 von 0,95 stehen (step_too_small trotz shell_ca und Geisterplatten-Wörterbuch). Frontgruppe geometrisch unmöglich (Halbkugel- und Randdickenfehler an 8, 9, 11, 12; Fläche 11 nur 0,04 mm dick). RMS 0,086 über dem Ziel. Budget von 3 Aktionen reicht nicht für Korrektur und weitere Öffnung der Apertur."
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "12": {
+      "parent": 11,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Aktionsbudget erschöpft (1 Aktion übrig). Der Kandidat erreicht die Soll-NA nicht (0,6125 von 0,95), der RMS-Fehler am Rand liegt bei 0,122 > 0,0714 Wellen, und die Geometrie hat 13 Mechanikfehler. Ich beende ohne gültige Lösung und dokumentiere den Stand."
+    },
+    "13": {
+      "parent": 12,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Die Homotopie steht nach zwei Schalen-Einfügungen bei NA 0,6275 (Soll 0,95). Die Frontgruppe (Flächen 8–14) ist geometrisch unmöglich: Halbkugel überschritten, Randdicken negativ, Radien um 0,13 mm. Die Frontbilanz W131/W040 kommt nur durch gegenseitige Kompensation sehr empfindlicher Flächen zustande. Weiter mit dem besten offenen Kandidaten."
+    },
+    "14": {
+      "parent": 9,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "15": {
+      "parent": 14,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "16": {
+      "parent": 15,
+      "status": "open",
+      "action": "optimize"
+    },
+    "17": {
+      "parent": 16,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Die Homotopie ist zurückgefallen (NA 0,6125 gegenüber 0,6275 bei Kandidat 13) und an max_elements gescheitert. Das System ist mit 24 Geometriefehlern nicht baubar und hat RMS 0,123 λ. Die Sphärik-Bilanz Mitte +2,32 gegen Front −0,91 lässt sich nur mit unmöglichen Radien halten. Weiter mit dem besten offenen Kandidaten."
+    },
+    "18": {
+      "parent": 9,
+      "status": "abandoned",
+      "action": "place_ghost_dictionary",
+      "reason": "Geometrisch unmögliche Frontgruppe (9 Fehler: Halbkugel und negative Randdicke an den Flächen 8–12), NA 0,6125 statt 0,95, RMS 0,0857 über dem Ziel; mit dem Restbudget nicht zu retten."
+    },
+    "19": {
+      "parent": 18,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Die Homotopie steht bei NA 0,6175 statt 0,95 (step_too_small, keine Geisterplatte meldet Bedarf). RMS 0,086 > 0,0714. 9 geometrisch unmögliche Befunde: Halbkugel, negative Randdicke, berührende Flächen. In der Frontgruppe heben sich W131 −1,10 (Fläche 11) und +0,54 (Fläche 12) gegenseitig auf. Der Kandidat wird verworfen, die Sitzung geht mit dem besten offenen Kandidaten weiter."
+    }
+  },
+  "next_id": 20,
+  "decisions": 12
+}

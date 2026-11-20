@@ -1,0 +1,35 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7e/B1_LMRS_claude-haiku-5-5_w3/start.json",
+  "spec": {
+    "na": 0.6
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": null,
+      "status": "open",
+      "action": "start_from_skeleton"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "finished",
+      "action": "synth_segment",
+      "reason": "Optisches Ziel erreicht (RMS 0,0110 ≤ 0,0714 bei NA 0,6, 5 Elemente, keine versagten Strahlen). Randdicken-Fehler an Elementen 1, 3, 5 bleiben als mechanischer Befund offen und sind vor einer Fertigung zu beheben."
+    }
+  },
+  "next_id": 4,
+  "decisions": 3
+}
