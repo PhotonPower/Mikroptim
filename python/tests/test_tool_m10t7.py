@@ -199,6 +199,20 @@ def test_repetitions_get_own_tags_and_summary(tool, tmp_path, monkeypatch):
             in tool.summary(out))
 
 
+def test_assess_tolerates_eval_tuple_without_value(tool, monkeypatch):
+    """M10-T7e: liefert die Gegenprobe (eval) für ein Tupel keinen RMS (alle Strahlen versagt),
+    ist RMS AP None statt eines TypeError, der den Lauf abbrach."""
+    def fake(args):
+        if args[0] == "trace":
+            return {"paraxial": {"focal_length": 10.0}, "wavefront": [{"rms_waves": 0.01}],
+                    "failed_rays": 0}
+        return {"tuples": [{"rms_opd_waves": 0.02}, {"rms_opd_waves": None}]}
+
+    monkeypatch.setattr(tool, "cli_json", fake)
+    a = tool.assess(SYSTEMS / "einzellinse_homotopie_start.json", 0.3)
+    assert a["rms_eval_exit_pupil"] is None and a["rms_max_waves"] == 0.01
+
+
 def test_perturbed_starts_within_bounds_and_summary(tool, tmp_path, monkeypatch):
     """M10-T7e: --gestoerte-starts N rechnet jede Variante auf N leicht gestörten Starts
     (Kürzel <tag>_s<k>); gestört werden nur Startwerte von Krümmungs- und Dickenvariablen und

@@ -218,7 +218,10 @@ def assess(path, target_na) -> dict:
         # Fokus im Scheitel einer Hilfsebene täuscht in trace/Merit kleine OPD vor)
         try:
             ev = cli_json(["eval", p, "--grid", 64])
-            ev_rms = max(t["rms_opd_waves"] for t in ev["tuples"])
+            ev_all = [t["rms_opd_waves"] for t in ev["tuples"]]
+            # ein Tupel ohne Wert (alle Strahlen versagt) macht die Gegenprobe ungültig (M10-T7e:
+            # vorher TypeError, Lauf abgebrochen)
+            ev_rms = None if any(x is None for x in ev_all) else max(ev_all)
         except (RuntimeError, ValueError, KeyError):
             ev_rms = None
     f = tr["paraxial"]["focal_length"]
@@ -867,7 +870,9 @@ def summary(out) -> str:
                   ) if ranked else {}
         cost_s = ("–" if not cost else f"{fmt(sum(cost) / len(cost), 2)} ({fmt(min(cost), 2)}–"
                   f"{fmt(max(cost), 2)})")
-        el_s = "–" if not el else f"{fmt(_median(el))} ({min(el)}–{max(el)})"
+        med = _median(el)
+        med_s = "–" if med is None else (str(int(med)) if med == int(med) else fmt(med, 1))
+        el_s = "–" if not el else f"{med_s} ({min(el)}–{max(el)})"
         rows.append(f"| {b} | {tag} | {hits}/{len(rs)} | {fmt(top.get('na'), 3)} | "
                     f"{fmt(_median(na), 3)} | {fmt(top.get('rms_max_waves'))} | "
                     f"{fmt(_median(rms))} | {el_s} | {cost_s} |")
