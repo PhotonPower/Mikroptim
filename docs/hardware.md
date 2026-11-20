@@ -36,6 +36,32 @@ cmake --preset release-cuda -T "cuda=C:/Program Files/NVIDIA GPU Computing Toolk
 
 nvcc 12.9 warnt bei sm_60, dass die Offline-Kompilierung für Architekturen unter sm_75 künftig entfällt; das ist erwartet (ADR-0002) und kein Fehler.
 
+## Bauen unter Windows
+
+**Header-Abhängigkeiten funktionieren.** Der Visual-Studio-Generator übergibt die `.cu`-Dateien an die CUDA-Integration von MSBuild (`CUDA 12.x/13.x.targets`). Diese ermittelt die eingebundenen Header vor dem Übersetzen selbst (Task `GenerateDeps`, Ergebnis in `build/<preset>/<ziel>.dir/<Konfiguration>/*.cu<hash>.deps`) und übersetzt eine `.cu`-Datei neu, sobald einer davon jünger ist als die Objektdatei; die `.cpp`-Dateien verfolgt MSBuild über seine Tracker-Protokolle. Geprüft (November 2026, CUDA 13.4, VS 2022 17.14, CMake 4.4): Die `.deps`-Dateien aller `.cu`-Dateien enthalten jeden projekteigenen Header aus der `#include`-Hülle, und nach einer Änderung an `include/mikroptim/trace/ray.hpp` wurden in `mikroptim_cuda` genau die 15 `.cu`- und 3 `.cpp`-Dateien neu übersetzt, die ihn einbinden (die übrigen 4 `.cu`-Dateien nicht). Eine CMake-Einstellung (etwa `CMAKE_CUDA_DEPENDS_USE_COMPILER`, das nur für Makefile- und Ninja-Generatoren gilt) ist dafür nicht nötig.
+
+**Veraltete Objekte entstehen, wenn sich Quellen während des Builds ändern.** MSBuild entscheidet allein nach Zeitstempeln. Ändert sich ein Header, während eine Datei, die ihn einbindet, gerade übersetzt wird (der Compiler hat den alten Stand schon gelesen), ist die Objektdatei danach *jünger* als der Header, enthält aber den alten Stand – kein späterer Build übersetzt sie neu. Ändert sich dabei ein Strukturlayout, haben Objektdateien verschiedene Layouts: scheinbare Testfehler, im Debug-Build „Stack around the variable … was corrupted“. Bei `.cu`-Dateien ist das Zeitfenster groß, weil nvcc je Datei drei Architekturen übersetzt und MSBuild die `.cu`-Dateien eines Ziels nacheinander abarbeitet; `git rebase`, `git checkout` oder `git pull` während eines laufenden Builds (auch eines Builds im Hintergrund) trifft es fast sicher. Ninja (geprüft mit 1.13) erkennt solche Änderungen und übersetzt im nächsten Build neu; „Unix Makefiles“ (Standard der Presets unter Linux) ist nicht geprüft, make entscheidet aber ebenfalls nur nach Zeitstempeln.
+
+Daher:
+
+- **Nie während eines laufenden Builds rebasen, auschecken oder Quellen ändern.** Erst Build und Tests abwarten (laufende Tests lesen außerdem Datendateien aus dem Arbeitsbaum).
+- `tools/bauen.ps1` statt `cmake --build` verwenden: Es merkt sich den Startzeitpunkt, sucht nach dem Build Dateien des Repos (`git ls-files`, auch unversionierte, nicht ignorierte), die sich währenddessen geändert haben, erneuert deren Zeitstempel (damit alle abhängigen Objekte wieder als veraltet gelten) und baut einmal neu. Mit `-KeineWiederholung` endet es stattdessen mit Exit-Code 3.
+
+  ```powershell
+  tools/bauen.ps1 -Preset release-cuda --parallel 8
+  tools/bauen.ps1 -BuildDir build/gcc
+  ```
+
+- Wer unsicher ist, ob ein Build-Verzeichnis veraltete Objekte enthält: `cmake --build --preset release-cuda --clean-first`.
+- Ein fehlgeschlagener Build lässt die alte `mikroptim_tests.exe` liegen; ctest prüft dann den alten Stand. Immer den Exit-Code des Builds prüfen.
+
+**Prüfskript:** `tools/pruefe_abhaengigkeiten.ps1 -BuildDir build/release-cuda [-MitSchutz]` prüft auf einem gebauten Verzeichnis (Visual Studio oder Ninja) zweierlei, mit einem eigenen Scan der `#include "…"`-Direktiven als Orakel:
+
+- **A** `abhaengigkeiten`: Kommentar an einen Header anhängen (Standard mit CUDA: `include/mikroptim/cuda/smoke_trace.hpp`, eingebunden von einer `.cu`- und einer `.cpp`-Datei; ohne CUDA `include/mikroptim/eval/fft.hpp`), bauen, und jede Übersetzungseinheit, die ihn einbindet, muss neu übersetzt sein.
+- **B** `waehrend`: den Header in ein `#error` ändern, während die einbindende Quelle (Standard `src/cuda/smoke_trace.cu` bzw. `tests/test_psf.cpp`) übersetzt wird; der Folgebuild muss die Quelle neu übersetzen und den Fehler melden. Den Zeitpunkt der Änderung (nachdem der Compiler den Header gelesen, bevor er die Objektdatei geschrieben hat) sucht das Skript per Bisektion über die Verzögerung nach dem Compilerstart; bei `smoke_trace.cu` lag er auf der RTX-3090-Maschine bei etwa 3 s (nvcc liest die Header für jede Architektur erneut).
+
+Header und Build-Verzeichnis werden am Ende wiederhergestellt. Ergebnisse (November 2026): Ninja/GCC A und B bestanden; Visual Studio mit `cmake --build` A bestanden, B nicht bestanden (die Objektdatei von `smoke_trace.cu` blieb mit altem Stand liegen, der Folgebuild lief ohne Fehler durch); mit `-MitSchutz` (`tools/bauen.ps1`) A und B bestanden.
+
 ## Regeln für Kernel-Code
 
 - Warp-Primitive nur als `_sync`-Varianten.
