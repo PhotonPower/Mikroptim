@@ -1,0 +1,155 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B2_LMRS_claude-opus-5-5_w2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "optimize"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "optimize"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "optimize"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "insert_null_meniscus"
+    },
+    "13": {
+      "parent": 11,
+      "status": "open",
+      "action": "insert_null_meniscus"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "15": {
+      "parent": 14,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Der Null-Meniskus hat die Merit nicht gesenkt (F unverändert ≈ 0,00711, über F_max 0,0051 für synth_segment). Die Geometrie ist mit 14 Fehlern (Halbkugel, negative Rand- und Luftränder) nicht baubar, Element 5 ist extrem dickenempfindlich. Front-W040 +0,17 und Mitte-W040 +0,46 bleiben unkorrigiert, die NA hängt bei 0,51."
+    },
+    "16": {
+      "parent": 7,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "optimize"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "optimize"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "23": {
+      "parent": 22,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "24": {
+      "parent": 23,
+      "status": "open",
+      "action": "optimize"
+    },
+    "25": {
+      "parent": 24,
+      "status": "finished",
+      "action": "synth_segment",
+      "reason": "Budget erschöpft (1 Aktion). Kandidat 25: NA 0,6775 von 0,95, RMS max. 0,097 Wellen (> 0,0714), 9 geometrische Fehler. Die Vorgabe ist nicht erreicht. Sinnvolle Fortsetzung: front.shell_ca mit hochbrechendem Glas aus catalog_names im Arbeitsabstand einfügen, danach free_gaps, optimize und synth_segment, außerdem die Halbkugelflächen 8, 9, 11 und 12 entschärfen."
+    }
+  },
+  "next_id": 26,
+  "decisions": 12
+}

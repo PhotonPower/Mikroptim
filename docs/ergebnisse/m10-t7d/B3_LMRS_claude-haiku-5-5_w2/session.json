@@ -1,0 +1,49 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B3_LMRS_claude-haiku-5-5_w2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Homotopie bei NA 0,4375 blockiert (step_too_small), RMS 0,084 > 0,0714, sechs Herstellbarkeitsfehler (Randdicken, Halbkugel, Flächenkontakt); Mittelgruppe mit W040 ≈ 0,79 nicht kompensiert. Weiterer struktureller Schritt am Restbudget nicht sinnvoll."
+    }
+  },
+  "next_id": 5,
+  "decisions": 12
+}

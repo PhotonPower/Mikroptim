@@ -1,0 +1,40 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B1_LMRS_claude-haiku-5-5_w2/start.json",
+  "spec": {
+    "na": 0.6
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": null,
+      "status": "open",
+      "action": "start_from_skeleton"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "RMS 0,0110 deutlich unter Ziel 0,0714 bei NA 0,6; Herstellbarkeitsfehler (negative Randdicken an Flächen 1, 3, 5) sind als offener Punkt für die Fertigungsvorbereitung zu notieren."
+    }
+  },
+  "next_id": 5,
+  "decisions": 5
+}

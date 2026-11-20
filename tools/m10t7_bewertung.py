@@ -59,6 +59,8 @@ Beispiele:
     python tools/m10t7_bewertung.py --tabelle
     python tools/m10t7_bewertung.py --benchmarks B4 --varianten V0,LM --decider ollama --model qwen3:14b
     python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7b  # alt gegen neu
+    python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --varianten LM --decider claude         --model claude-haiku-5-5 --wiederholung 1-3     # Kürzel LMRS_<modell>_w1 … _w3
+    python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --zusammenfassung  # x/n, Median
     python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7b --varianten V0-alt,V3-alt,V3RS
 
 Ollama: ``--num-ctx`` (Standard 65536) setzt die Kontextlänge; größer als das Maximum des
@@ -72,6 +74,7 @@ import json
 import math
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -531,26 +534,61 @@ def parser() -> argparse.ArgumentParser:
                     help="Tabelle alt (Ergebnisverzeichnis ALT) gegen neu (--out)")
     ap.add_argument("--archiv", action="store_true",
                     help="Protokolle und beste Systeme ins Ergebnisverzeichnis kopieren")
+    ap.add_argument("--wiederholung", default=None, metavar="N[,M…|N-M]",
+                    help="Wiederholungen mit eigenem Kürzel <tag>_w<N> (M10-T7d), z. B. 1-3; "
+                    "Läufe mit Modell sind nicht deterministisch, Ergebnisse werden nicht "
+                    "überschrieben")
+    ap.add_argument("--zusammenfassung", action="store_true",
+                    help="Tabelle über Wiederholungen: Ziel-Treffer x/n, beste und mediane NA "
+                    "und RMS, Elemente, Kosten pro Lauf")
     ap.add_argument("--neu-bewerten", action="store_true",
                     help="vorhandene Ergebnisse mit den aktuellen Regeln neu bewerten")
     return ap
 
 
+def repetitions(spec) -> list:
+    """``--wiederholung``: ``None`` → ein Lauf ohne Zusatz, sonst Nummern aus ``"1,2"``,
+    ``"1-3"`` oder ``"4"``."""
+    if spec is None:
+        return [None]
+    out = []
+    for part in str(spec).split(","):
+        lo, _, hi = part.partition("-")
+        try:
+            a, b = int(lo), int(hi or lo)
+        except ValueError:
+            raise SystemExit(f"--wiederholung: {spec!r} ist keine Nummernliste") from None
+        if a < 1 or b < a:
+            raise SystemExit(f"--wiederholung: ungültiger Bereich {part!r}")
+        out.extend(n for n in range(a, b + 1) if n not in out)
+    return out
+
+
+def rep_tag(tag, n) -> str:
+    """Kürzel einer Wiederholung: ``<tag>_w<N>``; ohne Nummer das Kürzel selbst."""
+    return tag if n is None else f"{tag}_w{n}"
+
+
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
+    reps = repetitions(args.wiederholung)
     out = pathlib.Path(args.out)
     work_root = pathlib.Path(args.work) if args.work else out.parent / f"{out.name}-arbeit"
     if args.neu_bewerten:
         reassess(out)
     if args.archiv:
         archive(out)
-    if (args.neu_bewerten or args.archiv) and not (args.tabelle or args.vergleich):
+    if (args.neu_bewerten or args.archiv) and not (args.tabelle or args.vergleich
+                                                   or args.zusammenfassung):
         return 0
     if args.vergleich:
         print(comparison(args.vergleich, out))
         return 0
-    if args.tabelle:
-        print(table(out))
+    if args.tabelle or args.zusammenfassung:
+        if args.tabelle:
+            print(table(out))
+        if args.zusammenfassung:
+            print(("\n" if args.tabelle else "") + summary(out))
         return 0
     out.mkdir(parents=True, exist_ok=True)
     from mikroptim import design
@@ -570,9 +608,9 @@ def main(argv=None) -> int:
             b_out = out / "private" if bench.get("private") else out
             b_work.mkdir(parents=True, exist_ok=True)
             b_out.mkdir(parents=True, exist_ok=True)
-            for v in variants:
+            for v, n in ((v, n) for v in variants for n in reps):
                 base, rs = variant_config(v, args.referenzsphaere)
-                tag = tag_of(v, args)
+                tag = rep_tag(tag_of(v, args), n)
                 if bench.get("private") and base == "LM" and args.decider == "claude":
                     print(f"{b} {tag}: private Daten nur lokal (Ollama), übersprungen")
                     continue
@@ -613,6 +651,8 @@ def main(argv=None) -> int:
                                      "tools/m6t6_zielspezifikation.py)")
                 res["reference_sphere"] = rs
                 res.update({"benchmark": b, "variant": v, "tag": tag, "target_na": bench["na"]})
+                if n is not None:
+                    res["repetition"] = n
                 aborted = res.get("aborted") or ""
                 if any(k in aborted for k in ("Unavailable", "PrivacyError", "HTTPError", "URLError")):
                     # Konfigurations- oder Serverfehler (SDK, Zugangsdaten, private Daten, Ollama): kein
@@ -683,6 +723,48 @@ def table(out) -> str:
     head = note + ("| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP³ | Elemente | LM-Läufe¹ | Zeit [s] | "
             "Entsch. | abgelehnt² | Entsch. mit Fehler | Rückfälle | Tokens Prompt / Ausgabe | Kosten |\n"
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    return head + "\n" + "\n".join(rows)
+
+
+def _median(xs):
+    xs = sorted(x for x in xs if x is not None)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return xs[m] if len(xs) % 2 else 0.5 * (xs[m - 1] + xs[m])
+
+
+def summary(out) -> str:
+    """Wiederholungen zusammenfassen (M10-T7d): pro Benchmark und Kürzel ohne ``_w<N>``
+    Ziel-Treffer x/n, beste und mediane NA, bester und medianer RMS (max. über Felder, Wellen),
+    Elemente (Median, Spanne), Kosten pro Lauf (Mittel, Spanne)."""
+    groups = {}
+    for p in sorted(pathlib.Path(out).glob("B*_*.json")):
+        r = json.loads(p.read_text(encoding="utf-8"))
+        base = re.sub(r"_w\d+$", "", r["tag"])
+        groups.setdefault((r["benchmark"], base), []).append(r)
+    rows = []
+    for (b, tag), rs in sorted(groups.items()):
+        best = [r.get("best") or {} for r in rs]
+        hits = sum(1 for x in best if x.get("goal"))
+        na = [x.get("na") for x in best]
+        rms = [x.get("rms_max_waves") for x in best]
+        el = [x.get("elements") for x in best if x.get("elements") is not None]
+        cost = [(r.get("usage") or {}).get("cost_usd") for r in rs]
+        cost = [c for c in cost if c]
+        ranked = [x for x in best if x.get("rms_max_waves") is not None or x.get("na")]
+        top = min(ranked, key=lambda x: rank_key({"goal": False, "na": 0.0, "failed_rays": 0,
+                                                  "rms_max_waves": None, "elements": 0, **x})
+                  ) if ranked else {}
+        cost_s = ("–" if not cost else f"{fmt(sum(cost) / len(cost), 2)} ({fmt(min(cost), 2)}–"
+                  f"{fmt(max(cost), 2)})")
+        el_s = "–" if not el else f"{fmt(_median(el))} ({min(el)}–{max(el)})"
+        rows.append(f"| {b} | {tag} | {hits}/{len(rs)} | {fmt(top.get('na'), 3)} | "
+                    f"{fmt(_median(na), 3)} | {fmt(top.get('rms_max_waves'))} | "
+                    f"{fmt(_median(rms))} | {el_s} | {cost_s} |")
+    head = ("| Bench. | Variante | Ziel | NA bester Lauf | NA Median | RMS bester Lauf | "
+            "RMS Median | Elemente Median (Spanne) | Kosten/Lauf [$] Mittel (Spanne) |\n"
+            "|---|---|---|---|---|---|---|---|---|")
     return head + "\n" + "\n".join(rows)
 
 

@@ -234,10 +234,51 @@ def test_optimize_widening_keeps_ghost_plate_gaps(tmp_path):
     assert res["status"] == "ok", res
     freed = res["reports"][0]["variables"]["thicknesses"]
     assert freed and not plate_gaps & set(freed)
-    # free_gaps mit ausdrücklicher Liste gibt den Spalt weiter frei
+    # seit M10-T7d auch free_gaps nicht, selbst mit ausdrücklicher Flächenliste
     entry = s.apply(0, response({"action": "free_gaps", "surfaces": sorted(plate_gaps)}),
                     decider={})
-    assert entry["results"][0]["new_candidates"]
+    assert entry["results"][0]["status"] == "ok"
+    assert not entry["results"][0].get("new_candidates")
+
+
+def _b1_start(tmp_path):
+    """Startsystem von B1 wie im Bewertungsskript (Referenzsphäre image_infinite)."""
+    from mikroptim.design.files import read_system, resolve_catalogs, write_system
+    src = SYSTEMS / "einzellinse_homotopie_start.json"
+    data = resolve_catalogs(read_system(src), SYSTEMS)
+    data["reference_sphere"] = "image_infinite"
+    path = tmp_path / "start_B1_rs.json"
+    write_system(data, path)
+    return path
+
+
+def test_free_gaps_keeps_ghost_plate_gaps_e14(tmp_path):
+    """E14 (M10-T7c, behoben in M10-T7d), ohne Modell auf B1: free_gaps + optimize vor dem ersten
+    Abschnitt. Vorher gab free_gaps den Spalt nach der Blende mit den Geisterplatten frei, der
+    Optimierer schob ihn auf die Plattenlage (2 → 1 mm), Operator A fand keinen Platz und synth
+    lehnte den Start ab (start_rejected, NA blieb 0,30). Jetzt bleiben die Plattenspalte fest,
+    und der Abschnitt startet."""
+    s = design.Session.create(_b1_start(tmp_path), tmp_path / "s", spec={"na": 0.6})
+    data = json.loads(s.system_path(0).read_text(encoding="utf-8"))
+    plate_gaps = {g["after_surface"] for g in data["ghost_plates"]}
+    before = [x["thickness"] for x in data["surfaces"]]
+    entry = s.apply(0, response({"action": "free_gaps"}, {"action": "optimize", "cycles": 20}),
+                    decider={})
+    assert [r["status"] for r in entry["results"]] == ["ok", "ok"]
+    c = entry["results"][-1]["new_candidates"][0]
+    opt = json.loads(s.system_path(c).read_text(encoding="utf-8"))
+    freed = {i["surface"] for i in opt["variables"]["items"]
+             if i["type"] == "thickness" and "surface" in i}
+    assert not freed & plate_gaps  # B1: alle Luftspalte tragen Platten, nichts Neues frei
+    for g in plate_gaps:
+        assert opt["surfaces"][g]["thickness"] == before[g]
+    entry = s.apply(c, response({"action": "synth_segment", "target": {"aperture": 0.6}},
+                                candidate=c), decider={})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    result = res["reports"][0]["result"]
+    assert result["status"] != "start_rejected", result.get("message")
+    assert result["point"]["aperture"] > 0.3
 
 
 def test_human_decider_and_replay(session, tmp_path):

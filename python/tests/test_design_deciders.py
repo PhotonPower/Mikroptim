@@ -395,10 +395,9 @@ def test_free_gaps_skips_gap_thinner_than_plate(tmp_path, monkeypatch):
     entry = s.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
                         "actions": [{"action": "free_gaps"}]})
     assert entry["results"][0]["status"] == "ok"
-    new = json.loads(s.system_path(entry["results"][0]["new_candidates"][0])
-                     .read_text(encoding="utf-8"))
-    gaps = [it["surface"] for it in new["variables"]["items"] if it["type"] == "thickness"]
-    assert 2 not in gaps and 0 in gaps
+    # seit M10-T7d (E14) bleiben alle Spalte mit Geisterplatten fest, hier 0 und 2: die Aktion
+    # gibt nichts frei und erzeugt keinen Kandidaten
+    assert not entry["results"][0].get("new_candidates")
 
 
 def test_wrong_parameter_type_is_structured_error(session):

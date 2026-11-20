@@ -27,10 +27,13 @@ erscheint nie im Protokoll.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 import json
+import os
 import pathlib
+import time
 
 from . import knowledge
 from .actions import ActionError, read_action, validate_response
@@ -110,7 +113,12 @@ def cost_usd(model: str, usage: dict) -> float:
 
 class CostLedger:
     """Laufende Summe der Kosten mit Obergrenze, optional in einer JSON-Datei über mehrere
-    Läufe und Prozesse hinweg (``mikroptim.design.cost/1``; enthält keine Zugangsdaten)."""
+    Läufe und Prozesse hinweg (``mikroptim.design.cost/1``; enthält keine Zugangsdaten).
+
+    Mit Datei liest ``check`` die Summe vor jeder Anfrage neu, und ``add`` addiert unter einer
+    Sperrdatei (``<datei>.lock``) auf den aktuellen Dateistand und ersetzt die Datei atomar. So
+    teilen sich gleichzeitig laufende Prozesse eine Obergrenze (M10-T7d; vorher überschrieb jeder
+    Prozess die Summe der anderen mit seiner eigenen)."""
 
     FORMAT = "mikroptim.design.cost/1"
 
@@ -120,41 +128,78 @@ class CostLedger:
         self.spent_usd = 0.0
         self.requests = 0
         self.by_model: dict = {}
+        with self._locked():
+            self._reload()
+
+    def _reload(self) -> None:
         if self.path and self.path.exists():
             d = json.loads(self.path.read_text(encoding="utf-8"))
             self.spent_usd = float(d.get("spent_usd", 0.0))
             self.requests = int(d.get("requests", 0))
             self.by_model = d.get("by_model", {})
 
+    @contextlib.contextmanager
+    def _locked(self, timeout: float = 60.0):
+        """Sperrdatei neben der Kostendatei, exklusiv angelegt; eine Sperre älter als
+        ``timeout`` gilt als verwaist und wird übernommen."""
+        if not self.path:
+            yield
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock = self.path.with_name(self.path.name + ".lock")
+        while True:
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - lock.stat().st_mtime > timeout:
+                        lock.unlink(missing_ok=True)
+                        continue
+                except FileNotFoundError:
+                    continue
+                time.sleep(0.05)
+        os.close(fd)
+        try:
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+
     @property
     def remaining_usd(self) -> float:
         return self.limit_usd - self.spent_usd
 
     def check(self, reserve_usd: float) -> None:
+        with self._locked():  # Ausgaben anderer Prozesse; unter Windows nie während replace lesen
+            self._reload()
         if self.spent_usd + reserve_usd > self.limit_usd:
             raise BudgetExceeded(
                 f"Kostenobergrenze {self.limit_usd:.2f} $: bisher {self.spent_usd:.4f} $, die "
                 f"nächste Anfrage könnte bis zu {reserve_usd:.4f} $ kosten – Abbruch")
 
     def add(self, model: str, usage: dict, cost: float) -> None:
-        self.spent_usd += cost
-        self.requests += 1
-        m = self.by_model.setdefault(model, {"requests": 0, "cost_usd": 0.0,
-                                             **{k: 0 for k in usage}})
-        m["requests"] += 1
-        m["cost_usd"] += cost
-        for k, v in usage.items():
-            m[k] = m.get(k, 0) + v
-        self.save()
+        with self._locked():
+            self._reload()
+            self.spent_usd += cost
+            self.requests += 1
+            m = self.by_model.setdefault(model, {"requests": 0, "cost_usd": 0.0,
+                                                 **{k: 0 for k in usage}})
+            m["requests"] += 1
+            m["cost_usd"] += cost
+            for k, v in usage.items():
+                m[k] = m.get(k, 0) + v
+            self.save()
 
     def save(self) -> None:
         if not self.path:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(
             {"format": self.FORMAT, "limit_usd": self.limit_usd, "spent_usd": self.spent_usd,
              "requests": self.requests, "by_model": self.by_model},
             ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, self.path)  # Leser sehen nie eine halb geschriebene Datei
 
 
 # --- Schemas für strict-Werkzeuge ---------------------------------------------------------------

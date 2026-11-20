@@ -167,3 +167,33 @@ def test_resume_after_abandon_picks_best_open_candidate(tool, tmp_path, monkeypa
     s.meta["candidates"]["2"]["status"] = "abandoned"
     assert resume(s, 2) == 1
     assert sorted(calls) == [0, 1, 2]
+
+
+def test_repetitions_get_own_tags_and_summary(tool, tmp_path, monkeypatch):
+    """M10-T7d: --wiederholung rechnet jede Wiederholung unter <tag>_w<N>, ohne Vorhandenes zu
+    überschreiben; --zusammenfassung zählt Ziel-Treffer x/n und bildet Mediane."""
+    assert tool.repetitions(None) == [None]
+    assert tool.repetitions("1-3") == [1, 2, 3]
+    assert tool.repetitions("2,4-5,2") == [2, 4, 5]
+    for bad in ("0", "3-1", "x"):
+        with pytest.raises(SystemExit):
+            tool.repetitions(bad)
+    calls = []
+
+    def fake_synth(bench, work, beam=False):
+        calls.append(work.name)
+        k = len(calls)
+        return {"seconds": 1.0, "best": {"goal": k == 2, "na": 0.3 * k, "rms_max_waves": 0.1 / k,
+                                         "failed_rays": 0, "elements": k}}
+
+    monkeypatch.setattr(tool, "run_synth", fake_synth)
+    out, work = tmp_path / "out", tmp_path / "arbeit"
+    argv = ["--benchmarks", "B1", "--varianten", "V0", "--out", str(out), "--work", str(work)]
+    assert tool.main(argv + ["--wiederholung", "1-2"]) == 0
+    assert tool.main(argv + ["--wiederholung", "1-3"]) == 0  # 1 und 2 vorhanden
+    assert calls == ["V0RS_w1", "V0RS_w2", "V0RS_w3"]
+    r = json.loads((out / "B1_V0RS_w3.json").read_text(encoding="utf-8"))
+    assert r["tag"] == "V0RS_w3" and r["repetition"] == 3
+    # Ziel nur in w2 (NA 0,6); bester Lauf nach rank_key ist w2, Mediane über alle drei
+    assert ("| B1 | V0RS | 1/3 | 0,600 | 0,600 | 0,0500 | 0,0500 | 2 (1–3) | – |"
+            in tool.summary(out))
