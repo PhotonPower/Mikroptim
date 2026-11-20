@@ -26,6 +26,11 @@ Referenzsphäre (M6-T6b): Standard ist `image_infinite` (ADR-0017), die Startdat
 `--referenzsphaere last_surface` nach; dann gilt im OSC-Versuch auch wieder der F12-Schutz.
 Bericht des Laufs mit neuer Konvention: docs/ergebnisse/m6-t6b-zielspezifikation-adr0017.md.
 
+Zyklischer Ablauf (M6-T10, Bericht docs/ergebnisse/m6-t10-zyklisch.md): mit --zyklus
+feld,farbe,apertur und einem realen System als --start (z. B. Z2 nach dem Rückbau aus M6-T9)
+je Stufe Rückkehr zu Geisterplatten (`mikroptim insert --ghost-return`), Stufe, Z2, Rückbau am
+realen System und Z2 danach; Tabelle mit `--zyklus-tabelle DIR`.
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -689,13 +694,15 @@ def has_glass_variables(system):
 def polish(runner, name, src, relax_options, spectrum='erweitert'):
     """Feinoptimierung des realen Systems: Geisterplatten und Hilfsebenen entfernen, Testgläser
     mit Katalognamen, Spektrum mit 405/700 nm schwach, alle Spalte und Glasdicken frei; die
-    Glas-Hülle (falls Glasvariablen) in drei Stufen ×10 bis zum Gewicht der Datei."""
+    Glas-Hülle (falls Glasvariablen) in drei Stufen ×10 bis zum Gewicht der Datei. Mit
+    spectrum=None bleibt das Spektrum der Datei (M6-T10)."""
     s = load(src)
     strip_ghost_plates(s)
     remove_dummy_planes(s)
     buchdahl_to_catalog(s)
-    wl, w = SPECTRA[spectrum]
-    set_spectrum(s, wl, w)
+    if spectrum is not None:
+        wl, w = SPECTRA[spectrum]
+        set_spectrum(s, wl, w)
     add_gap_variables(s)
     hull = [c for c in s['constraints']['items'] if c['type'] == 'glass_hull']
     stages = [1e-2, 1e-1, 1.0] if hull and has_glass_variables(s) else [1.0]
@@ -1058,6 +1065,284 @@ def osc_branch(args):
     return 0
 
 
+# ---------------------------------------------------------------------------------------------
+# M6-T10: Rückkehr zu Geisterplatten und zyklischer Ablauf
+# ---------------------------------------------------------------------------------------------
+
+# Glas-Wörterbuch der Rückkehr: die Gläser des Startsystems (dort als Buchdahl-Fits der frei
+# erfundenen Testgläser, hier mit Katalognamen wie nach buchdahl_to_catalog)
+GHOST_GLASSES = ['SYN-36', 'CAF2', 'SYN-30']
+
+
+def first_json(text):
+    """Erstes JSON-Objekt eines Textes (Warnungen auf stderr landen in derselben Datei)."""
+    i = text.index('{')
+    return json.JSONDecoder().raw_decode(text[i:])[0]
+
+
+def return_to_ghosts(runner, name, src, positions='aperture,field', glasses=None, order=10,
+                     weight=None, norm_field=1.0):
+    """Rückkehr vom realen System zu Geisterplatten (`mikroptim insert --ghost-return`, M6-T10):
+    Wörterbücher mit Koeffizienten 0 in der Mitte der Luftspalte der Lagen `positions`, diese
+    Spalte fest, Normierungsradien aus den realen Strahlhöhen bei Feldwinkeln × norm_field.
+    Merit unverändert (Bericht: merit_before/merit_after). Liefert (Datei, Bericht)."""
+    out = runner.path(name + '.json')
+    text = runner.path(name + '_bericht.txt')
+    if not os.path.exists(out):
+        a = ['insert', src, '-o', out, '--ghost-return', '--ghost-positions', positions,
+             '--ghost-order', str(order), '--norm-field', repr(norm_field), '--json']
+        for g in glasses or GHOST_GLASSES:
+            a += ['--ghost-glass', g]
+        if weight is not None:
+            a += ['--ghost-weight', repr(weight)]
+        runner.run(name, a, text_name=name + '_bericht.txt')
+    with open(text, encoding='utf-8') as f:
+        return out, first_json(f.read())
+
+
+def system_state(system):
+    """Punkt eines realen Systems: NA (Pupillenradius / f), Feldanteil (größter Feldwinkel /
+    Feld der Spezifikation), Spektrum (Schlüssel von SPECTRA oder None), Glaselemente."""
+    angles = system['source'].get('field_angles_deg') or [0.0]
+    wl = list(system['spectrum']['wavelengths_nm'])
+    key = next((k for k, (w, _) in SPECTRA.items() if list(w) == wl), None)
+    return {'aperture': psf_numerical_aperture(system), 'field': max(angles) / FIELD_DEG,
+            'spectrum': key, 'elements': glass_elements(system)}
+
+
+def stage_done(kind, state):
+    if kind == 'feld':
+        return state['field'] >= 0.999
+    if kind == 'apertur':
+        return state['aperture'] >= 0.95 - 1e-4
+    return state['spectrum'] in ('voll', 'erweitert')
+
+
+def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
+    """Eine Stufe des Zyklus (M6-T10): reales System → Geisterplatten (Rückkehr) → Stufe
+    (synth_loop wie im Hauptlauf) → Z2 (ohne Platten nachoptimiert) → Rückbau am realen System
+    (synth --prune am erreichten Punkt) → Z2 nach dem Rückbau, bewertet."""
+    st = system_state(load(cur))
+    na, f = st['aperture'], st['field']
+    tag = f'c{k}_{kind}'
+    log(f"Stufe {tag}: NA {na:.4f}, Feld {f:.3f}, Spektrum {st['spectrum']}, "
+        f"{st['elements']} Elemente")
+    t0 = time.time()
+    s = load(cur)
+    set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    real = r.path(tag + '_real.json')
+    save(s, real)
+    start, report = return_to_ghosts(r, tag + '_start', real, positions=args.geister_lagen)
+    log(f"  Rückkehr: {len(load(start).get('ghost_plates', []))} Platten, F "
+        f"{report['merit_before']:.6e} -> {report['merit_after']:.6e}")
+    info = {'kind': kind, 'tag': tag, 'start': cur, 'start_state': st,
+            'ghost_return': report, 'ghost_start': start}
+
+    def full_field(system, point):
+        set_field(system, FIELD_ANGLES, FIELD_WEIGHTS)
+
+    rounds = []
+    if kind == 'feld':
+        def opts(point):
+            f0 = f if point is None else point['field']
+            return ['--target-na', repr(na), '--start-field', repr(f0), '--target-field',
+                    '1'] + common
+        res, rounds = synth_loop(r, tag, start, opts, relax, lambda p: p['field'], 1.0,
+                                 restart=full_field, max_rounds=args.zyklus_runden, forced=2,
+                                 log=log)
+    elif kind == 'apertur':
+        res, rounds = synth_loop(r, tag, start,
+                                 ['--target-na', '0.95', '--start-field', repr(f),
+                                  '--target-field', repr(f)] + common, relax,
+                                 lambda p: p['aperture'], 0.95, restart=full_field,
+                                 max_rounds=args.zyklus_runden, forced=3, log=log)
+    else:
+        seq = {'mono': ['zwei', 'voll'], None: ['zwei', 'voll'], 'zwei': ['voll']}[
+            st['spectrum']]
+        res = start
+        stufen = (['--spectrum-continuous'] if args.farb_stetig else
+                  ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
+        for sub in seq:
+            s = load(res)
+            wl, w = SPECTRA[sub]
+            set_spectrum(s, wl, w)
+            inp = r.path(f'{tag}_{sub}_in.json')
+            save(s, inp)
+            res, rr = synth_loop(r, f'{tag}_{sub}', inp,
+                                 ['--target-na', repr(na), '--start-field', repr(f),
+                                  '--target-field', repr(f)] + stufen + common, relax,
+                                 lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
+                                 forced_kind='split', stage_budget=args.farb_budget, log=log)
+            rounds += rr
+    pt = rounds[-1]['point']
+    fk, nak = pt['field'], pt['aperture']
+    info.update({'result': res, 'rounds': rounds, 'point': pt,
+                 'elements_stage': glass_elements(load(res))})
+    # Z2: ohne Geisterplatten am erreichten Punkt nachoptimiert (Spektrum der Stufe)
+    zopt = ['--max-iterations', '2000', '-q'] + rings
+    s = load(res)
+    set_field(s, [a * fk for a in FIELD_ANGLES], FIELD_WEIGHTS)
+    z2_in = r.path(tag + '_z2_punkt.json')
+    save(s, z2_in)
+    z2 = polish(r, tag + '_z2', z2_in, zopt, spectrum=None)
+    # Rückbau am realen System (M6-T9: dort wirkt er, F17), Punkt = erreichter Punkt
+    s = load(z2)
+    set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    p_in = r.path(tag + '_rueckbau_in.json')
+    save(s, p_in)
+    prune_opts = ['--prune', '--prune-factor', repr(args.rueckbau_faktor or 0.5),
+                  '--prune-attempts', str(args.rueckbau_versuche or 30)]
+    if args.rueckbau_stufen:
+        prune_opts += ['--prune-stages', str(args.rueckbau_stufen)]
+    # höchstens die Elemente von Z2: ist der Startpunkt nicht annehmbar (F_B > F_max), fügte
+    # synth sonst zuerst ein (Lauf D: 13 → 14 Elemente statt Rückbau)
+    pruned = r.synth(tag + '_rueckbau', p_in,
+                     ['--target-na', repr(nak), '--start-field', repr(fk), '--target-field',
+                      repr(fk)] + prune_opts +
+                     limit_elements(common, glass_elements(load(z2))))
+    pres = load(r.path(tag + '_rueckbau_log.json'))['result']
+    s = load(pruned)
+    set_field(s, [a * fk for a in FIELD_ANGLES], FIELD_WEIGHTS)
+    z2r_in = r.path(tag + '_z2r_punkt.json')
+    save(s, z2r_in)
+    z2r = polish(r, tag + '_z2r', z2r_in, zopt, spectrum=None)
+    info.update({'z2': z2, 'elements_z2': glass_elements(load(z2)),
+                 'prune': {'status': pres['status'], 'removals': pres.get('removals', 0),
+                           'attempts': pres.get('removal_attempts', 0),
+                           'elements_before': pres.get('start_elements'),
+                           'elements_after': pres['elements']},
+                 'z2r': z2r, 'elements': glass_elements(load(z2r)),
+                 'eval': evaluate(r, tag + '_z2r', z2r)})
+    if fk < 0.999:
+        s = load(z2r)
+        set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+        full = r.path(tag + '_z2r_vollfeld_in.json')
+        save(s, full)
+        info['eval_full_field'] = evaluate(r, tag + '_z2r_vollfeld', full)
+    info['end_state'] = system_state(load(z2r))
+    info['seconds'] = time.time() - t0
+    log(f"  {tag}: Punkt NA {nak:.4f}, Feld {fk:.3f}; {info['elements_stage']} Elemente, "
+        f"nach dem Rückbau {info['elements']}")
+    return info
+
+
+def cycle_run(args):
+    """Zyklischer Ablauf (M6-T10) ab einem realen System (z. B. Z2 nach dem Rückbau aus M6-T9):
+    für jede Stufe aus --zyklus (feld, farbe, apertur) Rückkehr zu Geisterplatten, Stufe, Z2,
+    Rückbau am realen System, Z2 danach; die nächste Stufe beginnt am verkleinerten System.
+    Stufen am Ziel werden übersprungen; der Durchlauf wiederholt sich (--zyklus-wiederholen),
+    bis alle am Ziel sind oder ein Durchlauf nichts mehr öffnet."""
+    r = Runner(os.path.abspath(args.exe), os.path.abspath(args.out), gpu=args.gpu,
+               synth_options=synth_options(args))
+    rings = ['--rings', '16']
+    relax = ['--max-iterations', '1000', '-q'] + rings
+    common = ['--curvature-bound', '1.2', '--max-steps', '3000', '--max-iterations', '500'] + \
+        (['--element-budget', str(args.elementbudget)] if args.elementbudget else
+         ['--max-elements', '24']) + rings
+    s = load(args.start)
+    set_reference_sphere(s, args.referenzsphaere)
+    cur = r.path('c_start.json')
+    save(s, cur)
+    kinds = args.zyklus.split(',')
+    for kind in kinds:
+        if kind not in ('feld', 'farbe', 'apertur'):
+            raise SystemExit(f'--zyklus: unbekannte Stufe {kind} (feld, farbe, apertur)')
+    summary = {'start': args.start, 'start_state': system_state(s), 'kinds': kinds,
+               'synth_options': r.synth_options, 'ghost_positions': args.geister_lagen,
+               'element_budget': args.elementbudget, 'stages': []}
+    path = r.path('m6t10_zyklus.json')
+
+    def write():
+        summary['times'] = r.times
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(summary, fh, indent=1, ensure_ascii=False)
+
+    t0 = time.time()
+    k = 0
+    # Stufen ohne Fortschritt nicht am selben Zustand wiederholen (erst wieder, wenn eine andere
+    # Stufe etwas geöffnet hat)
+    stalled = set()
+    for _ in range(args.zyklus_wiederholen):
+        moved = False
+        for kind in kinds:
+            st = system_state(load(cur))
+            if stage_done(kind, st) or kind in stalled:
+                continue
+            info = cycle_stage(r, args, k, kind, cur, common, relax, rings,
+                               log=lambda m: print(m, flush=True))
+            summary['stages'].append(info)
+            write()
+            new = info['end_state']
+            if (new['field'] > st['field'] + 1e-3 or new['aperture'] > st['aperture'] + 1e-3 or
+                    new['spectrum'] != st['spectrum']):
+                moved = True
+                stalled = set()
+            else:
+                stalled.add(kind)
+            cur = info['z2r']
+            k += 1
+        if all(stage_done(kind, system_state(load(cur))) for kind in kinds) or not moved:
+            break
+    summary['final'] = cur
+    summary['final_state'] = system_state(load(cur))
+    summary['seconds_total'] = time.time() - t0
+    write()
+    print('fertig:', cur)
+    return 0
+
+
+def rooted(path):
+    """Pfad aus einer Zusammenfassung (absolut oder nach --archiv relativ zur Wurzel)."""
+    if path is None or os.path.isabs(path):
+        return path
+    return os.path.join(ROOT, path)
+
+
+def eval_rows(pupil_json, psf_json=None):
+    """RMS [Wellen bei λ] und Strehl (FFT) pro (Feldwinkel, λ) aus den Bewertungen."""
+    e = load(pupil_json)
+    psf = load(psf_json)['tuples'] if psf_json and os.path.exists(psf_json) else None
+    out = []
+    for k, t in enumerate(e['tuples']):
+        lam = t['wavelength_nm'] * 1e-6
+        rms = t['rms_opd_mm'] / lam if t['rms_opd_mm'] is not None else None
+        s = psf[k]['psf']['strehl'] if psf and psf[k].get('psf') else None
+        out.append((t['field_angle_deg'], t['wavelength_nm'], rms, s, t['failed_rays']))
+    return out
+
+
+def cycle_tables(out_dir):
+    """Tabelle der Stufen eines zyklischen Laufs (Markdown auf stdout): Punkt, Spektrum,
+    Elemente (Stufe, nach dem Rückbau), größter RMS über λ bei 0/70/100 % des Feldanteils,
+    kleinster Strehl, Laufzeit."""
+    run = load(os.path.join(out_dir, 'm6t10_zyklus.json'))
+    times = run.get('times', {})
+    print('| Stufe | NA | Feld | Spektrum | El. Stufe → Z2 → Rückbau | RMS 0/70/100 % (max über λ) '
+          '| Strehl min (FFT) | Rückkehr ΔF/F | Zeit [s] |')
+    print('|---|---|---|---|---|---|---|---|---|')
+    for st in run['stages']:
+        rows = eval_rows(rooted(st['eval']['pupille']), rooted(st['eval'].get('psf')))
+        fields = sorted({x[0] for x in rows})
+        rms = [max(x[2] for x in rows if x[0] == fa and x[2] is not None) for fa in fields]
+        strehl = [x[3] for x in rows if x[3] is not None]
+        e = st['end_state']
+        t = sum(v for key, v in times.items() if key.startswith(st['tag'] + '_'))
+        print(f"| {st['tag']} | {fmt(e['aperture'], 4)} | {fmt(e['field'], 3)} | "
+              f"{e['spectrum']} | {st['elements_stage']} → {st['elements_z2']} → "
+              f"{st['elements']} | {'/'.join(fmt(x, 3) for x in rms)} | "
+              f"{fmt(min(strehl), 3) if strehl else '–'} | "
+              f"{st['ghost_return']['relative_change']:.1e} | {t:.0f} |")
+    print(f"\nGesamt: {sum(times.values()):.0f} s")
+    last = run['stages'][-1] if run['stages'] else None
+    if last:
+        print(f"\n## Tupel von {last['tag']}_z2r\n")
+        print('| Feld [°] | λ [nm] | RMS [Wellen bei λ] | Strehl (FFT) | versagt |')
+        print('|---|---|---|---|---|')
+        for fa, wl, rms, s, failed in eval_rows(rooted(last['eval']['pupille']),
+                                                rooted(last['eval'].get('psf'))):
+            print(f'| {fmt(fa, 3)} | {fmt(wl, 2)} | {fmt(rms)} | {fmt(s, 3)} | {failed} |')
+
+
 def archive(out_dir):
     """Ausgabeverzeichnis für das Repository verkleinern: behalten werden die Zusammenfassungen,
     die Protokolle der synth-Läufe (Text und JSON), die Ergebnisdateien jeder Stufe, die Texte
@@ -1069,10 +1354,15 @@ def archive(out_dir):
                       r'p0_start\.json|a0_start\.json|p6_s\d\.txt|p6_s2\.json|'
                       r'p7\.(json|txt)|z2_s0\.(json|txt)|a2\.(json|txt)|lauf\.log|'
                       r'(m\d)_s0\.(json|txt)|.*_na\.txt|'
-                      r'(p8|z2|a3|m\d)(_vollfeld)?_(pupille|scheitel|unendlich|psf|vektor)\.json)$')
+                      r'(p8|z2|a3|m\d)(_vollfeld)?_(pupille|scheitel|unendlich|psf|vektor)\.json|'
+                      # M6-T10: zyklischer Lauf
+                      r'm6t10_zyklus\.json|c_start\.json|c\d+_[a-z]+_start(\.json|_bericht\.txt)|'
+                      r'c\d+_[a-z]+(_zwei|_voll)?_r\d+(_log\.json|\.txt)|'
+                      r'c\d+_[a-z]+_rueckbau(_log\.json|\.txt)|c\d+_[a-z]+_z2r?_s\d\.(json|txt)|'
+                      r'c\d+_[a-z]+_z2r(_vollfeld)?_(pupille|unendlich|psf|vektor)\.json)$')
     # Ergebnisdateien der Stufen (auch Neustart-Dateien, wenn eine Stufe dort endete)
     referenced = set()
-    for summary in ('m6t6_lauf.json', 'm6t6_apertur_zweig.json'):
+    for summary in ('m6t6_lauf.json', 'm6t6_apertur_zweig.json', 'm6t10_zyklus.json'):
         p = os.path.join(out_dir, summary)
         if os.path.exists(p):
             for m in re.finditer(r'"(?:result|final)": "([^"]+)"', open(p, encoding='utf-8').read()):
@@ -1105,6 +1395,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == '--archiv':
         archive(sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, 'docs', 'ergebnisse',
                                                                     'm6-t6'))
+        return 0
+    if len(sys.argv) > 1 and sys.argv[1] == '--zyklus-tabelle':
+        cycle_tables(sys.argv[2])
         return 0
     if len(sys.argv) > 1 and sys.argv[1] == '--tabellen':
         tables(sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, 'docs', 'ergebnisse',
@@ -1207,7 +1500,20 @@ def main():
     ap.add_argument('--osc-gewicht', type=float, default=None,
                     help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
                          'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')
+    ap.add_argument('--zyklus', default=None, metavar='STUFEN',
+                    help='M6-T10: zyklischer Ablauf ab dem realen System --start (z. B. Z2 nach '
+                         'dem Rückbau): Stufen aus feld, farbe, apertur (Komma-Liste); je Stufe '
+                         'Rückkehr zu Geisterplatten, Stufe, Z2, Rückbau am realen System, Z2')
+    ap.add_argument('--zyklus-wiederholen', type=int, default=2, metavar='N',
+                    help='M6-T10: höchstens N Durchläufe der Stufenliste (Standard 2)')
+    ap.add_argument('--zyklus-runden', type=int, default=8, metavar='N',
+                    help='M6-T10: Runden von synth_loop in Feld- und Aperturstufe (Standard 8)')
+    ap.add_argument('--geister-lagen', default='aperture,field', metavar='LISTE',
+                    help='M6-T10: Lagen der Rückkehr zu Geisterplatten (mikroptim insert '
+                         '--ghost-positions; Standard aperture,field)')
     args = ap.parse_args()
+    if args.zyklus:
+        return cycle_run(args)
     if args.apertur_zweig:
         return aperture_branch(args)
     if args.osc_versuch:

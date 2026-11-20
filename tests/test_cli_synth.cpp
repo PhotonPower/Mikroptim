@@ -2,9 +2,11 @@
 // und Ergebnisdatei, Textausgabe (docs/cli.md).
 
 #include "cli/synth_command.hpp"
+#include "ghost_return_test_systems.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "residual_test_systems.hpp"
 #include "temp_paths.hpp"
+#include "tolerances.hpp"
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -546,6 +548,86 @@ TEST(CliSynth, PruneAndElementBudget) {
     const std::string help = synth({"--help"}).out;
     EXPECT_NE(help.find("--prune"), std::string::npos);
     EXPECT_NE(help.find("--element-budget"), std::string::npos);
+}
+
+TEST(CliSynth, StartFromReal) {
+    // M6-T10: Rückkehr zu Geisterplatten vor dem Lauf (reales System ohne Platten)
+    const SynthTempDir dir("start_from_real");
+    const std::string in = dir.file("real.json");
+    write_ghost_return_real_system(fs::path(in), true);
+    const std::vector<std::string> base{
+        in,    "--max-iterations", "5",  "--max-steps", "4", "--rms-target",
+        "100", "--merit-factor",   "10", "--json"};
+    // ohne Option: kein Eintrag im Protokoll, keine Platten
+    const std::string plain_out = dir.file("ohne.json");
+    std::vector<std::string> plain = base;
+    plain.insert(plain.end(), {"-o", plain_out});
+    const SynthCliResult off = synth(plain);
+    ASSERT_EQ(off.code, cli::kExitOk) << off.err;
+    const nlohmann::json jo = nlohmann::json::parse(off.out);
+    EXPECT_FALSE(jo["options"].contains("start_from_real"));
+    EXPECT_TRUE(load_system(plain_out).system.ghost_plates.empty());
+
+    const std::string out = dir.file("mit.json");
+    std::vector<std::string> on = base;
+    on.insert(on.end(), {"--start-from-real", "--ghost-glass", "N-BK7", "--ghost-glass", "CAF2",
+                         "--ghost-order", "4", "--ghost-weight", "20", "--ghost-positions",
+                         "aperture,front", "-o", out});
+    const SynthCliResult r = synth(on);
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    const nlohmann::json& g = j["options"]["start_from_real"];
+    ASSERT_FALSE(g.is_null());
+    EXPECT_EQ(g["order"], 4);
+    EXPECT_EQ(g["glasses"], nlohmann::json({"N-BK7", "CAF2"}));
+    ASSERT_GE(g["positions"].size(), 1u);
+    EXPECT_EQ(g["positions"][0]["location"], "aperture");
+    EXPECT_LE(g["relative_change"].get<double>(), kInsertionMeritRelative);
+    const SystemDescription d = load_system(out).system;
+    EXPECT_EQ(d.ghost_plates.size(), 2 * g["positions"].size());
+    for (const GhostPlate& p : d.ghost_plates) {
+        EXPECT_EQ(p.coefficients.size(), 4u);
+    }
+    bool penalty = false;
+    for (const ConstraintSpec& c : d.constraints->items) {
+        if (c.type == ConstraintType::GhostPenalty) {
+            penalty = true;
+        }
+    }
+    EXPECT_TRUE(penalty);
+
+    // Textausgabe
+    std::vector<std::string> text{in,
+                                  "--max-iterations",
+                                  "5",
+                                  "--max-steps",
+                                  "2",
+                                  "--quiet",
+                                  "--start-from-real",
+                                  "--ghost-glass",
+                                  "N-BK7"};
+    const SynthCliResult t = synth(text);
+    ASSERT_EQ(t.code, cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("Rückkehr zu Geisterplatten"), std::string::npos) << t.out;
+
+    // Fehler
+    EXPECT_EQ(synth({in, "--start-from-real"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({in, "--ghost-glass", "N-BK7"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({in, "--ghost-positions", "stop"}).code, cli::kExitUsage);
+    EXPECT_EQ(
+        synth({in, "--start-from-real", "--ghost-glass", "N-BK7", "--ghost-positions", "mitte"})
+            .code,
+        cli::kExitUsage);
+    EXPECT_EQ(synth({in, "--start-from-real", "--ghost-glass", "N-BK7", "--ghost-order", "0"}).code,
+              cli::kExitUsage);
+    EXPECT_EQ(synth({in, "--start-from-real", "--ghost-glass", "GIBTESNICHT"}).code,
+              cli::kExitError);
+    // Startdatei mit Geisterplatten
+    EXPECT_EQ(
+        synth({kStart, "--start-from-real", "--ghost-glass", "N-BK7", "--max-steps", "1"}).code,
+        cli::kExitError);
+    const std::string help = synth({"--help"}).out;
+    EXPECT_NE(help.find("--start-from-real"), std::string::npos);
 }
 
 } // namespace

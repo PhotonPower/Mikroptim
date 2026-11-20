@@ -17,6 +17,7 @@
 #include "mikroptim/optim/mechanical_constraints.hpp"
 #include "mikroptim/optim/paraxial_residuals.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
+#include "mikroptim/synth/ghost_return.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -46,7 +47,8 @@ enum class Op {
     ReplaceGlass,
     GhostDictionary,
     AplanaticShell,
-    NullDoublet
+    NullDoublet,
+    GhostReturn
 };
 
 struct InsertArgs {
@@ -71,6 +73,10 @@ struct InsertArgs {
     std::optional<int> ghost_order;
     std::optional<double> ghost_weight;
     std::optional<double> norm_radius;
+    // M6-T10: Rückkehr zu Geisterplatten (--ghost-return)
+    bool ghost_return = false;
+    std::optional<std::vector<GhostReturnLocation>> ghost_locations; // --ghost-positions
+    std::optional<double> norm_field;                                // --norm-field
     bool refocus = true;
     bool json = false;
     Op op = Op::Meniscus;
@@ -168,6 +174,19 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
             g.after_surface = parse_int(arg, p[0]);
             g.distance = parse_double(arg, p[1]);
             a.ghost = g;
+        } else if (arg == "--ghost-return") {
+            a.ghost_return = true;
+        } else if (arg == "--ghost-positions") {
+            try {
+                a.ghost_locations = parse_ghost_return_locations(next_value(args, i, arg));
+            } catch (const std::invalid_argument& e) {
+                throw UsageError(std::string("--ghost-positions: ") + e.what());
+            }
+        } else if (arg == "--norm-field") {
+            a.norm_field = parse_double(arg, next_value(args, i, arg));
+            if (!(*a.norm_field >= 0.0)) {
+                throw UsageError("--norm-field muss >= 0 sein");
+            }
         } else if (arg == "--ghost-glass") {
             a.ghost_glasses.push_back(parse_glass(arg, next_value(args, i, arg)));
         } else if (arg == "--ghost-order") {
@@ -231,11 +250,11 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
     const int ops = int(a.meniscus.has_value()) + int(a.split.has_value()) +
                     int(a.remove.has_value()) + int(a.collapse.has_value()) +
                     int(a.replace_glass.has_value()) + int(a.ghost.has_value()) +
-                    int(a.shell.has_value()) + int(a.doublet.has_value());
+                    int(a.shell.has_value()) + int(a.doublet.has_value()) + int(a.ghost_return);
     if (ops != 1) {
         throw UsageError("genau einer von --meniscus, --split, --remove, --collapse, "
-                         "--replace-glass, --ghost-dictionary, --aplanatic-shell und "
-                         "--null-doublet ist nötig");
+                         "--replace-glass, --ghost-dictionary, --aplanatic-shell, "
+                         "--null-doublet und --ghost-return ist nötig");
     }
     a.op = a.meniscus        ? Op::Meniscus
            : a.split         ? Op::Split
@@ -244,7 +263,8 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
            : a.replace_glass ? Op::ReplaceGlass
            : a.ghost         ? Op::GhostDictionary
            : a.shell         ? Op::AplanaticShell
-                             : Op::NullDoublet;
+           : a.doublet       ? Op::NullDoublet
+                             : Op::GhostReturn;
     if (a.output.empty()) {
         throw UsageError("Ergebnisdatei fehlt (-o <datei>)");
     }
@@ -257,10 +277,19 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
     if (a.thickness != 0.0 && !a.meniscus) {
         throw UsageError("--thickness nur mit --meniscus");
     }
-    if ((!a.ghost_glasses.empty() || a.ghost_order || a.ghost_weight || a.norm_radius) &&
-        !a.ghost) {
-        throw UsageError("--ghost-glass, --ghost-order, --ghost-weight und --norm-radius nur mit "
-                         "--ghost-dictionary");
+    if ((!a.ghost_glasses.empty() || a.ghost_order || a.ghost_weight) && !a.ghost &&
+        !a.ghost_return) {
+        throw UsageError("--ghost-glass, --ghost-order und --ghost-weight nur mit "
+                         "--ghost-dictionary oder --ghost-return");
+    }
+    if (a.norm_radius && !a.ghost) {
+        throw UsageError("--norm-radius nur mit --ghost-dictionary");
+    }
+    if ((a.ghost_locations || a.norm_field) && !a.ghost_return) {
+        throw UsageError("--ghost-positions und --norm-field nur mit --ghost-return");
+    }
+    if (a.ghost_return && a.ghost_glasses.empty()) {
+        throw UsageError("--ghost-return braucht mindestens ein --ghost-glass");
     }
     if (!a.refocus && !a.shell) {
         throw UsageError("--no-refocus nur mit --aplanatic-shell");
@@ -338,6 +367,15 @@ void print_insert_usage(std::ostream& out) {
            "    --no-refocus            Arbeitsabstand nicht nachfokussieren\n"
            "  --null-doublet I,POS,C0,GLAS1,GLAS2\n"
            "                            Kittglied ohne Wirkung (drei Flächen C0, Dicke 0)\n"
+           "  --ghost-return            Rückkehr vom realen System zu Geisterplatten (M6-T10):\n"
+           "                            Wörterbücher aus --ghost-glass (mehrfach) in der Mitte\n"
+           "                            der Luftspalte aus --ghost-positions, Spalte fest,\n"
+           "                            Normierungsradius aus den realen Strahlhöhen; dazu\n"
+           "                            --ghost-order K (Standard 10), --ghost-weight MU (neuer\n"
+           "                            Eintrag ghost_penalty, Standard 47.2, kappa = 1)\n"
+           "    --ghost-positions LISTE Lagen aus stop, aperture, field, front (Standard\n"
+           "                            aperture,field)\n"
+           "    --norm-field F          Feldwinkel x F für die Strahlhöhen (Standard 1)\n"
            "  --no-variables            keine Krümmungsvariablen für die neuen Flächen\n"
            "  --json                    Bericht als JSON (mikroptim.insert/1)\n"
            "  --no-reference-warning    keine Warnung auf stderr, wenn die Datei kein Feld\n"
@@ -365,6 +403,8 @@ const char* op_name(Op op) {
         return "aplanatic_shell";
     case Op::NullDoublet:
         return "null_doublet";
+    case Op::GhostReturn:
+        return "ghost_return";
     }
     return "?";
 }
@@ -387,6 +427,8 @@ const char* op_title(Op op) {
         return "aplanatische Schale";
     case Op::NullDoublet:
         return "Null-Kittglied";
+    case Op::GhostReturn:
+        return "Rückkehr zu Geisterplatten";
     }
     return "?";
 }
@@ -514,6 +556,23 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
             result = std::move(r.system);
             break;
         }
+        case Op::GhostReturn: {
+            GhostReturnOptions o;
+            o.glasses = a.ghost_glasses;
+            o.order = a.ghost_order.value_or(o.order);
+            o.penalty_weight = a.ghost_weight.value_or(o.penalty_weight);
+            if (a.ghost_locations) {
+                o.locations = *a.ghost_locations;
+            }
+            o.norm_field_scale = a.norm_field.value_or(1.0);
+            GhostReturnResult r = return_to_ghost_plates(before, o);
+            details = Json::parse(ghost_return_json_text(r));
+            for (const std::string& n : r.notes) {
+                warnings.push_back(n);
+            }
+            result = std::move(r.system);
+            break;
+        }
         }
         const fs::path input_dir = fs::path(a.file).parent_path();
         const LoadedSystem after = prepare_system(result, input_dir);
@@ -564,10 +623,19 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
             kv(out, "Flächen vorher / nachher",
                std::to_string(before.system.surfaces.size()) + " / " +
                    std::to_string(result.surfaces.size()));
-            if (a.op == Op::GhostDictionary) {
+            if (a.op == Op::GhostDictionary || a.op == Op::GhostReturn) {
                 kv(out, "Geisterplatten vorher / nachher",
                    std::to_string(before.system.ghost_plates.size()) + " / " +
                        std::to_string(result.ghost_plates.size()));
+            }
+            if (a.op == Op::GhostReturn) {
+                for (const Json& p : details["positions"]) {
+                    kv(out, "Lage " + p["location"].get<std::string>(),
+                       "Spalt nach Fläche " + std::to_string(p["after_surface"].get<int>()) +
+                           ", Abstand " + fixed(p["distance"].get<double>(), 4) + " mm, r_g " +
+                           fixed(p["norm_radius"].get<double>(), 4) + " mm" +
+                           (p["gap_fixed"].get<bool>() ? ", Spalt fest" : ""));
+                }
             }
             kv(out, "Merit vorher [Wellen²]", sci(f_before, 15));
             kv(out, "Merit nachher [Wellen²]", sci(f_after, 15));

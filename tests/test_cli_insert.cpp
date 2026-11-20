@@ -4,14 +4,17 @@
 // Glaskataloge vom Verzeichnis der Ergebnisdatei aus auffindbar, Fehlerfälle.
 
 #include "cli/insert_command.hpp"
+#include "ghost_return_test_systems.hpp"
 #include "insertion_test_systems.hpp"
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/optim/design_operators.hpp"
+#include "mikroptim/synth/ghost_return.hpp"
 #include "temp_paths.hpp"
 #include "tolerances.hpp"
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <sstream>
@@ -303,6 +306,64 @@ TEST(CliInsert, RemovalWarnsAboutRaisedBound) {
     ASSERT_EQ(r.code, cli::kExitOk) << r.err;
     EXPECT_NE(r.out.find("\"warnings\": []"), std::string::npos);
     EXPECT_TRUE(r.err.empty());
+}
+
+TEST(CliInsert, GhostReturnMatchesLibrary) {
+    // M6-T10: Rückkehr vom realen System zu Geisterplatten
+    const InsertTempDir dir("ghost_return");
+    const std::string in = dir.file("real.json");
+    write_ghost_return_real_system(fs::path(in));
+    const std::string out = dir.file("geister.json");
+    CliResult r = insert({in, "--ghost-return", "--ghost-glass", "N-BK7", "--ghost-glass", "CAF2",
+                          "--ghost-positions", "stop,aperture,field", "--ghost-order", "6",
+                          "--norm-field", "0.5", "-o", out, "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_EQ(j["operator"], "ghost_return");
+    EXPECT_EQ(j["ghost_plates_before"], 0);
+    EXPECT_LE(j["relative_change"].get<double>(), kInsertionMeritRelative);
+    const nlohmann::json& pos = j["details"]["positions"];
+    ASSERT_GE(pos.size(), 2u);
+    EXPECT_EQ(pos[0]["location"], "stop");
+    EXPECT_EQ(pos[0]["after_surface"], 0);
+    EXPECT_EQ(j["ghost_plates_after"], 2 * pos.size());
+    EXPECT_LE(j["details"]["relative_change"].get<double>(), kInsertionMeritRelative);
+
+    // Ergebnisdatei gleich der Bibliothek (Platten, Variablen)
+    const LoadedSystem real = load_system(in);
+    GhostReturnOptions o;
+    for (const char* name : {"N-BK7", "CAF2"}) {
+        MaterialSpec m;
+        m.kind = MaterialKind::Catalog;
+        m.name = name;
+        o.glasses.push_back(m);
+    }
+    o.locations = parse_ghost_return_locations("stop,aperture,field");
+    o.order = 6;
+    o.norm_field_scale = 0.5;
+    const GhostReturnResult lib = return_to_ghost_plates(real, o);
+    const LoadedSystem written = load_system(out);
+    EXPECT_EQ(written.system.ghost_plates, lib.system.ghost_plates);
+    EXPECT_EQ(resolve_variables(written.system), resolve_variables(lib.system));
+
+    // Textausgabe
+    r = insert({in, "--ghost-return", "--ghost-glass", "N-BK7", "-o", out});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    EXPECT_NE(r.out.find("Rückkehr zu Geisterplatten"), std::string::npos) << r.out;
+    EXPECT_NE(r.out.find("Lage aperture"), std::string::npos) << r.out;
+
+    // Fehler: ohne Glas, Optionen ohne --ghost-return, unbekannte Lage, schon Platten
+    EXPECT_EQ(insert({in, "--ghost-return", "-o", out}).code, cli::kExitUsage);
+    EXPECT_EQ(insert({in, "--ghost-positions", "stop", "--remove", "1", "-o", out}).code,
+              cli::kExitUsage);
+    EXPECT_EQ(insert({in, "--norm-field", "1", "--remove", "1", "-o", out}).code, cli::kExitUsage);
+    EXPECT_EQ(insert({in, "--ghost-return", "--ghost-glass", "CAF2", "--ghost-positions", "mitte",
+                      "-o", out})
+                  .code,
+              cli::kExitUsage);
+    EXPECT_EQ(
+        insert({out, "--ghost-return", "--ghost-glass", "CAF2", "-o", dir.file("x.json")}).code,
+        cli::kExitError);
 }
 
 } // namespace

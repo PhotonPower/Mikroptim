@@ -209,6 +209,7 @@ target_link_libraries(mikroptim_optim
 # --------------------------------------------------------------------------
 add_library(mikroptim_synth STATIC
     src/synth/beam_search.cpp
+    src/synth/ghost_return.cpp
     src/synth/homotopy.cpp
     src/synth/optical_homotopy.cpp)
 add_library(Mikroptim::synth ALIAS mikroptim_synth)

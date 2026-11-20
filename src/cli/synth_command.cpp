@@ -7,8 +7,10 @@
 #include "mikroptim/cpu/load_system.hpp"
 #include "mikroptim/io/system_json.hpp"
 #include "mikroptim/optim/augmented_lagrangian.hpp"
+#include "mikroptim/optim/glass_snap.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/synth/beam_search.hpp"
+#include "mikroptim/synth/ghost_return.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 #include "mikroptim/tolerance/tolerance_aware.hpp"
@@ -23,6 +25,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -88,6 +91,12 @@ struct SynthArgs {
     double prune_tolerance = HomotopyOptions{}.prune_tolerance;
     int prune_min_elements = HomotopyOptions{}.prune_min_elements;
     bool have_max_elements = false;
+    // M6-T10: Rückkehr vom realen System zu Geisterplatten vor dem Lauf
+    bool start_from_real = false;
+    std::vector<std::string> ghost_glasses;
+    std::optional<int> ghost_order;
+    std::optional<double> ghost_weight;
+    std::optional<std::vector<GhostReturnLocation>> ghost_locations;
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
     bool no_reference_warning = false;                   // --no-reference-warning
@@ -279,6 +288,26 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.prune_min_elements = parse_int(arg, next_value(args, i, arg));
             if (a.prune_min_elements < 0) {
                 throw UsageError("--prune-min-elements muss >= 0 sein");
+            }
+        } else if (arg == "--start-from-real") {
+            a.start_from_real = true;
+        } else if (arg == "--ghost-glass") {
+            a.ghost_glasses.emplace_back(next_value(args, i, arg));
+            if (a.ghost_glasses.back().empty() || a.ghost_glasses.back() == "AIR") {
+                throw UsageError("--ghost-glass erwartet einen Katalognamen");
+            }
+        } else if (arg == "--ghost-order") {
+            a.ghost_order = parse_int(arg, next_value(args, i, arg));
+            if (*a.ghost_order < 1) {
+                throw UsageError("--ghost-order muss >= 1 sein");
+            }
+        } else if (arg == "--ghost-weight") {
+            a.ghost_weight = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--ghost-positions") {
+            try {
+                a.ghost_locations = parse_ghost_return_locations(next_value(args, i, arg));
+            } catch (const std::invalid_argument& e) {
+                throw UsageError(std::string("--ghost-positions: ") + e.what());
             }
         } else if (arg == "--field-rule") {
             a.field_rule = true;
@@ -483,6 +512,14 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         throw UsageError("--prune-stages, --prune-attempts, --prune-factor, --prune-tolerance und "
                          "--prune-min-elements verlangen --prune oder --element-budget");
     }
+    if ((!a.ghost_glasses.empty() || a.ghost_order || a.ghost_weight || a.ghost_locations) &&
+        !a.start_from_real) {
+        throw UsageError("--ghost-glass, --ghost-order, --ghost-weight und --ghost-positions "
+                         "verlangen --start-from-real");
+    }
+    if (a.start_from_real && a.ghost_glasses.empty()) {
+        throw UsageError("--start-from-real braucht mindestens ein --ghost-glass");
+    }
     if (a.beam && a.al_rounds > 0) {
         throw UsageError("--augmented-lagrangian gibt es nur ohne --beam");
     }
@@ -550,6 +587,16 @@ void print_synth_usage(std::ostream& out) {
            "  --prune-factor F          Annahme bei F_B <= F x F_max, 0 < F <= 1 (Standard 1)\n"
            "  --prune-tolerance E       zusätzlich F_B <= (1 + E) x F_B vorher (Standard aus)\n"
            "  --prune-min-elements N    nie unter N Glaselemente (Standard 1)\n"
+           "  --start-from-real         Rückkehr zu Geisterplatten vor dem Lauf (M6-T10): die\n"
+           "                            Startdatei ohne Platten bekommt Wörterbücher mit\n"
+           "                            Koeffizienten 0 (Merit unverändert) in der Mitte der\n"
+           "                            Luftspalte aus --ghost-positions; Spalte fest\n"
+           "  --ghost-glass GLAS        Glas einer Platte (mehrfach, mindestens einmal)\n"
+           "  --ghost-order K           Ordnungen der Platten (Standard 10)\n"
+           "  --ghost-weight MU         Gewicht des neuen Eintrags ghost_penalty (Standard 47.2,\n"
+           "                            kappa = 1, eps = 1e-6 mm)\n"
+           "  --ghost-positions LISTE   Lagen aus stop, aperture, field, front (Standard\n"
+           "                            aperture,field)\n"
            "  --field-rule              Feldregel: ohne Geisterbedarf und bei dominierenden\n"
            "                            Feldfehlern Operator A im Luftspalt mit größtem |ȳ/y|\n"
            "                            (M6-T8; Standard aus)\n"
@@ -695,6 +742,37 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
             err << "mikroptim synth: Warnung: " << w << '\n';
         }
         warn_missing_reference_sphere(err, "synth", start.system, a.no_reference_warning);
+        // M6-T10: Rückkehr zu Geisterplatten (Merit bis auf Rundung gleich)
+        std::optional<GhostReturnResult> ghost_return;
+        if (a.start_from_real) {
+            GhostReturnOptions go;
+            for (const std::string& g : a.ghost_glasses) {
+                if (!start.catalog.contains(g)) {
+                    err << "mikroptim synth: --ghost-glass: Glas \"" << g
+                        << "\" nicht in den Katalogen der Startdatei\n";
+                    return kExitError;
+                }
+                MaterialSpec m;
+                m.kind = MaterialKind::Catalog;
+                m.name = g;
+                go.glasses.push_back(std::move(m));
+            }
+            go.order = a.ghost_order.value_or(go.order);
+            go.penalty_weight = a.ghost_weight.value_or(go.penalty_weight);
+            if (a.ghost_locations) {
+                go.locations = *a.ghost_locations;
+            }
+            // Normierungsradien für das größte Feld des Laufs (Feldanteil der Startdatei 1)
+            go.norm_field_scale =
+                std::max(a.start_field.value_or(1.0), a.target_field.value_or(0.0));
+            go.rings = a.rings;
+            go.spokes = a.spokes;
+            ghost_return = return_to_ghost_plates(start, go);
+            start = rebuild_loaded_system(start, ghost_return->system);
+            for (const std::string& n : ghost_return->notes) {
+                err << "mikroptim synth: Hinweis (--start-from-real): " << n << '\n';
+            }
+        }
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
         o.split.preselect = a.split_preselect;
@@ -853,6 +931,18 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                             : std::string()) +
                        ", mindestens " + std::to_string(a.prune_min_elements) + " Element(e)");
             }
+            if (ghost_return) {
+                std::string lagen;
+                for (const GhostReturnPosition& p : ghost_return->positions) {
+                    lagen += (lagen.empty() ? "" : ", ") + std::string(to_string(p.location)) +
+                             " (Spalt " + std::to_string(p.after_surface) + ", r_g " +
+                             fixed(p.norm_radius, 3) + " mm)";
+                }
+                kv(out, "Rückkehr zu Geisterplatten",
+                   std::to_string(ghost_return->system.ghost_plates.size()) + " Platten: " + lagen +
+                       "; F vorher/nachher " + sci(ghost_return->merit_before, 6) + " / " +
+                       sci(ghost_return->merit_after, 6));
+            }
             if (a.field_rule) {
                 kv(out, "Feldregel",
                    "RMS Rand >= " + fixed(a.field_ratio, 3) +
@@ -985,6 +1075,13 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 Json{{"ratio", a.field_ratio},
                      {"min_rms_waves", a.field_min_rms},
                      {"glass", a.field_glass.empty() ? Json(nullptr) : Json(a.field_glass)}};
+        }
+        if (ghost_return) {
+            // M6-T10: nur mit der Option
+            Json g = Json::parse(ghost_return_json_text(*ghost_return));
+            g["glasses"] = a.ghost_glasses;
+            g["order"] = a.ghost_order.value_or(GhostReturnOptions{}.order);
+            options["start_from_real"] = std::move(g);
         }
         if (beam) {
             options["beam"] = Json{{"width", bo.beam_width},

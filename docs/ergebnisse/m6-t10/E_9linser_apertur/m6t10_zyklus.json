@@ -1,0 +1,318 @@
+{
+ "start": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau/z2_s0.json",
+ "start_state": {
+  "aperture": 0.5,
+  "field": 1.0,
+  "spectrum": "mono",
+  "elements": 9
+ },
+ "kinds": [
+  "apertur"
+ ],
+ "synth_options": [
+  "--color-rule",
+  "--field-rule",
+  "--insertion-improve",
+  "4"
+ ],
+ "ghost_positions": "aperture,field",
+ "element_budget": 16,
+ "stages": [
+  {
+   "kind": "apertur",
+   "tag": "c0_apertur",
+   "start": "docs/ergebnisse/m6-t10/E_9linser_apertur/c_start.json",
+   "start_state": {
+    "aperture": 0.5,
+    "field": 1.0,
+    "spectrum": "mono",
+    "elements": 9
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_real.json",
+    "output": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_start.json",
+    "surfaces_before": 19,
+    "surfaces_after": 19,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 0.0010009691470909815,
+    "merit_after": 0.001000969147205293,
+    "relative_change": 1.142008775651224e-10,
+    "focal_length_before": 3.290396261557736,
+    "focal_length_after": 3.290396261557736,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 8,
+       "distance": 2.16296482860291,
+       "norm_radius": 4.77284313093978,
+       "marginal_height": 2.9266433038515505,
+       "ratio": 0.44302384633375536,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 16,
+       "distance": 0.11520033953486689,
+       "norm_radius": 1.242547284269482,
+       "marginal_height": 0.5042726341752004,
+       "ratio": 1.0209442092706467,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 0.0010009691520887344,
+     "merit_after": 0.0010009691521132857,
+     "relative_change": 2.452755358527654e-11
+    },
+    "warnings": []
+   },
+   "ghost_start": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_start.json",
+   "result": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_r0_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c0_apertur_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.6275000000000001,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 9,
+     "insertions": 4,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 738.862708568573,
+     "relaxed_gaps": [],
+     "relax": "c0_apertur_r0_relax"
+    }
+   ],
+   "point": {
+    "aperture": 0.6275000000000001,
+    "field": 1.0,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 1.0
+   },
+   "elements_stage": 9,
+   "z2": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2_s0.json",
+   "elements_z2": 16,
+   "prune": {
+    "status": "max_elements",
+    "removals": 0,
+    "attempts": 32,
+    "elements_before": 16,
+    "elements_after": 16
+   },
+   "z2r": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_s0.json",
+   "elements": 16,
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_psf.json",
+    "vektor": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.6724999999999993,
+    "field": 1.0,
+    "spectrum": "mono",
+    "elements": 16
+   },
+   "seconds": 0.041446685791015625
+  },
+  {
+   "kind": "apertur",
+   "tag": "c1_apertur",
+   "start": "docs/ergebnisse/m6-t10/E_9linser_apertur/c0_apertur_z2r_s0.json",
+   "start_state": {
+    "aperture": 0.6724999999999993,
+    "field": 1.0,
+    "spectrum": "mono",
+    "elements": 16
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_real.json",
+    "output": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_start.json",
+    "surfaces_before": 33,
+    "surfaces_after": 33,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 0.003981019300196589,
+    "merit_after": 0.003981019299888734,
+    "relative_change": 7.733055611473617e-11,
+    "focal_length_before": 3.290489487336901,
+    "focal_length_after": 3.2904894873368997,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 8,
+       "distance": 1.1091873701284054,
+       "norm_radius": 5.894410244726727,
+       "marginal_height": 3.79034405444352,
+       "ratio": 0.3040741676401856,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 16,
+       "distance": 0.5431644845596237,
+       "norm_radius": 3.0882464829234046,
+       "marginal_height": 2.136975921074523,
+       "ratio": 0.45284629068182125,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 0.003980896632795659,
+     "merit_after": 0.003980896633003326,
+     "relative_change": 5.216594046811443e-11
+    },
+    "warnings": []
+   },
+   "ghost_start": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_start.json",
+   "result": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_r0_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c1_apertur_r0",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.6999999999999991,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 16,
+     "insertions": 10,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 1024.3144097328186,
+     "relaxed_gaps": [],
+     "relax": "c1_apertur_r0_relax"
+    }
+   ],
+   "point": {
+    "aperture": 0.6999999999999991,
+    "field": 1.0,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 1.0
+   },
+   "elements_stage": 16,
+   "z2": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2_s0.json",
+   "elements_z2": 16,
+   "prune": {
+    "status": "max_elements",
+    "removals": 0,
+    "attempts": 32,
+    "elements_before": 16,
+    "elements_after": 16
+   },
+   "z2r": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_s0.json",
+   "elements": 16,
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_psf.json",
+    "vektor": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.6999999999999991,
+    "field": 1.0,
+    "spectrum": "mono",
+    "elements": 16
+   },
+   "seconds": 153.79113245010376
+  }
+ ],
+ "times": {
+  "c0_apertur_start": 0.02769613265991211,
+  "c0_apertur_r0": 738.862708568573,
+  "c0_apertur_r0_relax": 21.600526809692383,
+  "c0_apertur_r1": 739.997190952301,
+  "c0_apertur_r1_relax": 24.400118827819824,
+  "c0_apertur_r2": 1840.8952679634094,
+  "c0_apertur_r2_relax": 9.13503646850586,
+  "c0_apertur_z2_s0": 9.882068634033203,
+  "c0_apertur_rueckbau": 405.3805043697357,
+  "c0_apertur_z2r_s0": 11.290018320083618,
+  "c0_apertur_z2r_pupille": 0.15731239318847656,
+  "c0_apertur_z2r_unendlich": 0.1541883945465088,
+  "c0_apertur_z2r_psf": 0.18792343139648438,
+  "c0_apertur_z2r_vektor": 0.25910520553588867,
+  "c1_apertur_start": 0.02657914161682129,
+  "c1_apertur_r0": 1024.3144097328186,
+  "c1_apertur_r0_relax": 6.153372287750244,
+  "c1_apertur_z2_s0": 3.8171114921569824,
+  "c1_apertur_rueckbau": 144.64430332183838,
+  "c1_apertur_z2r_s0": 4.522780895233154,
+  "c1_apertur_z2r_pupille": 0.16582584381103516,
+  "c1_apertur_z2r_unendlich": 0.16246461868286133,
+  "c1_apertur_z2r_psf": 0.18680906295776367,
+  "c1_apertur_z2r_vektor": 0.2511320114135742
+ },
+ "final": "docs/ergebnisse/m6-t10/E_9linser_apertur/c1_apertur_z2r_s0.json",
+ "final_state": {
+  "aperture": 0.6999999999999991,
+  "field": 1.0,
+  "spectrum": "mono",
+  "elements": 16
+ },
+ "seconds_total": 153.83608388900757
+}

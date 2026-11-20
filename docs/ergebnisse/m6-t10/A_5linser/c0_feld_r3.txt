@@ -1,0 +1,109 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t10\A_5linser\c0_feld_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.8689, Feldanteil 0.653, 12 Glaselement(e)
+  Ziel                                        NA 0.8689, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 12; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.8689  0.653   0  -        max_iterations       500  5.254160e-03  5.005964e-03  0.08397   2.087e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.8689  0.653   0  -        max_iterations       500  5.257329e-03  5.017365e-03  0.08434   2.120e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.8689  0.653   0  -        converged_step        27  5.281099e-03  5.021475e-03  0.08442   2.118e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.8689  0.778   0  0.12500  converged_step      1177  7.720204e+01  4.260027e+00  2.80228   8.763e-04  12  shrink (Delta 0.06250)
+      4  field            0.8689  0.716   0  0.06250  converged_step      1079  4.191111e-02  4.113028e-02  0.23716   2.876e-04  12  shrink (Delta 0.03125)
+      5  field            0.8689  0.685   0  0.03125  max_iterations       500  7.307403e-03  7.030129e-03  0.09833   2.288e-05  12  shrink (Delta 0.01562)
+      6  field            0.8689  0.669   0  0.01562  max_iterations       500  6.172661e-03  5.898525e-03  0.09075   2.215e-05  12  insert (Delta 0.00781): Feldregel (RMS Rand/Achse 0.0907777/0.0421299 Wellen, W131 = 0.342711, W222 = -0.287823, W220 = 0.0731862): Operator A im Luftspalt nach Fläche 22 (|ȳ/y| = 0.286999)
+      7  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.273300e-03  5.026504e-03  0.08438   2.086e-05  12  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 0.3424 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.265607e-03  5.032216e-03  0.08427   2.055e-05  12  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 0.3424 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.8689  0.653   0  -        converged_step       347  5.253165e-03  5.031323e-03  0.08410   2.028e-05  12  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 0.3424 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.8689  0.653   0  -        -                      -  -             -             -         -            11  ok: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 0.3424 Wellen) entfernt (Elementbudget 12): F_B 0.00503132 ≤ 0.00510204, vorher 0.00502148
+     11  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.275956e-03  5.066943e-03  0.08428   1.982e-05  11  -: Element ab Fläche 7 (SYN-30, Seidel-Beitrag 0.389 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.8689  0.653   0  -        converged_step       334  5.301805e-03  5.103769e-03  0.08450   1.931e-05  11  -: Element ab Fläche 7 (SYN-30, Seidel-Beitrag 0.389 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.8689  0.653   0  -        converged_step       190  5.355124e-03  5.166259e-03  0.08500   1.880e-05  11  -: Element ab Fläche 7 (SYN-30, Seidel-Beitrag 0.389 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 7 (SYN-30, Seidel-Beitrag 0.389 Wellen): F_B 0.00516626 > 0.00510204
+     15  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.257267e-03  5.024201e-03  0.08486   1.966e-05  11  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 1.262 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.418748e-03  5.171121e-03  0.08697   2.007e-05  11  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 1.262 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.8689  0.653   0  -        max_iterations       500  6.546968e-03  6.377595e-03  0.09833   1.624e-05  11  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 1.262 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 9 (SYN-30, Seidel-Beitrag 1.262 Wellen): F_B 0.00637759 > 0.00510204
+     19  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.484733e-03  5.291461e-03  0.08667   1.911e-05  11  -: Element ab Fläche 15 (SYN-36, Seidel-Beitrag 3.124 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     20  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.746453e-03  5.556505e-03  0.08905   1.900e-05  11  -: Element ab Fläche 15 (SYN-36, Seidel-Beitrag 3.124 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     21  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.989356e-03  5.761979e-03  0.09097   2.039e-05  11  -: Element ab Fläche 15 (SYN-36, Seidel-Beitrag 3.124 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     22  removal          0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 15 (SYN-36, Seidel-Beitrag 3.124 Wellen): F_B 0.00576198 > 0.00510204
+     23  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.527910e-03  5.326865e-03  0.08674   1.864e-05  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.51 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     24  removal_stage    0.8689  0.653   0  -        max_iterations       500  5.893593e-03  5.722369e-03  0.08959   1.897e-05  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.51 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     25  removal_stage    0.8689  0.653   0  -        max_iterations       500  6.071716e-03  5.879188e-03  0.09143   1.875e-05  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.51 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     26  removal          0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.51 Wellen): F_B 0.00587919 > 0.00510204
+     27  field            0.8689  0.778   0  0.12500  converged_step       412  2.770797e-02  2.689897e-02  0.16857   2.005e-04  11  shrink (Delta 0.06250)
+     28  field            0.8689  0.716   0  0.06250  converged_step       816  4.528074e-02  4.492758e-02  0.23414   3.915e-04  11  shrink (Delta 0.03125)
+     29  field            0.8689  0.685   0  0.03125  max_iterations       500  7.410833e-03  7.194351e-03  0.09934   2.083e-05  11  shrink (Delta 0.01562)
+     30  field            0.8689  0.669   0  0.01562  max_iterations       500  6.112310e-03  5.856265e-03  0.09050   2.137e-05  11  insert (Delta 0.00781): Feldregel (RMS Rand/Achse 0.09051/0.0438765 Wellen, W131 = 0.37025, W222 = -0.303842, W220 = 0.0732147): Operator A im Luftspalt nach Fläche 20 (|ȳ/y| = 0.28753)
+     31  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  ok: Operator A: Meniskus nach Fläche 20 bei 0.13494 mm, c0 = 0.49606/mm, Glas SYN-36 (Feldregel), Dicke bis 0.5 mm, 2 Zweige
+     32  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.591325e-03  5.433029e-03  0.08696   1.830e-05  11  ok, Zweig 0, Stufe 0.03125
+     33  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.544704e-03  5.385503e-03  0.08665   1.864e-05  11  ok, Zweig 0, Stufe 0.0625
+     34  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.624208e-03  5.452346e-03  0.08797   1.931e-05  11  ok, Zweig 0, Stufe 0.125
+     35  insertion_stage  0.8689  0.653   0  -        max_iterations       500  7.994585e-03  7.919587e-03  0.10295   1.711e-05  11  ok, Zweig 0, Stufe 0.25
+     36  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.146436e-02  2.104608e-02  0.16962   7.051e-05  11  ok, Zweig 0, Stufe 0.5
+     37  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.669420e-03  5.478592e-03  0.08779   1.947e-05  11  ok, Zweig 1, Stufe 0.03125
+     38  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.492524e-03  5.302667e-03  0.08649   1.955e-05  11  ok, Zweig 1, Stufe 0.0625
+     39  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.624135e-03  5.437735e-03  0.08785   1.954e-05  11  ok, Zweig 1, Stufe 0.125
+     40  insertion_stage  0.8689  0.653   0  -        max_iterations       500  7.157507e-03  6.979246e-03  0.09837   2.023e-05  11  ok, Zweig 1, Stufe 0.25
+     41  insertion_stage  0.8689  0.653   0  -        max_iterations       500  1.870264e-02  1.824040e-02  0.16438   4.387e-05  11  ok, Zweig 1, Stufe 0.5
+     42  penalty          0.8689  0.653   0  -        converged_step       233  1.304930e-02  1.278680e-02  0.13508   4.293e-05  12  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     43  penalty          0.8689  0.653   0  -        max_iterations       500  1.240534e-02  1.220089e-02  0.13039   4.347e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+     44  penalty          0.8689  0.653   0  -        max_iterations       500  1.216806e-02  1.196826e-02  0.12848   4.306e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+     45  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Einfügen verworfen: F_B danach 0.0119683 ≥ 0.00503132 davor (Einfügen nur mit Verbesserung)
+     46  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  ok: Operator A: Meniskus nach Fläche 18 bei 0.114778 mm, c0 = 0.52695/mm, Glas SYN-36 (Feldregel), Dicke bis 0.5 mm, 2 Zweige
+     47  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.374818e-03  5.103927e-03  0.08553   2.261e-05  11  ok, Zweig 0, Stufe 0.03125
+     48  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.429462e-03  5.158901e-03  0.08638   2.276e-05  11  ok, Zweig 0, Stufe 0.0625
+     49  insertion_stage  0.8689  0.653   0  -        max_iterations       500  6.015675e-03  5.740505e-03  0.09040   2.493e-05  11  ok, Zweig 0, Stufe 0.125
+     50  insertion_stage  0.8689  0.653   0  -        max_iterations       500  8.188663e-03  7.956427e-03  0.10470   3.194e-05  11  ok, Zweig 0, Stufe 0.25
+     51  insertion_stage  0.8689  0.653   0  -        converged_step       735  1.923554e-02  1.908455e-02  0.15089   1.032e-04  11  ok, Zweig 0, Stufe 0.5
+     52  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.497867e-03  5.251590e-03  0.08638   2.135e-05  11  ok, Zweig 1, Stufe 0.03125
+     53  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.398174e-03  5.124614e-03  0.08605   2.220e-05  11  ok, Zweig 1, Stufe 0.0625
+     54  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.632717e-03  5.363751e-03  0.08791   2.361e-05  11  ok, Zweig 1, Stufe 0.125
+     55  insertion_stage  0.8689  0.653   0  -        max_iterations       500  6.687026e-03  6.459754e-03  0.09620   2.570e-05  11  ok, Zweig 1, Stufe 0.25
+     56  insertion_stage  0.8689  0.653   0  -        max_iterations       500  1.709009e-02  1.687180e-02  0.16691   4.236e-05  11  ok, Zweig 1, Stufe 0.5
+     57  penalty          0.8689  0.653   0  -        max_iterations       500  1.442299e-02  1.418453e-02  0.14894   4.352e-05  12  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     58  penalty          0.8689  0.653   0  -        converged_step       132  1.224561e-02  1.207509e-02  0.13315   4.020e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+     59  penalty          0.8689  0.653   0  -        converged_step        43  1.227601e-02  1.207510e-02  0.13333   3.985e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+     60  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Einfügen verworfen: F_B danach 0.0120751 ≥ 0.00503132 davor (Einfügen nur mit Verbesserung)
+     61  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  ok: Operator A: Meniskus nach Fläche 10 bei 0.347747 mm, c0 = 0.0362447/mm, Glas SYN-30 (Feldregel), Dicke bis 0.5 mm, 2 Zweige
+     62  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.499789e-03  5.323037e-03  0.08625   1.775e-05  11  ok, Zweig 0, Stufe 0.03125
+     63  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.464264e-03  5.278182e-03  0.08594   1.851e-05  11  ok, Zweig 0, Stufe 0.0625
+     64  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.483118e-03  5.296041e-03  0.08615   1.853e-05  11  ok, Zweig 0, Stufe 0.125
+     65  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.474739e-03  5.276361e-03  0.08599   1.927e-05  11  ok, Zweig 0, Stufe 0.25
+     66  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.523200e-03  5.307357e-03  0.08661   1.857e-05  11  ok, Zweig 0, Stufe 0.5
+     67  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.305710e-03  5.057328e-03  0.08545   2.034e-05  11  ok, Zweig 1, Stufe 0.03125
+     68  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.269051e-03  5.002539e-03  0.08493   2.149e-05  11  ok, Zweig 1, Stufe 0.0625
+     69  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.257206e-03  4.986585e-03  0.08467   2.198e-05  11  ok, Zweig 1, Stufe 0.125
+     70  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.249897e-03  4.990548e-03  0.08420   2.169e-05  11  ok, Zweig 1, Stufe 0.25
+     71  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.315142e-03  5.083073e-03  0.08443   2.095e-05  11  ok, Zweig 1, Stufe 0.5
+     72  penalty          0.8689  0.653   0  -        max_iterations       500  5.238211e-03  4.996491e-03  0.08363   2.148e-05  12  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     73  penalty          0.8689  0.653   0  -        max_iterations       500  5.252525e-03  5.026007e-03  0.08404   2.162e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+     74  penalty          0.8689  0.653   0  -        converged_step        47  5.276842e-03  5.031445e-03  0.08411   2.158e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+     75  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Einfügen verworfen: F_B danach 0.00503145 ≥ 0.00503132 davor (Einfügen nur mit Verbesserung)
+     76  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  ok: Operator A: Meniskus nach Fläche 4 bei 0.260302 mm, c0 = 0.106832/mm, Glas CAF2 (Feldregel), Dicke bis 0.5 mm, 2 Zweige
+     77  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.897627e-02  2.881899e-02  0.14693   3.260e-04  11  ok, Zweig 0, Stufe 0.03125
+     78  insertion_stage  0.8689  0.653   0  -        max_iterations       500  1.829107e-02  1.817164e-02  0.13247   1.325e-04  11  ok, Zweig 0, Stufe 0.0625
+     79  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.301497e-02  2.288465e-02  0.13828   2.092e-04  11  ok, Zweig 0, Stufe 0.125
+     80  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.476988e-02  2.460793e-02  0.14038   2.367e-04  11  ok, Zweig 0, Stufe 0.25
+     81  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.229908e-02  2.212719e-02  0.14121   1.794e-04  11  ok, Zweig 0, Stufe 0.5
+     82  insertion_stage  0.8689  0.653   0  -        max_iterations       500  5.716798e-02  5.708569e-02  0.18155   8.088e-04  11  ok, Zweig 1, Stufe 0.03125
+     83  insertion_stage  0.8689  0.653   0  -        max_iterations       500  3.392040e-02  3.385420e-02  0.13531   4.815e-04  11  ok, Zweig 1, Stufe 0.0625
+     84  insertion_stage  0.8689  0.653   0  -        max_iterations       500  2.096704e+00  3.562351e-01  0.60579   2.811e-03  11  ok, Zweig 1, Stufe 0.125
+     85  insertion_stage  0.8689  0.653   0  -        max_iterations       500  1.281636e+01  3.589450e-01  0.60427   3.543e-03  11  ok, Zweig 1, Stufe 0.25
+     86  insertion_stage  0.8689  0.653   0  -        converged_step        58  5.144435e-01  3.692823e-01  0.59380   3.833e-03  11  ok, Zweig 1, Stufe 0.5
+     87  penalty          0.8689  0.653   0  -        max_iterations       500  1.436025e-02  1.402963e-02  0.13744   3.182e-05  12  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     88  penalty          0.8689  0.653   0  -        max_iterations       500  1.414007e-02  1.390282e-02  0.13702   3.117e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+     89  penalty          0.8689  0.653   0  -        max_iterations       500  1.399692e-02  1.372437e-02  0.13640   3.069e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+     90  insertion        0.8689  0.653   0  -        -                      -  -             -             -         -            11  -: Einfügen verworfen: F_B danach 0.0137244 ≥ 0.00503132 davor (Einfügen nur mit Verbesserung)
+
+Status: step_too_small (Feldanteil 0.653304: Schrittweite unter Δ_min = 0.015625 (letzter Versuch F_B = 0.00585626); kein Einfügen verbessert F_B (4 Varianten, F_B 0.0119683, 0.0120751, 0.00503145, 0.0137244 ≥ 0.00503132))
+Endpunkt: NA 0.8689, Feldanteil 0.653, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.8689)
+Glaselemente: 12 -> 11 (4 Einfügungen, 1 Rückbauten in 5 Versuchen), Optimierungen: 78, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                410.4
+Ergebnis geschrieben: docs\ergebnisse\m6-t10\A_5linser\c0_feld_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t10\A_5linser\c0_feld_r3_log.json

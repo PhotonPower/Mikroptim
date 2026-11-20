@@ -1,0 +1,37 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t10\B_9linser\c1_apertur_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 16 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  1.141040e-01  1.139412e-01  0.52990   1.473e-03  16  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        max_iterations       500  1.135796e-01  1.135612e-01  0.53066   1.471e-03  16  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        max_iterations       500  1.135295e-01  1.135277e-01  0.53128   1.469e-03  16  ok: Gewichte der einseitigen Bedingungen ×1
+      3  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.118842e-01  1.118834e-01  0.52596   1.441e-03  16  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 0.4475 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      4  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.107713e-01  1.107711e-01  0.52463   1.412e-03  16  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 0.4475 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      5  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.108747e-01  1.108743e-01  0.52000   1.414e-03  16  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 0.4475 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+      6  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 13 (SYN-36, Seidel-Beitrag 0.4475 Wellen): F_B 0.110874 > 0.00510204
+      7  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.175232e-01  1.175227e-01  0.54686   1.546e-03  16  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 5.31 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.471181e-01  1.420533e-01  0.60125   2.104e-03  16  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 5.31 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.243049e-01  1.243006e-01  0.57355   1.731e-03  16  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 5.31 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 11 (SYN-36, Seidel-Beitrag 5.31 Wellen): F_B 0.124301 > 0.00510204
+     11  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.844130e+00  1.825669e+00  1.79095   5.657e-03  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.522 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.664892e-01  1.664889e-01  0.55078   2.855e-03  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.522 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.795027e-01  1.795017e-01  0.67827   2.343e-03  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.522 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.522 Wellen): F_B 0.179502 > 0.00510204
+     15  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.155766e-01  1.155690e-01  0.54621   1.493e-03  16  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 8.57 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.278984e-01  1.278647e-01  0.62085   1.681e-03  16  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 8.57 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.628450e-01  1.512101e-01  0.71980   2.083e-03  16  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 8.57 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 9 (SYN-30, Seidel-Beitrag 8.57 Wellen): F_B 0.15121 > 0.00510204
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.113528 > F_max = 0.00510204); Bedarf (Operator A), aber höchste Elementzahl 16 erreicht)
+Endpunkt: NA 0.5000, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 16 -> 16 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                197.3
+Ergebnis geschrieben: docs\ergebnisse\m6-t10\B_9linser\c1_apertur_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t10\B_9linser\c1_apertur_r2_log.json

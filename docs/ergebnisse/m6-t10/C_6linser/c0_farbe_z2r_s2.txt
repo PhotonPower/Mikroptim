@@ -1,0 +1,182 @@
+Optimierung: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t10\C_6linser\c0_farbe_z2r_s2_in.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t10\C_6linser\c0_farbe_z2r_s2.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Variablen                                   51
+  Nebenbedingungen (paraxial)                 3
+  Nebenbedingungen (mechanisch)               66
+  Läufe                                       1
+  Zyklen höchstens                            2000
+
+Ergebnis
+  Status                                      max_iterations
+  Zyklen                                      2000
+  Angenommene Schritte                        1228
+  Jacobi-Matrizen                             1228
+  Merit vorher [Wellen²]                      2.660114480e-01
+  Merit nachher [Wellen²]                     2.636050372e-01
+  Merit nachher/vorher                        9.909537e-01
+  Versagte Strahlen vorher/nachher            0 / 0
+  davon hart vorher/nachher                   0 / 0
+  Runden des Strafverfahrens                  1
+  w_fail am Ende [Wellen²]                    1.000e+06
+
+Variablen
+  Name    Einheit   untere Schranke           vorher          nachher   obere Schranke
+  t[0]    mm               0.500000        12.997138        12.982090        40.000000
+  w       mm               0.259912         0.264484         0.265085        10.000000
+  t[8]    mm               0.100000         0.100000         0.100000        10.000000  auf unterer Schranke
+  t[4]    mm               0.100000         0.444835         0.446168        11.838395
+  t[2]    mm               0.100000         0.100000         0.100000        10.000000  auf unterer Schranke
+  c[5]    1/mm     -1.200000000e+00 -9.573344996e-02 -9.573210148e-02  1.200000000e+00
+  c[6]    1/mm     -1.200000000e+00  1.204581925e-01  1.204498953e-01  1.200000000e+00
+  t[5]    mm               0.500000         0.500000         0.500000         5.000000  auf unterer Schranke
+  c[7]    1/mm     -1.200000000e+00  5.344142505e-02  5.340689090e-02  1.200000000e+00
+  c[8]    1/mm     -1.200000000e+00 -4.039026293e-02 -4.034341570e-02  1.200000000e+00
+  t[7]    mm               0.500000         1.102349         1.097900         5.000000
+  c[3]    1/mm     -1.200000000e+00  8.453945237e-02  8.451756144e-02  1.200000000e+00
+  c[4]    1/mm     -1.200000000e+00 -7.477107298e-02 -7.475761507e-02  1.200000000e+00
+  t[3]    mm               0.500000         4.385508         4.399013         5.000000
+  c[19]   1/mm     -1.200000000e+00  3.836611575e-01  3.842654409e-01  1.200000000e+00
+  c[22]   1/mm     -1.200000000e+00  5.093901954e-01  5.088444754e-01  1.200000000e+00
+  t[19]   mm               0.500000         0.559944         0.560261         5.000000
+  t[20]   mm               0.500000         0.595898         0.596268         5.000000
+  t[21]   mm               0.500000         0.986111         0.988393         5.000000
+  c[1]    1/mm     -1.200000000e+00 -3.283419308e-01 -3.282954629e-01  1.200000000e+00
+  c[2]    1/mm     -1.200000000e+00 -1.914614690e-01 -1.914542461e-01  1.200000000e+00
+  t[1]    mm               0.500000         4.646975         4.643643         5.000000
+  c[9]    1/mm     -1.200000000e+00  1.626236413e-01  1.626482773e-01  1.200000000e+00
+  c[10]   1/mm     -1.200000000e+00  7.153512421e-02  7.152642394e-02  1.200000000e+00
+  t[9]    mm               0.500000         1.267878         1.263724         5.000000
+  t[18]   mm               0.100000         0.977899         0.976756        10.000000
+  t[12]   mm               0.100000         0.100000         0.100000        10.000000  auf unterer Schranke
+  t[14]   mm               0.100000         0.100000         0.100000        10.000000  auf unterer Schranke
+  t[16]   mm               0.100000         0.100000         0.100000        10.000000  auf unterer Schranke
+  c[17]   1/mm     -1.200000000e+00  5.556036291e-02  5.556378849e-02  1.200000000e+00
+  c[18]   1/mm     -1.200000000e+00  3.892174508e-02  3.892402786e-02  1.200000000e+00
+  t[17]   mm               0.500000         0.500000         0.500000         5.000000  auf unterer Schranke
+  c[21]   1/mm           -unendlich  8.670107487e-01  8.667699207e-01        unendlich
+  n0[21]  1              -unendlich  1.787385588e+00  1.787082532e+00        unendlich
+  nu1[21] 1              -unendlich -9.938004532e-02 -9.933979125e-02        unendlich
+  nu2[21] 1              -unendlich  4.017335266e-02  4.013447094e-02        unendlich
+  c[20]   1/mm           -unendlich  3.955679660e-01  4.056659337e-01        unendlich
+  n0[20]  1              -unendlich  1.762751946e+00  1.766139493e+00        unendlich
+  nu1[20] 1              -unendlich -1.933259488e-01 -1.940232484e-01        unendlich
+  nu2[20] 1              -unendlich  1.462698501e-01  1.458946456e-01        unendlich
+  c[15]   1/mm     -1.200000000e+00  5.812839501e-02  5.819247521e-02  1.200000000e+00
+  c[16]   1/mm     -1.200000000e+00  3.912154578e-02  3.906822309e-02  1.200000000e+00
+  t[15]   mm               0.500000         0.500000         0.500000         5.000000  auf unterer Schranke
+  c[13]   1/mm     -1.200000000e+00  5.459765221e-02  5.465709463e-02  1.200000000e+00
+  c[14]   1/mm     -1.200000000e+00  3.906786568e-02  3.901705128e-02  1.200000000e+00
+  t[13]   mm               0.500000         0.500000         0.500000         5.000000  auf unterer Schranke
+  c[11]   1/mm     -1.200000000e+00  4.896608253e-02  4.901881718e-02  1.200000000e+00
+  c[12]   1/mm     -1.200000000e+00  3.837264631e-02  3.832460656e-02  1.200000000e+00
+  t[11]   mm               0.500000         0.500000         0.500000         5.000000  auf unterer Schranke
+  t[6]    mm               0.100000         0.742915         0.726527        10.000000
+  t[10]   mm               0.100000         1.041813         1.032988        10.000000
+
+Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho; Residuum r = Wurzel(w) q)
+   Nr  Typ              Modus     Gewicht         Soll   Ist vorher  Ist nachher      r vorher     r nachher
+    0  focal_length     equal   1.000e+02     3.290000     3.301602     3.301421  1.156160e-01  1.138129e-01
+    1  petzval          max     1.000e+04     0.007692            -            -  9.516056e-04  9.447365e-04
+    2  parfocal_length  max     1.000e+00    45.000000    33.013746    32.978816  0.000000e+00  0.000000e+00
+
+Glasvariablen (Startglas als Buchdahl-Material, n0 und nu1, nu2 variabel)
+  Fläche 21: Buchdahl, nu3 = -1.486569e-01 fest
+  Fläche 20: Buchdahl, nu3 = -1.486569e-01 fest
+
+Glas-Hülle (39 Gläser, Dimension 3, 17 Ecken; Abstand normiert, Gewicht 1.000e+04, Sicherheitsabstand 0.000e+00)
+  Fläche 21: Überschreitung vorher 1.219e-04, nachher 1.172e-05
+  Fläche 20: Überschreitung vorher 5.782e-05, nachher 1.970e-06
+
+Mechanische Nebenbedingungen (Grenze und Ist in mm, Einfallswinkel in Grad; r = Wurzel(w) max(0, g))
+   Nr  Typ                  Fläche     Gewicht      Grenze  Ist vorher Ist nachher     r vorher    r nachher
+    3  max_semi_diameter    1        1.000e+04     10.0000      2.7161      2.7151    0.000e+00    0.000e+00
+    3  max_semi_diameter    2        1.000e+04     10.0000      4.3617      4.3586    0.000e+00    0.000e+00
+    3  max_semi_diameter    3        1.000e+04     10.0000      4.7274      4.7240    0.000e+00    0.000e+00
+    3  max_semi_diameter    4        1.000e+04     10.0000      4.3940      4.3894    0.000e+00    0.000e+00
+    3  max_semi_diameter    5        1.000e+04     10.0000      4.2000      4.1949    0.000e+00    0.000e+00
+    3  max_semi_diameter    6        1.000e+04     10.0000      4.0276      4.0232    0.000e+00    0.000e+00
+    3  max_semi_diameter    7        1.000e+04     10.0000      4.0919      4.0826    0.000e+00    0.000e+00
+    3  max_semi_diameter    8        1.000e+04     10.0000      4.1148      4.1053    0.000e+00    0.000e+00
+    3  max_semi_diameter    9        1.000e+04     10.0000      4.1224      4.1134    0.000e+00    0.000e+00
+    3  max_semi_diameter    10       1.000e+04     10.0000      3.9917      3.9831    0.000e+00    0.000e+00
+    3  max_semi_diameter    11       1.000e+04     10.0000      3.6662      3.6620    0.000e+00    0.000e+00
+    3  max_semi_diameter    12       1.000e+04     10.0000      3.5437      3.5400    0.000e+00    0.000e+00
+    3  max_semi_diameter    13       1.000e+04     10.0000      3.4649      3.4613    0.000e+00    0.000e+00
+    3  max_semi_diameter    14       1.000e+04     10.0000      3.3377      3.3345    0.000e+00    0.000e+00
+    3  max_semi_diameter    15       1.000e+04     10.0000      3.2474      3.2444    0.000e+00    0.000e+00
+    3  max_semi_diameter    16       1.000e+04     10.0000      3.1105      3.1079    0.000e+00    0.000e+00
+    3  max_semi_diameter    17       1.000e+04     10.0000      3.0200      3.0175    0.000e+00    0.000e+00
+    3  max_semi_diameter    18       1.000e+04     10.0000      2.8652      2.8629    0.000e+00    0.000e+00
+    3  max_semi_diameter    19       1.000e+04     10.0000      1.9063      1.9063    0.000e+00    0.000e+00
+    3  max_semi_diameter    20       1.000e+04     10.0000      1.6324      1.6261    0.000e+00    0.000e+00
+    3  max_semi_diameter    21       1.000e+04     10.0000      1.1494      1.1499    0.000e+00    0.000e+00
+    3  max_semi_diameter    22       1.000e+04     10.0000      0.7311      0.7312    0.000e+00    0.000e+00
+    4  min_edge_thickness   1-2      1.000e+04      0.3000      8.5437      8.5355    0.000e+00    0.000e+00
+    4  min_edge_thickness   3-4      1.000e+04      0.3000      2.5364      2.5531    0.000e+00    0.000e+00
+    4  min_edge_thickness   5-6      1.000e+04      0.3000      2.5224      2.5171    0.000e+00    0.000e+00
+    4  min_edge_thickness   7-8      1.000e+04      0.3000      0.3000      0.3000    1.132e-04    5.918e-04  verletzt
+    4  min_edge_thickness   9-10     1.000e+04      0.3000      0.3030      0.3038    0.000e+00    0.000e+00
+    4  min_edge_thickness   11-12    1.000e+04      0.3000      0.4274      0.4269    0.000e+00    0.000e+00
+    4  min_edge_thickness   13-14    1.000e+04      0.3000      0.4049      0.4044    0.000e+00    0.000e+00
+    4  min_edge_thickness   15-16    1.000e+04      0.3000      0.3978      0.3974    0.000e+00    0.000e+00
+    4  min_edge_thickness   17-18    1.000e+04      0.3000      0.4229      0.4231    0.000e+00    0.000e+00
+    4  min_edge_thickness   19-20    1.000e+04      0.3000      0.5987      0.6316    0.000e+00    0.000e+00
+    4  min_edge_thickness   20-21    1.000e+04      0.3000      2.3086      2.2759    0.000e+00    0.000e+00
+    4  min_edge_thickness   21-22    1.000e+04      0.3000      0.3000      0.3000    1.474e-04    0.000e+00
+    5  min_edge_thickness   0-1      1.000e+04      0.1000     11.3293     11.3168    0.000e+00    0.000e+00
+    5  min_edge_thickness   2-3      1.000e+04      0.1000      4.0880      4.0788    0.000e+00    0.000e+00
+    5  min_edge_thickness   4-5      1.000e+04      0.1000      0.2181      0.2199    0.000e+00    0.000e+00
+    5  min_edge_thickness   6-7      1.000e+04      0.1000      0.1173      0.1039    0.000e+00    0.000e+00
+    5  min_edge_thickness   8-9      1.000e+04      0.1000      2.0321      2.0224    0.000e+00    0.000e+00
+    5  min_edge_thickness   10-11    1.000e+04      0.1000      0.8537      0.8462    0.000e+00    0.000e+00
+    5  min_edge_thickness   12-13    1.000e+04      0.1000      0.2040      0.2045    0.000e+00    0.000e+00
+    5  min_edge_thickness   14-15    1.000e+04      0.1000      0.2083      0.2088    0.000e+00    0.000e+00
+    5  min_edge_thickness   16-17    1.000e+04      0.1000      0.1809      0.1810    0.000e+00    0.000e+00
+    5  min_edge_thickness   18-19    1.000e+04      0.1000      3.9672      3.9663    0.000e+00    0.000e+00
+    6  min_center_thickness 0-1      1.000e+04      0.1000     12.9971     12.9821    0.000e+00    0.000e+00
+    6  min_center_thickness 2-3      1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 4-5      1.000e+04      0.1000      0.4448      0.4462    0.000e+00    0.000e+00
+    6  min_center_thickness 6-7      1.000e+04      0.1000      0.7429      0.7265    0.000e+00    0.000e+00
+    6  min_center_thickness 8-9      1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 10-11    1.000e+04      0.1000      1.0418      1.0330    0.000e+00    0.000e+00
+    6  min_center_thickness 12-13    1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 14-15    1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 16-17    1.000e+04      0.1000      0.1000      0.1000    0.000e+00    0.000e+00
+    6  min_center_thickness 18-19    1.000e+04      0.1000      0.9779      0.9768    0.000e+00    0.000e+00
+    7  min_center_thickness 1-2      1.000e+04      0.4000      4.6470      4.6436    0.000e+00    0.000e+00
+    7  min_center_thickness 3-4      1.000e+04      0.4000      4.3855      4.3990    0.000e+00    0.000e+00
+    7  min_center_thickness 5-6      1.000e+04      0.4000      0.5000      0.5000    0.000e+00    0.000e+00
+    7  min_center_thickness 7-8      1.000e+04      0.4000      1.1023      1.0979    0.000e+00    0.000e+00
+    7  min_center_thickness 9-10     1.000e+04      0.4000      1.2679      1.2637    0.000e+00    0.000e+00
+    7  min_center_thickness 11-12    1.000e+04      0.4000      0.5000      0.5000    0.000e+00    0.000e+00
+    7  min_center_thickness 13-14    1.000e+04      0.4000      0.5000      0.5000    0.000e+00    0.000e+00
+    7  min_center_thickness 15-16    1.000e+04      0.4000      0.5000      0.5000    0.000e+00    0.000e+00
+    7  min_center_thickness 17-18    1.000e+04      0.4000      0.5000      0.5000    0.000e+00    0.000e+00
+    7  min_center_thickness 19-20    1.000e+04      0.4000      0.5599      0.5603    0.000e+00    0.000e+00
+    7  min_center_thickness 20-21    1.000e+04      0.4000      0.5959      0.5963    0.000e+00    0.000e+00
+    7  min_center_thickness 21-22    1.000e+04      0.4000      0.9861      0.9884    0.000e+00    0.000e+00
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           435.830        16      0.623034      0.615978                   0 / 0
+     0         0.000           486.130        16      0.044135      0.042395                   0 / 0
+     0         0.000           546.070        16      0.185561      0.186697                   0 / 0
+     0         0.000           587.560        16      0.184687      0.184911                   0 / 0
+     0         0.000           656.270        16      0.102821      0.101720                   0 / 0
+     1         3.045           435.830       128      0.712501      0.707131                   0 / 0
+     1         3.045           486.130       128      0.661843      0.661157                   0 / 0
+     1         3.045           546.070       128      0.530324      0.531042                   0 / 0
+     1         3.045           587.560       128      0.311077      0.312146                   0 / 0
+     1         3.045           656.270       128      0.336303      0.334444                   0 / 0
+     2         4.345           435.830       128      0.808549      0.807640                   0 / 0
+     2         4.345           486.130       128      0.555765      0.552290                   0 / 0
+     2         4.345           546.070       128      0.360993      0.360138                   0 / 0
+     2         4.345           587.560       128      0.245295      0.245071                   0 / 0
+     2         4.345           656.270       128      0.853095      0.850643                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t10\C_6linser\c0_farbe_z2r_s2.json

@@ -1,0 +1,731 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)",
+  "description": "Startsystem (frei erfunden, keine realen Objektivdaten) für den Lauf auf der Zielspezifikation (M6-T6, docs/ergebnisse/m6-t6-zielspezifikation.md). Einzellinse aus einem hochbrechenden Glas mit den Buchdahl-Koordinaten des 3-Term-Fits (400–700 nm) des frei erfundenen Testglases SYN-36 aus data/glass/synthetisch.json (n = 1,807 bei 546 nm, nu_d = 48,6; Buchdahl statt Katalogname, damit die Datei nur Gläser aus basis.json nennt), f = 3,29 mm (f_T 164,5 mm / 50), Pupillenradius 0,987 mm (NA 0,3), eine Wellenlänge 546,07 nm, Felder 0; 3,045 und 4,345 Grad (0, 70 und 100 % von FZ 25 mit f_T = 164,5 mm; die erste Phase rechnet mit 10 % davon). Tracerichtung vom Unendlichraum zum Objekt; die Blende ist Fläche 0 (ADR-0006), der Blendenspalt ist Variable (Start bei objektseitiger Telezentrie). Zwei Hilfsebenen tragen das Wörterbuch aus Geisterplatten (hochbrechend wie SYN-36, Fluorit CAF2, Schwerflint wie SYN-30 als Buchdahl-Fit, K = 10): Fläche 1 im kollimierten Bündel vor der Linse (Platten 0,1 mm dahinter), Fläche 4 im konvergenten Bündel vor dem Objekt (Platten 0,1 mm hinter der Linse). Die Spalte mit Geisterplatten haben keine Dickenvariable (der Einfüge-Operator A teilt sie). Strafgewicht mu = 47,2 Wellen²/mm mit Ordnungsfaktor 1 wie im Startsystem der Abnahme von M6-T3. Nebenbedingungen (Annahmen, siehe Bericht): Brennweite, Petzvalradius >= 130 mm, Blende bis Objekt <= 45 mm, Halbdurchmesser <= 10 mm, Glasrand >= 0,3 mm und Luftrand >= 0,1 mm bei der freien Öffnung plus 0,2 mm, Luftspalte >= 0,1 mm, Glas-Mittendicke >= 0,4 mm; Arbeitsabstand ab der Linse >= 0,25 mm (0,1 mm bis zur Hilfsebene plus >= 0,15 mm).",
+  "units": "mm",
+  "glass_catalogs": [
+    "data/glass/basis.json",
+    "data/glass/synthetisch.json"
+  ],
+  "spectrum": {
+    "wavelengths_nm": [
+      435.83,
+      486.13,
+      546.07,
+      587.56,
+      656.27
+    ],
+    "weights": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "reference_nm": 546.07
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [
+      0.0,
+      3.0447784441939842,
+      4.34543174922908
+    ],
+    "field_weights": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "target": {
+    "focal_length": 3.29,
+    "parfocal_length": 45.0
+  },
+  "reference_sphere": "image_infinite",
+  "surfaces": [
+    {
+      "type": "stop",
+      "thickness": 11.21423342864529,
+      "material": "AIR",
+      "semi_diameter": 1.645
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.33376598731564416,
+      "thickness": 4.993578074872725,
+      "material": "CAF2",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.19517156762851132,
+      "thickness": 8.767614488154006,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.08586740578326335,
+      "thickness": 2.8485082248854345,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.07759544465745528,
+      "thickness": 0.4006235991028579,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.09539739224077438,
+      "thickness": 0.5,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.12166335652506771,
+      "thickness": 2.8844690798199095,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.054769780753580924,
+      "thickness": 1.533323507820563,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.040148153750950204,
+      "thickness": 0.10004569165533748,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.1643810353242839,
+      "thickness": 1.7509285711257874,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.071291526368968,
+      "thickness": 2.114363880388666,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04308287052028278,
+      "thickness": 0.5,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04708287052028278,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04508287052028278,
+      "thickness": 0.5,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04908287052028278,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04708287052028278,
+      "thickness": 0.5,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.05108293368806369,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04908288314385989,
+      "thickness": 0.5059307579934501,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04385146053968143,
+      "thickness": 1.5975041148332898,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.3238144564249425,
+      "thickness": 0.5421254757249029,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.36426638433846387,
+      "thickness": 0.5424958607467038,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.7924511206987535,
+        "nu": [
+          -0.22551463010017775,
+          0.2054166503086855,
+          -0.14865693715633221
+        ]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.2270261844722043,
+      "thickness": 1.081579963090016,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.803435896309197,
+        "nu": [
+          -0.13514650635425166,
+          0.08347414013200061,
+          -0.14865693715633221
+        ]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.38187634843835544,
+      "thickness": 0.2625162316709383,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    }
+  ],
+  "ghost_plates": [
+    {
+      "after_surface": 6,
+      "distance": 1.4422345399099548,
+      "glass": "SYN-36",
+      "norm_radius": 5.757874142447356,
+      "order": 10,
+      "coefficients": [
+        -3.098135993582739e-08,
+        2.921699308322071e-07,
+        -1.065841688037175e-06,
+        2.4505142465437946e-06,
+        -4.6436850681423933e-07,
+        -4.6883953680101134e-07,
+        1.6769477180903042e-06,
+        -6.190715001060108e-07,
+        -1.8165014797954344e-07,
+        1.5396501302716562e-06
+      ]
+    },
+    {
+      "after_surface": 6,
+      "distance": 1.4422345399099548,
+      "glass": "CAF2",
+      "norm_radius": 5.757874142447356,
+      "order": 10,
+      "coefficients": [
+        -1.1877500755817448e-08,
+        1.3726293712893555e-07,
+        -3.925315691475305e-07,
+        5.234002013496771e-07,
+        -2.2338909656025927e-07,
+        -2.3153872370888406e-07,
+        5.105887860802487e-07,
+        -2.8755093853566736e-07,
+        -1.0483269178388291e-07,
+        5.057232765920139e-07
+      ]
+    },
+    {
+      "after_surface": 6,
+      "distance": 1.4422345399099548,
+      "glass": "SYN-30",
+      "norm_radius": 5.757874142447356,
+      "order": 10,
+      "coefficients": [
+        -6.135865414022482e-08,
+        3.863173216319421e-07,
+        -1.9287824267092174e-06,
+        0.00024170436977710613,
+        -5.105453962193091e-07,
+        -4.789755269934026e-07,
+        1.86305064241937e-06,
+        -6.740585274370363e-07,
+        -1.365310518143077e-07,
+        1.3305571829667658e-06
+      ]
+    },
+    {
+      "after_surface": 10,
+      "distance": 2.114363880388666,
+      "glass": "SYN-36",
+      "norm_radius": 3.0674388953957026,
+      "order": 10,
+      "coefficients": [
+        2.4732533918014926e-09,
+        7.848667432222704e-08,
+        -7.258489372760472e-08,
+        7.585102966541681e-08,
+        3.7805457828109745e-08,
+        3.113629513441511e-08,
+        -1.5440537242142855e-07,
+        1.3997977150644031e-07,
+        -1.231491656713065e-06,
+        2.530896468519472e-07
+      ]
+    },
+    {
+      "after_surface": 10,
+      "distance": 2.114363880388666,
+      "glass": "CAF2",
+      "norm_radius": 3.0674388953957026,
+      "order": 10,
+      "coefficients": [
+        1.2105414135958578e-08,
+        4.7555455382048004e-07,
+        -4.271887282787614e-07,
+        4.212946640665744e-07,
+        1.6414761105093282e-07,
+        9.228715119022386e-08,
+        -4.243203749960898e-06,
+        1.1675222844923025e-05,
+        -9.813066620715515e-05,
+        -1.6649641027160734e-05
+      ]
+    },
+    {
+      "after_surface": 10,
+      "distance": 2.114363880388666,
+      "glass": "SYN-30",
+      "norm_radius": 3.0674388953957026,
+      "order": 10,
+      "coefficients": [
+        -3.8123130400604664e-09,
+        0.00017434430508631954,
+        -1.1009551215611173e-06,
+        2.8934048733458765e-06,
+        6.883269655643806e-07,
+        1.4368783939806446e-06,
+        -4.595062931881435e-06,
+        0.00012318710632612493,
+        -4.172571762735731e-05,
+        2.8060508280008884e-05
+      ]
+    }
+  ],
+  "variables": {
+    "items": [
+      {
+        "type": "thickness",
+        "surface": 0,
+        "min": 0.5,
+        "max": 40.0,
+        "comment": "Blendenspalt: Lage der Blende (Austrittspupille in Gebrauchsrichtung)"
+      },
+      {
+        "type": "working_distance",
+        "min": 0.2599120901418278,
+        "max": 10.0,
+        "typical": 1.0,
+        "comment": "Abstand Hilfsebene 4 bis Objekt"
+      },
+      {
+        "type": "thickness",
+        "surface": 8,
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          4
+        ],
+        "min": 0.1,
+        "max": 11.838394960162796,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          2
+        ],
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          5,
+          6
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 5,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          7,
+          8
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 7,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          3,
+          4
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 3,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          19,
+          22
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          19,
+          20,
+          21
+        ],
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          1,
+          2
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 1,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          9,
+          10
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 9,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          18
+        ],
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          12,
+          14,
+          16
+        ],
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "ghost_coefficient",
+        "plates": [
+          0,
+          1,
+          2
+        ],
+        "comment": "Geisterplatten-Wörterbuch (place_ghost_dictionary)"
+      },
+      {
+        "type": "ghost_coefficient",
+        "plates": [
+          3,
+          4,
+          5
+        ],
+        "comment": "Geisterplatten-Wörterbuch (place_ghost_dictionary)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          17,
+          18
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 17,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surface": 21,
+        "comment": "Kittfläche (Operator B)"
+      },
+      {
+        "type": "glass",
+        "surface": 21,
+        "comment": "Glas freigegeben (Operator B)"
+      },
+      {
+        "type": "curvature",
+        "surface": 20,
+        "comment": "Kittfläche (Operator B)"
+      },
+      {
+        "type": "glass",
+        "surface": 20,
+        "comment": "Glas freigegeben (Operator B)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          15,
+          16
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 15,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          13,
+          14
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 13,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      {
+        "type": "curvature",
+        "surfaces": [
+          11,
+          12
+        ],
+        "min": -1.2,
+        "max": 1.2,
+        "comment": "Meniskus (Operator A)"
+      },
+      {
+        "type": "thickness",
+        "surface": 11,
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      }
+    ]
+  },
+  "constraints": {
+    "items": [
+      {
+        "type": "focal_length",
+        "weight": 100.0,
+        "comment": "Faustregel: 1e-3 mm Abweichung kostet so viel wie 0,01 Wellen RMS"
+      },
+      {
+        "type": "petzval",
+        "weight": 10000.0,
+        "max_curvature": 0.007692307692307693,
+        "comment": "Petzvalradius >= 130 mm (spezifikation.md)"
+      },
+      {
+        "type": "parfocal_length",
+        "mode": "max",
+        "weight": 1.0,
+        "reference_surface": 0,
+        "offset": 0.0,
+        "comment": "Annahme: Blende bis Objekt <= 45 mm (Anlagefläche in der Blendenebene oder davor)"
+      },
+      {
+        "type": "max_semi_diameter",
+        "weight": 10000.0,
+        "semi_diameter": 10.0,
+        "clearance": 0.2,
+        "comment": "Annahme: Linsendurchmesser <= 20 mm"
+      },
+      {
+        "type": "min_edge_thickness",
+        "weight": 10000.0,
+        "medium": "glass",
+        "thickness": 0.3,
+        "clearance": 0.2,
+        "height": "rays",
+        "comment": "Glasrand bei der freien Öffnung plus 0,2 mm; gilt auch für eingefügte Elemente"
+      },
+      {
+        "type": "min_edge_thickness",
+        "weight": 10000.0,
+        "medium": "air",
+        "thickness": 0.1,
+        "clearance": 0.2,
+        "height": "rays"
+      },
+      {
+        "type": "min_center_thickness",
+        "weight": 10000.0,
+        "medium": "air",
+        "thickness": 0.1
+      },
+      {
+        "type": "min_center_thickness",
+        "weight": 10000.0,
+        "medium": "glass",
+        "thickness": 0.4
+      },
+      {
+        "type": "ghost_penalty",
+        "weight": 11.8,
+        "plates": [
+          0,
+          1,
+          2,
+          4
+        ],
+        "order_weight": 1.0,
+        "order_factor": 1.0,
+        "smoothing": 1e-06,
+        "comment": "Rückkehr zu Geisterplatten (M6-T10)"
+      },
+      {
+        "type": "ghost_penalty",
+        "weight": 11800.0,
+        "plate": 5,
+        "order_weight": 1.0,
+        "order_factor": 1.0,
+        "smoothing": 1e-06,
+        "comment": "Strafgewicht der Geisterplatte 5 um den Faktor 10 erhöht (Einfüge-Operator)"
+      },
+      {
+        "type": "ghost_penalty",
+        "weight": 118.0,
+        "plate": 3,
+        "order_weight": 1.0,
+        "order_factor": 1.0,
+        "smoothing": 1e-06,
+        "comment": "Strafgewicht der Geisterplatte 3 um den Faktor 10 erhöht (Einfüge-Operator)"
+      },
+      {
+        "type": "glass_hull",
+        "weight": 10000.0
+      }
+    ]
+  }
+}
