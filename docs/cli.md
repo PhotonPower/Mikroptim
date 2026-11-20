@@ -1259,6 +1259,9 @@ Systemsynthese mit dem Homotopie-Controller ([optimierung.md, Abschnitt 7](optim
 | `--extrema-beta B` | geglättete Strahl-Extrema mit β = B [1/mm] (für die Höhe und dimensionslos für cos I) ab dem Start; am Endpunkt `--extrema-stages` Stufen (2) mit Faktor `--extrema-factor` (10), danach hart, vor der ε-Fortsetzung (M11-T1b; nur CPU, Standard 0 = hart) |
 | `--step D0,DMIN,DMAX` | Schrittweite der Apertur (Standard 0.02,0.002,0.1) |
 | `--max-elements N` | höchstens N Glaselemente (Standard 6) |
+| `--prune` | Rückbau (M6-T9, [optimierung.md, „Rückbau und Elementbudget“](optimierung.md#rückbau-und-elementbudget-m6-t9)): nach jeder Phase, in der eingefügt wurde, und vor dem Abschluss Elemente über die Rückbau-Homotopie entfernen (geringster Seidel-Beitrag zuerst), solange F_B ≤ Faktor × F_max bleibt; Schrittarten `removal_stage` und `removal`; nicht mit `--beam`; Standard aus. Im JSON `options.prune` (`after_phases`, `element_budget`, `stages`, `attempts`, `merit_factor`, `tolerance`, `min_elements`) und im Ergebnis `removals`, `removal_attempts`, nur mit der Option |
+| `--element-budget N` | höchstens N Glaselemente (statt `--max-elements`, nicht zusammen); verlangt ein Einfügen mehr, zuerst eine Rückbau-Runde (je Punkt einmal), danach ohne Einfügen weiter bzw. Abbruch `max_elements` (M6-T9; nicht mit `--beam`) |
+| `--prune-stages K`, `--prune-attempts N`, `--prune-factor F`, `--prune-tolerance E`, `--prune-min-elements N` | Rückbau: Stufen der Rückbau-Homotopie (3), Kandidaten pro Runde (4), Annahme bei F_B ≤ F × F_max mit 0 < F ≤ 1 (1), zusätzlich F_B ≤ (1 + E) × F_B vorher (aus), nie unter N Glaselemente (1); verlangen `--prune` oder `--element-budget` |
 | `--max-steps N` | höchstens N Optimierungen (Standard 400) |
 | `--max-iterations N` | LM-Zyklen pro Schritt (Standard 500) |
 | `--rings N`, `--spokes M` | Pupillenquadratur (Standard 10 × 8) |

@@ -11,6 +11,7 @@
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/glass/glass_hull.hpp"
 #include "mikroptim/optim/augmented_lagrangian.hpp"
+#include "mikroptim/optim/design_operators.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
 #include "mikroptim/optim/glass_snap.hpp"
 #include "mikroptim/optim/glass_variables.hpp"
@@ -1354,6 +1355,191 @@ std::vector<bool> OpticalHomotopyModel::prefilter(std::span<const SystemDescript
         }
     }
     return keep;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rückbau (M6-T9)
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+// Mechanische Bedingungen eines Spalts (Fläche i = Spalt i → i + 1), wie in remap_surfaces.
+bool is_gap_constraint(ConstraintType t) {
+    return t == ConstraintType::MinCenterThickness || t == ConstraintType::MaxCenterThickness ||
+           t == ConstraintType::MinEdgeThickness;
+}
+
+} // namespace
+
+std::vector<HomotopyRemoval>
+OpticalHomotopyModel::removal_candidates(const SystemDescription& system, const HomotopyPoint& p) {
+    const auto& surf = system.surfaces;
+    const int S = static_cast<int>(surf.size());
+    std::optional<AberrationReport> rep;
+    if (system.source.type == SourceType::Collimated) {
+        AberrationOptions ao;
+        ao.real_rays = false;
+        ao.focal_shift = false;
+        try {
+            rep = compute_aberrations(realize(system, p), like_.catalog, ao);
+        } catch (const std::exception&) {
+            rep.reset();
+        }
+    }
+    std::vector<HomotopyRemoval> out;
+    for (int s = 1; s + 1 < S; ++s) {
+        if (surf[static_cast<std::size_t>(s - 1)].material.kind != MaterialKind::Air ||
+            surf[static_cast<std::size_t>(s)].material.kind == MaterialKind::Air) {
+            continue;
+        }
+        int last = 0;
+        try {
+            last = glass_block_end(system, s);
+        } catch (const std::invalid_argument&) {
+            continue;
+        }
+        HomotopyRemoval r;
+        r.first_surface = s;
+        r.elements = last - s;
+        std::string what = "Element ab Fläche " + std::to_string(s) + " (" +
+                           material_label(surf[static_cast<std::size_t>(s)].material) +
+                           (r.elements > 1 ? ", Kittglied" : "");
+        if (rep) {
+            SurfaceAberration sum;
+            for (int k = s; k <= last; ++k) {
+                const SurfaceAberration& a = rep->surfaces.at(static_cast<std::size_t>(k));
+                for (std::size_t j = 0; j < sum.S.size(); ++j) {
+                    sum.S[j] += a.S[j];
+                }
+                for (std::size_t j = 0; j < sum.C.size(); ++j) {
+                    sum.C[j] += a.C[j];
+                }
+            }
+            const SeidelWaves w = rep->waves(sum);
+            r.score = std::abs(w.W040) + std::abs(w.W131) + std::abs(w.W222) + std::abs(w.W220) +
+                      std::abs(w.W311) + std::abs(w.dW020) + std::abs(w.dW111);
+            if (!std::isfinite(r.score)) {
+                r.score = std::numeric_limits<double>::infinity();
+            }
+            what += ", Seidel-Beitrag " + number(r.score, "%.4g") + " Wellen";
+        }
+        r.text = what + ")";
+        out.push_back(std::move(r));
+        s = last; // Kittglied überspringen
+    }
+    std::stable_sort(
+        out.begin(), out.end(),
+        [](const HomotopyRemoval& a, const HomotopyRemoval& b) { return a.score < b.score; });
+    return out;
+}
+
+SystemDescription OpticalHomotopyModel::collapse(const SystemDescription&,
+                                                 const SystemDescription& current,
+                                                 const HomotopyRemoval& removal, double fraction,
+                                                 std::vector<std::string>& warnings) {
+    std::vector<BoundWidening> widened;
+    SystemDescription out = collapse_element(current, removal.first_surface, fraction, &widened);
+    for (const BoundWidening& w : widened) {
+        warnings.push_back(bound_widening_warning(w));
+    }
+    // Mechanische Bedingungen ohne die Flächen bzw. Spalte des Blocks: Liste ohne sie; bleibt
+    // nichts übrig, Gewicht 0 (der Eintrag bleibt, damit remove die Einträge zuordnen kann)
+    const int first = removal.first_surface;
+    const int last = glass_block_end(out, first);
+    if (out.constraints) {
+        for (ConstraintSpec& c : out.constraints->items) {
+            if (!is_mechanical(c.type)) {
+                continue;
+            }
+            const std::vector<int> all = constraint_surfaces(out, c);
+            std::vector<int> kept;
+            for (const int s : all) {
+                if (s < first || s > last) {
+                    kept.push_back(s);
+                }
+            }
+            if (kept.size() == all.size()) {
+                continue;
+            }
+            c.shift.clear();
+            if (kept.empty()) {
+                c.weight = 0.0;
+                continue;
+            }
+            c.surfaces = std::move(kept);
+            c.surface_selection = SurfaceSelection::List;
+        }
+    }
+    validate_system(out);
+    return out;
+}
+
+SystemDescription OpticalHomotopyModel::remove(const SystemDescription& before,
+                                               const SystemDescription& collapsed,
+                                               const HomotopyRemoval& removal,
+                                               std::vector<std::string>& warnings) {
+    const int first = removal.first_surface;
+    const int last = glass_block_end(collapsed, first);
+    const int S = static_cast<int>(collapsed.surfaces.size());
+    RemovalResult r = remove_element(collapsed, first);
+    for (const BoundWidening& w : r.widened) {
+        warnings.push_back(bound_widening_warning(w));
+    }
+    if (!collapsed.constraints || !r.system.constraints || !before.constraints ||
+        before.constraints->items.size() != collapsed.constraints->items.size()) {
+        return std::move(r.system);
+    }
+    // Zuordnung der Einträge: remap_surfaces lässt mechanische Einträge ohne verbleibende Fläche
+    // weg (Abbildung wie in remove_element), alle übrigen bleiben in ihrer Reihenfolge
+    const auto gap_of = [&](int s) {
+        if (s >= first && s < last) {
+            return -1;
+        }
+        if (s == last) {
+            return last == S - 1 ? -1 : first - 1;
+        }
+        if (s == first - 1 && last == S - 1) {
+            return -1;
+        }
+        return s < first ? s : s - (last - first + 1);
+    };
+    const auto& old_items = collapsed.constraints->items;
+    auto& new_items = r.system.constraints->items;
+    std::size_t j = 0;
+    for (std::size_t k = 0; k < old_items.size(); ++k) {
+        const ConstraintSpec& c = old_items[k];
+        if (is_mechanical(c.type)) {
+            bool kept = false;
+            for (const int s : constraint_surfaces(collapsed, c)) {
+                const int n = is_gap_constraint(c.type)
+                                  ? gap_of(s)
+                                  : r.new_of_old.at(static_cast<std::size_t>(s));
+                kept = kept || n >= 0;
+            }
+            if (!kept) {
+                continue;
+            }
+        }
+        if (j >= new_items.size() || new_items[j].type != c.type) {
+            invalid("Rückbau: Nebenbedingungen nach dem Entfernen nicht zuzuordnen");
+        }
+        const ConstraintSpec& orig = before.constraints->items[k];
+        ConstraintSpec& n = new_items[j];
+        if (is_mechanical(c.type)) {
+            n.weight = orig.weight;
+            if (orig.surface_selection == SurfaceSelection::None ||
+                orig.surface_selection == SurfaceSelection::All) {
+                n.surface_selection = orig.surface_selection;
+                n.surfaces.clear();
+            }
+        }
+        ++j;
+    }
+    if (j != new_items.size()) {
+        invalid("Rückbau: Nebenbedingungen nach dem Entfernen nicht zuzuordnen");
+    }
+    validate_system(r.system);
+    return std::move(r.system);
 }
 
 std::vector<Spectrum> spectrum_stages(const Spectrum& target, int n) {

@@ -214,6 +214,22 @@ def remove_dummy_planes(system, working_distance_min=0.3):
                 # nicht über den aktuellen Wert (die Synthese erlaubt 0,25 mm)
                 v['min'] = min(max(v.get('min', 0.0), working_distance_min),
                                s[-1]['thickness'])
+        # vereinigte Spalte über Einträge hinweg nur einmal (M6-T9: nach dem Rückbau können
+        # beide Spalte um eine Hilfsebene Dickenvariablen haben, sonst „Variable doppelt“)
+        seen = {}
+        for v in system.get('variables', {}).get('items', []):
+            if v['type'] not in ('thickness', 'curvature', 'glass'):
+                continue
+            done = seen.setdefault(v['type'], set())
+            if isinstance(v.get('surfaces'), list):
+                v['surfaces'] = [i for i in v['surfaces'] if i not in done]
+                done.update(v['surfaces'])
+            elif 'surface' in v:
+                if v['surface'] in done:
+                    v['surfaces'] = []  # Eintrag entfällt unten
+                    del v['surface']
+                else:
+                    done.add(v['surface'])
         system['variables']['items'] = [
             v for v in system['variables']['items']
             if not (isinstance(v.get('surfaces'), list) and not v['surfaces'])
@@ -337,6 +353,16 @@ def synth_options(args):
         opts.append('--field-rule')  # M6-T8
     if getattr(args, 'einfuegen_verbessern', None):
         opts += ['--insertion-improve', str(args.einfuegen_verbessern)]  # M6-T8
+    # M6-T9: Rückbau (nach den Phasen) und Einstellungen (auch für das Elementbudget)
+    if getattr(args, 'rueckbau', False) or getattr(args, 'nur_rueckbau', False):
+        opts.append('--prune')
+    if getattr(args, 'rueckbau', False) or getattr(args, 'nur_rueckbau', False) or             getattr(args, 'elementbudget', None):
+        if getattr(args, 'rueckbau_faktor', None):
+            opts += ['--prune-factor', repr(args.rueckbau_faktor)]
+        if getattr(args, 'rueckbau_versuche', None):
+            opts += ['--prune-attempts', str(args.rueckbau_versuche)]
+        if getattr(args, 'rueckbau_stufen', None):
+            opts += ['--prune-stages', str(args.rueckbau_stufen)]
     for a in args.synth_arg:
         opts.extend(a.split())
     return opts
@@ -540,6 +566,17 @@ def forced_split(runner, tag, src, relax_options, min_thickness=1.0, log=print):
     return best['file'], results
 
 
+def limit_elements(opts, n):
+    """Höchste Elementzahl n anhängen; mit Elementbudget (M6-T9, `--element-budget`, schließt
+    `--max-elements` aus) stattdessen das Budget auf min(Budget, n) setzen."""
+    opts = list(opts)
+    if '--element-budget' in opts:
+        k = opts.index('--element-budget') + 1
+        opts[k] = str(min(int(opts[k]), n))
+        return opts
+    return opts + ['--max-elements', str(n)]
+
+
 def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_value,
                max_rounds=8, min_mu_scale=0.5, log=print, restart=None, forced=0,
                forced_kind='meniscus', element_budget=None, stage_budget=None):
@@ -580,9 +617,9 @@ def synth_loop(runner, tag, start, synth_options, relax_options, progress, done_
         opts = synth_options(prev_point) if callable(synth_options) else synth_options
         if element_budget:
             # höchstens element_budget Einfügungen pro synth-Lauf (die letzte Angabe gilt)
-            opts = list(opts) + ['--max-elements', str(glass_elements(load(cur)) + element_budget)]
+            opts = limit_elements(opts, glass_elements(load(cur)) + element_budget)
         if stage_limit is not None:
-            opts = list(opts) + ['--max-elements', str(stage_limit)]
+            opts = limit_elements(opts, stage_limit)
         out = runner.synth(name, cur, opts)
         res = load(runner.path(name + '_log.json'))['result']
         point = res['point']
@@ -1147,6 +1184,26 @@ def main():
                          'p1_final.json von M6-T6b V2 bei NA 0,855); Feldstufe bei deren NA')
     ap.add_argument('--bis', choices=['p2'], default=None,
                     help='M6-T8: nach Stufe 2 (Feldstufe) und dem Zwischenkandidaten Z2 enden')
+    ap.add_argument('--rueckbau', action='store_true',
+                    help='M6-T9: Rückbau in allen synth-Läufen (synth --prune)')
+    ap.add_argument('--rueckbau-faktor', type=float, default=None, metavar='F',
+                    help='M6-T9: Rückbau nur bei F_B <= F x F_max (synth --prune-factor)')
+    ap.add_argument('--rueckbau-versuche', type=int, default=None, metavar='N',
+                    help='M6-T9: Kandidaten pro Rückbau-Runde (synth --prune-attempts)')
+    ap.add_argument('--rueckbau-stufen', type=int, default=None, metavar='K',
+                    help='M6-T9: Stufen der Rückbau-Homotopie (synth --prune-stages)')
+    ap.add_argument('--elementbudget', type=int, default=None, metavar='N',
+                    help='M6-T9: höchstens N Glaselemente pro synth-Lauf statt 24, vorher '
+                         'Rückbau (synth --element-budget N)')
+    ap.add_argument('--nur-rueckbau', action='store_true',
+                    help='M6-T9: Startdatei ist ein Stand bei vollem Feld (z. B. Ende der '
+                         'Feldstufe oder Z2); ein synth-Lauf mit Rückbau an ihrem Punkt '
+                         '(NA der Datei, Feldanteil --rueckbau-feld), danach Z2 wie --bis p2')
+    ap.add_argument('--rueckbau-feld', type=float, default=1.0, metavar='F',
+                    help='M6-T9: Feldanteil des Rückbaus mit --nur-rueckbau (Standard 1)')
+    ap.add_argument('--rueckbau-zielfeld', type=float, default=None, metavar='F',
+                    help='M6-T9: mit --nur-rueckbau Feldanteil am Ende (Standard wie '
+                         '--rueckbau-feld); dazwischen Feldstufe mit den synth-Optionen')
     ap.add_argument('--osc-gewicht', type=float, default=None,
                     help='Gewicht von sine_condition im OSC-Versuch (0: ohne; Standard: '
                          'Koma-Äquivalent bei 10 %% Feld, osc_weight_for_field(0.1) ≈ 13)')
@@ -1166,8 +1223,8 @@ def main():
                synth_options=synth_options(args))
     rings = ['--rings', '16']
     relax = ['--max-iterations', '1000', '-q'] + rings
-    common = ['--curvature-bound', '1.2', '--max-steps', '3000', '--max-iterations', '500',
-              '--max-elements', '24'] + rings
+    common = ['--curvature-bound', '1.2', '--max-steps', '3000', '--max-iterations', '500'] +         (['--element-budget', str(args.elementbudget)] if args.elementbudget else
+         ['--max-elements', '24']) + rings
     summary = {'start': args.start, 'reference_sphere': args.referenzsphaere,
                'synth_options': r.synth_options, 'na_field': args.na_feld,
                'forced': dict(FORCED, extra=extra), 'stages': {}}
@@ -1195,7 +1252,26 @@ def main():
     start = r.path('p0_start.json')
     save(s, start)
     na1 = repr(args.na_feld)
-    if args.gemeinsam:
+    if args.nur_rueckbau:
+        # M6-T9: nur Rückbau am Punkt der Startdatei (volles Feld), Ergebnis als Ende der
+        # Feldstufe; danach Z2
+        na0 = psf_numerical_aperture(s)
+        f0 = repr(args.rueckbau_feld)
+        f1 = repr(args.rueckbau_zielfeld if args.rueckbau_zielfeld is not None
+                  else args.rueckbau_feld)
+        p2 = r.synth('p2_r0', start, ['--target-na', repr(na0), '--start-field', f0,
+                                      '--target-field', f1] + common)
+        res = load(r.path('p2_r0_log.json'))['result']
+        r2 = [{'round': 0, 'synth': 'p2_r0', 'status': res['status'], 'point': res['point'],
+               'elements': res['elements'], 'start_elements': res['start_elements'],
+               'removals': res.get('removals', 0),
+               'removal_attempts': res.get('removal_attempts', 0),
+               'seconds': r.times.get('p2_r0')}]
+        print(f"  p2_r0: {res['status']}, {res['start_elements']} -> {res['elements']} Elemente",
+              flush=True)
+        stage('p2', {'result': p2, 'rounds': r2, 'prune_only': True})
+        args.bis = 'p2'
+    elif args.gemeinsam:
         # M6-T8: Stufen 1 und 2 gemeinsam, (NA, Feld) vom Start (bzw. Endpunkt der vorigen Runde)
         # geradlinig (bzw. mit Exponent) nach (na_feld, 100 %); Runden und erzwungenes Einfügen
         # wie p1 und p2 zusammen

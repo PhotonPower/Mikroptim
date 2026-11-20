@@ -3,7 +3,10 @@
 // Synthetisches Modell des Homotopie-Controllers (M6-T3) und der Strahlsuche (M6-T4) für Tests
 // der Steuerlogik ohne Optik. Zustand in der Beschreibung: Zahl der Flächen = Elemente,
 // surfaces[0].thickness = Apertur der letzten Optimierung, surfaces.back().curvature = Zweig,
-// surfaces.back().semi_diameter = Variante des Einfügens (Strahlsuche).
+// surfaces.back().semi_diameter = Variante des Einfügens (Strahlsuche). Rückbau (M6-T9):
+// Elemente mit group "useless" tragen nichts zur Kapazität bei, ebenso ein Element in der
+// Rückbau-Homotopie (group "collapsing"); Kandidaten sind die Elemente 1 … n − 1, das letzte
+// zuerst.
 
 #include "mikroptim/optim/variant_generator.hpp"
 #include "mikroptim/synth/homotopy.hpp"
@@ -16,6 +19,7 @@
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace mko::test {
@@ -59,10 +63,47 @@ public:
 
     std::vector<MockCall> calls;
     int finishes = 0;
-    std::vector<int> batches;           // Größe jedes gemeinsamen Aufrufs (solve_all)
-    std::vector<std::uint64_t> seeds;   // Startwerte der gestörten Starts
-    std::vector<double> predict_ratios; // Verhältnisse der Aufrufe von predict
-    std::vector<double> shift_points;   // Apertur jedes Aufrufs von update_shifts (M11-T2)
+    std::vector<int> batches;               // Größe jedes gemeinsamen Aufrufs (solve_all)
+    std::vector<std::uint64_t> seeds;       // Startwerte der gestörten Starts
+    std::vector<double> predict_ratios;     // Verhältnisse der Aufrufe von predict
+    std::vector<double> shift_points;       // Apertur jedes Aufrufs von update_shifts (M11-T2)
+    std::vector<double> collapse_fractions; // Anteile der Aufrufe von collapse (M6-T9)
+
+    static bool contributes(const Surface& s) {
+        return !s.group || (*s.group != "useless" && *s.group != "collapsing");
+    }
+
+    std::vector<HomotopyRemoval> removal_candidates(const SystemDescription& system,
+                                                    const HomotopyPoint&) override {
+        std::vector<HomotopyRemoval> out;
+        for (int i = static_cast<int>(system.surfaces.size()) - 1; i >= 1; --i) {
+            HomotopyRemoval r;
+            r.first_surface = i;
+            r.score = -i;
+            r.text = "Mock-Element " + std::to_string(i);
+            out.push_back(r);
+        }
+        return out;
+    }
+
+    SystemDescription collapse(const SystemDescription&, const SystemDescription& current,
+                               const HomotopyRemoval& r, double fraction,
+                               std::vector<std::string>&) override {
+        collapse_fractions.push_back(fraction);
+        SystemDescription d = current;
+        Surface& s = d.surfaces.at(static_cast<std::size_t>(r.first_surface));
+        if (contributes(s)) {
+            s.group = "collapsing";
+        }
+        return d;
+    }
+
+    SystemDescription remove(const SystemDescription&, const SystemDescription& collapsed,
+                             const HomotopyRemoval& r, std::vector<std::string>&) override {
+        SystemDescription d = collapsed;
+        d.surfaces.erase(d.surfaces.begin() + r.first_surface);
+        return d;
+    }
 
     double update_shifts(SystemDescription&, const HomotopyPoint& p, double) override {
         const std::size_t k = shift_points.size();
@@ -90,7 +131,11 @@ public:
 
     double capacity(const SystemDescription& system) const {
         const int e = elements(system);
-        double c = spec_.capacity0 + spec_.capacity_step * (e - 1);
+        int useful = 0;
+        for (const Surface& s : system.surfaces) {
+            useful += contributes(s) ? 1 : 0;
+        }
+        double c = spec_.capacity0 + spec_.capacity_step * (useful - 1);
         if (e > 1 && system.surfaces.back().curvature == 0.0) {
             c -= spec_.branch0_capacity;
         }

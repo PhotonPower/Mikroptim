@@ -276,6 +276,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** Unit-Tests mit Mock-Homotopie und am optischen Modell, CLI-Test, Bitgleichheit ohne Option; Messung ab der Einzellinse und ab dem NA-0,855-System aus M6-T6b, Bericht `docs/ergebnisse/m6-t8-apertur-feld.md`.
 - **Stand:** umgesetzt und gemessen (`--joint-aperture-field`, `--field-rule`, zusätzlich `--insertion-improve` gegen Einfüge-Serien, F16). F14: Feldfehler für die Geisterplatten unsichtbar (blendennah bzw. Normierungsradius 6× zu groß), daher kein Bedarf. Mit Feldregel ab der Einzellinse bei NA 0,5 **100 % Feld**, beugungsbegrenzt (0,039/0,022/0,059 Wellen), aber 25 El.; ab NA 0,855 nur 23 % Feld (NA 0,869, gemeinsam + Feldregel + Verbesserung). F15 nicht bearbeitet.
 
+### M6-T9 – Elementbudget und Rückbau
+- **Abhängig von:** M6-T8, M10-T4 (vom Maintainer am 2026-11-20 freigegeben; Befund F16, 25-Linser der Feldregel)
+- **Inhalt:** Rückbau-Phase im Homotopie-Controller (Option, Standard aus, ohne Option bitgleich): nach Phasen mit Einfügungen und vor dem Abschluss Elemente versuchsweise über die Rückbau-Homotopie (`collapse_element`, `remove_element`) entfernen, geringster Seidel-Beitrag zuerst, nachoptimieren, nur übernehmen, wenn F_B ≤ ρ·F_max (optional ≤ (1 + ε)·F_B vorher); Elementbudget (Einfügen über N erzwingt vorher einen Rückbau-Versuch); CLI `synth --prune`, `--element-budget N`, `--prune-*`; Skript `--rueckbau`, `--elementbudget`, `--nur-rueckbau`.
+- **Abnahme:** Mock-Tests (überflüssiges Element entfernt, notwendiges behalten, Budget), Orakel am optischen Modell (Null-Element: entfernt, Merit unverändert; Linse bleibt), CLI-Test, Bitgleichheit ohne Option; Messung F1 (NA 0,5, volles Feld) und JFV855 (NA 0,87) mit Rückbau, Bericht `docs/ergebnisse/m6-t9-rueckbau.md`.
+- **Stand:** umgesetzt und gemessen. Rückbau am realen System (Z2): F1 25 → 9 El. bei NA 0,5 und vollem Feld, 0,012/0,037/0,038 Wellen (ρ = 1: 6 El., ≤ 0,068); JFV855 25 → 5 El. bei NA 0,869 / 23 % Feld, danach öffnet die Feldstufe auf 64 % (11 El.). Mit Geisterplatten bzw. mitten in den Stufen entfernt der Rückbau kaum etwas (F17); Lauf ab der Einzellinse mit Rückbau in allen Stufen nur 58 % Feld.
+
 ---
 
 ## M7 – Performance

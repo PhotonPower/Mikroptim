@@ -840,6 +840,38 @@ p = `joint_field_exponent` (Standard 1: Diagonale im (NA, φ)-Raum; p < 1: das F
 
 Tests (`tests/test_homotopy.cpp`): `HomotopyControl.InsertionMustImprove` (Variante 0 verworfen, Variante 1 übernommen; ohne Option Variante 0; keine verbessert: Abbruch im Zustand davor), `HomotopyControl.JointApertureFieldDiagonal` (Punkte auf der Diagonale, Schrittweite, Endpunkt genau), `…Exponent` (φ = √t), `…InsertsOnPath` (Halbieren und Einfügen am letzten guten Punkt der Bahn), `…OffOrSingleParameterUnchanged`, `…InvalidOptions`; `OpticalHomotopy.FieldRuleRecommendsMeniscusAtFieldPosition` (Mehrlinser ohne Geisterplatten: Lage gegen den Aberrationsbericht als Orakel, Glas, Merit nach dem Einfügen innerhalb `kInsertionMeritRelative`, kein Bedarf oberhalb des Verhältnisses).
 
+### Rückbau und Elementbudget (M6-T9)
+
+Anlass: Befund F16 aus M6-T6b und der 25-Linser der Feldregel aus M6-T8 ([Bericht](ergebnisse/m6-t8-apertur-feld.md)) – die Feldregel öffnet das Feld, fügt aber Elemente ein, die am Ende nichts mehr tragen. Messung: [Bericht M6-T9](ergebnisse/m6-t9-rueckbau.md). Beide Optionen sind standardmäßig aus; ohne sie sind Protokoll und Ergebnis bitgleich zu vorher (JSON-Felder `removals`, `removal_attempts` und `options.prune` nur mit Option).
+
+```cpp
+struct HomotopyRemoval { int first_surface; int elements; double score; std::string text; };
+// HomotopyModel (Standards: keine Kandidaten, collapse/remove werfen)
+virtual std::vector<HomotopyRemoval> removal_candidates(const SystemDescription&, const HomotopyPoint&);
+virtual SystemDescription collapse(const SystemDescription& before, const SystemDescription& current,
+                                   const HomotopyRemoval&, double fraction, std::vector<std::string>& warnings);
+virtual SystemDescription remove(const SystemDescription& before, const SystemDescription& collapsed,
+                                 const HomotopyRemoval&, std::vector<std::string>& warnings);
+```
+
+**Ein Rückbau-Versuch** am guten Zustand (Punkt bleibt, Faktor der einseitigen Bedingungen 1): Rückbau-Homotopie mit K = `prune_stages` Stufen (Standard 3, CLI `--prune-stages`), Anteile 1/K, 1/(K − 1), …, 1 des verbleibenden Wegs zum Null-Element (`collapse_element`, [Abschnitt 13](#13-operatoren-der-entwurfssteuerung-m10-t4)), nach jeder Stufe eine Optimierung (Schrittart `removal_stage`, nicht angenommen), dann `remove_element` des Null-Elements (Merit unverändert bis auf Rundung, keine weitere Optimierung). Übernommen wird das Ergebnis, wenn es annehmbar ist (endlich, kein versagter Strahl, nicht `NumericalError`) und
+
+$$F_B \le \rho\,F_{\max},\qquad 0 < \rho = \texttt{prune\_merit\_factor} \le 1,$$
+
+mit ε = `prune_tolerance` ≥ 0 zusätzlich F_B ≤ (1 + ε)·F_B vor dem Rückbau (Standard aus; CLI `--prune-factor`, `--prune-tolerance`). Sonst bleibt der Zustand unverändert. Ein Vermerk (Schrittart `removal`, ohne Optimierung) nennt Kandidat, F_B und Grenze bzw. den Grund der Ablehnung und angehobene Schranken (Warnungen von `collapse_element`/`remove_element`). ρ < 1 lässt Abstand zur Schwelle, die das System ohne Geisterplatten erst nach der Feinoptimierung einhalten muss.
+
+**Runden.** Pro Runde fragt der Controller die Kandidaten des Modells ab und versucht höchstens `prune_attempts` (Standard 4, CLI `--prune-attempts`) in deren Reihenfolge; der erste Erfolg beendet die Runde, und eine neue beginnt am kleineren System (neue Rangfolge). Eine Runde ohne Erfolg beendet den Rückbau. Nie unter `prune_min_elements` Glaselemente (Standard 1; ein Kittglied mit k Gläsern zählt k).
+
+**Wann** (`HomotopyOptions::prune`, CLI `--prune`): nach jeder stetigen Phase (gemeinsam, Apertur, Feld, Spektrumbreite) und der Spektrumphase, wenn in ihr eingefügt wurde, und vor dem Abschluss (ε-Fortsetzung, Ziel) sowie am letzten guten Zustand eines abgebrochenen Laufs (`step_too_small`, `max_elements`, …; Vermerk „am Ende“, der Status bleibt), jeweils wenn seit dem letzten Rückbau eingefügt wurde oder noch keiner lief. Ein Lauf ohne Phasen (Ziel = Start) baut also nur zurück und prüft dann das Ziel.
+
+**Elementbudget** (`prune_at_limit`, CLI `--element-budget N` = `--max-elements N` mit Rückbau): Verlangt ein Einfügen mehr als `max_elements` Elemente, läuft zuerst eine Rückbau-Runde (Vermerk „Elementbudget N“), je Punkt der Homotopie höchstens einmal (sonst könnte Einfügen und Entfernen am selben Punkt wechseln). Entfernt sie etwas, wird nicht eingefügt; die Phase versucht ab dem kleineren System neu (Δ₀) und fügt bei erneutem Bedarf ein. Entfernt sie nichts, Abbruch `max_elements` wie bisher.
+
+**Kandidaten des optischen Modells.** Alle Glasblöcke (Einzellinsen, Kittglieder: Luft davor, Glas, Luft dahinter), geordnet nach dem Betrag ihres Beitrags zu den Seidel-Summen am Punkt: Σ über W040, W131, W222, W220, W311, ΔW020, ΔW111 von |Summe der Flächenbeiträge des Blocks| in Wellen bei λ_ref (Aberrationsbericht M10-T1, paraxial, realisierte Beschreibung mit Pupille und Feld des Punkts), kleinster zuerst; ohne Bericht (Punktquelle) in Flächenreihenfolge. Ein Null-Element hat den Beitrag 0 (die Beiträge seiner Flächen heben sich auf). Die Rangfolge ist eine Heuristik (ein Element mit kleinem Nettobeitrag kann für höhere Ordnungen nötig sein); die Annahme entscheidet allein F_B nach der Nachoptimierung.
+
+**Mechanische Bedingungen während der Rückbau-Homotopie.** Mit Glasdicke gegen 0 verletzte z. B. die Randdicke der schrumpfenden Linse ihre Grenze (w = 10⁴/mm²: 0,3 mm kosten 900 Wellen²), und mit Strahlhöhen hängt die Strafe von den übrigen Variablen ab. `collapse` nimmt deshalb die Flächen bzw. Spalte des Blocks aus allen mechanischen Einträgen (Liste ohne sie; bleibt nichts, Gewicht 0); `remove` stellt danach Gewichte und Standardauswahl der Einträge aus dem Zustand vor dem Rückbau wieder her (sonst schränkten sie später eingefügte Elemente nicht mehr ein, `finish_insertion`). Die Zuordnung der Einträge folgt der Abbildung von `remove_element` (mechanische Einträge ohne verbleibende Fläche entfallen).
+
+Tests (`tests/test_homotopy.cpp`, `tests/test_homotopy_optimization.cpp`, `tests/test_cli_synth.cpp`): `HomotopyControl.PruneRemovesSuperfluousKeepsNecessary` (Mock: notwendiges Element verworfen und Zustand zurück, überflüssiges entfernt, Anteile 1/3, 1/2, 1, Versuche pro Runde, Mindestzahl, ρ, ε, Text und JSON), `…PruneAfterPhaseWithInsertions` (auch nach einem Abbruch), `…ElementBudgetPrunesBeforeInserting` (Rückbau statt Abbruch, danach Einfügen; ohne entfernbares Element einmal versucht, dann `max_elements`), `…PruneOffUnchangedAndInvalidOptions` (Protokoll bis auf die Laufzeit gleich, kein Aufruf des Modells); `OpticalHomotopy.RemovalOfNullElementRestoresSystem` (Orakel: Null-Meniskus hat Beitrag 0 und ist erster Kandidat, Merit nach jeder Stufe und nach dem Entfernen innerhalb `kInsertionMeritRelative`, Flächen, Platten und Nebenbedingungen wie vor dem Einfügen); `HomotopySmoke.PruneRemovesNullElementKeepsLens` (CPU-Lauf: Null-Meniskus entfernt, die Einzellinse versucht und verworfen); `CliSynth.PruneAndElementBudget`.
+
 ## 8. Kandidatenverwaltung
 
 Die Synthese ist eine Strahlsuche (beam search) über Zweige: Jede Einfügung und jeder Sattelpunkt-Abstieg erzeugt neue Kandidaten. Behalten werden die besten B Kandidaten nach Merit, Elementzahl und (ab M8) Empfindlichkeit. Alle Kandidaten einer Topologie laufen gemeinsam in einem Batch.

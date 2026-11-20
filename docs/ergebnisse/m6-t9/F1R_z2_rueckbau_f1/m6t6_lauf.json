@@ -1,0 +1,66 @@
+{
+ "start": "docs/ergebnisse/m6-t8/F1_feldregel/z2_s0.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0",
+  "--prune",
+  "--prune-factor",
+  "1.0",
+  "--prune-attempts",
+  "30"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p2": {
+   "result": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/p2_r0.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "goal_reached",
+     "point": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 6,
+     "start_elements": 25,
+     "removals": 19,
+     "removal_attempts": 64,
+     "seconds": 1360.1069293022156
+    }
+   ],
+   "prune_only": true
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t9/F1R_z2_rueckbau_f1/z2_vektor.json"
+   },
+   "aperture": 0.5,
+   "field": 1.0
+  }
+ },
+ "times": {
+  "p2_r0": 1360.1069293022156,
+  "z2_s0": 25.431761264801025,
+  "z2_pupille": 0.16092896461486816,
+  "z2_unendlich": 0.14763569831848145,
+  "z2_psf": 0.17095494270324707,
+  "z2_vektor": 0.2460477352142334
+ }
+}

@@ -78,6 +78,16 @@ struct SynthArgs {
     double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
     std::string field_glass;
     int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
+    // Rückbau (M6-T9): nach den Phasen bzw. am Elementbudget
+    bool prune = false;
+    std::optional<int> element_budget;
+    bool have_prune_detail = false;
+    int prune_stages = HomotopyOptions{}.prune_stages;
+    int prune_attempts = HomotopyOptions{}.prune_attempts;
+    double prune_factor = HomotopyOptions{}.prune_merit_factor;
+    double prune_tolerance = HomotopyOptions{}.prune_tolerance;
+    int prune_min_elements = HomotopyOptions{}.prune_min_elements;
+    bool have_max_elements = false;
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
     bool no_reference_warning = false;                   // --no-reference-warning
@@ -236,6 +246,40 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             if (a.insertion_improve < 1) {
                 throw UsageError("--insertion-improve muss >= 1 sein");
             }
+        } else if (arg == "--prune") {
+            a.prune = true;
+        } else if (arg == "--element-budget") {
+            a.element_budget = parse_int(arg, next_value(args, i, arg));
+            if (*a.element_budget < 1) {
+                throw UsageError("--element-budget muss >= 1 sein");
+            }
+        } else if (arg == "--prune-stages") {
+            a.have_prune_detail = true;
+            a.prune_stages = parse_int(arg, next_value(args, i, arg));
+            if (a.prune_stages < 1) {
+                throw UsageError("--prune-stages muss >= 1 sein");
+            }
+        } else if (arg == "--prune-attempts") {
+            a.have_prune_detail = true;
+            a.prune_attempts = parse_int(arg, next_value(args, i, arg));
+            if (a.prune_attempts < 1) {
+                throw UsageError("--prune-attempts muss >= 1 sein");
+            }
+        } else if (arg == "--prune-factor") {
+            a.have_prune_detail = true;
+            a.prune_factor = positive(arg, next_value(args, i, arg));
+            if (a.prune_factor > 1.0) {
+                throw UsageError("--prune-factor muss in (0, 1] liegen");
+            }
+        } else if (arg == "--prune-tolerance") {
+            a.have_prune_detail = true;
+            a.prune_tolerance = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--prune-min-elements") {
+            a.have_prune_detail = true;
+            a.prune_min_elements = parse_int(arg, next_value(args, i, arg));
+            if (a.prune_min_elements < 0) {
+                throw UsageError("--prune-min-elements muss >= 0 sein");
+            }
         } else if (arg == "--field-rule") {
             a.field_rule = true;
         } else if (arg == "--field-ratio") {
@@ -269,6 +313,7 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
                 throw UsageError("--extrema-factor muss > 1 sein");
             }
         } else if (arg == "--max-elements") {
+            a.have_max_elements = true;
             a.max_elements = parse_int(arg, next_value(args, i, arg));
             if (a.max_elements < 0) {
                 throw UsageError("--max-elements muss >= 0 sein");
@@ -424,6 +469,20 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.insertion_improve > 0) {
         throw UsageError("--insertion-improve gibt es nur ohne --beam");
     }
+    if (a.beam && (a.prune || a.element_budget)) {
+        throw UsageError("--prune und --element-budget gibt es nur ohne --beam");
+    }
+    if (a.element_budget && a.have_max_elements) {
+        throw UsageError(
+            "--element-budget setzt die höchste Elementzahl; nicht mit --max-elements");
+    }
+    if (a.element_budget) {
+        a.max_elements = *a.element_budget;
+    }
+    if (a.have_prune_detail && !a.prune && !a.element_budget) {
+        throw UsageError("--prune-stages, --prune-attempts, --prune-factor, --prune-tolerance und "
+                         "--prune-min-elements verlangen --prune oder --element-budget");
+    }
     if (a.beam && a.al_rounds > 0) {
         throw UsageError("--augmented-lagrangian gibt es nur ohne --beam");
     }
@@ -480,6 +539,17 @@ void print_synth_usage(std::ostream& out) {
            "  --insertion-improve N     Einfügen in den stetigen Phasen nur übernehmen, wenn F_B\n"
            "                            danach kleiner ist; sonst bis zu N Varianten (M6-T8;\n"
            "                            nicht mit --beam; Standard aus)\n"
+           "  --prune                   Rückbau: nach jeder Phase mit Einfügungen und vor dem\n"
+           "                            Abschluss Elemente über die Rückbau-Homotopie entfernen,\n"
+           "                            solange F_B <= Faktor x F_max bleibt (M6-T9; nicht mit\n"
+           "                            --beam; Standard aus)\n"
+           "  --element-budget N        höchstens N Glaselemente; verlangt ein Einfügen mehr,\n"
+           "                            vorher ein Rückbau-Versuch (M6-T9; statt --max-elements)\n"
+           "  --prune-stages K          Stufen der Rückbau-Homotopie (Standard 3)\n"
+           "  --prune-attempts N        Kandidaten pro Rückbau-Runde (Standard 4)\n"
+           "  --prune-factor F          Annahme bei F_B <= F x F_max, 0 < F <= 1 (Standard 1)\n"
+           "  --prune-tolerance E       zusätzlich F_B <= (1 + E) x F_B vorher (Standard aus)\n"
+           "  --prune-min-elements N    nie unter N Glaselemente (Standard 1)\n"
            "  --field-rule              Feldregel: ohne Geisterbedarf und bei dominierenden\n"
            "                            Feldfehlern Operator A im Luftspalt mit größtem |ȳ/y|\n"
            "                            (M6-T8; Standard aus)\n"
@@ -726,6 +796,13 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
             h.insertion_must_improve = true;
             h.insertion_attempts = a.insertion_improve;
         }
+        h.prune = a.prune;
+        h.prune_at_limit = a.element_budget.has_value();
+        h.prune_stages = a.prune_stages;
+        h.prune_attempts = a.prune_attempts;
+        h.prune_merit_factor = a.prune_factor;
+        h.prune_tolerance = a.prune_tolerance;
+        h.prune_min_elements = a.prune_min_elements;
         h.augmented_lagrangian.rounds = a.al_rounds;
         h.augmented_lagrangian.tolerance = a.al_tolerance;
         h.al_penalty_scale = a.al_scale;
@@ -761,6 +838,20 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                    "Feld(t) = F0 + t^" + fixed(a.joint_exponent, 3) + " (F1 - F0), Schritt " +
                        sci(a.joint_step.initial, 3) + " / " + sci(a.joint_step.min, 3) + " / " +
                        sci(a.joint_step.max, 3));
+            }
+            if (a.prune || a.element_budget) {
+                kv(out, "Rückbau",
+                   std::string(a.prune ? "nach den Phasen und vor dem Abschluss" : "") +
+                       (a.prune && a.element_budget ? ", " : "") +
+                       (a.element_budget ? "am Elementbudget " + std::to_string(*a.element_budget)
+                                         : std::string()) +
+                       "; " + std::to_string(a.prune_stages) + " Stufen, " +
+                       std::to_string(a.prune_attempts) +
+                       " Versuche pro Runde, F_B <= " + fixed(a.prune_factor, 3) + " x F_max" +
+                       (a.prune_tolerance >= 0.0
+                            ? " und <= (1 + " + fixed(a.prune_tolerance, 4) + ") x F_B vorher"
+                            : std::string()) +
+                       ", mindestens " + std::to_string(a.prune_min_elements) + " Element(e)");
             }
             if (a.field_rule) {
                 kv(out, "Feldregel",
@@ -877,6 +968,17 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+        }
+        if (a.prune || a.element_budget) {
+            // M6-T9: nur mit der Option
+            options["prune"] = Json{
+                {"after_phases", a.prune},
+                {"element_budget", a.element_budget ? Json(*a.element_budget) : Json(nullptr)},
+                {"stages", a.prune_stages},
+                {"attempts", a.prune_attempts},
+                {"merit_factor", a.prune_factor},
+                {"tolerance", a.prune_tolerance >= 0.0 ? Json(a.prune_tolerance) : Json(nullptr)},
+                {"min_elements", a.prune_min_elements}};
         }
         if (a.field_rule) {
             options["field_rule"] =

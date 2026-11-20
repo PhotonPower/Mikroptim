@@ -18,6 +18,7 @@
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace mko {
@@ -200,6 +201,23 @@ public:
                                                     std::uint64_t seed) override;
     std::vector<bool> prefilter(std::span<const SystemDescription* const> starts,
                                 const HomotopyPoint& point) override;
+
+    // Rückbau (M6-T9): Kandidaten sind alle Glasblöcke (Einzellinsen, Kittglieder), geordnet nach
+    // dem Betrag ihres Beitrags zu den Seidel-Summen am Punkt (Σ über W040, W131, W222, W220,
+    // W311, ΔW020, ΔW111 von |Summe über die Flächen des Blocks| in Wellen, Aberrationsbericht
+    // M10-T1, paraxial), kleinster zuerst; ohne Bericht (Punktquelle) in Flächenreihenfolge.
+    // collapse: collapse_element; mechanische Bedingungen gelten während der Rückbau-Homotopie
+    // nicht für die Flächen bzw. Spalte des Blocks (sonst zöge z. B. die Randdicke der
+    // schrumpfenden Linse die übrigen Variablen). remove: remove_element, mechanische Einträge
+    // danach wie in `before` (Standardauswahl bleibt Standardauswahl, Gewichte wie vorher).
+    std::vector<HomotopyRemoval> removal_candidates(const SystemDescription& system,
+                                                    const HomotopyPoint& point) override;
+    SystemDescription collapse(const SystemDescription& before, const SystemDescription& current,
+                               const HomotopyRemoval& removal, double fraction,
+                               std::vector<std::string>& warnings) override;
+    SystemDescription remove(const SystemDescription& before, const SystemDescription& collapsed,
+                             const HomotopyRemoval& removal,
+                             std::vector<std::string>& warnings) override;
 
 private:
     std::optional<HomotopyNeed> color_need(const SystemDescription& system,

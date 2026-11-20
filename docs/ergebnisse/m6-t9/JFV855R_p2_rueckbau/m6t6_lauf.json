@@ -1,0 +1,76 @@
+{
+ "start": "docs/ergebnisse/m6-t8/JFV855_gemeinsam_feldregel_verbessern/p2_r23_restart.json",
+ "reference_sphere": "image_infinite",
+ "synth_options": [
+  "--stall",
+  "0",
+  "--prune",
+  "--prune-factor",
+  "0.5",
+  "--prune-attempts",
+  "6"
+ ],
+ "na_field": 0.5,
+ "forced": {
+  "min_gap": 0.7,
+  "stop_gap": false,
+  "extra": 0
+ },
+ "stages": {
+  "p2": {
+   "result": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/p2_r0.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "p2_r0",
+     "status": "goal_not_reached",
+     "point": {
+      "aperture": 0.8688730993755489,
+      "field": 0.23142936250519994,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 25,
+     "start_elements": 25,
+     "removals": 0,
+     "removal_attempts": 6,
+     "seconds": 383.2720320224762
+    }
+   ],
+   "prune_only": true
+  },
+  "z2": {
+   "result": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_s0.json",
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_psf.json",
+    "vektor": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_vektor.json"
+   },
+   "aperture": 0.8688730993755489,
+   "field": 0.23142936250519994,
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t9/JFV855R_p2_rueckbau/z2_vollfeld_vektor.json"
+   }
+  }
+ },
+ "times": {
+  "p2_r0": 383.2720320224762,
+  "z2_s0": 28.364402055740356,
+  "z2_pupille": 0.18888616561889648,
+  "z2_unendlich": 0.18543243408203125,
+  "z2_psf": 0.21384382247924805,
+  "z2_vektor": 0.2894601821899414,
+  "z2_vollfeld_pupille": 0.1861741542816162,
+  "z2_vollfeld_unendlich": 0.18644952774047852,
+  "z2_vollfeld_psf": 0.21173930168151855,
+  "z2_vollfeld_vektor": 0.28762149810791016
+ }
+}

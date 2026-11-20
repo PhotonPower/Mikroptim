@@ -471,5 +471,82 @@ TEST(CliSynth, JointApertureFieldAndFieldRule) {
     EXPECT_NE(synth({"--help"}).out.find("--field-rule"), std::string::npos);
 }
 
+// Rückbau und Elementbudget (M6-T9): Optionen nur mit Option im Protokoll; mit --prune und
+// Mindestzahl 0 wird die Einzellinse versucht und verworfen (notwendig); Elementbudget setzt die
+// höchste Elementzahl; Fehler der Kommandozeile.
+TEST(CliSynth, PruneAndElementBudget) {
+    // F_max = (0,36 · 2)² ≈ 0,52 Wellen² wie der Kurzlauf, Ziel 2 Wellen: die Einzellinse erreicht
+    // das Ziel, der Abschluss fügt nichts ein
+    const std::vector<std::string> base{kStart, "--max-iterations", "40",   "--rms-target",
+                                        "2",    "--merit-factor",   "0.36", "--json"};
+    const SynthCliResult off = synth(base);
+    ASSERT_EQ(off.code, cli::kExitOk) << off.err;
+    const nlohmann::json jo = nlohmann::json::parse(off.out);
+    EXPECT_FALSE(jo["options"].contains("prune"));
+    EXPECT_FALSE(jo["result"].contains("removals"));
+    EXPECT_FALSE(jo["result"].contains("removal_attempts"));
+
+    std::vector<std::string> on = base;
+    on.insert(on.end(),
+              {"--prune", "--prune-min-elements", "0", "--prune-stages", "2", "--prune-attempts",
+               "1", "--prune-factor", "0.5", "--prune-tolerance", "0.1"});
+    const SynthCliResult r = synth(on);
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    const nlohmann::json& po = j["options"]["prune"];
+    EXPECT_EQ(po["after_phases"], true);
+    EXPECT_TRUE(po["element_budget"].is_null());
+    EXPECT_EQ(po["stages"], 2);
+    EXPECT_EQ(po["attempts"], 1);
+    EXPECT_EQ(po["merit_factor"], 0.5);
+    EXPECT_EQ(po["tolerance"], 0.1);
+    EXPECT_EQ(po["min_elements"], 0);
+    EXPECT_EQ(j["result"]["removal_attempts"], 1);
+    EXPECT_EQ(j["result"]["removals"], 0);
+    EXPECT_EQ(j["result"]["elements"], 1);
+    int stages = 0;
+    int notes = 0;
+    for (const auto& s : j["result"]["steps"]) {
+        stages += s["kind"] == "removal_stage" ? 1 : 0;
+        if (s["kind"] == "removal") {
+            ++notes;
+            EXPECT_FALSE(s["accepted"].get<bool>());
+        }
+    }
+    EXPECT_EQ(stages, 2);
+    EXPECT_EQ(notes, 1);
+
+    // Elementbudget 1: Einfügen nötig, kein Element entfernbar (Mindestzahl 1) → max_elements
+    std::vector<std::string> budget = base;
+    budget.insert(budget.end(), {"--target-na", "0.31", "--element-budget", "1"});
+    const SynthCliResult rb = synth(budget);
+    ASSERT_EQ(rb.code, cli::kExitOk) << rb.err;
+    const nlohmann::json jb = nlohmann::json::parse(rb.out);
+    EXPECT_EQ(jb["options"]["max_elements"], 1);
+    EXPECT_EQ(jb["options"]["prune"]["element_budget"], 1);
+    EXPECT_EQ(jb["options"]["prune"]["after_phases"], false);
+
+    const SynthCliResult text = synth({kStart, "--max-iterations", "40", "--merit-factor", "10",
+                                       "--prune", "--element-budget", "3", "--quiet"});
+    ASSERT_EQ(text.code, cli::kExitOk) << text.err;
+    EXPECT_NE(text.out.find("Rückbau"), std::string::npos) << text.out;
+    EXPECT_NE(text.out.find("am Elementbudget 3"), std::string::npos) << text.out;
+
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-stages", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-attempts", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-factor", "1.5"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-tolerance", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-min-elements", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune-attempts", "2"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--element-budget", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--element-budget", "3", "--max-elements", "3"}).code,
+              cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune", "--beam", "2"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--element-budget", "3", "--beam", "2"}).code, cli::kExitUsage);
+    const std::string help = synth({"--help"}).out;
+    EXPECT_NE(help.find("--prune"), std::string::npos);
+    EXPECT_NE(help.find("--element-budget"), std::string::npos);
+}
+
 } // namespace
 } // namespace mko::test

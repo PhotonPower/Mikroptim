@@ -123,6 +123,15 @@ struct HomotopyInsertion {
     std::vector<int> default_constraints;
 };
 
+// Kandidat des Rückbaus (M6-T9): ein Element (Glasblock), das versuchsweise über die
+// Rückbau-Homotopie entfernt wird.
+struct HomotopyRemoval {
+    int first_surface = -1; // erste Dateifläche des Blocks
+    int elements = 1;       // Glaselemente des Blocks (Kittglied mit k Gläsern: k)
+    double score = 0.0;     // Beitrag (Rangfolge: kleinster zuerst; Modell)
+    std::string text;       // Beschreibung für das Protokoll
+};
+
 // Prüfung des Ziels am realen System.
 struct HomotopyTupleRms {
     int field = 0;
@@ -209,6 +218,27 @@ public:
     // Standard: alle behalten.
     virtual std::vector<bool> prefilter(std::span<const SystemDescription* const> starts,
                                         const HomotopyPoint& point);
+
+    // ---- Rückbau (M6-T9, docs/optimierung.md, Abschnitt 7); Standards ohne Rückbau ----
+
+    // Entfernbare Elemente am Zustand, in der Reihenfolge der Versuche (geringster Beitrag
+    // zuerst). Standard: keine.
+    virtual std::vector<HomotopyRemoval> removal_candidates(const SystemDescription& system,
+                                                            const HomotopyPoint& point);
+    // Stufe der Rückbau-Homotopie mit Anteil `fraction` ∈ (0, 1] des verbleibenden Wegs zum
+    // Null-Element, angewandt auf `current` (Ergebnis der vorigen Stufe bzw. `before`, den
+    // Zustand vor der ersten Stufe). Warnungen (z. B. angehobene Schranken) kommen an `warnings`.
+    // Wirft std::invalid_argument bzw. FormatError, wenn es nicht geht. Standard: wirft.
+    virtual SystemDescription collapse(const SystemDescription& before,
+                                       const SystemDescription& current,
+                                       const HomotopyRemoval& removal, double fraction,
+                                       std::vector<std::string>& warnings);
+    // Entfernt das Null-Element nach der letzten Stufe (`collapsed`); `before` wie bei collapse.
+    // Standard: wirft std::invalid_argument.
+    virtual SystemDescription remove(const SystemDescription& before,
+                                     const SystemDescription& collapsed,
+                                     const HomotopyRemoval& removal,
+                                     std::vector<std::string>& warnings);
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -229,10 +259,13 @@ enum class HomotopyStepKind {
     GhostWeight,      // Stufe der μ-Fortsetzung
     Goal,             // Prüfung des Ziels am realen System (ohne Optimierung)
     ApertureField,    // Schritt der gemeinsamen Apertur-/Feld-Homotopie (M6-T8)
+    RemovalStage,     // Stufe der Rückbau-Homotopie eines Kandidaten (M6-T9)
+    Removal,          // Entscheidung über einen Rückbau (ohne Optimierung; M6-T9)
 };
 
 // "start", "penalty", "aperture", "field", "spectrum", "insertion", "insertion_stage",
-// "smoothing", "spectrum_width", "extrema_smoothing", "ghost_weight", "goal", "aperture_field"
+// "smoothing", "spectrum_width", "extrema_smoothing", "ghost_weight", "goal", "aperture_field",
+// "removal_stage", "removal"
 const char* to_string(HomotopyStepKind kind);
 
 // Entscheidung der Schrittweitensteuerung.
@@ -323,6 +356,25 @@ struct HomotopyOptions {
     // Lauf wie ohne Bedarf. Standard aus. Nur im Controller ohne Strahlsuche.
     bool insertion_must_improve = false;
     int insertion_attempts = 4;
+    // Rückbau (M6-T9, Befund F16): Elemente versuchsweise über die Rückbau-Homotopie entfernen
+    // (HomotopyModel::removal_candidates, collapse, remove). Ein Kandidat: prune_stages Stufen
+    // mit Anteil 1/K, 1/(K − 1), …, 1, nach jeder Stufe eine Optimierung am Punkt; übernommen,
+    // wenn das Ergebnis annehmbar ist mit F_B ≤ prune_merit_factor · F_max und (mit
+    // prune_tolerance ε ≥ 0) F_B ≤ (1 + ε) · F_B vor dem Rückbau; sonst Zustand zurück und der
+    // nächste Kandidat (höchstens prune_attempts pro Runde). Nach jedem Erfolg neue Runde, bis
+    // keiner der Kandidaten einer Runde entfernt werden kann; nie unter prune_min_elements.
+    // prune: nach jeder stetigen bzw. Spektrumphase, in der eingefügt wurde, vor dem Abschluss
+    // und nach einem Abbruch (am letzten guten Zustand). prune_at_limit (Elementbudget): verlangt
+    // ein Einfügen mehr als max_elements, zuerst eine Rückbau-Runde (je Punkt höchstens einmal);
+    // entfernt sie etwas, geht der Lauf ohne Einfügen weiter, sonst Abbruch max_elements. Beide
+    // Standard aus (ohne sie bitgleich).
+    bool prune = false;
+    bool prune_at_limit = false;
+    int prune_stages = 3;
+    int prune_attempts = 4;
+    double prune_merit_factor = 1.0; // (0, 1]
+    double prune_tolerance = -1.0;   // < 0: aus
+    int prune_min_elements = 1;
 
     // Penalty-Fortsetzung der einseitigen Bedingungen am Start und nach jedem Einfügen:
     // Faktoren penalty_factor^{−(K−1)}, …, 1/penalty_factor, 1 (K = penalty_stages).
@@ -373,6 +425,8 @@ struct HomotopyResult {
     int elements = 0;  // Glaselemente am Ende
     int start_elements = 0;
     int insertions = 0;           // angewandte Operatoren
+    int removal_attempts = 0;     // Rückbau-Versuche (M6-T9)
+    int removals = 0;             // übernommene Rückbauten (M6-T9)
     int solves = 0;               // Optimierungen
     double merit_threshold = 0.0; // verwendetes F_max
     double seconds = 0.0;         // Laufzeit (nicht deterministisch)
