@@ -603,6 +603,80 @@ TEST(InsertionInit, MeniscusFromDiagnosisKeepsGapBounds) {
     EXPECT_THROW(meniscus_from_diagnosis(d, g), std::invalid_argument);
 }
 
+// M10-T7e (Befund E14): Plattenspalt kürzer als 2 · Schranke. Mit shrink_short_gap liegt der
+// Meniskus in der Mitte, beide Teilstücke erhalten eigene Dickeneinträge mit der Schranke
+// (T − Dicke)/2 (nicht unter der Lage einer Platte im Teilstück), die übrigen Flächen des alten
+// Eintrags behalten ihre Schranke; Merit bleibt bis auf Rundung gleich (Orakel: Dicke 0).
+TEST(InsertionInit, MeniscusShortPlateGapLowersPieceBounds) {
+    SystemDescription d = load_residual_system("einzellinse_na05_geisterplatten.json").system;
+    // Spalt nach Fläche 2: 0,4 mm, Platten 6–8 an dessen Ende (wie nach free_gaps + optimize
+    // mit Schranke = Plattenlage)
+    for (int p = 6; p <= 8; ++p) {
+        d.ghost_plates[static_cast<std::size_t>(p)].distance = 0.4;
+    }
+    d.ghost_plates[8].coefficients = {0.0, 7e-3, 0.0, 0.0, 0.0, 0.0};
+    auto t = variable_spec(VariableType::Thickness, SurfaceSelection::List, {0, 2});
+    t.min = 0.25;
+    t.max = 5.0;
+    d.variables->items.push_back(t);
+    validate_system(d);
+    GhostDiagnosis g = hand_diagnosis(d, GhostOperator::A);
+    g.plates[8].sum_abs = 7e-3;
+    // ohne Option: unverändert abgelehnt
+    EXPECT_THROW(meniscus_from_diagnosis(d, g), std::invalid_argument);
+    MeniscusInitOptions o;
+    o.shrink_short_gap = true;
+    const MeniscusPlan plan = meniscus_from_diagnosis(d, g, o);
+    EXPECT_EQ(plan.insertion.after_surface, 2);
+    EXPECT_EQ(plan.insertion.position, 0.2);
+    ASSERT_TRUE(plan.insertion.piece_lower_bound.has_value());
+    EXPECT_EQ(*plan.insertion.piece_lower_bound, 0.2);
+    EXPECT_FALSE(plan.warning.empty());
+    EXPECT_NE(plan.reason.find("Warnung"), std::string::npos) << plan.reason;
+    const InsertionResult r = insert_meniscus(d, plan.insertion);
+    EXPECT_EQ(r.system.surfaces[2].thickness, 0.2);
+    EXPECT_EQ(r.system.surfaces[4].thickness, 0.2);
+    EXPECT_EQ(r.system.ghost_plates[8].after_surface, 4);
+    EXPECT_DOUBLE_EQ(r.system.ghost_plates[8].distance, 0.2);
+    // Schranken: Fläche 0 im alten Eintrag (0,25), Teilstücke 2 und 4 mit 0,2
+    int pieces = 0;
+    for (const ResolvedVariable& v : resolve_variables(r.system)) {
+        if (v.type != VariableType::Thickness) {
+            continue;
+        }
+        if (v.surface == 0) {
+            EXPECT_EQ(v.lower, 0.25);
+        } else if (v.surface == 2 || v.surface == 4) {
+            EXPECT_EQ(v.lower, 0.2) << v.surface;
+            EXPECT_EQ(v.upper, 5.0);
+            ++pieces;
+        }
+    }
+    EXPECT_EQ(pieces, 2);
+    // Merit-Invarianz beim Einfügen bleibt
+    const double rel = relative_change(system_merit(d), system_merit(r.system));
+    EXPECT_LE(rel, kInsertionMeritRelative);
+    // Platte im vorderen Teilstück, Schranke 0,1 vorgegeben: keine Schranke unter der Lage
+    // einer Platte im Teilstück
+    SystemDescription d2 = d;
+    d2.ghost_plates[6].distance = 0.15;
+    MeniscusInsertion m2 = plan.insertion;
+    m2.piece_lower_bound = 0.1;
+    const InsertionResult r2 = insert_meniscus(d2, m2);
+    for (const ResolvedVariable& v : resolve_variables(r2.system)) {
+        if (v.type == VariableType::Thickness && v.surface == 2) {
+            EXPECT_EQ(v.lower, 0.15);
+        }
+        if (v.type == VariableType::Thickness && v.surface == 4) {
+            EXPECT_EQ(v.lower, 0.2); // Platten 7, 8 am Ende des hinteren Teilstücks
+        }
+    }
+    // kein Platz (T − Dicke ≤ 0): weiter abgelehnt
+    MeniscusInitOptions full = o;
+    full.thickness = 0.4;
+    EXPECT_THROW(meniscus_from_diagnosis(d, g, full), std::invalid_argument);
+}
+
 TEST(InsertionInit, SplitFromDiagnosis) {
     const LoadedSystem l = load_residual_system("einzellinse_na05_geisterplatten.json");
     const SystemDescription& d = l.system;

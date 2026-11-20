@@ -395,8 +395,16 @@ def test_free_gaps_skips_gap_thinner_than_plate(tmp_path, monkeypatch):
     entry = s.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
                         "actions": [{"action": "free_gaps"}]})
     assert entry["results"][0]["status"] == "ok"
-    # seit M10-T7d (E14) bleiben alle Spalte mit Geisterplatten fest, hier 0 und 2: die Aktion
-    # gibt nichts frei und erzeugt keinen Kandidaten
+    # seit M10-T7e werden Plattenspalte wieder freigegeben (Schranke = Plattenlage), aber nicht
+    # Spalt 2, der dünner ist als die Lage seiner Platte
+    new = json.loads(s.system_path(entry["results"][0]["new_candidates"][0])
+                     .read_text(encoding="utf-8"))
+    gaps = [it["surface"] for it in new["variables"]["items"] if it["type"] == "thickness"]
+    assert 2 not in gaps and 0 in gaps
+    # mit include_ghost_plate_gaps = false bleiben sie fest wie in M10-T7d: nichts Neues
+    entry = s.apply(0, {"format": "mikroptim.design.action/1", "candidate": 0, "assessment": "",
+                        "actions": [{"action": "free_gaps", "include_ghost_plate_gaps": False}]})
+    assert entry["results"][0]["status"] == "ok"
     assert not entry["results"][0].get("new_candidates")
 
 

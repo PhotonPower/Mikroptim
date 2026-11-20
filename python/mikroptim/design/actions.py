@@ -24,7 +24,7 @@ import pathlib
 import tempfile
 
 from .. import aberrations
-from ._cli import cli_json, cli_text
+from ._cli import ToolError, cli_json, cli_text
 from .files import catalog_names, elements, is_air, read_system, write_system
 
 READ_ACTIONS = {"get_surface_table", "get_ghost_diagnosis", "evaluate", "glass_preselect",
@@ -295,8 +295,19 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
             args += ["--augmented-lagrangian", int(a["augmented_lagrangian"])]
         if "sine_condition" in a:
             args += ["--sine-condition", float(a["sine_condition"])]
+        if SHRINK_SHORT_GAPS:
+            args += ["--shrink-short-gaps"]
         rep = cli_json(args)
+        retry = int(a.get("start_retry_cycles", START_RETRY_CYCLES))
+        info = None
+        if retry > 0 and _start_rejected_without_need(rep):
+            out, rep, info = _retry_after_optimize(args, system_path, out, rep, retry, workdir)
         summary = {k: rep.get(k) for k in ("status", "goal_reached", "result", "summary") if k in rep}
+        warnings = synth_warnings(rep)
+        if warnings:
+            summary["warnings"] = warnings
+        if info is not None:
+            summary["start_retry"] = info
         return [(out, summary)]
     if name == "snap_glasses":
         data = read_system(system_path)
@@ -325,6 +336,66 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
     if name == "split_lens":
         return [_split_lens(a, system_path, workdir)]
     raise ActionError("not_implemented", f"{name} ist noch nicht umgesetzt")
+
+
+#: ``synth_segment`` ruft ``synth --shrink-short-gaps`` (M10-T7e): Operator A senkt in einem
+#: Plattenspalt unter 2 × Schranke die Schranke der Teilstücke (Warnung) statt abzulehnen; damit
+#: darf ``free_gaps`` die Plattenspalte wieder freigeben (Befund E14).
+SHRINK_SHORT_GAPS = True
+#: LM-Zyklen des ``optimize`` vor dem zweiten Versuch nach ``start_rejected`` ohne Bedarf einer
+#: Geisterplatte (Befund E19, M10-T7e); 0 schaltet ab, pro Aktion ``start_retry_cycles``.
+START_RETRY_CYCLES = 20
+#: Meldung des Controllers, wenn keine Geisterplatte Bedarf meldet (homotopy.cpp)
+_NO_NEED = "kein Bedarf"
+
+
+def _start_rejected_without_need(rep) -> bool:
+    res = rep.get("result") or {}
+    return res.get("status") == "start_rejected" and _NO_NEED in str(res.get("message") or "")
+
+
+def synth_warnings(rep) -> list[str]:
+    """Warnungen aus dem Protokoll eines ``synth`` (Entscheidungen mit „Warnung:“, z. B. eine
+    gesenkte Schranke im kurzen Plattenspalt, M10-T7e)."""
+    out = []
+    for st in (rep.get("result") or {}).get("steps") or []:
+        op = str(st.get("operation") or "")
+        for part in op.split("Warnung: ")[1:]:
+            w = part.split("; ")[0].strip()
+            if w and w not in out:
+                out.append(w)
+    return out
+
+
+def _retry_after_optimize(args, system_path, out, rep, cycles, workdir):
+    """Befund E19 (M10-T7d): ``synth`` lehnt den Start knapp über F_max ab, keine Geisterplatte
+    meldet Bedarf, also wird nichts eingefügt. Dann erst ``optimize`` (``cycles`` LM-Zyklen,
+    Variablen der Datei) und ein zweiter Versuch. Wird der Start dann angenommen, zählt der
+    zweite Versuch; sonst bleibt das erste Ergebnis. Rückgabe (Datei, Bericht des synth,
+    Angaben für den Bericht ``start_retry``)."""
+    first = rep.get("result") or {}
+    info = {"cycles": cycles, "first_message": str(first.get("message") or "")[:300]}
+    workdir = pathlib.Path(workdir)
+    opt = _tmp_out(workdir)
+    out2 = _tmp_out(workdir)
+    try:
+        orep = cli_json(["optimize", system_path, "-o", opt, "--quiet", "--max-iterations", cycles])
+        info["optimize"] = orep.get("result")
+        args2 = [opt if x == system_path else (out2 if x == out else x) for x in args]
+        rep2 = cli_json(args2)
+    except ToolError as e:
+        info.update({"outcome": "error", "message": str(e)[:300]})
+        out2.unlink(missing_ok=True)
+        return out, rep, info
+    finally:
+        opt.unlink(missing_ok=True)
+    status = (rep2.get("result") or {}).get("status")
+    info["outcome"] = status
+    if status == "start_rejected":
+        out2.unlink(missing_ok=True)
+        return out, rep, info
+    pathlib.Path(out).unlink(missing_ok=True)
+    return out2, rep2, info
 
 
 def resolve_filter(flt, system_path) -> str:
@@ -587,8 +658,13 @@ def _free_gaps(a, system_path, workdir):
     return out
 
 
+#: ``free_gaps`` und ``optimize`` mit erweiterter Auswahl geben Spalte mit Geisterplatten frei
+#: (M10-T7e; in M10-T7d fest, E14); pro Aktion ``include_ghost_plate_gaps``.
+FREE_GHOST_PLATE_GAPS = True
+
+
 def ghost_plate_gaps(data) -> set[int]:
-    """Spalte (Fläche davor), in denen Geisterplatten liegen; sie bleiben fest (E14)."""
+    """Spalte (Fläche davor), in denen Geisterplatten liegen."""
     return {int(g["after_surface"]) for g in data.get("ghost_plates", [])}
 
 
@@ -626,7 +702,7 @@ def _widen_variables(system_path, variables, workdir):
         items.append({"type": "curvature", "surfaces": curv})
     gaps = []
     if variables in ("curvatures_and_gaps", "everything"):
-        # Spalte mit Geisterplatten bleiben fest wie bei free_gaps (E14, M10-T7c/M10-T7d)
+        # Spalte mit Geisterplatten wie bei free_gaps (E14; seit M10-T7e wieder frei)
         gaps = _add_gap_variables(data, {"include_glass_thickness": variables == "everything"})
     if not curv and not gaps:
         return system_path, {}
@@ -653,13 +729,15 @@ def _add_gap_variables(data, a) -> list[int]:
                 covered.update(range(len(surfaces) - 1))
             else:
                 covered.update(int(x) for x in it.get("surfaces", []))
-    # Spalte mit Geisterplatten bleiben fest, auch mit ausdrücklicher Flächenliste (Befund E14,
-    # M10-T7c; behoben in M10-T7d): Operator A fügt dort ein, und beide Teilstücke erben die
-    # untere Schranke der Spaltdicke. Frei schob der Optimierer den Spalt auf diese Schranke
-    # (die Plattenlage), danach war er zu kurz für zwei Teilstücke und synth lehnte den Start ab.
-    # Eine Schranke allein kann das nicht verhindern, weil Operator A Spaltdicke ≥ 2 × Schranke
-    # braucht und die Schranke selbst vererbt.
-    plates = ghost_plate_gaps(data)
+    # Spalte mit Geisterplatten (Befund E14, M10-T7c): Operator A fügt dort ein, und beide
+    # Teilstücke erbten die untere Schranke der Spaltdicke (= Plattenlage). Frei schob der
+    # Optimierer den Spalt auf diese Schranke, danach war er zu kurz für zwei Teilstücke und synth
+    # lehnte den Start ab. M10-T7d hielt die Plattenspalte deshalb fest; seit M10-T7e senkt
+    # Operator A in einem zu kurzen Spalt die Schranke der Teilstücke (synth --shrink-short-gaps,
+    # SHRINK_SHORT_GAPS), und die Plattenspalte werden wieder freigegeben (Schranke mindestens die
+    # Plattenlage). include_ghost_plate_gaps = false hält sie fest wie in M10-T7d.
+    free_plates = a.get("include_ghost_plate_gaps", FREE_GHOST_PLATE_GAPS)
+    plates = set() if free_plates else ghost_plate_gaps(data)
     added = []
     for s in candidates:
         if s in covered or s in plates or not 0 <= s < len(surfaces) - 1:
@@ -670,6 +748,13 @@ def _add_gap_variables(data, a) -> list[int]:
         t = surfaces[s]["thickness"]
         lo = min(0.1 if air else 0.5, t)
         hi = max(max_gap, t)
+        # Geisterplatten im Spalt: untere Schranke mindestens die letzte Plattenlage
+        for g in data.get("ghost_plates", []):
+            if g["after_surface"] == s:
+                lo = max(lo, g["distance"])
+        if lo > t:
+            # Spalt dünner als die Plattenlage: Startwert läge außerhalb der Schranken (M10-T7)
+            continue
         items.append({"type": "thickness", "surface": s, "min": lo, "max": hi})
         added.append(s)
     return added

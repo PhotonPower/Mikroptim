@@ -185,6 +185,71 @@ def test_null_templates_merit_unchanged(session, mod, glasses, added):
     assert rep["group"] == "middle"
 
 
+def test_insert_module_default_glass(session):
+    """M10-T7e (44 Antworten der Modelle in M10-T7d ohne glasses): Fehlt glasses, nimmt
+    insert_module das erste Katalogglas der Glasregel des Moduls (front.shell_ca:
+    low_n_low_dispersion), ohne Regel das hochbrechendste Katalogglas; Warnung im Bericht und im
+    Verlauf."""
+    from mikroptim.design.deciders import high_index_glass
+    from mikroptim.design.glass_query import resolve_glass
+
+    r = response({"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
+                  "position": 1.0, "thickness": 1.5})
+    validate(r)
+    entry = session.apply(0, r, decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    rep = res["reports"][0]
+    assert rep["glass"] == resolve_glass(session.system_path(0), {"rule": "low_n_low_dispersion"})
+    assert any("glasses fehlte" in w and "low_n_low_dispersion" in w for w in rep["warnings"])
+    assert "Warnung: glasses fehlte" in session.history()[-1]
+    # generic.null_meniscus hat keine Glasregel: hochbrechendstes Katalogglas
+    c = with_variables(session)
+    [res] = apply_ok(session, c, {"action": "insert_module", "module": "generic.null_meniscus",
+                                  "after_surface": 5, "position": 0.5})
+    rep = res["reports"][0]
+    assert rep["glasses"] == [high_index_glass(session.system_path(0))]
+    assert "keine Glasregel" in rep["warnings"][0]
+    assert rep["merit_after"] == pytest.approx(rep["merit_before"], rel=1e-9)
+
+
+def test_insert_module_raises_thickness_to_bound(session, tmp_path):
+    """M10-T7e (81 Antworten der Modelle in M10-T7d): Liegt der Arbeitsabstand nach dem
+    Nachfokussieren der Schale unter der Schranke seiner Variable, lehnte mikroptim insert das
+    Ergebnis ab. Jetzt hebt insert_module ihn auf die Schranke (Warnung) und lässt die übrigen
+    Flächen, wie sie ohne Schranke eingefügt würden."""
+    from mikroptim.design.files import read_system, resolve_catalogs, write_system
+
+    shell = {"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
+             "position": 1.0, "thickness": 1.5, "glasses": [{"name": "N-BK7"}]}
+    [free] = apply_ok(session, 0, shell)
+    wd_free = free["reports"][0]["working_distance"]
+    free_sys = load(session, free["new_candidates"][0])
+    wd0 = read_system(session.system_path(0))["surfaces"][-1]["thickness"]
+    assert 0 < wd_free < wd0
+    bound = 0.5 * (wd_free + wd0)
+    data = resolve_catalogs(read_system(START), SYSTEMS)
+    data["variables"] = {"items": [{"type": "working_distance", "min": bound, "max": 50.0}]}
+    start = tmp_path / "wd.json"
+    write_system(data, start)
+    s = design.Session.create(start, tmp_path / "wd")
+    [res] = apply_ok(s, 0, shell)
+    rep = res["reports"][0]
+    new = load(s, res["new_candidates"][0])
+    assert new["surfaces"][-1]["thickness"] == bound
+    assert new["variables"]["items"][0]["min"] == bound
+    # übrige Flächen wie ohne Schranke
+    assert [x.get("curvature") for x in new["surfaces"]] == [x.get("curvature") for x in
+                                                          free_sys["surfaces"]]
+    assert [x["thickness"] for x in new["surfaces"][:-1]] == [x["thickness"] for x in
+                                                               free_sys["surfaces"][:-1]]
+    assert len(rep["warnings"]) == 1 and "Arbeitsabstand" in rep["warnings"][0]
+    assert "Warnung: Arbeitsabstand" in s.history()[-1]
+    # ein anderer Fehler der Kommandozeile bleibt ein Fehler
+    bad = s.apply(0, response({**shell, "thickness": 500.0}), decider={})
+    assert bad["results"][0]["status"] == "error"
+
+
 def test_insert_module_thickness_homotopy(session):
     c = with_variables(session)
     [res] = apply_ok(session, c, {"action": "insert_module", "module": "generic.null_meniscus",

@@ -197,3 +197,81 @@ def test_repetitions_get_own_tags_and_summary(tool, tmp_path, monkeypatch):
     # Ziel nur in w2 (NA 0,6); bester Lauf nach rank_key ist w2, Mediane über alle drei
     assert ("| B1 | V0RS | 1/3 | 0,600 | 0,600 | 0,0500 | 0,0500 | 2 (1–3) | – |"
             in tool.summary(out))
+
+
+def test_perturbed_starts_within_bounds_and_summary(tool, tmp_path, monkeypatch):
+    """M10-T7e: --gestoerte-starts N rechnet jede Variante auf N leicht gestörten Starts
+    (Kürzel <tag>_s<k>); gestört werden nur Startwerte von Krümmungs- und Dickenvariablen und
+    der Arbeitsabstand, innerhalb ihrer Schranken und nicht unter die Lage einer Geisterplatte;
+    deterministisch aus Seed, Benchmark und k. Die Zusammenfassung fasst _s<k> als eigene
+    Gruppe zusammen."""
+    b = tool.BENCHMARKS["B2"]
+    vb = tool.prepare_start({**b, "reference_sphere": "image_infinite"}, tmp_path, "B2_rs")
+    base = json.loads(vb["start"].read_text(encoding="utf-8"))
+    p1 = tool.prepare_perturbed(vb, tmp_path, "B2_rs", 1, 0.05, 0)
+    first = p1["start"].read_bytes()
+    again = tool.prepare_perturbed(vb, tmp_path, "B2_rs", 1, 0.05, 0)
+    assert again["start"].read_bytes() == first  # deterministisch
+    p2 = tool.prepare_perturbed(vb, tmp_path, "B2_rs", 2, 0.05, 0)
+    assert p2["start"].read_bytes() != first
+    d = json.loads(first)
+    changes = p1["perturbation"]["changes"]
+    assert changes and p1["perturbation"]["sigma"] == 0.05
+    n = len(base["surfaces"])
+
+    def inside(j, key, value, items):
+        for it in items:
+            kind = it["type"]
+            if kind == "working_distance":
+                covered, k = [n - 1], "thickness"
+            elif kind in ("curvature", "thickness"):
+                covered, k = tool._covered(it, n), kind
+            else:
+                continue
+            if k == key and j in covered:
+                assert it.get("min", -1e9) <= value <= it.get("max", 1e9), (j, key, value)
+        if key == "thickness":
+            for g in d.get("ghost_plates", []):
+                if g["after_surface"] == j:
+                    assert value >= g["distance"]
+
+    for c in changes:
+        j = c["surface"]
+        assert c["old"] == base["surfaces"][j][c["type"]] != c["new"]
+        assert d["surfaces"][j][c["type"]] == c["new"]
+        inside(j, c["type"], c["new"], base["variables"]["items"])
+    # nur Startwerte: Variablen, Gläser und Platten unverändert
+    assert d["variables"] == base["variables"] and d["ghost_plates"] == base["ghost_plates"]
+    assert [s.get("material") for s in d["surfaces"]] == [s.get("material")
+                                                          for s in base["surfaces"]]
+    changed = {(c["surface"], c["type"]) for c in changes}
+    for j, (s0, s1) in enumerate(zip(base["surfaces"], d["surfaces"])):
+        for key in ("curvature", "thickness"):
+            if (j, key) not in changed:
+                assert s0.get(key) == s1.get(key)
+    # große Störung: Schranken greifen
+    big = json.loads(json.dumps(base))
+    import random
+    for c in tool.perturb_start(big, 3.0, random.Random(7)):
+        inside(c["surface"], c["type"], c["new"], base["variables"]["items"])
+    # Ablauf und Zusammenfassung (Rechnung ersetzt)
+    calls = []
+
+    def fake_synth(bench, work, beam=False):
+        calls.append((work.name, bench["start"].name))
+        k = len(calls)
+        return {"seconds": 1.0, "best": {"goal": k != 2, "na": 0.3 * k, "rms_max_waves": 0.01,
+                                         "failed_rays": 0, "elements": 4}}
+
+    monkeypatch.setattr(tool, "run_synth", fake_synth)
+    out, work = tmp_path / "out", tmp_path / "arbeit"
+    argv = ["--benchmarks", "B1", "--varianten", "V0", "--out", str(out), "--work", str(work)]
+    assert tool.main(argv) == 0
+    assert tool.main(argv + ["--gestoerte-starts", "3", "--stoer-sigma", "0.01"]) == 0
+    assert calls == [("V0RS", "start_B1_rs.json"), ("V0RS_s1", "start_B1_rs_s1.json"),
+                     ("V0RS_s2", "start_B1_rs_s2.json"), ("V0RS_s3", "start_B1_rs_s3.json")]
+    r = json.loads((out / "B1_V0RS_s2.json").read_text(encoding="utf-8"))
+    assert r["tag"] == "V0RS_s2" and r["perturbation"]["index"] == 2
+    assert r["perturbation"]["sigma"] == 0.01 and r["perturbation"]["seed"] == 0
+    s = tool.summary(out)
+    assert "| B1 | V0RS | 1/1 |" in s and "| B1 | V0RS_s* | 2/3 |" in s

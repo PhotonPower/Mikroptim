@@ -935,6 +935,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                              : std::string(" (Feldregel)")) +
             ", Dicke bis " + number(options_.element_thickness) + " mm, " +
             std::to_string(ins.branches.size()) + (ins.branches.size() == 1 ? " Zweig" : " Zweige");
+        if (!plan.warning.empty()) {
+            ins.text += "; Warnung: " + plan.warning; // kurzer Plattenspalt (M10-T7e)
+        }
         return ins;
     }
     if (need.recommendation == GhostOperator::B ||
