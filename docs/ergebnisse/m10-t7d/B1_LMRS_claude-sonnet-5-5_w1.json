@@ -1,0 +1,106 @@
+{
+  "seconds": 35.5142130000022,
+  "aborted": null,
+  "decisions": 4,
+  "actions": 9,
+  "rejected_actions": 0,
+  "rejected_share": 0.0,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 63,
+  "lm_optimize": 3,
+  "candidates": 8,
+  "best_candidate": 7,
+  "best": {
+    "na": 0.6,
+    "rms_max_waves": 0.01182213094155531,
+    "rms_eval_exit_pupil": 0.011919998121040458,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 10.000003560820383,
+    "goal": true
+  },
+  "usage": {
+    "prompt_tokens": 25650,
+    "output_tokens": 1949,
+    "thinking_chars": 935,
+    "requests": 5,
+    "cache_read_tokens": 58518,
+    "cost_usd": 0.09530959999999998
+  },
+  "session": "B1_LMRS_claude-sonnet-5-5_w1/",
+  "system": "B1_LMRS_claude-sonnet-5-5_w1/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 5,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "finish"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "claude",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "thinking": "adaptive",
+    "fallbacks": true,
+    "strict": false,
+    "max_tokens": 16000,
+    "sdk_version": "2.11.0",
+    "prompt_sha256": "c04924fda1dd94b4dc377926ab098e025ece8edb8f58bddea1cd8abf11d1ce8a",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec",
+    "tools_sha256": "31969dc52bdbbef0da0d13d7d4a292443710a9f279699531197d11b03eddd642",
+    "cost_usd": 0.014200299999999999,
+    "ledger_spent_usd": 0.230866705
+  },
+  "ledger_spent_usd": 0.230866705,
+  "reference_sphere": "image_infinite",
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LMRS_claude-sonnet-5-5_w1",
+  "target_na": 0.6,
+  "repetition": 1
+}

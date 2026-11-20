@@ -1,0 +1,140 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B1_LMRS_claude-opus-5-5_w3/start.json",
+  "spec": {
+    "na": 0.6
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "optimize"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "optimize"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "optimize"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "15": {
+      "parent": 14,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "16": {
+      "parent": 15,
+      "status": "open",
+      "action": "optimize"
+    },
+    "17": {
+      "parent": 16,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "18": {
+      "parent": 17,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "19": {
+      "parent": 18,
+      "status": "open",
+      "action": "optimize"
+    },
+    "20": {
+      "parent": 19,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "21": {
+      "parent": 20,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "22": {
+      "parent": 21,
+      "status": "open",
+      "action": "optimize"
+    },
+    "23": {
+      "parent": 22,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "24": {
+      "parent": 23,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Budget erschöpft (1 Aktion). Der RMS-Fehler von 0,008 Wellen erfüllt das Ziel ≤ 0,0714 bei NA 0,6 mit 4 Elementen. Offener Punkt: 10 Herstellbarkeitsfehler (Randdicken, Halbkugel, Luftrand). Dafür sind die Bedingungen min_edge_thickness und max_semi_diameter plus eine neue Optimierung nötig, für die kein Budget bleibt."
+    }
+  },
+  "next_id": 25,
+  "decisions": 12
+}

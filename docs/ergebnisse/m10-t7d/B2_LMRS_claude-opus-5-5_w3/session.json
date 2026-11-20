@@ -1,0 +1,60 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B2_LMRS_claude-opus-5-5_w3/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "optimize"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "optimize"
+    },
+    "5": {
+      "parent": 4,
+      "status": "finished",
+      "action": "synth_segment",
+      "reason": "Das Budget ist erschöpft (1 Aktion übrig). Eine strukturelle Änderung wie front.shell_ca bräuchte danach noch free_gaps und optimize, dafür reicht das Budget nicht. Kandidat 5 ist der beste vorhandene Stand, aber unvollständig: NA 0,41 statt 0,95, die Geometrie ist an den Flächen 5 bis 7 nicht herstellbar, und die sphärische Aberration der Front (W040 0,59) bleibt offen."
+    },
+    "6": {
+      "parent": 5,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Die NA bleibt bei 0,41 stehen (Soll 0,95), die Homotopie steckt fest. Die Frontgruppe ist mit W040 = 0,59 bei Fläche 7 geometrisch unmöglich (Halbkugel überschritten, negative Randdicke, Flächen berühren sich am Rand). Die Schalenlinse ist an der Spaltschranke gescheitert, und mit 2 Aktionen ist keine Erholung möglich."
+    }
+  },
+  "next_id": 7,
+  "decisions": 12
+}

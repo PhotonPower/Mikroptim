@@ -1,0 +1,49 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B3_LMRS_claude-opus-5-5_w1/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "finished",
+      "action": "free_gaps",
+      "reason": "Budget erschöpft (1 Aktion). Kandidat 4 ist der beste Stand, erreicht aber nur NA 0,375 von 0,85 und ist geometrisch nicht herstellbar (Halbkugel/Randdicke F6/F7, Luftrand F5/F7). Das Ergebnis ist ein unvollständiger Zwischenstand, keine Lösung der Spezifikation. Nächster Schritt in einer neuen Sitzung: front.shell_ca mit Arbeitsabstand ≥ 0,1875 mm oder ein neuer Start mit start_from_skeleton, dann synth_segment Richtung NA 0,85."
+    }
+  },
+  "next_id": 5,
+  "decisions": 12
+}

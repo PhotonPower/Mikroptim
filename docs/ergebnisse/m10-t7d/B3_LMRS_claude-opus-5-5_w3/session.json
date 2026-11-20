@@ -1,0 +1,44 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7d/B3_LMRS_claude-opus-5-5_w3/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "finished",
+      "action": "optimize",
+      "reason": "Budget erschöpft. Kandidat 3 erreicht die Soll-NA nicht (0,375 von 0,85) und hat geometrisch unmögliche Flächen (6, 7). Für die nächste Sitzung: front.shell_ca einfügen, vorher die Schranke für den Arbeitsabstand von surfaces[10].thickness lockern (Startwert 0,034 < 0,1875). Danach free_gaps, optimize und synth_segment. Die Frontgruppe trägt W040 0,67 und W131 0,16, fast alles davon an Fläche 7."
+    }
+  },
+  "next_id": 4,
+  "decisions": 12
+}

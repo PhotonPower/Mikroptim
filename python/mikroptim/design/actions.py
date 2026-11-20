@@ -587,6 +587,11 @@ def _free_gaps(a, system_path, workdir):
     return out
 
 
+def ghost_plate_gaps(data) -> set[int]:
+    """Spalte (Fläche davor), in denen Geisterplatten liegen; sie bleiben fest (E14)."""
+    return {int(g["after_surface"]) for g in data.get("ghost_plates", [])}
+
+
 #: Variablenauswahl von ``optimize`` (Schema ``optimize.variables``); jede Stufe umfasst die
 #: vorige. Gläser bleiben immer fest (Glasvariablen über split_lens/free_part).
 OPTIMIZE_VARIABLES = ("current", "all_curvatures", "curvatures_and_gaps", "everything")
@@ -621,13 +626,8 @@ def _widen_variables(system_path, variables, workdir):
         items.append({"type": "curvature", "surfaces": curv})
     gaps = []
     if variables in ("curvatures_and_gaps", "everything"):
-        # Spalte mit Geisterplatten bleiben fest: dort fügt Operator A ein; frei schob der
-        # Optimierer den Spalt auf die Plattenlage, danach lehnte synth den Start ab (E14,
-        # M10-T7c). free_gaps mit ausdrücklicher Flächenliste kann sie weiter freigeben.
-        plate_gaps = {int(g["after_surface"]) for g in data.get("ghost_plates", [])}
-        sel = [s for s in range(len(surfaces) - 1) if s not in plate_gaps]
-        gaps = _add_gap_variables(data, {"surfaces": sel,
-                                         "include_glass_thickness": variables == "everything"})
+        # Spalte mit Geisterplatten bleiben fest wie bei free_gaps (E14, M10-T7c/M10-T7d)
+        gaps = _add_gap_variables(data, {"include_glass_thickness": variables == "everything"})
     if not curv and not gaps:
         return system_path, {}
     out = _tmp_out(pathlib.Path(workdir))
@@ -653,9 +653,16 @@ def _add_gap_variables(data, a) -> list[int]:
                 covered.update(range(len(surfaces) - 1))
             else:
                 covered.update(int(x) for x in it.get("surfaces", []))
+    # Spalte mit Geisterplatten bleiben fest, auch mit ausdrücklicher Flächenliste (Befund E14,
+    # M10-T7c; behoben in M10-T7d): Operator A fügt dort ein, und beide Teilstücke erben die
+    # untere Schranke der Spaltdicke. Frei schob der Optimierer den Spalt auf diese Schranke
+    # (die Plattenlage), danach war er zu kurz für zwei Teilstücke und synth lehnte den Start ab.
+    # Eine Schranke allein kann das nicht verhindern, weil Operator A Spaltdicke ≥ 2 × Schranke
+    # braucht und die Schranke selbst vererbt.
+    plates = ghost_plate_gaps(data)
     added = []
     for s in candidates:
-        if s in covered or not 0 <= s < len(surfaces) - 1:
+        if s in covered or s in plates or not 0 <= s < len(surfaces) - 1:
             continue
         air = is_air(surfaces[s].get("material", "AIR"))
         if not air and not include_glass:
@@ -663,14 +670,6 @@ def _add_gap_variables(data, a) -> list[int]:
         t = surfaces[s]["thickness"]
         lo = min(0.1 if air else 0.5, t)
         hi = max(max_gap, t)
-        # Geisterplatten im Spalt: untere Schranke mindestens die letzte Plattenlage
-        for g in data.get("ghost_plates", []):
-            if g["after_surface"] == s:
-                lo = max(lo, g["distance"])
-        if lo > t:
-            # Spalt dünner als die Plattenlage (z. B. nach einem Einfügen): Startwert läge
-            # außerhalb der Schranken, synth/insert lehnten das System ab (Befund M10-T7)
-            continue
         items.append({"type": "thickness", "surface": s, "min": lo, "max": hi})
         added.append(s)
     return added

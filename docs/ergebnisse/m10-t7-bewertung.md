@@ -8,6 +8,8 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **Claude-Läufe (M10-T7c, Abschnitt 11):** Haiku 5.5, Sonnet 5.5 und Opus 5.5 auf B1–B3. Opus erreichte B1 und **B3 mit RMS 0,0145 (Regel V3RS 0,060)**; Haiku erreichte (Zwischenstand Z1) B1 und B3 und öffnete **B2 bis NA 0,835 (Regel 0,79)**. Die Endläufe streuen stark (Opus B1 Ziel, B2 0,46; Haiku und Sonnet ohne Ziel). Entscheidend ist der erste Schritt: Wer vor dem ersten Homotopie-Abschnitt Spalte freigibt und optimiert, landet in einer Falle der Werkzeuge (Befund E14, offen, Frage an den Maintainer) und bleibt bei NA 0,30. Weitere Werkzeugfehler (E15–E18: `abandon` beendete die Sitzung, `optimize`-Variablenauswahl fehlte, `start_rejected` sah im Verlauf wie ein Erfolg aus, strict-Schemas von der API abgelehnt) sind behoben. Kosten aller Läufe 12,63 $ (Budget 20 $).
 
+**M10-T7d (Abschnitt 12):** E14 behoben (`free_gaps` gibt Spalte mit Geisterplatten nicht mehr frei), je drei Claude-Läufe pro Modell und Benchmark. **B1 erreichen alle drei Modelle in 9 von 9 Läufen** (RMS-Median Opus 0,0097, Haiku 0,0112, Sonnet 0,0130; Regel 0,0154). B2/B3 erreicht keiner; auf B2 ist Opus vorn (Median 0,678, bester 0,783). Die Regel V3RS ändert sich mit dem Fix über einen anderen Pfad durch ihre Stufen: B2 0,790 → 0,453, B3 Ziel → 0,600 (neue Referenz, alte Werte daneben). Kosten 7,17 $, kumuliert 19,80 $.
+
 **Stand M10-T7: abgeschlossen bis auf V4 (Mensch) und B4 (private Systeme).** Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
 
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
@@ -384,7 +386,7 @@ Die Claude-Läufe aus Abschnitt 6 auf dem Stand von M10-T7c (Referenzsphäre `im
 
 | Nr. | Befund | Behebung | Test |
 |---|---|---|---|
-| E14 | **Offen.** `free_gaps` vor dem ersten Abschnitt gibt auch den Spalt nach der Blende frei, in dem die Geisterplatten liegen; seine untere Schranke ist die Plattenlage (E3). Der Optimierer schiebt den Spalt auf diese Schranke (B1: 2 → 1 mm). Danach findet Operator A dort keinen Platz („Spalt nach Fläche 0 (1 mm) zu kurz für zwei Teilstücke“), und `synth` lehnt den Start ab (`start_rejected`, F_B 0,036–0,108 > F_max 0,0051) oder bricht mit Fehler ab. Kein späterer Schritt der Modelle löste das. Ohne Modell reproduziert: B1 mit `synth_segment` direkt oder nach `optimize` (Variablen der Datei) → Ziel; nach `free_gaps` + `optimize` → `start_rejected` | In diesem PR nur für `optimize` mit erweiterter Variablenauswahl: Plattenspalte bleiben fest. `free_gaps` selbst ist unverändert, weil die Regel V3 es benutzt (nach den Abschnitten) und eine Änderung die Referenz V3RS verschöbe; **Frage an den Maintainer** (11.5) | `test_optimize_widening_keeps_ghost_plate_gaps` |
+| E14 | **Behoben in M10-T7d (Abschnitt 12):** `free_gaps` gibt Plattenspalte nicht mehr frei. Befund: `free_gaps` vor dem ersten Abschnitt gibt auch den Spalt nach der Blende frei, in dem die Geisterplatten liegen; seine untere Schranke ist die Plattenlage (E3). Der Optimierer schiebt den Spalt auf diese Schranke (B1: 2 → 1 mm). Danach findet Operator A dort keinen Platz („Spalt nach Fläche 0 (1 mm) zu kurz für zwei Teilstücke“), und `synth` lehnt den Start ab (`start_rejected`, F_B 0,036–0,108 > F_max 0,0051) oder bricht mit Fehler ab. Kein späterer Schritt der Modelle löste das. Ohne Modell reproduziert: B1 mit `synth_segment` direkt oder nach `optimize` (Variablen der Datei) → Ziel; nach `free_gaps` + `optimize` → `start_rejected` | In diesem PR nur für `optimize` mit erweiterter Variablenauswahl: Plattenspalte bleiben fest. `free_gaps` selbst ist unverändert, weil die Regel V3 es benutzt (nach den Abschnitten) und eine Änderung die Referenz V3RS verschöbe; **Frage an den Maintainer** (11.5) | `test_optimize_widening_keeps_ghost_plate_gaps` |
 | E15 | `abandon` beendete die Sitzung (`Session.run`), auch mit Restbudget und weiteren offenen Kandidaten (Sonnet B1 nach 6 von 12 Entscheidungen) | `abandon` verwirft nur den Kandidaten. `run` macht mit einem offenen Kandidaten weiter (`resume`; Standard ist der nächste offene Vorfahre, im Bewertungsskript der beste offene Kandidat nach `rank_key`) und meldet das in `last_errors`. Nur `finish` beendet. `abandon` nach einer verändernden Aktion derselben Antwort betrifft den neuen Kandidaten | `test_run_continues_after_abandon`, `test_run_resume_hook_and_end`, `test_resume_after_abandon_picks_best_open_candidate` |
 | E16 | `optimize` mit `variables` ≠ `current` meldete `not_implemented` (18 Antworten von Opus und Sonnet vor den Korrekturen; nach einem Fehler laufen die übrigen Aktionen der Antwort nicht mehr) | Umgesetzt: `all_curvatures` (jede sphärische Fläche ohne Krümmungsvariable), `curvatures_and_gaps` (dazu die Luftspalte ohne Geisterplatten), `everything` (dazu die Glasdicken). Gläser bleiben fest; der Bericht nennt die neuen Variablen | `test_optimize_variable_selection`, `test_optimize_widening_keeps_ghost_plate_gaps` |
 | E17 | Ein `synth_segment` mit `start_rejected` erzeugt einen Kandidaten ohne geöffnete Apertur und stand im Verlauf des Zustands wie ein Erfolg (`#3: synth_segment → [4]`); Sonnet wiederholte den Abschnitt elfmal | Der Verlauf nennt Ausgang und NA (`(step_too_small, NA 0.4475)`), bei `start_rejected` die Meldung des Controllers | `test_history_names_synth_outcome` |
@@ -460,3 +462,108 @@ python tools/m10t7_bewertung.py --archiv --tabelle
 ```
 
 `--no-strict` ist seit diesem PR der Standard. Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7c/<B>_<Variante> <ziel>`).
+
+## 12. M10-T7d: E14 behoben, V3RS neu, je drei Claude-Läufe
+
+Freigabe Maintainer 2026-11-20: Befund E14 beheben (11.5, Punkt 1), die Referenz der Regel V3RS neu rechnen und je **drei Läufe** pro Modell und Benchmark (11.5, Punkt 2). Einstellungen wie in Abschnitt 11 (Endstand „nach Fix“): `image_infinite`, `--effort medium`, ohne `strict`, 12 Entscheidungen, Rückfall auf die Regel, System-Prompt unverändert. Ergebnisse, Protokolle und beste Systeme unter [`m10-t7d/`](m10-t7d/), Kürzel `LMRS_<modell>_w<N>` (Wiederholung N). Die drei Modelle liefen gleichzeitig, dazu V3RS und qwen3:14b; die Zeiten sind nur Orientierung. Code-Stand: `main` 7e8112f plus dieser PR.
+
+### 12.1 Behebung von E14
+
+**Regel (neu):** `free_gaps` gibt **keinen Spalt frei, in dem Geisterplatten liegen**, weder ohne noch mit ausdrücklicher Flächenliste; ebenso `optimize` mit `curvatures_and_gaps`/`everything` (wie schon in M10-T7c). Gibt die Aktion nichts Neues frei, entsteht kein Kandidat, und die Folgeaktion läuft auf demselben Kandidaten.
+
+**Warum nicht eine Schranke oder ein Mindestabstand?** Operator A setzt den Meniskus in den Plattenspalt, und **beide Teilstücke erben die untere Schranke der Spaltdicke** (`src/optim/insertion.cpp`). Er braucht deshalb Spaltdicke T ≥ 2 · Schranke (+ Meniskusdicke). Jede Schranke m, die der Optimierer erreichen kann, lässt T = m zu, und dann gilt T < 2m – unabhängig davon, wie m gewählt wird (Plattenlage, doppelte Plattenlage, aktuelle Dicke). Eine Schranke unter der Plattenlage geht auch nicht: Die Platte läge dann hinter dem Spalt, und das System ist nicht ladbar. Ohne Änderung an Operator A ist „Plattenspalte bleiben fest“ deshalb die einzige Variante, die E14 sicher ausschließt. Die Alternative im C++-Kern (Operator A senkt bei zu kurzem Spalt die Schranke der Teilstücke) ist eine Frage an den Maintainer (12.5).
+
+**Test:** `test_free_gaps_keeps_ghost_plate_gaps_e14` (`python/tests/test_design.py`) reproduziert E14 ohne Modell auf B1 (Start wie im Skript, `image_infinite`): `free_gaps` + `optimize` (20 Zyklen), dann `synth_segment` zur NA 0,6. **Vorher:** `free_gaps` gab die Spalte 0 und 2 (beide mit Platten) mit Schranke = Plattenlage frei, der Optimierer schob Spalt 0 auf 1 mm, `synth` meldete `start_rejected` („Spalt nach Fläche 0 (1 mm) zu kurz für zwei Teilstücke mit der unteren Schranke 1 mm der Dickenvariable“), NA 0,30. **Nachher:** Plattenspalte unverändert (2 mm), `synth` startet und meldet `goal_reached` (NA 0,6, 12 s). Angepasst: `test_optimize_widening_keeps_ghost_plate_gaps` (auch `free_gaps` mit Flächenliste gibt den Plattenspalt nicht mehr frei) und `test_free_gaps_skips_gap_thinner_than_plate` (kein neuer Kandidat). Doku: [entwurfssteuerung.md](../entwurfssteuerung.md), Tabelle der Aktionen (`free_gaps`, `optimize`).
+
+**Weitere Änderungen:** `tools/m10t7_bewertung.py --wiederholung 1-3` (eigenes Kürzel `_w<N>`, vorhandene Ergebnisse bleiben) und `--zusammenfassung` (Ziel-Treffer x/n, beste und mediane NA/RMS, Elemente, Kosten pro Lauf); Test `test_repetitions_get_own_tags_and_summary`. `CostLedger` teilt die Kostendatei zwischen gleichzeitigen Prozessen (Sperrdatei, Neulesen vor jeder Anfrage, atomares Ersetzen; vorher überschrieb jeder Prozess die Summe der anderen mit seiner eigenen); Test `test_ledger_shared_between_processes`.
+
+### 12.2 Ergebnisse
+
+Ziel = NA ≥ Soll-NA, RMS ≤ 1/14 Welle, keine versagten Strahlen (Abschnitt 1). Median über die drei Läufe, in Klammern die Spanne. „Bester Lauf“ nach der Rangfolge der Bewertung (Ziel, dann NA, dann RMS).
+
+| Bench. | Variante | Ziel | NA bester Lauf | NA Median (Spanne) | RMS bester Lauf | RMS Median (Spanne) | Elemente Median (Spanne) | Kosten/Lauf [$] Mittel (Spanne) |
+|---|---|---|---|---|---|---|---|---|
+| B1 | **Regel V3RS neu** | ja | 0,600 | – | 0,0154 | – | 4 | – |
+| B1 | Regel V3RS alt (11.1) | ja | 0,600 | – | 0,0154 | – | 4 | – |
+| B1 | Haiku 5.5 | **3/3** | 0,600 | 0,600 | 0,0110 | 0,0112 (0,0110–0,0133) | 4 (4–5) | 0,01 (0,01–0,01) |
+| B1 | Sonnet 5.5 | **3/3** | 0,600 | 0,600 | 0,0118 | 0,0130 (0,0118–0,0154) | 4 (4–4) | 0,06 (0,03–0,10) |
+| B1 | Opus 5.5 | **3/3** | 0,600 | 0,600 | 0,0080 | 0,0097 (0,0080–0,0135) | 4 (4–4) | 0,50 (0,47–0,54) |
+| B2 | **Regel V3RS neu** | nein | 0,453 | – | 0,0795 | – | 4 | – |
+| B2 | Regel V3RS alt (11.1) | nein | 0,790 | – | 0,0907 | – | 4 | – |
+| B2 | Haiku 5.5 | 0/3 | 0,538 | 0,453 (0,453–0,538) | 0,0900 | 0,0802 (0,0797–0,0900) | 4 (4–5) | 0,02 (0,02–0,02) |
+| B2 | Sonnet 5.5 | 0/3 | 0,453 | 0,453 (0,453–0,453) | 0,0796 | 0,0796 (0,0796–0,0806) | 4 (4–4) | 0,22 (0,22–0,22) |
+| B2 | Opus 5.5 | 0/3 | 0,783 | **0,678** (0,410–0,783) | 0,0957 | 0,0957 (0,0779–0,0972) | 5 (3–6) | 0,70 (0,64–0,80) |
+| B3 | **Regel V3RS neu** | nein | 0,600 | – | 0,0836 | – | 8 | – |
+| B3 | Regel V3RS alt (11.1) | **ja** | 0,850 | – | 0,0595 | – | 4 | – |
+| B3 | Haiku 5.5 | 0/3 | 0,490 | **0,445** (0,438–0,490) | 0,0862 | 0,0804 (0,0788–0,0862) | 4 (3–4) | 0,02 (0,02–0,02) |
+| B3 | Sonnet 5.5 | 0/3 | 0,755 | 0,375 (0,375–0,755) | 0,0843 | 0,0801 (0,0795–0,0843) | 3 (3–4) | 0,20 (0,17–0,21) |
+| B3 | Opus 5.5 | 0/3 | 0,533 | 0,375 (0,375–0,533) | 0,0867 | 0,0799 (0,0793–0,0867) | 3 (3–4) | 0,66 (0,61–0,71) |
+| B1 | qwen3:14b (1 Lauf) | 0/1 | 0,300 | – | 20,4797 | – | 1 | – |
+| B2 | qwen3:14b (1 Lauf) | 0/1 | 0,300 | – | 1,1838 | – | 1 | – |
+| B3 | qwen3:14b (1 Lauf) | 0/1 | 0,300 | – | 2,5964 | – | 1 | – |
+
+**qwen3:14b** (Ollama, ohne Thinking, `num_ctx` 40.960 = Modellmaximum, erstmals mit `image_infinite`): auf keinem Benchmark über NA 0,30. B1: nach einem `replace_glass` zehn gescheiterte `insert_module` (674 s); B2: ebenso, elf gescheiterte `insert_module`, kein Abschnitt (1023 s); B3: `abandon` des Startkandidaten in der ersten Antwort, damit kein offener Kandidat mehr und Ende der Sitzung (68 s). Wie in M10-T7b ist das lokale Instruktionsmodell schwächer als die Regel.
+
+Einzelläufe (NA / RMS / Elemente / erster Schritt; „öffnen“ = `synth_segment`, sonst „vorbereiten“ mit der genannten Aktion):
+
+| Bench. | Modell | w1 | w2 | w3 |
+|---|---|---|---|---|
+| B1 | Haiku | **0,600** / 0,0133 / 4 / öffnen | **0,600** / 0,0110 / 5 / `optimize` | **0,600** / 0,0112 / 4 / öffnen |
+| B1 | Sonnet | **0,600** / 0,0118 / 4 / `free_gaps` | **0,600** / 0,0154 / 4 / `free_gaps` | **0,600** / 0,0130 / 4 / `free_gaps` |
+| B1 | Opus | **0,600** / 0,0097 / 4 / öffnen | **0,600** / 0,0135 / 4 / öffnen | **0,600** / 0,0080 / 4 / öffnen |
+| B2 | Haiku | 0,453 / 0,0802 / 4 / `free_gaps` | 0,453 / 0,0797 / 4 / öffnen | 0,538 / 0,0900 / 5 / `free_gaps` |
+| B2 | Sonnet | 0,453 / 0,0796 / 4 / `free_gaps` | 0,453 / 0,0796 / 4 / `free_gaps` | 0,453 / 0,0806 / 4 / `free_gaps` |
+| B2 | Opus | 0,783 / 0,0957 / 6 / öffnen | 0,678 / 0,0972 / 5 / `free_gaps` | 0,410 / 0,0779 / 3 / `optimize` |
+| B3 | Haiku | 0,490 / 0,0862 / 4 / öffnen | 0,438 / 0,0804 / 3 / öffnen | 0,445 / 0,0788 / 4 / `free_gaps` |
+| B3 | Sonnet | 0,375 / 0,0795 / 3 / `free_gaps` | 0,375 / 0,0801 / 3 / `free_gaps` | 0,755 / 0,0843 / 4 / `free_gaps` |
+| B3 | Opus | 0,375 / 0,0793 / 3 / `set_constraint` | 0,533 / 0,0867 / 4 / öffnen | 0,375 / 0,0799 / 3 / öffnen |
+
+**Kosten dieser Runde** (Kostendatei `m10-t7d-arbeit/claude_cost.json`, Obergrenze 100 $): **7,17 $** in 354 Anfragen – Opus 5,58 $ (149 Anfragen), Sonnet 1,44 $ (85), Haiku 0,15 $ (120). **Kumuliert mit M10-T7c: 19,80 $** von 200 $ Gesamtfreigabe. Pro Lauf: Haiku 0,005–0,024 $, Sonnet 0,03–0,22 $, Opus 0,47–0,80 $.
+
+### 12.3 Einordnung von E14
+
+- **E14 tritt nicht mehr auf.** Von 27 Claude-Läufen begannen 16 mit „vorbereiten“ (`free_gaps`, `optimize` oder `set_constraint` vor dem ersten Abschnitt); in M10-T7c endete das fast immer bei NA 0,30. Jetzt endet kein Lauf bei 0,30; der kleinste Endwert ist 0,375 (B3, ebenso bei Läufen mit „öffnen“).
+- **B1 ist für alle Modelle gelöst:** 9/9 Ziel-Treffer (M10-T7c Endstand: 1 von 3). Sonnet bereitete in allen drei Läufen vor und erreichte das Ziel jedes Mal nach 3–5 Entscheidungen (M10-T7c: in sechs Läufen NA 0,30); Haiku w2 ebenso.
+- **Der erste Schritt entscheidet nicht mehr:** Auf B2 und B3 liegen Läufe mit „öffnen“ und „vorbereiten“ in denselben Bereichen (Opus B2 0,783 öffnen, 0,678 vorbereiten; Sonnet B3 0,755 vorbereiten).
+- **Zwei `start_rejected` anderer Art** (Opus B2 w1 und w2, jeweils mitten in der Sitzung nach einer Strukturänderung): F_B knapp über F_max (0,0057 bzw. 0,0071 > 0,0051), „keine Geisterplatte aktiv (kein Bedarf)“, also kein Einfügen versucht. Das ist nicht E14, sondern die Annahmeschwelle des Startpunkts (neu: **E19, offen**; die Sitzungen liefen weiter).
+- Fehler der Modelle ohne Werkzeugfehler (178 Aktionen mit Fehler in 27 Läufen), wie in 9.3 und 11.2: 81 `insert_module`, deren Dicke die Schranke des Arbeitsabstands verletzt, 44 `insert_module` ohne `glasses`, 23 `set_bounds` mit anderem Namen als `wd`/`t[i]`, 22 `set_constraint` auf nicht vorhandene Nebenbedingungen oder ohne `weight`. Die Häufung beim Einfügen kostet vor allem auf B2/B3 viele der 12 Entscheidungen.
+
+### 12.4 V3RS neu gegen alt
+
+Die Regel benutzt `free_gaps` nach jedem Abschnitt und als erste Stufe bei Stillstand. Bisher gab das auch die Plattenspalte frei, jetzt bleiben sie fest. Das ändert den Pfad der Regel, nicht B1:
+
+- **B1** unverändert (Ziel, RMS 0,0154, 4 Elemente, 2 Entscheidungen; die Regel öffnet zuerst).
+- **B2: 0,790 → 0,453.** Der zweite Abschnitt nach `free_gaps` + `optimize` öffnete bisher von 0,452 auf 0,465 (+0,013), jetzt nicht. Weil die Regel einen Abschnitt nur nach einem Gewinn ≥ 0,01 wiederholt, wählte sie bisher „wiederholen“ (danach 0,765 und mit dem Wörterbuch 0,790), jetzt das Wörterbuch und den Null-Meniskus, beide ohne Wirkung, und endet bei 0,453.
+- **B3: Ziel (0,85) → 0,600 mit 8 Elementen.** Hier öffnete der zweite Abschnitt jetzt *weiter* (0,445 statt 0,390). Damit war die aplanatische Schale anwendbar, und die Regel ging einen anderen Weg durch die Stufen (Schale, Wörterbuch, Null-Meniskus) bis 0,600. Bisher führte das Wörterbuch nach 0,390 direkt zum Ziel.
+
+Die Regel ist also **pfadabhängig**: Kleine Unterschiede eines Abschnitts (±0,01 NA) wählen andere Stufen und ändern das Ergebnis um 0,25–0,34 NA. Die alten Werte von B2/B3 waren ein günstiger Pfad, kein systematischer Vorteil des Freigebens der Plattenspalte (auf B3 öffnete der Abschnitt ohne sie sogar weiter). Auch für die Regel lässt sich die Wirkung einer Änderung nur mit mehreren Läufen belastbar messen. **Referenz der Regel ab hier: V3RS neu** (B1 Ziel, B2 0,453, B3 0,600); die alten Werte stehen daneben.
+
+### 12.5 Rangfolge und Folgerungen
+
+- **B1:** alle drei Modelle 3/3; RMS-Median Opus 0,0097 < Haiku 0,0112 < Sonnet 0,0130 < Regel 0,0154. Die Spannen überlappen (Opus 0,0080–0,0135, Haiku 0,0110–0,0133, Sonnet 0,0118–0,0154).
+- **B2:** kein Ziel. **Opus deutlich vorn** (Median 0,678, bester Lauf 0,783 ≈ alte Regel 0,790, mit 5–6 Elementen). Haiku und Sonnet liegen im Median auf der neuen Regel (0,453), Haiku einmal 0,538.
+- **B3:** kein Ziel. Median Haiku 0,445 > Opus 0,375 = Sonnet 0,375, alle unter der neuen Regel (0,600). Einzelne Läufe reichen weiter (Sonnet 0,755, Opus 0,533); die Streuung ist groß.
+- **Insgesamt:** Opus > Haiku ≈ Sonnet. Gegen die neue Regel sind die Modelle auf B1 besser (RMS), auf B2 ist Opus besser, auf B3 sind alle im Median schlechter. Haiku kostet etwa 1/30 von Opus. Kein Modell erreicht B2 oder B3; B3 erreichten bisher nur die Regel auf ihrem alten Pfad und Opus/Haiku in Einzelläufen von M10-T7c.
+
+**Fragen an den Maintainer:**
+
+1. **Operator A:** Soll Operator A bei zu kurzem Plattenspalt die untere Schranke der Teilstücke auf (T − Dicke)/2 senken (C++, `src/optim/insertion.cpp`)? Dann könnte `free_gaps` die Plattenspalte wieder mit Schranke = Plattenlage freigeben, ohne E14. Sinnvoll erst nach M6-T9 (gleicher Kern).
+2. **E19:** `synth` lehnt einen Start knapp über F_max ab, wenn keine Geisterplatte Bedarf meldet. Ein kurzes `optimize` vor dem Abschnitt (in `synth_segment`) oder eine weichere Annahmeschwelle nach Strukturänderungen?
+3. **Bewertung der Regel:** V3RS mit mehreren leicht gestörten Starts rechnen, damit Regeländerungen nicht an einem einzigen Pfad gemessen werden?
+4. **Modellfehler beim Einfügen** (81 + 44 Antworten): Soll `insert_module front.shell_ca` die Dicke selbst an die Schranke des Arbeitsabstands anpassen und ohne `glasses` das hochbrechendste Katalogglas nehmen (wie die Regel)?
+
+### 12.6 Reproduktion
+
+```bash
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --varianten V3RS
+KOSTEN=docs/ergebnisse/m10-t7d-arbeit/claude_cost.json
+for m in claude-haiku-5-5 claude-sonnet-5-5 claude-opus-5-5; do   # liefen gleichzeitig
+  python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --benchmarks B1,B2,B3 --varianten LM \
+      --decider claude --model $m --effort medium --max-usd 100 --cost-file $KOSTEN --wiederholung 1-3
+done
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --varianten LM --decider ollama \
+    --model qwen3:14b --no-think
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7d --archiv --tabelle --zusammenfassung
+```
+
+Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7d/<B>_<Variante> <ziel>`).

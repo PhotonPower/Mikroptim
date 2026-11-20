@@ -151,6 +151,25 @@ def test_refusal_and_max_tokens(session):
     assert last[0]["type"] == "tool_result" and last[0]["is_error"] is True
 
 
+def test_ledger_shared_between_processes(tmp_path):
+    """M10-T7d: Zwei Kostenbücher auf derselben Datei (wie zwei gleichzeitige Prozesse) addieren
+    auf den Dateistand statt ihn zu überschreiben, und check sieht die Ausgaben des anderen."""
+    path = tmp_path / "kosten.json"
+    a, b = design.CostLedger(1.0, path), design.CostLedger(1.0, path)
+    usage = {"input_tokens": 10, "output_tokens": 5}
+    a.add("claude-haiku-5-5", usage, 0.25)
+    b.add("claude-opus-5-5", usage, 0.5)
+    a.add("claude-haiku-5-5", usage, 0.125)
+    d = json.loads(path.read_text(encoding="utf-8"))
+    assert d["spent_usd"] == pytest.approx(0.875) and d["requests"] == 3
+    assert d["by_model"]["claude-haiku-5-5"]["input_tokens"] == 20
+    assert d["by_model"]["claude-opus-5-5"]["cost_usd"] == pytest.approx(0.5)
+    with pytest.raises(design.BudgetExceeded):
+        b.check(0.2)  # 0,875 + 0,2 > 1
+    assert b.spent_usd == pytest.approx(0.875)
+    assert not list(tmp_path.glob("kosten.json.*"))  # keine Sperr- oder Zwischendateien
+
+
 def test_budget_aborts_before_request(session, tmp_path):
     path = tmp_path / "kosten.json"
     ledger = design.CostLedger(0.15, path)
