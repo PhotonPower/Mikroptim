@@ -63,6 +63,15 @@ def test_field_class(kw, expected):
     assert cl.field_class(**args)["field"] == expected
 
 
+def test_afocal_image_space_has_no_field_shift():
+    """M10-T7b (gpt-oss B1): u′ = 0 nach replace_group ergab ZeroDivisionError im Zustand und
+    brach die Sitzung ab; jetzt keine Bildschale und Feldklasse 1."""
+    assert cl.best_focus_field_shift(0.1, 0.2, 1.0, 0.0) is None
+    r = cl.field_class(field_shift=None, dof=1.0, na=0.9, etendue=0.2, edge_rms=0.05,
+                       edge_failed=0)
+    assert r["field"] == 1 and r["field_shift_in_dof"] is None
+
+
 def test_state_contains_classes(tmp_path):
     s = design.Session.create(SYSTEMS / "testsystem_mehrlinser.json", tmp_path / "k")
     c = s.state(0)["classes"]

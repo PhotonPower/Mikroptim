@@ -170,6 +170,19 @@ def place_ghost_dictionary(a, system_path, workdir):
 # --- insert_module ----------------------------------------------------------------------------
 
 
+def _thickness_lower_bound(data, surface) -> float:
+    """Größte untere Schranke der Dickenvariablen, die die Dicke nach ``surface`` betreffen."""
+    lb = 0.0
+    for it in (data.get("variables") or {}).get("items", []):
+        if it.get("type") != "thickness" or "min" not in it:
+            continue
+        sel = it.get("surfaces")
+        if it.get("surface") == surface or sel == "all" or (isinstance(sel, list)
+                                                            and surface in sel):
+            lb = max(lb, float(it["min"]))
+    return lb
+
+
 def _thickness_homotopy(path, workdir, glass_gaps, air_gap, target, stages, cycles, files):
     """Dicke der Glasspalte ``glass_gaps`` in ``stages`` Stufen auf ``target`` bringen, der
     Luftspalt ``air_gap`` dahinter wird entsprechend kürzer (Lage der folgenden Scheitel bleibt);
@@ -181,6 +194,13 @@ def _thickness_homotopy(path, workdir, glass_gaps, air_gap, target, stages, cycl
         t = target * k / stages
         grow = sum(t - data["surfaces"][g]["thickness"] for g in glass_gaps)
         rest = data["surfaces"][air_gap]["thickness"] - grow
+        # Die Nachoptimierung der vorigen Stufe kann den Luftspalt bis an die untere Schranke
+        # seiner Dickenvariable verkürzt haben; dann wächst das Glas auf Kosten der folgenden
+        # Scheitellagen statt die Schranke zu unterschreiten (Vorlauf M10-T7b: optimize lehnte
+        # das System sonst ab)
+        lb = _thickness_lower_bound(data, air_gap)
+        if 0 <= rest < lb <= data["surfaces"][air_gap]["thickness"]:
+            rest = lb
         if rest < 0:
             raise ActionError("precondition",
                               f"Dicke {t} mm passt nicht in den Spalt (fehlen {-rest:.4g} mm)")

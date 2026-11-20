@@ -32,6 +32,23 @@ def _sha256(obj) -> str:
                           .encode("utf-8")).hexdigest()
 
 
+def _check_results(outs) -> None:
+    """Neue Systeme müssen sich auswerten lassen (Zustand ohne Merit und Empfindlichkeiten: Trace,
+    Aberrationsbericht, Klassen), sonst ist die Aktion ein Fehler ``invalid_result`` und es
+    entsteht kein Kandidat. Befunde M10-T7b: eine Glasvariable lief beim Optimieren auf eine
+    Brechzahl ≤ 0, nach ``replace_group`` war der Bildraum afokal – der Zustand des neuen
+    Kandidaten ließ sich nicht bilden und die Sitzung brach ab."""
+    for path, _ in outs:
+        try:
+            build_state(path, with_merit=False, with_sensitivity=False)
+        except (RuntimeError, ArithmeticError, ValueError, LookupError, TypeError) as e:
+            # ToolError ist ein RuntimeError
+            for p, _ in outs:
+                pathlib.Path(p).unlink(missing_ok=True)
+            raise ActionError("invalid_result", "das Ergebnis lässt sich nicht auswerten: "
+                              f"{type(e).__name__}: {e}") from None
+
+
 class Session:
     def __init__(self, directory):
         self.dir = pathlib.Path(directory)
@@ -145,6 +162,7 @@ class Session:
                         "result": read_action(a, self.system_path(current))}
             if name in MODIFY_ACTIONS:
                 outs = modify_action(a, self.system_path(current), self.dir / "tmp")
+                _check_results(outs)
                 # start_from_skeleton: neuer Wurzelkandidat (ohne Eltern)
                 new = [self._new_candidate(path, None if rep.get("root") else current, a)
                        for path, rep in outs]

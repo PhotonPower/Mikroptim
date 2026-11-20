@@ -543,6 +543,17 @@
           "minimum": 0,
           "maximum": 4
         },
+        "augmented_lagrangian": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "description": "synth --augmented-lagrangian K (M11-T2): höchstens K Optimierungen mit Verschiebungen am Start und nach jedem Einfügen (seit M10-T7b)"
+        },
+        "sine_condition": {
+          "type": "number",
+          "minimum": 0,
+          "description": "synth --sine-condition W (M11-T4): Gewicht der Sinusbedingung [Wellen²] in jedem LM-Lauf (seit M10-T7b)"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }
@@ -702,7 +713,8 @@
             "min_center_thickness",
             "max_incidence_angle",
             "max_semi_diameter",
-            "sine_condition"
+            "sine_condition",
+            "paraxial_focus"
           ]
         },
         "limit": {

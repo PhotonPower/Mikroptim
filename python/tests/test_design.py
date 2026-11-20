@@ -6,6 +6,7 @@ import json
 import pytest
 
 from mikroptim import design
+from mikroptim.design.files import catalog_names
 
 from conftest import ROOT, SYSTEMS
 
@@ -211,3 +212,85 @@ def test_sensitivity_action_and_state(session):
     assert all(len(e) == 2 and len(e[0]) == 2 for e in sens["decenter_worst"])
     assert "manufacturability" in st["mechanics"]
     assert "Empfindlichkeit" in design.format_state(st)
+
+
+def test_state_glass_check_and_snap_precondition(session):
+    """Befund E7 (M10-T7): Vorprüfung „einrastbar“ und Katalognamen im Zustand; snap_glasses
+    ohne Glasvariablen wird vor dem Aufruf von snap abgelehnt."""
+    st = session.state(0)
+    validate(st, "design_state.schema.json")
+    gc = st["glass_check"]
+    assert gc["snappable"] is False and gc["glass_variables"] == 0
+    # Elemente 1 und 3 des Mehrlinsers tragen ein Buchdahl-Modell
+    assert gc["model_glass_elements"] == [1, 3]
+    assert "N-BK7" in gc["catalog_names"] and "CAF2" in gc["catalog_names"]
+    assert gc["catalog_glass_count"] == len(gc["catalog_names"])
+    assert "einrastbar nein" in design.format_state(st)
+    entry = session.apply(0, response({"action": "snap_glasses"}), decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "error" and res["code"] == "precondition"
+    assert "glass_check" in res["message"]
+    # mit Glasvariable (split_lens mit free_part 1): einrastbar
+    entry = session.apply(0, response({"action": "split_lens", "element": 0, "free_part": 1}),
+                          decider={"kind": "test"})
+    gc1 = session.state(entry["results"][0]["new_candidates"][0])["glass_check"]
+    assert gc1["snappable"] is True and gc1["glass_variables"] == 1
+
+
+def test_unknown_glass_name_is_rejected(session):
+    """Befund E7 (M10-T7): erfundene Glasnamen (z. B. ``buchdahl(...)`` aus der Geisterdiagnose,
+    ``F2``) sind ein Fehler ``unknown_glass`` vor dem Aufruf der Kommandozeile."""
+    for action in ({"action": "insert_null_meniscus", "after_surface": 3,
+                    "glass": {"name": "buchdahl(n0=1.8, nu=-0.1/0.04)"}},
+                   {"action": "split_lens", "element": 0, "free_part": 1,
+                    "target_glass": {"name": "F2"}},
+                   {"action": "insert_module", "module": "generic.null_meniscus",
+                    "after_surface": 3, "glasses": [{"name": "N-BK7"}, {"name": "SF99"}]}):
+        res = session.apply(0, response(action), decider={"kind": "test"})["results"][0]
+        assert res["status"] == "error" and res["code"] == "unknown_glass", res
+        assert "catalog_names" in res["message"]
+    ok = session.apply(0, response({"action": "insert_null_meniscus", "after_surface": 3,
+                                    "glass": {"name": "N-BK7"}}), decider={"kind": "test"})
+    assert ok["results"][0]["status"] == "ok"
+
+
+def test_catalog_names_json_and_agf(tmp_path):
+    agf = tmp_path / "test.agf"
+    agf.write_bytes("CC Testkatalog\nNM GLAS-A 2 0 1.5 60 0 0 0\nNM GLAS-B 2 0 1.6 40\n"
+                    .encode("utf-16"))
+    data = {"glass_catalogs": [str(ROOT / "data" / "glass" / "basis.json"), str(agf),
+                               str(tmp_path / "fehlt.json")]}
+    assert catalog_names(data) == ["N-BK7", "CAF2", "F_SILICA", "GLAS-A", "GLAS-B"]
+
+
+def test_state_monochromatic_has_no_target_color_class(tmp_path):
+    """Befund E8 (M10-T7): Ein monochromatisches System nennt keine Ziel-Farbklasse, auch wenn
+    die Spezifikation eine enthält; mit mehreren Wellenlängen bleibt sie."""
+    spec = {"tube_focal_length": 164.5, "target_color_class": "c"}
+    mono = design.Session.create(SYSTEMS / "einzellinse_homotopie_start.json", tmp_path / "m",
+                                 spec=spec)
+    st = mono.state(0)
+    validate(st, "design_state.schema.json")
+    assert st["spec"]["monochromatic"] is True and st["spec"]["target_color_class"] is None
+    assert "keine Ziel-Farbklasse" in design.format_state(st)
+    poly = design.Session.create(START, tmp_path / "p", spec=spec)
+    st = poly.state(0)
+    assert st["spec"]["monochromatic"] is False and st["spec"]["target_color_class"] == "c"
+
+
+def test_unevaluable_result_is_rejected(session, tmp_path):
+    """Befund M10-T7b: Ein neues System, dessen Zustand sich nicht bilden lässt (hier Brechzahl
+    ≤ 0 eines Glasmodells), ist ein Fehler der Aktion ``invalid_result``; es entsteht kein
+    Kandidat und die Sitzung läuft weiter."""
+    from mikroptim.design import session as session_module
+
+    data = json.loads(session.system_path(0).read_text(encoding="utf-8"))
+    for s in data["surfaces"]:
+        if isinstance(s.get("material"), dict):
+            s["material"] = {**s["material"], "n0": -0.5}
+    bad = tmp_path / "kaputt.json"
+    bad.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(design.ActionError) as e:
+        session_module._check_results([(bad, {})])
+    assert e.value.code == "invalid_result" and not bad.exists()
+    session_module._check_results([(session.system_path(0), {})])  # gültig: kein Fehler

@@ -37,6 +37,28 @@ def resolve_catalogs(data: dict, base_dir) -> dict:
     return out
 
 
+def catalog_names(data: dict) -> list[str]:
+    """Namen aller Gläser der Kataloge aus ``glass_catalogs`` (JSON ``mikroptim.glass/…``: Feld
+    ``glasses[].name``; Zemax-AGF: Zeilen ``NM <name> …``), in der Reihenfolge der Kataloge, ohne
+    Doppelte. Nicht lesbare Kataloge werden übersprungen (das Laden des Systems meldet sie)."""
+    names = []
+    for entry in data.get("glass_catalogs", []):
+        p = pathlib.Path(entry)
+        try:
+            if p.suffix.lower() == ".agf":
+                raw = p.read_bytes()
+                bom = raw[:2] in (b"\xff\xfe", b"\xfe\xff")
+                text = raw.decode("utf-16") if bom else raw.decode("latin-1")
+                names += [line.split()[1] for line in text.splitlines()
+                          if line.startswith("NM ") and len(line.split()) > 1]
+            else:
+                cat = json.loads(p.read_text(encoding="utf-8"))
+                names += [g["name"] for g in cat.get("glasses", []) if "name" in g]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return list(dict.fromkeys(names))
+
+
 def is_air(material) -> bool:
     return material == "AIR"
 

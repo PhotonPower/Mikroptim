@@ -80,15 +80,19 @@ def color_class(shifts: dict, dof: float) -> dict:
             "spans_in_dof": {k: (None if v is None else v / dof) for k, v in spans.items()}}
 
 
-def best_focus_field_shift(S_III: float, S_IV: float, n_image: float, u_image: float) -> float:
+def best_focus_field_shift(S_III: float, S_IV: float, n_image: float,
+                           u_image: float) -> float | None:
     """Längsabweichung der besten (medialen) Bildschale am Feldrand in Seidel-Näherung [mm]:
-    W020_eff = W220 + W222/2 = (2 S_III + S_IV)/4, Δz = 2 W020_eff / (n′ u′²)."""
+    W020_eff = W220 + W222/2 = (2 S_III + S_IV)/4, Δz = 2 W020_eff / (n′ u′²). ``None`` bei
+    u′ = 0 (afokal; M10-T7b: vorher ZeroDivisionError, die Sitzung brach ab)."""
+    if not n_image or not u_image:
+        return None
     return (2.0 * S_III + S_IV) / (2.0 * n_image * u_image * u_image)
 
 
-def field_class(*, field_shift: float, dof: float, na: float, etendue: float | None,
+def field_class(*, field_shift: float | None, dof: float, na: float, etendue: float | None,
                 edge_rms: float | None, edge_failed: int, rms_target: float = RMS_TARGET) -> dict:
-    plan = abs(field_shift) <= 2.5 * dof
+    plan = field_shift is not None and abs(field_shift) <= 2.5 * dof
     corrected = edge_rms is not None and edge_rms <= rms_target
     if not plan:
         cls = 1
@@ -100,6 +104,6 @@ def field_class(*, field_shift: float, dof: float, na: float, etendue: float | N
         cls = 6 if edge_failed else 7
     else:
         cls = 4 if edge_failed else 5
-    return {"field": cls, "plan": plan, "field_shift_in_dof": field_shift / dof,
+    return {"field": cls, "plan": plan, "field_shift_in_dof": None if field_shift is None else field_shift / dof,
             "edge_rms_waves": edge_rms, "edge_failed_rays": edge_failed,
             "approximation": "Seidel (Bildfeldwölbung), Vignettierung über versagte Strahlen"}

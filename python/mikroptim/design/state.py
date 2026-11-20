@@ -8,7 +8,7 @@ import math
 from .. import aberrations
 from ._cli import ToolError, cli_json
 from .classes import best_focus_field_shift, color_class, depth_of_focus, field_class
-from .files import elements, read_system
+from .files import catalog_names, elements, read_system
 
 FORMAT = "mikroptim.design.state/1"
 WAVE_KEYS = ("W040", "W131", "W222", "W220", "W311", "dW020", "dW111", "dW040", "W040_full",
@@ -19,6 +19,8 @@ TEXT_KEYS = ("W040", "W040_full", "W131", "W222", "W220", "dW020", "dW111", "dW0
 MIDDLE_FRACTION = 0.8
 #: Etendue-Zonen nach Zhang, Abb. 4.4 (Näherung über G bei 22 mm Zwischenbild) [mm²]
 ZONE_LIMITS = (0.051, 0.086, 0.95)
+#: höchstens so viele Katalognamen im Zustand (Rest über glass_preselect)
+CATALOG_NAMES_MAX = 60
 
 
 def reference_sphere_state(data) -> dict:
@@ -120,12 +122,16 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
     y_obj = abs(f) * math.tan(math.radians(theta)) if f else None
     G = math.pi * (y_obj * na) ** 2 if (y_obj is not None and na is not None) else None
     field_number = spec.get("field_number", (2 * y_obj * mag) if (y_obj and mag) else None)
+    # monochromatisch (eine Wellenlänge): keine Ziel-Farbklasse, Farbe ist nicht Teil der
+    # Aufgabe (Befund E8 aus M10-T7: ein Modell verfolgte sonst die Farbklasse)
+    mono = len(set(trace["wavelengths_nm"])) == 1
     spec_out = {
         "magnification": mag, "na": na, "field_number": field_number,
         "tube_focal_length": tube, "parfocal_max": spec.get("parfocal_max"),
         "immersion": spec.get("immersion", False),
         "spectrum_nm": [min(trace["wavelengths_nm"]), max(trace["wavelengths_nm"])],
-        "target_color_class": spec.get("target_color_class"),
+        "monochromatic": mono,
+        "target_color_class": None if mono else spec.get("target_color_class"),
         "target_field_class": spec.get("target_field_class"),
         "etendue": G, "zone": etendue_zone(G, mag, na),
     }
@@ -186,6 +192,7 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
             pass
     glasses = [{"element": e["element"], "surface": e["front"], "name": e["material"],
                 "group": groups.get(e["element"])} for e in elems]
+    glass_check = glass_summary(data, elems)
 
     # Farb- und Feldklassen (M10-T2)
     classes = None
@@ -214,13 +221,36 @@ def build_state(system_path, *, candidate=0, parent=None, spec=None, budget=None
         "top_contributors": top,
         "sine_condition": {"osc": ab["totals"].get("osc"), "osc_zone": ab["totals"].get("osc_zone")},
         "ghosts": ghosts, "mechanics": mechanics,
-        "sensitivity": sensitivity, "glasses": glasses,
+        "sensitivity": sensitivity, "glasses": glasses, "glass_check": glass_check,
         "aberration_settings": {k: ab[k] for k in ("reference_nm", "short_nm", "long_nm",
                                                    "field_angle_deg", "sign_convention")},
         "reference_sphere": reference_sphere_state(data),
         "budget": budget or {}, "history": list(history or [])[-10:],
         "last_errors": list(last_errors or []),
     }
+
+
+def glass_summary(data: dict, elems=None) -> dict:
+    """Vorprüfung für Glasaktionen (Befund E7 aus M10-T7): ob ``snap_glasses`` möglich ist
+    (braucht Variablen vom Typ ``glass``), welche Elemente ein Katalogglas bzw. ein Glasmodell
+    tragen, und die Namen der geladenen Kataloggläser (höchstens ``CATALOG_NAMES_MAX``)."""
+    elems = elements(data) if elems is None else elems
+    glass_vars = [it for it in (data.get("variables") or {}).get("items", [])
+                  if it.get("type") == "glass"]
+    names = catalog_names(data)
+    model = [e["element"] for e in elems
+             if not isinstance(data["surfaces"][e["front"]].get("material"), str)]
+    if glass_vars:
+        reason = (f"{len(glass_vars)} Glasvariable(n): snap_glasses rastet sie auf "
+                  "Kataloggläser ein")
+    else:
+        # nur der Befund, keine Handlungsempfehlung: ein Glastausch ist für eine monochromatische
+        # Aperturaufgabe kein Ziel (Vorlauf M10-T7b: qwen3 tauschte daraufhin nur noch Gläser)
+        reason = "keine Glasvariablen: snap_glasses nicht möglich"
+    return {"snappable": bool(glass_vars), "glass_variables": len(glass_vars),
+            "model_glass_elements": model, "reason": reason,
+            "catalog_glass_count": len(names), "catalog_names": names[:CATALOG_NAMES_MAX],
+            "catalog_names_truncated": len(names) > CATALOG_NAMES_MAX}
 
 
 #: Einträge pro Liste in der Zusammenfassung der Empfindlichkeiten
@@ -311,6 +341,12 @@ def format_state(state: dict) -> str:
     man = (state.get("mechanics") or {}).get("manufacturability")
     if man and (man["warnings"] or man["errors"]):
         lines.append(f"  Herstellbarkeit: {man['warnings']} Warnungen, {man['errors']} Fehler")
+    gc = state.get("glass_check")
+    if gc:
+        lines.append(f"  Gläser: einrastbar {'ja' if gc['snappable'] else 'nein'} – {gc['reason']}; "
+                     f"{gc['catalog_glass_count']} Kataloggläser")
+    if state["spec"].get("monochromatic"):
+        lines.append("  monochromatisch: keine Ziel-Farbklasse")
     if state.get("ghosts") and state["ghosts"].get("active"):
         lines.append(f"  aktive Geisterplatten: {len(state['ghosts']['active'])}")
     if state.get("last_errors"):

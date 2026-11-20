@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace mko::test {
@@ -544,6 +545,62 @@ TEST(InsertionInit, MeniscusFromDiagnosis) {
     GhostDiagnosis wrong = g;
     wrong.positions[0].distance = 0.3;
     EXPECT_THROW(meniscus_from_diagnosis(d, wrong), std::invalid_argument);
+}
+
+// Befund E6 (M10-T7): Platte am Ende eines Spalts mit Dickenvariable (untere Schranke b). Die
+// Lage des Meniskus rückt in den Spalt, bis beide Teilstücke ≥ b sind; das System lässt sich
+// einfügen (vorher FormatError aus insert_meniscus, synth brach ab). Zu kurzer Spalt: Fehler
+// std::invalid_argument (der Controller beendet geordnet).
+TEST(InsertionInit, MeniscusFromDiagnosisKeepsGapBounds) {
+    SystemDescription d = load_residual_system("einzellinse_na05_geisterplatten.json").system;
+    // Spalt nach Fläche 2: 0,4 mm, Platten 6–8 an dessen Ende
+    for (int p = 6; p <= 8; ++p) {
+        d.ghost_plates[static_cast<std::size_t>(p)].distance = 0.4;
+    }
+    d.ghost_plates[8].coefficients = {0.0, 7e-3, 0.0, 0.0, 0.0, 0.0};
+    auto t = variable_spec(VariableType::Thickness, SurfaceSelection::One, {2});
+    t.min = 0.125;
+    t.max = 5.0;
+    d.variables->items.push_back(t);
+    GhostDiagnosis g = hand_diagnosis(d, GhostOperator::A);
+    g.plates[8].sum_abs = 7e-3;
+    // ohne Verschiebung: Teilstück hinter dem Meniskus 0 < 0,125
+    {
+        MeniscusInsertion m = meniscus_from_diagnosis(d, g).insertion;
+        m.position = 0.4;
+        EXPECT_THROW(insert_meniscus(d, m), FormatError);
+    }
+    const MeniscusPlan plan = meniscus_from_diagnosis(d, g);
+    EXPECT_EQ(plan.insertion.after_surface, 2);
+    EXPECT_EQ(plan.insertion.position, 0.4 - 0.125);
+    EXPECT_NE(plan.reason.find("verschoben"), std::string::npos) << plan.reason;
+    const InsertionResult r = insert_meniscus(d, plan.insertion);
+    EXPECT_EQ(r.system.surfaces[2].thickness, 0.4 - 0.125);
+    EXPECT_EQ(r.system.surfaces[4].thickness, 0.4 - (0.4 - 0.125));
+    // die Platten liegen jetzt hinter dem Meniskus, Merit-Invarianz bleibt (Dicke 0)
+    EXPECT_EQ(r.system.ghost_plates[8].after_surface, 4);
+    EXPECT_DOUBLE_EQ(r.system.ghost_plates[8].distance, 0.125);
+    // Platte am Anfang: Lage rückt auf die Schranke
+    for (int p = 6; p <= 8; ++p) {
+        d.ghost_plates[static_cast<std::size_t>(p)].distance = 0.0;
+    }
+    g = hand_diagnosis(d, GhostOperator::A);
+    g.plates[8].sum_abs = 7e-3;
+    EXPECT_EQ(meniscus_from_diagnosis(d, g).insertion.position, 0.125);
+    EXPECT_NO_THROW(insert_meniscus(d, meniscus_from_diagnosis(d, g).insertion));
+    // Schranke im Bereich: keine Verschiebung
+    d.variables->items.back().min = 0.1;
+    for (int p = 6; p <= 8; ++p) {
+        d.ghost_plates[static_cast<std::size_t>(p)].distance = 0.2;
+    }
+    g = hand_diagnosis(d, GhostOperator::A);
+    g.plates[8].sum_abs = 7e-3;
+    const MeniscusPlan same = meniscus_from_diagnosis(d, g);
+    EXPECT_EQ(same.insertion.position, 0.2);
+    EXPECT_EQ(same.reason.find("verschoben"), std::string::npos);
+    // Spalt zu kurz für zwei Teilstücke mit der Schranke
+    d.variables->items.back().min = 0.25;
+    EXPECT_THROW(meniscus_from_diagnosis(d, g), std::invalid_argument);
 }
 
 TEST(InsertionInit, SplitFromDiagnosis) {

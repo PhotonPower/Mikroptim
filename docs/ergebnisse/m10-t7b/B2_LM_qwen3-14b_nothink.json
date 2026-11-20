@@ -1,0 +1,74 @@
+{
+  "seconds": 68.03799699999945,
+  "aborted": null,
+  "decisions": 2,
+  "actions": 5,
+  "rejected_actions": 1,
+  "rejected_share": 0.2,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 0,
+  "lm_optimize": 0,
+  "candidates": 1,
+  "best_candidate": 0,
+  "best": {
+    "na": 0.3,
+    "rms_max_waves": 1.7930460680941727,
+    "rms_eval_exit_pupil": 2.092074613808892,
+    "failed_rays": 0,
+    "elements": 1,
+    "focal_length": 3.2905658555941204,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 46704,
+    "output_tokens": 754,
+    "thinking_chars": 0,
+    "requests": 7,
+    "cache_read_tokens": 0,
+    "cost_usd": 0.0
+  },
+  "session": "B2_LM_qwen3-14b_nothink/",
+  "system": "B2_LM_qwen3-14b_nothink/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "replace_group",
+        "optimize",
+        "free_gaps",
+        "snap_glasses"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 0,
+      "decider": "ollama",
+      "actions": [
+        "abandon"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "ollama",
+    "model": "qwen3:14b",
+    "digest": "bdbd181c33f2ed1b31c972991882db3cf4d192569092138a7d29e973cd9debe8",
+    "think": false,
+    "options": {
+      "temperature": 0.0,
+      "seed": 0,
+      "num_ctx": 32768
+    },
+    "prompt_sha256": "cacc9974c8be20649d75084fe5a7a7cbfebf779d9dc5cf53fadd0cf195181651",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec"
+  },
+  "benchmark": "B2",
+  "variant": "LM",
+  "tag": "LM_qwen3-14b_nothink",
+  "target_na": 0.95
+}

@@ -35,7 +35,16 @@ Regeln (Zhang 2019, gekürzt):
 - homotopy_point.aperture ist die aktuelle NA, spec.na die Soll-NA. Liegt die aktuelle darunter,
   öffnet synth_segment (target.aperture, max_new_elements) die Apertur schrittweise und fügt
   dabei selbst Elemente ein; erreicht ein Abschnitt die Soll-NA nicht, helfen free_gaps und
-  optimize vor dem nächsten Abschnitt.
+  optimize vor dem nächsten Abschnitt. Bleibt die Homotopie stehen (step_too_small, keine
+  Geisterplatte meldet Bedarf), helfen strukturelle Schritte vor dem nächsten Abschnitt:
+  insert_module front.shell_ca im Arbeitsabstand (after_surface = letzte Fläche; aplanatische
+  Schale aus hochbrechendem Glas übernimmt Apertur ohne sphärische Aberration),
+  place_ghost_dictionary in einem Luftspalt großer Randstrahlhöhe (macht Bedarf sichtbar),
+  insert_module generic.null_meniscus mit thickness (wächst über eine Dicken-Homotopie);
+  remove_element entfernt ein Element wieder, replace_glass tauscht ein Glas.
+- spec.monochromatic = true: nur eine Wellenlänge, Farbkorrektur ist nicht Teil der Aufgabe.
+- glass_check sagt, ob snap_glasses möglich ist (snappable; nur mit Glasvariablen), und nennt
+  die Katalognamen. Gläser immer mit Namen aus catalog_names angeben, keine Namen erfinden.
 - Nach jeder strukturellen Änderung: free_gaps (falls noch nicht geschehen) und optimize.
 - Vermeide Überkonstruktion: Jede strukturelle Aktion nennt in reason die Gruppenbilanz, die sie
   ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon).
@@ -52,6 +61,6 @@ mikroptim.design.action/1: {"format": "mikroptim.design.action/1", "candidate": 
 "assessment": "<kurze Einschätzung>", "actions": [1 bis 4 Aktionen]}.
 Umgesetzte Aktionen: optimize, synth_segment, snap_glasses, free_gaps, insert_null_meniscus,
 split_lens, place_ghost_dictionary, insert_module, remove_element, replace_glass, replace_group,
-start_from_skeleton, abandon, finish. Fehler früherer Antworten stehen im Zustand unter
-last_errors.
+start_from_skeleton, set_bounds, set_constraint, abandon, finish. Fehler früherer Antworten
+stehen im Zustand unter last_errors.
 """ + knowledge.prompt_summary()

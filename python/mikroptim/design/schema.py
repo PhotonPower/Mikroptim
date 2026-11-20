@@ -113,6 +113,8 @@ ACTION_DEFS = {
                        "beam_width": {"type": "integer", "minimum": 1, "maximum": 8},
                        "alternatives": {"type": "integer", "minimum": 1, "maximum": 4},
                        "max_new_elements": {"type": "integer", "minimum": 0, "maximum": 4},
+                       "augmented_lagrangian": {"type": "integer", "minimum": 1, "maximum": 20},
+                       "sine_condition": {"type": "number", "minimum": 0},
                        "reason": _REASON}},
     "snap_glasses": {
         "type": "object", "additionalProperties": False, "required": ["action"],
@@ -146,6 +148,21 @@ ACTION_DEFS = {
                        "cement_curvature": {"oneOf": [{"enum": ["achromat", "mean"]},
                                                       {"type": "number"}]},
                        "free_part": {"enum": [0, 1]}, "target_glass": _GLASS, "reason": _REASON}},
+    # M10-T7b: Schranken (wd, t[i])
+    "set_bounds": {
+        "type": "object", "additionalProperties": False, "required": ["action", "variable"],
+        "properties": {"action": {"const": "set_bounds"}, "variable": {"type": "string"},
+                       "min": {"type": "number"}, "max": {"type": "number"},
+                       "reason": _REASON}},
+    "set_constraint": {
+        "type": "object", "additionalProperties": False, "required": ["action", "type"],
+        "properties": {"action": {"const": "set_constraint"},
+                       "type": {"enum": ["petzval", "working_distance", "parfocal_length",
+                                         "min_edge_thickness", "min_center_thickness",
+                                         "max_incidence_angle", "max_semi_diameter",
+                                         "sine_condition", "paraxial_focus"]},
+                       "weight": {"type": "number", "exclusiveMinimum": 0},
+                       "enabled": {"type": "boolean"}, "reason": _REASON}},
     # M10-T4: strukturelle Operatoren (operators.py)
     "place_ghost_dictionary": {
         "type": "object", "additionalProperties": False,

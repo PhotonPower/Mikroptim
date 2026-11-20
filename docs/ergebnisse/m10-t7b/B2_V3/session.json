@@ -1,0 +1,74 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7b/B2_V3/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "optimize"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "place_ghost_dictionary"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "optimize"
+    },
+    "9": {
+      "parent": 8,
+      "status": "finished",
+      "action": "synth_segment",
+      "reason": "keine Regel"
+    }
+  },
+  "next_id": 10,
+  "decisions": 7
+}

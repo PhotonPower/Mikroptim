@@ -19,7 +19,11 @@ Varianten:
     V0  run_homotopy:            mikroptim synth --target-na NA
     V1  Strahlsuche:             mikroptim synth --beam 3 --alternatives 2
     V2  M6-T6-Skript:            nur B2; tools/m6t6_zielspezifikation.py (eigener Lauf, lang)
-    V3  regelbasierte Strategie: mikroptim.design mit RuleDecider (ohne Modell)
+    V3  regelbasierte Strategie: mikroptim.design mit RuleDecider (ohne Modell); seit M10-T7b
+        mit Stufen bei Stillstand (Spalte, aplanatische Schale, Wörterbuch, Null-Meniskus)
+    V3AL wie V3, Homotopie-Abschnitte mit --augmented-lagrangian und --sine-condition (M10-T7b)
+    V0RS, V3RS  wie V0 bzw. V3 mit ``reference_sphere: image_infinite`` im Start (ADR-0017;
+        Bewertung mit trace dann in dieser Konvention, RMS AP wie immer durch die Austrittspupille)
     LM  Sprachmodell:            mikroptim.design mit OllamaDecider oder ClaudeDecider
                                  (--decider ollama|claude, --model, Rückfall auf die Regel)
     V4  Mensch:                  mikroptim.design mit HumanDecider (Eingabe auf der Konsole)
@@ -36,12 +40,13 @@ NA ≥ Soll-NA, RMS ≤ 1/14 Welle und keine versagten Strahlen.
 
 Beispiele:
 
-    python tools/m10t7_bewertung.py --varianten V0,V1,V3
+    python tools/m10t7_bewertung.py --varianten V0,V1,V3,V3AL
     python tools/m10t7_bewertung.py --varianten LM --decider ollama --model qwen3:14b --no-think
     python tools/m10t7_bewertung.py --varianten LM --decider ollama --model gpt-oss:20b --think
     python tools/m10t7_bewertung.py --varianten LM --decider claude --model claude-opus-5-5 --max-usd 20
     python tools/m10t7_bewertung.py --tabelle
     python tools/m10t7_bewertung.py --benchmarks B4 --varianten V0,LM --decider ollama --model qwen3:14b
+    python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7   # alt gegen neu
 """
 
 from __future__ import annotations
@@ -62,6 +67,9 @@ SYSTEMS = ROOT / "data" / "systems"
 PRIVATE_SYSTEMS = SYSTEMS / "private"
 PRIVATE_MANIFEST = PRIVATE_SYSTEMS / "b4.json"
 RMS_TARGET = 1.0 / 14.0
+#: V3AL: Augmented Lagrangian (höchstens K Läufe) und Gewicht der Sinusbedingung [Wellen²]
+#: (w = 13,1 wie im Versuch M11-T4: kostet so viel wie die Koma bei 10 % Feld des 50x/0,95)
+V3AL_SYNTH = {"augmented_lagrangian": 5, "sine_condition": 13.1}
 #: relative Toleranz der NA (die Brennweite weicht über die Nebenbedingung leicht vom Soll ab)
 NA_TOLERANCE = 1e-3
 
@@ -211,8 +219,14 @@ def prepare_start(bench, work_root, name) -> dict:
         src = data["source"]
         src["field_angles_deg"] = [a * k for a in src.get("field_angles_deg", [0.0])]
         data["name"] = f"{data.get('name', '')} (Feldwinkel × {k:g})"
+    if bench.get("reference_sphere"):  # ADR-0017 (Varianten …RS)
+        data["reference_sphere"] = bench["reference_sphere"]
     path = pathlib.Path(work_root) / f"start_{name}.json"
-    write_system(data, path)
+    # atomar ersetzen: parallele Läufe desselben Benchmarks lasen sonst eine halb geschriebene
+    # Datei (M10-T7b)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    write_system(data, tmp)
+    os.replace(tmp, path)
     return {**bench, "start": path}
 
 
@@ -398,9 +412,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--benchmarks", default="B1,B2,B3")
     ap.add_argument("--varianten", default="V0,V1,V3")
-    ap.add_argument("--out", default=str(ROOT / "docs" / "ergebnisse" / "m10-t7"))
+    ap.add_argument("--out", default=str(ROOT / "docs" / "ergebnisse" / "m10-t7b"))
     ap.add_argument("--work", default=None, help="Arbeitsverzeichnis der Läufe (Sitzungen, "
-                    "Systeme); Standard: <out>/../m10-t7-arbeit (nicht im Repository)")
+                    "Systeme); Standard: <out>/../<out>-arbeit (nicht im Repository)")
     ap.add_argument("--steps", type=int, default=None, help="Entscheidungen pro Sitzung")
     ap.add_argument("--decider", choices=["ollama", "claude"], default="ollama")
     ap.add_argument("--model")
@@ -416,18 +430,23 @@ def main(argv=None) -> int:
     ap.add_argument("--cost-file", default=None,
                     help="Kostensumme der Claude-Läufe (Standard <work>/claude_cost.json)")
     ap.add_argument("--tabelle", action="store_true")
+    ap.add_argument("--vergleich", metavar="ALT",
+                    help="Tabelle alt (Ergebnisverzeichnis ALT) gegen neu (--out)")
     ap.add_argument("--archiv", action="store_true",
                     help="Protokolle und beste Systeme ins Ergebnisverzeichnis kopieren")
     ap.add_argument("--neu-bewerten", action="store_true",
                     help="vorhandene Ergebnisse mit den aktuellen Regeln neu bewerten")
     args = ap.parse_args(argv)
     out = pathlib.Path(args.out)
-    work_root = pathlib.Path(args.work) if args.work else out.parent / "m10-t7-arbeit"
+    work_root = pathlib.Path(args.work) if args.work else out.parent / f"{out.name}-arbeit"
     if args.neu_bewerten:
         reassess(out)
     if args.archiv:
         archive(out)
-    if (args.neu_bewerten or args.archiv) and not args.tabelle:
+    if (args.neu_bewerten or args.archiv) and not (args.tabelle or args.vergleich):
+        return 0
+    if args.vergleich:
+        print(comparison(args.vergleich, out))
         return 0
     if args.tabelle:
         print(table(out))
@@ -465,8 +484,17 @@ def main(argv=None) -> int:
                     res = run_synth(bench, work)
                 elif v == "V1":
                     res = run_synth(bench, work, beam=True)
+                elif v in ("V0RS", "V3RS"):
+                    # Referenzsphäre unabhängig von der letzten Fläche (ADR-0017)
+                    rs = prepare_start({**BENCHMARKS.get(b, bench), "reference_sphere":
+                                        "image_infinite"}, b_work, f"{b}_rs")
+                    res = (run_synth(rs, work) if v == "V0RS" else
+                           run_session(rs, work, design.RuleDecider(), None, steps))
                 elif v == "V3":
                     res = run_session(bench, work, design.RuleDecider(), None, steps)
+                elif v == "V3AL":
+                    res = run_session(bench, work,
+                                      design.RuleDecider(synth_options=V3AL_SYNTH), None, steps)
                 elif v == "LM":
                     if args.decider == "ollama" and not args.model:
                         raise SystemExit("--model fehlt")
@@ -483,8 +511,9 @@ def main(argv=None) -> int:
                                      "tools/m6t6_zielspezifikation.py)")
                 res.update({"benchmark": b, "variant": v, "tag": tag, "target_na": bench["na"]})
                 aborted = res.get("aborted") or ""
-                if any(k in aborted for k in ("Unavailable", "PrivacyError")):
-                    # Konfigurationsfehler (SDK, Zugangsdaten, private Daten): kein Ergebnis
+                if any(k in aborted for k in ("Unavailable", "PrivacyError", "HTTPError", "URLError")):
+                    # Konfigurations- oder Serverfehler (SDK, Zugangsdaten, private Daten, Ollama): kein
+                    # Ergebnis, Lauf wiederholen
                     print(f"Abbruch ohne Ergebnis: {aborted}")
                     return 3
                 res_path.write_text(json.dumps(res, ensure_ascii=False, indent=2) + "\n",
@@ -548,6 +577,32 @@ def table(out) -> str:
     head = ("| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP³ | Elemente | LM-Läufe¹ | Zeit [s] | "
             "Entsch. | abgelehnt² | Entsch. mit Fehler | Rückfälle | Tokens Prompt / Ausgabe | Kosten |\n"
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    return head + "\n" + "\n".join(rows)
+
+
+def comparison(old, new) -> str:
+    """Alt gegen neu pro Benchmark und Variante: Ziel, NA, RMS, Elemente, Zeit."""
+    def load(d):
+        out = {}
+        for p in sorted(pathlib.Path(d).glob("B*_*.json")):
+            r = json.loads(p.read_text(encoding="utf-8"))
+            out[(r["benchmark"], r["tag"])] = r
+        return out
+
+    a, b = load(old), load(new)
+
+    def cell(r):
+        if r is None:
+            return "– | – | – | – | –"
+        x = r.get("best") or {}
+        return (f"{'**ja**' if x.get('goal') else 'nein'} | {fmt(x.get('na'), 3)} | "
+                f"{fmt(x.get('rms_max_waves'))} | {fmt(x.get('elements'))} | {r['seconds']:.0f}")
+
+    rows = [f"| {k[0]} | {k[1]} | {cell(a.get(k))} | {cell(b.get(k))} |"
+            for k in sorted(set(a) | set(b))]
+    head = ("| Bench. | Variante | Ziel alt | NA alt | RMS alt | Elem. alt | Zeit alt [s] | "
+            "Ziel neu | NA neu | RMS neu | Elem. neu | Zeit neu [s] |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|---|")
     return head + "\n" + "\n".join(rows)
 
 
