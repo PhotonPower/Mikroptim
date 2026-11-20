@@ -1,0 +1,91 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7c/B2_LMRS_claude-sonnet-5-5_z2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Geometrisch unmögliche Struktur (Halbkugel-/Randfehler), Synthese-Start abgelehnt, Spalt zu kurz zum Einfügen; Kandidat nicht sinnvoll weiterzuführen."
+    },
+    "4": {
+      "parent": 2,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Ein-Element-Kandidat mit geometrisch unmöglichen Flächen (Halbkugel, Randdicke < 0). Die Mittelgruppe hat W040 ≈ 5,3 und die Homotopie war schon einmal als start_rejected abgelehnt."
+    },
+    "5": {
+      "parent": 2,
+      "status": "open",
+      "action": "insert_module"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "optimize"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "optimize"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "11": {
+      "parent": 10,
+      "status": "open",
+      "action": "optimize"
+    },
+    "12": {
+      "parent": 11,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Homotopie stagniert bei NA 0,375, Front geometrisch unmöglich (Halbkugel/Randdicke), Budget fast erschöpft."
+    }
+  },
+  "next_id": 13,
+  "decisions": 12
+}

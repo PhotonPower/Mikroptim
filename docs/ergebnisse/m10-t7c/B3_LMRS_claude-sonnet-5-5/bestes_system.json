@@ -1,0 +1,155 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Gerüst PPN (3 Elemente)",
+  "description": "Gerüst aus start_from_skeleton (M10-T4): front ['front.shell_ca'], middle ['middle.merte_doublet'], rear ['rear.thick_negative_meniscus']",
+  "units": "mm",
+  "glass_catalogs": [
+    "data/glass/basis.json",
+    "data/glass/synthetisch.json"
+  ],
+  "spectrum": {
+    "wavelengths_nm": [
+      546.07
+    ],
+    "weights": [
+      1.0
+    ],
+    "reference_nm": 546.07
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [
+      0.0,
+      0.3044778,
+      0.4345432
+    ],
+    "field_weights": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "target": {
+    "focal_length": 4.1125,
+    "parfocal_length": 45.0
+  },
+  "reference_sphere": "image_infinite",
+  "surfaces": [
+    {
+      "type": "stop",
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 2.0973750000000004
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.033679323766978096,
+      "thickness": 20.0,
+      "material": "SYN-10",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.21442178780526638,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.09450186544428113,
+      "thickness": 0.5,
+      "material": "SYN-10",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.2833292882887936,
+      "thickness": 3.380618497544607,
+      "material": "SYN-20",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.12303816674385537,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.2562047734952243,
+      "thickness": 8.385653751108881,
+      "material": "SYN-10",
+      "semi_diameter": 1.850625
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.26411791830841874,
+      "thickness": 0.05,
+      "material": "AIR",
+      "semi_diameter": 1.850625
+    }
+  ],
+  "variables": {
+    "items": [
+      {
+        "type": "curvature",
+        "surfaces": "all"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [
+          0,
+          2,
+          5
+        ],
+        "min": 0.1,
+        "max": 20.5625
+      },
+      {
+        "type": "working_distance",
+        "min": 0.05
+      },
+      {
+        "type": "thickness",
+        "surface": 1,
+        "min": 0.5,
+        "max": 20.0
+      },
+      {
+        "type": "thickness",
+        "surface": 3,
+        "min": 0.5,
+        "max": 20.0
+      },
+      {
+        "type": "thickness",
+        "surface": 4,
+        "min": 0.5,
+        "max": 20.0
+      },
+      {
+        "type": "thickness",
+        "surface": 6,
+        "min": 0.5,
+        "max": 20.0
+      }
+    ]
+  },
+  "constraints": {
+    "items": [
+      {
+        "type": "focal_length",
+        "weight": 100.0,
+        "comment": "Faustregel: 1e-3 mm Abweichung kostet so viel wie 0,01 Wellen RMS"
+      },
+      {
+        "type": "petzval",
+        "weight": 10000.0,
+        "max_curvature": 0.007692307692307693,
+        "comment": "Petzvalradius >= 130 mm (spezifikation.md)"
+      }
+    ]
+  }
+}

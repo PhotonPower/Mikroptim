@@ -1,0 +1,125 @@
+{
+  "seconds": 22.402726400003303,
+  "aborted": null,
+  "decisions": 6,
+  "actions": 12,
+  "rejected_actions": 2,
+  "rejected_share": 0.16666666666666666,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 6,
+  "lm_optimize": 2,
+  "candidates": 8,
+  "best_candidate": 7,
+  "best": {
+    "na": 0.3,
+    "rms_max_waves": 0.510670156984809,
+    "rms_eval_exit_pupil": 0.513904771083794,
+    "failed_rays": 0,
+    "elements": 1,
+    "focal_length": 9.880803352940594,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 25918,
+    "output_tokens": 2150,
+    "thinking_chars": 0,
+    "requests": 6,
+    "cache_read_tokens": 69155,
+    "cost_usd": 0.10011400000000001
+  },
+  "session": "B1_LMRS_claude-sonnet-5-5_vorfix/",
+  "system": "B1_LMRS_claude-sonnet-5-5_vorfix/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 1,
+      "decider": "claude",
+      "actions": [
+        "optimize"
+      ],
+      "status": [
+        "ok"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "synth_segment"
+      ],
+      "status": [
+        "ok"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "claude",
+      "actions": [
+        "free_gaps",
+        "set_constraint",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 5,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "abandon"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "claude",
+    "model": "claude-sonnet-5-5",
+    "effort": "medium",
+    "thinking": "adaptive",
+    "fallbacks": true,
+    "strict": false,
+    "max_tokens": 16000,
+    "sdk_version": "2.11.0",
+    "prompt_sha256": "30661d75f329680c839dc0d0e3afec4c60d9cf14cb7554a1365b8c765bc231ba",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec",
+    "tools_sha256": "31969dc52bdbbef0da0d13d7d4a292443710a9f279699531197d11b03eddd642",
+    "cost_usd": 0.0110717,
+    "ledger_spent_usd": 0.10011400000000001
+  },
+  "ledger_spent_usd": 0.10011400000000001,
+  "reference_sphere": "image_infinite",
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LMRS_claude-sonnet-5-5_vorfix",
+  "target_na": 0.6
+}

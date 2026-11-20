@@ -1,0 +1,86 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7c/B3_LMRS_claude-sonnet-5-5_z2/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "optimize"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "optimize"
+    },
+    "9": {
+      "parent": 8,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Mittelgruppe mit W040 = 4,5 bei einem einzigen Element, Geometrie nicht herstellbar (5 Fehler). Die Homotopie wurde dreimal mit start_rejected abgelehnt, weil F_B = 0,0276 über F_max liegt. Der Spalt nach Fläche 1 ist zu kurz für Operator A. Weitere Optimierung bringt keinen Fortschritt."
+    },
+    "10": {
+      "parent": 4,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Kandidat 10: Ein Element (Buchdahl-Modell), geometrisch unmöglich (Halbkugel- und Randdickenfehler an Fläche 2 und 3). Mittelgruppe hat W040 = 4,5 bei NA 0,3. Mehrere synth_segment-Läufe wurden abgewiesen (start_rejected), und die Optimierung hat daran nichts geändert. Ich verwerfe ihn. Die Sitzung geht mit dem besten offenen Kandidaten weiter."
+    },
+    "11": {
+      "parent": 4,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Ein Element, geometrisch unmöglich (5 Fertigungsfehler), Startpunkt für synth_segment wiederholt abgelehnt, keine Verbesserung durch optimize. Mittelgruppe W040 = 4,5 Wellen."
+    }
+  },
+  "next_id": 12,
+  "decisions": 12
+}

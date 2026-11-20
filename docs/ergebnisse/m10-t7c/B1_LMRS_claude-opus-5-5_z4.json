@@ -1,0 +1,205 @@
+{
+  "seconds": 133.41817619999347,
+  "aborted": null,
+  "decisions": 11,
+  "actions": 40,
+  "rejected_actions": 8,
+  "rejected_share": 0.2,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 6,
+  "lm_optimize": 3,
+  "candidates": 11,
+  "best_candidate": 4,
+  "best": {
+    "na": 0.3,
+    "rms_max_waves": 0.510670165348932,
+    "rms_eval_exit_pupil": 0.5139047796630829,
+    "failed_rays": 0,
+    "elements": 1,
+    "focal_length": 9.880803196481208,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 42627,
+    "output_tokens": 13646,
+    "thinking_chars": 8560,
+    "requests": 12,
+    "cache_read_tokens": 156377,
+    "cost_usd": 0.5172844000000001
+  },
+  "session": "B1_LMRS_claude-opus-5-5_z4/",
+  "system": "B1_LMRS_claude-opus-5-5_z4/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 4,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 6,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 6,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "insert_null_meniscus",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "set_bounds",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "set_bounds",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 10,
+      "decider": "claude",
+      "actions": [
+        "insert_module",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 10,
+      "decider": "claude",
+      "actions": [
+        "set_bounds",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 10,
+      "decider": "claude",
+      "actions": [
+        "insert_module",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 10,
+      "decider": "claude",
+      "actions": [
+        "finish"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "thinking": "adaptive",
+    "fallbacks": true,
+    "strict": false,
+    "max_tokens": 16000,
+    "sdk_version": "2.11.0",
+    "prompt_sha256": "ed2caad9d8cbbb0918103617518699b18fe579379f1da26e8cc9ea009c3a85a3",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec",
+    "tools_sha256": "31969dc52bdbbef0da0d13d7d4a292443710a9f279699531197d11b03eddd642",
+    "cost_usd": 0.0391818,
+    "ledger_spent_usd": 7.4670908900000015
+  },
+  "ledger_spent_usd": 7.4670908900000015,
+  "reference_sphere": "image_infinite",
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LMRS_claude-opus-5-5_z4",
+  "target_na": 0.6
+}

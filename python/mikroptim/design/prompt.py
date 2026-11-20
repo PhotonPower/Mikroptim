@@ -47,7 +47,8 @@ Regeln (Zhang 2019, gekürzt):
   die Katalognamen. Gläser immer mit Namen aus catalog_names angeben, keine Namen erfinden.
 - Nach jeder strukturellen Änderung: free_gaps (falls noch nicht geschehen) und optimize.
 - Vermeide Überkonstruktion: Jede strukturelle Aktion nennt in reason die Gruppenbilanz, die sie
-  ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon).
+  ändern soll. Bricht ein Kandidat ab oder wird schlechter, verwirf ihn (abandon); die Sitzung
+  geht dann mit dem besten offenen Kandidaten weiter. finish beendet die Sitzung.
 
 Werkzeuge: Vor der Antwort darfst du Lese-Werkzeuge aufrufen (get_surface_table,
 get_ghost_diagnosis, evaluate, glass_preselect, sensitivity, glass_query, module_lookup).

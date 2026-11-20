@@ -21,7 +21,8 @@ Gegen Cloud-Modelle sprach in ADR-0012 der Schutz von Patentdaten und lizenziert
 
 ## Konsequenzen
 
-- Zwei Anbindungen von Sprachmodellen mit unterschiedlicher API (Ollama: schema-beschränkte Antwort; Claude: Antwort als strict-Werkzeug `submit_decision`, weil erzwungenes `tool_choice` bei Opus 5.5 und Sonnet 5.5 abgelehnt wird). Beide prüfen die Antwort gegen dasselbe Aktionsschema.
+- Zwei Anbindungen von Sprachmodellen mit unterschiedlicher API (Ollama: schema-beschränkte Antwort; Claude: Antwort als Werkzeug `submit_decision`, weil erzwungenes `tool_choice` bei Opus 5.5 und Sonnet 5.5 abgelehnt wird). Beide prüfen die Antwort gegen dasselbe Aktionsschema.
+- **Nachtrag M10-T7c (2026-11-20):** Die ursprünglich vorgesehenen strict-Werkzeuge lehnt die API ab (400: höchstens 24 optionale Parameter je Anfrage, die Werkzeuge haben 185: `submit_decision` 133, die Lese-Werkzeuge zusammen 52). Standard ist deshalb `strict` aus; die Prüfung der Antwort gegen das Aktionsschema auf Seite von Mikroptim (Parameter, Aufzählungen, danach die Prüfungen der Ausführung) bleibt und ist damit die einzige Schranke. `strict` bleibt als Option. Die Entscheidung selbst ändert sich nicht.
 - Läufe kosten Geld; Obergrenze und Kostendatei sind Pflicht.
 - Die CI braucht keinen Schlüssel; echte Läufe nur lokal.
 
