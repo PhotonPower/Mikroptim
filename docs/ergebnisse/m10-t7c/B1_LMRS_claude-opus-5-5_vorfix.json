@@ -1,0 +1,212 @@
+{
+  "seconds": 138.9423242000048,
+  "aborted": null,
+  "decisions": 12,
+  "actions": 34,
+  "rejected_actions": 9,
+  "rejected_share": 0.2647058823529412,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 70,
+  "lm_optimize": 2,
+  "candidates": 17,
+  "best_candidate": 16,
+  "best": {
+    "na": 0.6,
+    "rms_max_waves": 0.001051503315371143,
+    "rms_eval_exit_pupil": 0.0010644158127683858,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 10.000000067387788,
+    "goal": true
+  },
+  "usage": {
+    "prompt_tokens": 48508,
+    "output_tokens": 12903,
+    "thinking_chars": 8314,
+    "requests": 12,
+    "cache_read_tokens": 152141,
+    "cost_usd": 0.5309802
+  },
+  "session": "B1_LMRS_claude-opus-5-5_vorfix/",
+  "system": "B1_LMRS_claude-opus-5-5_vorfix/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "synth_segment",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize",
+        "synth_segment",
+        "free_gaps"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "synth_segment",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 6,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 9,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 10,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 12,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 13,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "error"
+      ]
+    },
+    {
+      "candidate": 14,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 16,
+      "decider": "claude",
+      "actions": [
+        "abandon"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "thinking": "adaptive",
+    "fallbacks": true,
+    "strict": false,
+    "max_tokens": 16000,
+    "sdk_version": "2.11.0",
+    "prompt_sha256": "30661d75f329680c839dc0d0e3afec4c60d9cf14cb7554a1365b8c765bc231ba",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec",
+    "tools_sha256": "31969dc52bdbbef0da0d13d7d4a292443710a9f279699531197d11b03eddd642",
+    "cost_usd": 0.042722199999999995,
+    "ledger_spent_usd": 0.9204015999999999
+  },
+  "ledger_spent_usd": 0.9204015999999999,
+  "reference_sphere": "image_infinite",
+  "benchmark": "B1",
+  "variant": "LM",
+  "tag": "LMRS_claude-opus-5-5_vorfix",
+  "target_na": 0.6
+}

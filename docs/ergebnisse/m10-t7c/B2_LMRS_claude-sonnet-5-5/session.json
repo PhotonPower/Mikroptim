@@ -1,0 +1,91 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7c/B2_LMRS_claude-sonnet-5-5/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.95,
+    "magnification": 50,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "optimize"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "optimize"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "8": {
+      "parent": 7,
+      "status": "open",
+      "action": "optimize"
+    },
+    "9": {
+      "parent": 8,
+      "status": "open",
+      "action": "optimize"
+    },
+    "10": {
+      "parent": 9,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Wiederholte Läufe ohne Fortschritt: Die Apertur öffnet sich nicht (start_rejected), und die Geometrie mit einem Element ist unmöglich (Halbdurchmesser ≥ Radius, Randdicke < 0). Die Gruppenbilanz der Mittelgruppe, W040 = 3,66, ist so nicht korrigierbar."
+    },
+    "11": {
+      "parent": 10,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Wiederholt start_rejected, Optimierung stagniert bei F=0.022, Geometrie unmöglich (Halbkugel, Randdicke<0); Mittelgruppe W040=3.7 nicht mit einem Element korrigierbar. Neustart mit Skelett sinnvoller."
+    },
+    "12": {
+      "parent": 7,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Geometrisch unmögliche Fläche (Halbkugel, Randberührung), Homotopie startet nicht, wiederholte optimize-Läufe ohne Verbesserung; Mittelgruppe-W040 3,66 unkorrigiert."
+    }
+  },
+  "next_id": 13,
+  "decisions": 12
+}

@@ -4,11 +4,14 @@ Gleiche Rolle wie ``OllamaDecider``: Das Modell sieht den Zustand ``mikroptim.de
 darf Lese-Werkzeuge aufrufen und antwortet mit Aktionen ``mikroptim.design.action/1``.
 Unterschiede zur Ollama-Anbindung, bedingt durch die API der aktuellen Claude-Modelle:
 
-- Die Antwort kommt als Aufruf des Werkzeugs ``submit_decision`` (``strict: true``) statt als
-  schema-beschränkter Text. Erzwungenes ``tool_choice`` liefert bei Claude Opus 5.5 und
-  Sonnet 5.5 einen Fehler 400; deshalb ``tool_choice`` ``auto`` und die Anweisung im Prompt,
-  genau einmal ``submit_decision`` aufzurufen. Die Eingabe wird trotzdem gegen das
-  Aktionsschema geprüft (``validate_response`` und die Parameter aus ``schema.ACTION_DEFS``).
+- Die Antwort kommt als Aufruf des Werkzeugs ``submit_decision`` statt als schema-beschränkter
+  Text. Standard ohne ``strict``: Die API lehnt die strict-Schemas ab (400, „too many optional
+  parameters (185) … limit: 24“; ``submit_decision`` allein hat 133, die Lese-Werkzeuge 52,
+  Befund M10-T7c); ``strict=True`` bleibt wählbar. Erzwungenes ``tool_choice`` liefert bei
+  Claude Opus 5.5 und Sonnet 5.5 einen Fehler 400; deshalb ``tool_choice`` ``auto`` und die
+  Anweisung im Prompt, genau einmal ``submit_decision`` aufzurufen. Die Eingabe wird in jedem
+  Fall gegen das Aktionsschema geprüft (``validate_response`` und die Parameter aus
+  ``schema.ACTION_DEFS``).
 - Thinking adaptiv (bei Opus 5.5 nicht abschaltbar), Aufwand über ``output_config.effort``.
 - Server-seitige Rückfälle bei Ablehnung (``fallbacks="default"``) außer bei Haiku.
 - Prompt-Caching: fester System-Prompt und sortierte Werkzeugliste vorn.
@@ -195,7 +198,7 @@ def decision_actions() -> list[str]:
     return [k for k in ACTION_DEFS if k not in TOOL_ACTIONS]
 
 
-def tool_definitions(strict: bool = True) -> list[dict]:
+def tool_definitions(strict: bool = False) -> list[dict]:
     """Werkzeuge der Claude-API, nach Namen sortiert (stabiles Präfix für das Caching)."""
     desc = {
         "get_surface_table": "Aberrationsbericht pro Fläche (paraxiale Strahlen, Seidel-Beiträge, "
@@ -261,6 +264,13 @@ def check_actions(actions: list[dict]) -> None:
         if unknown:
             raise ActionError("invalid_parameter",
                               f"{name}: unbekannte Parameter {', '.join(unknown)}")
+        # Aufzählungen der obersten Ebene (ohne strict prüft die API sie nicht; M10-T7c);
+        # Typen und Schranken prüft die Ausführung mit strukturierten Fehlern
+        for k, v in a.items():
+            allowed_values = d["properties"][k].get("enum")
+            if allowed_values is not None and v not in allowed_values:
+                raise ActionError("invalid_parameter",
+                                  f"{name}: {k}={v!r} nicht erlaubt (erlaubt: {allowed_values})")
 
 
 # --- SDK ------------------------------------------------------------------------------------------
@@ -306,7 +316,7 @@ class ClaudeDecider(Decider):
 
     def __init__(self, model: str = DEFAULT_MODEL, *, effort: str = "medium",
                  max_tokens: int = 16000, max_tool_calls: int = 6, max_retries: int = 2,
-                 fallbacks: bool | None = None, strict: bool = True,
+                 fallbacks: bool | None = None, strict: bool = False,
                  ledger: CostLedger | None = None, client=None, timeout: float = 600.0,
                  sdk_max_retries: int = 4, allow_private: bool = False,
                  system_prompt: str = SYSTEM_PROMPT):

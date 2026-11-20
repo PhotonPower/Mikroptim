@@ -1,0 +1,100 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7c/B3_LMRS_claude-sonnet-5-5/start.json",
+  "spec": {
+    "tube_focal_length": 164.5,
+    "parfocal_max": 45.0,
+    "na": 0.85,
+    "magnification": 40,
+    "field_number": 2.5,
+    "target_color_class": "c",
+    "target_field_class": [
+      4,
+      5
+    ]
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "optimize"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "6": {
+      "parent": 5,
+      "status": "open",
+      "action": "optimize"
+    },
+    "7": {
+      "parent": 6,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Kandidat 7: Ein Element bei NA 0,3, Mittelgruppe W040 = 4,5 Wellen. Synthese wird dreimal abgelehnt (Startpunkt F_B 0,0276 > 0,0051, Spalt nach Fläche 1 zu kurz). Die Geometrie ist unmöglich (Halbkugel- und Randfehler). Weitere Läufe bringen nichts, daher verwerfen."
+    },
+    "8": {
+      "parent": 4,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Mittelgruppe W040=4.49 bei NA 0.3, Geometrie unmöglich (Halbkugel, Randdicke), synth_segment dreimal abgelehnt (start_rejected, Spalt zu kurz); Optimierung bringt nichts."
+    },
+    "9": {
+      "parent": 4,
+      "status": "open",
+      "action": "optimize"
+    },
+    "10": {
+      "parent": 9,
+      "status": "open",
+      "action": "synth_segment"
+    },
+    "11": {
+      "parent": null,
+      "status": "open",
+      "action": "start_from_skeleton"
+    },
+    "12": {
+      "parent": 11,
+      "status": "open",
+      "action": "optimize"
+    },
+    "13": {
+      "parent": 12,
+      "status": "open",
+      "action": "optimize"
+    },
+    "14": {
+      "parent": 13,
+      "status": "open",
+      "action": "synth_segment"
+    }
+  },
+  "next_id": 15,
+  "decisions": 12
+}

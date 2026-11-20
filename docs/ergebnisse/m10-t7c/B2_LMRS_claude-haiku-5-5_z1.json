@@ -1,0 +1,206 @@
+{
+  "seconds": 979.9155904999934,
+  "aborted": null,
+  "decisions": 12,
+  "actions": 30,
+  "rejected_actions": 2,
+  "rejected_share": 0.06666666666666667,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 124,
+  "lm_optimize": 12,
+  "candidates": 22,
+  "best_candidate": 13,
+  "best": {
+    "na": 0.8350000000000004,
+    "rms_max_waves": 0.08647117331463186,
+    "rms_eval_exit_pupil": 0.08695932735392425,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 3.289691035815777,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 56770,
+    "output_tokens": 17353,
+    "thinking_chars": 11776,
+    "requests": 13,
+    "cache_read_tokens": 171190,
+    "cost_usd": 0.017483399999999996
+  },
+  "session": "B2_LMRS_claude-haiku-5-5_z1/",
+  "system": "B2_LMRS_claude-haiku-5-5_z1/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "claude",
+      "actions": [
+        "synth_segment",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "insert_module",
+        "free_gaps",
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "insert_module",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "error"
+      ]
+    },
+    {
+      "candidate": 2,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "synth_segment",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 5,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 7,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 9,
+      "decider": "claude",
+      "actions": [
+        "synth_segment",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 11,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "synth_segment"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 13,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "synth_segment",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 16,
+      "decider": "claude",
+      "actions": [
+        "set_constraint",
+        "optimize",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 19,
+      "decider": "claude",
+      "actions": [
+        "optimize",
+        "set_constraint"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 21,
+      "decider": "claude",
+      "actions": [
+        "abandon"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "decider": {
+    "kind": "claude",
+    "model": "claude-haiku-5-5",
+    "effort": "medium",
+    "thinking": "adaptive",
+    "fallbacks": false,
+    "strict": false,
+    "max_tokens": 16000,
+    "sdk_version": "2.11.0",
+    "prompt_sha256": "c6e581769a572e1272bbe09c16a5049f85c857c0d636c3f853d5b2077603c9d7",
+    "knowledge_sha256": "cdf5ea308f78449ef3e71e1eda6b48e5d223f0581ceb4b635866d5640100d6ec",
+    "tools_sha256": "31969dc52bdbbef0da0d13d7d4a292443710a9f279699531197d11b03eddd642",
+    "cost_usd": 0.0013454299999999999,
+    "ledger_spent_usd": 2.2182534049999996
+  },
+  "ledger_spent_usd": 2.2182534049999996,
+  "reference_sphere": "image_infinite",
+  "benchmark": "B2",
+  "variant": "LM",
+  "tag": "LMRS_claude-haiku-5-5_z1",
+  "target_na": 0.95
+}

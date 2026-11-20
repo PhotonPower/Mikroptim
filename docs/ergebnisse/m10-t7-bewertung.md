@@ -6,6 +6,10 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **Ab M10-T7c (Entscheidung Maintainer 2026-11-20):** Alle Benchmarks rechnen mit `reference_sphere: image_infinite` (ADR-0017); **V3RS ist die Referenz der Regel.** Neue Läufe schreibt das Skript nach `docs/ergebnisse/m10-t7c`; die Varianten `V0`, `V1`, `V3`, `V3AL`, `LM` liefern dort die Kürzel `V0RS`, `V1RS`, `V3RS`, `V3ALRS`, `LMRS_<modell>`, die alte Konvention bleibt als `<V>-alt` abrufbar (Kürzel wie in diesem Bericht). Die Zahlen und Dateien dieses Berichts (Abschnitte 1–9) bleiben unverändert; Einzelheiten in [entwurfssteuerung.md, Abschnitt 8](../entwurfssteuerung.md#8-bewertung) und Abschnitt 10 unten.
 
+**Claude-Läufe (M10-T7c, Abschnitt 11):** Haiku 5.5, Sonnet 5.5 und Opus 5.5 auf B1–B3. Opus erreichte B1 und **B3 mit RMS 0,0145 (Regel V3RS 0,060)**; Haiku erreichte (Zwischenstand Z1) B1 und B3 und öffnete **B2 bis NA 0,835 (Regel 0,79)**. Die Endläufe streuen stark (Opus B1 Ziel, B2 0,46; Haiku und Sonnet ohne Ziel). Entscheidend ist der erste Schritt: Wer vor dem ersten Homotopie-Abschnitt Spalte freigibt und optimiert, landet in einer Falle der Werkzeuge (Befund E14, offen, Frage an den Maintainer) und bleibt bei NA 0,30. Weitere Werkzeugfehler (E15–E18: `abandon` beendete die Sitzung, `optimize`-Variablenauswahl fehlte, `start_rejected` sah im Verlauf wie ein Erfolg aus, strict-Schemas von der API abgelehnt) sind behoben. Kosten aller Läufe 12,63 $ (Budget 20 $).
+
+**Stand M10-T7: abgeschlossen bis auf V4 (Mensch) und B4 (private Systeme).** Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
+
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
 
 **Kurzfassung.**
@@ -134,7 +138,7 @@ python tools/m10t7_bewertung.py --benchmarks B1,B2,B3 --varianten LM --decider c
 python tools/m10t7_bewertung.py --archiv --tabelle      # Protokolle übernehmen, Tabelle
 ```
 
-Unter PowerShell die Listen in Anführungszeichen setzen (`--benchmarks 'B1,B2,B3'`). Erwartete Kosten (Schätzung aus den Ollama-Läufen: 50.000–500.000 Prompt-Tokens und 20.000–40.000 Ausgabe-Tokens pro Lauf, mit Caching meist Cache-Lesen): Sonnet 5.5 etwa 0,3–1,5 $ pro Lauf, Opus 5.5 etwa das Doppelte; alle sechs Läufe zusammen voraussichtlich unter 10 $. Die Kosten pro Lauf stehen danach in der Tabelle (Spalte „Kosten“) und in `claude_cost.json`. Bricht ein Lauf an der API ab, steht die Meldung im Ergebnis unter `aborted` (Ergebnisdatei löschen und neu starten). Lehnt die API die abgeleiteten strict-Schemas ab (Fehler 400 mit Hinweis auf das Schema), mit `--no-strict` wiederholen; die Antworten werden auch dann gegen das Aktionsschema geprüft.
+Unter PowerShell die Listen in Anführungszeichen setzen (`--benchmarks 'B1,B2,B3'`). Erwartete Kosten (Schätzung aus den Ollama-Läufen: 50.000–500.000 Prompt-Tokens und 20.000–40.000 Ausgabe-Tokens pro Lauf, mit Caching meist Cache-Lesen): Sonnet 5.5 etwa 0,3–1,5 $ pro Lauf, Opus 5.5 etwa das Doppelte; alle sechs Läufe zusammen voraussichtlich unter 10 $. Die Kosten pro Lauf stehen danach in der Tabelle (Spalte „Kosten“) und in `claude_cost.json`. Bricht ein Lauf an der API ab, steht die Meldung im Ergebnis unter `aborted` (Ergebnisdatei löschen und neu starten). Die API lehnte die abgeleiteten strict-Schemas ab (Fehler 400, zu viele optionale Parameter); seit M10-T7c ist `--no-strict` der Standard (Abschnitt 11), die Antworten werden weiter gegen das Aktionsschema geprüft.
 
 ### V4 (Mensch, mindestens B2)
 
@@ -337,3 +341,122 @@ python tools/m10t7_bewertung.py --benchmarks B1,B2,B3 --varianten LM --decider c
 python tools/m10t7_bewertung.py --archiv --tabelle
 python tools/m10t7_bewertung.py --vergleich docs/ergebnisse/m10-t7b
 ```
+
+## 11. M10-T7c: Claude-Läufe
+
+Die Claude-Läufe aus Abschnitt 6 auf dem Stand von M10-T7c (Referenzsphäre `image_infinite`, Abschnitt 10): Claude **Haiku 5.5**, **Sonnet 5.5** und **Opus 5.5** (`--effort medium`, Rückfall auf die Regel, 12 Entscheidungen) auf B1–B3, dazu die Referenz der Regel V3RS neu gerechnet. Die Läufe deckten Fehler der Werkzeuge auf (11.2); sie sind behoben, und alle drei Modelle sind danach neu gerechnet. Ergebnisse, Protokolle und beste Systeme liegen unter [`m10-t7c/`](m10-t7c/) (Kürzel `LMRS_<modell>`; `_vorfix` = vor den Korrekturen, `_z1` … `_z4` = Zwischenstände, 11.3). Gerechnet auf dem Rechner des Maintainers, CPU im Prozess, zum Teil zwei Läufe gleichzeitig; die Zeiten sind nur Orientierung. Code-Stand: `main` f561043 plus dieser PR.
+
+### 11.1 Ergebnisse
+
+| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP | Elemente | Zeit [s] | Entsch. | abgelehnt | Kosten [$] | erster Schritt |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | Regel V3RS | **ja** | 0,600 | 0,0154 | 0,0156 | 4 | 15 | 2 | 0 % | – | öffnen |
+| B1 | qwen3:14b¹ | nein | 0,300 | 22,1581 | 21,2078 | 1 | 763 | 12 | 24 % | – | – |
+| B1 | gpt-oss:20b¹ | nein | 0,443 | 0,0761 | 0,0765 | 3 | 1470 | 12 | 21 % | – | öffnen |
+| B1 | Haiku 5.5 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 85 | 12 | 28 % | 0,02 | vorbereiten |
+| B1 | Sonnet 5.5 vor Fix | nein | 0,300 | 0,5107 | 0,5139 | 1 | 22 | 6 | 17 % | 0,10 | vorbereiten |
+| B1 | Sonnet 5.5 nach Fix | nein | 0,300 | 0,5107 | 0,5139 | 1 | 47 | 12 | 15 % | 0,18 | vorbereiten |
+| B1 | Opus 5.5 vor Fix | **ja** | 0,600 | 0,0011 | 0,0011 | 4 | 139 | 12 | 26 % | 0,53 | öffnen |
+| B1 | Opus 5.5 nach Fix | **ja** | 0,600 | 0,0236 | 0,0238 | 3 | 141 | 12 | 14 % | 0,41 | öffnen |
+| B2 | Regel V3RS | nein | 0,790 | 0,0907 | 0,0913 | 4 | 1215 | 11 | 0 % | – | öffnen |
+| B2 | qwen3:14b¹ | nein | 0,300 | 1,7930 | 2,0921 | 1 | 68 | 2 | 20 % | – | – |
+| B2 | gpt-oss:20b¹ | nein | 0,530 | 0,0920 | 39,4328 | 5 | 33390 | 12 | 30 % | – | öffnen |
+| B2 | Haiku 5.5 | nein | 0,453 | 0,0802 | 0,0806 | 4 | 521 | 12 | 32 % | 0,02 | öffnen |
+| B2 | Sonnet 5.5 vor Fix | nein | 0,300 | 0,3191 | 0,3215 | 1 | 51 | 11 | 18 % | 0,14 | vorbereiten |
+| B2 | Sonnet 5.5 nach Fix | nein | 0,300 | 0,3227 | 0,3251 | 1 | 58 | 12 | 0 % | 0,17 | vorbereiten |
+| B2 | Opus 5.5 vor Fix | nein | 0,408 | 0,0827 | 0,0835 | 3 | 613 | 12 | 18 % | 0,61 | öffnen |
+| B2 | Opus 5.5 nach Fix | nein | 0,458 | 0,0793 | 0,0798 | 4 | 762 | 12 | 23 % | 0,69 | öffnen |
+| B3 | Regel V3RS | **ja** | 0,850 | 0,0595 | 0,0603 | 4 | 996 | 5 | 0 % | – | öffnen |
+| B3 | qwen3:14b¹ | nein | 0,300 | 2,2413 | 2,6151 | 1 | 288 | 4 | 27 % | – | – |
+| B3 | gpt-oss:20b¹ | nein | 0,300 | 2,2413 | 2,6151 | 1 | 716 | 6 | 25 % | – | – |
+| B3 | Haiku 5.5 | nein | 0,375 | 0,0799 | 0,0806 | 3 | 520 | 12 | 30 % | 0,02 | öffnen |
+| B3 | Sonnet 5.5 vor Fix | nein | 0,300 | 0,3945 | 0,3974 | 1 | 50 | 11 | 19 % | 0,14 | vorbereiten |
+| B3 | Sonnet 5.5 nach Fix | nein | 0,510 | 0,0781 | 0,0797 | 4 | 70 | 12 | 0 % | 0,18 | vorbereiten |
+| B3 | Opus 5.5 vor Fix | **ja** | 0,850 | 0,0145 | 0,0146 | 4 | 1105 | 12 | 19 % | 0,66 | öffnen |
+| B3 | Opus 5.5 nach Fix | nein | 0,300 | 0,3945 | 0,3974 | 1 | 151 | 12 | 21 % | 0,49 | vorbereiten |
+
+¹ Aus M10-T7b (Abschnitt 9.2, Endstand) mit der **alten** Referenzsphäre `last_surface`; der RMS ist daher nur über die Spalte „RMS AP“ vergleichbar (gpt-oss B2: 0,092 im Trace, aber 39 Wellen durch die Austrittspupille, Falle F12). Ein Lauf der lokalen Modelle mit `image_infinite` steht aus.
+„erster Schritt“: erste erfolgreiche Lauf-Aktion der Sitzung, `synth_segment` („öffnen“) oder `free_gaps`/`optimize` („vorbereiten“).
+
+**Kosten** (Kostendatei `m10-t7c-arbeit/claude_cost.json` und die Versuche aus 11.3): zusammen **12,63 $** in 489 Anfragen: Opus 10,22 $ (davon 1,43 $ Versuche), Sonnet 2,31 $, Haiku 0,10 $ (dazu ein Rauchtest Haiku vorab, 0,002 $). Pro Lauf kostete Haiku 0,01–0,03 $, Sonnet 0,10–0,20 $ und Opus 0,40–0,70 $. Das Prompt-Caching greift: Cache-Lesen ist der größte Posten der Prompt-Tokens. Das Budget von 20 $ ist eingehalten.
+
+### 11.2 Befunde an den Werkzeugen
+
+| Nr. | Befund | Behebung | Test |
+|---|---|---|---|
+| E14 | **Offen.** `free_gaps` vor dem ersten Abschnitt gibt auch den Spalt nach der Blende frei, in dem die Geisterplatten liegen; seine untere Schranke ist die Plattenlage (E3). Der Optimierer schiebt den Spalt auf diese Schranke (B1: 2 → 1 mm). Danach findet Operator A dort keinen Platz („Spalt nach Fläche 0 (1 mm) zu kurz für zwei Teilstücke“), und `synth` lehnt den Start ab (`start_rejected`, F_B 0,036–0,108 > F_max 0,0051) oder bricht mit Fehler ab. Kein späterer Schritt der Modelle löste das. Ohne Modell reproduziert: B1 mit `synth_segment` direkt oder nach `optimize` (Variablen der Datei) → Ziel; nach `free_gaps` + `optimize` → `start_rejected` | In diesem PR nur für `optimize` mit erweiterter Variablenauswahl: Plattenspalte bleiben fest. `free_gaps` selbst ist unverändert, weil die Regel V3 es benutzt (nach den Abschnitten) und eine Änderung die Referenz V3RS verschöbe; **Frage an den Maintainer** (11.5) | `test_optimize_widening_keeps_ghost_plate_gaps` |
+| E15 | `abandon` beendete die Sitzung (`Session.run`), auch mit Restbudget und weiteren offenen Kandidaten (Sonnet B1 nach 6 von 12 Entscheidungen) | `abandon` verwirft nur den Kandidaten. `run` macht mit einem offenen Kandidaten weiter (`resume`; Standard ist der nächste offene Vorfahre, im Bewertungsskript der beste offene Kandidat nach `rank_key`) und meldet das in `last_errors`. Nur `finish` beendet. `abandon` nach einer verändernden Aktion derselben Antwort betrifft den neuen Kandidaten | `test_run_continues_after_abandon`, `test_run_resume_hook_and_end`, `test_resume_after_abandon_picks_best_open_candidate` |
+| E16 | `optimize` mit `variables` ≠ `current` meldete `not_implemented` (18 Antworten von Opus und Sonnet vor den Korrekturen; nach einem Fehler laufen die übrigen Aktionen der Antwort nicht mehr) | Umgesetzt: `all_curvatures` (jede sphärische Fläche ohne Krümmungsvariable), `curvatures_and_gaps` (dazu die Luftspalte ohne Geisterplatten), `everything` (dazu die Glasdicken). Gläser bleiben fest; der Bericht nennt die neuen Variablen | `test_optimize_variable_selection`, `test_optimize_widening_keeps_ghost_plate_gaps` |
+| E17 | Ein `synth_segment` mit `start_rejected` erzeugt einen Kandidaten ohne geöffnete Apertur und stand im Verlauf des Zustands wie ein Erfolg (`#3: synth_segment → [4]`); Sonnet wiederholte den Abschnitt elfmal | Der Verlauf nennt Ausgang und NA (`(step_too_small, NA 0.4475)`), bei `start_rejected` die Meldung des Controllers | `test_history_names_synth_outcome` |
+| E18 | Die API lehnt die strict-Werkzeuge ab: 400 „Schemas contains too many optional parameters (185) … limit: 24“. `submit_decision` allein hat 133, die Lese-Werkzeuge zusammen 52 | Standard ohne `strict` (`ClaudeDecider(strict=False)`, `--strict` wählt es). Die Antwort wird weiter gegen das Aktionsschema geprüft, jetzt auch die Aufzählungen der obersten Ebene (z. B. `optimize.variables`) | `test_strict_is_opt_in_and_answers_still_validated`, `test_strict_off_by_default` |
+
+Weitere Fehler der Modelle, ohne Werkzeugfehler: `insert_module front.shell_ca` ohne `glasses` oder mit einer Dicke, die die Schranke des Arbeitsabstands verletzt (bekannt aus 9.3), `set_bounds` mit `variable: "thickness"` (umgesetzt sind nur `wd` und `t[i]`), `set_constraint` ohne `weight`.
+
+### 11.3 Zwischenstände und Prompt
+
+Die Korrekturen kamen schrittweise. Jeder Zwischenstand wurde gerechnet, weil die Modelle empfindlich auf den System-Prompt reagierten:
+
+| Stand | Änderung gegenüber dem vorigen | gerechnet |
+|---|---|---|
+| vor Fix | Stand f561043 mit `--no-strict` (vom Koordinator gerechnet) | Sonnet, Opus B1–B3 |
+| Z1 | E15, E16 (ohne Ausnahme für Plattenspalte), E18; Prompt: Satz zu `abandon`/`finish` und eine Zeile zu `optimize variables` | Haiku B1–B3, Sonnet B1 |
+| Z2 | E17; Prompt: Satz „history nennt den Ausgang …; bei start_rejected … den Start ändern (Struktur, Variablen, Nebenbedingungen)“ | Sonnet B1–B3, Opus B1 (zweimal) bis B3 |
+| Z3 | Ausnahme für Plattenspalte in `optimize` (E14) | Opus B1–B3, Sonnet B1 |
+| Z4 | Zeile zu `optimize variables` aus dem Prompt entfernt | Opus B1–B3, Sonnet B1 |
+| nach Fix | Satz zu `start_rejected` aus dem Prompt entfernt (der Verlauf im Zustand bleibt) | Haiku, Sonnet, Opus B1–B3 |
+
+| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP | Elemente | Zeit [s] | Entsch. | abgelehnt | Kosten [$] | erster Schritt |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | Haiku Z1 | **ja** | 0,600 | 0,0004 | 0,0004 | 4 | 119 | 12 | 0 % | 0,02 | öffnen |
+| B1 | Sonnet Z1 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 47 | 12 | 0 % | 0,18 | vorbereiten |
+| B1 | Sonnet Z2 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 47 | 12 | 14 % | 0,19 | vorbereiten |
+| B1 | Opus Z2 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 139 | 12 | 14 % | 0,53 | vorbereiten |
+| B1 | Opus Z2 (Wdh.) | nein | 0,438 | 0,2596 | 0,2637 | 3 | 165 | 12 | 18 % | 0,49 | vorbereiten |
+| B1 | Opus Z3 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 141 | 12 | 10 % | 0,54 | vorbereiten |
+| B1 | Sonnet Z3 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 68 | 12 | 11 % | 0,20 | vorbereiten |
+| B1 | Opus Z4 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 133 | 11 | 20 % | 0,52 | vorbereiten |
+| B1 | Sonnet Z4 | nein | 0,300 | 0,5107 | 0,5139 | 1 | 45 | 12 | 4 % | 0,18 | vorbereiten |
+| B2 | Haiku Z1 | nein | 0,835 | 0,0865 | 0,0870 | 4 | 980 | 12 | 7 % | 0,02 | öffnen |
+| B2 | Sonnet Z2 | nein | 0,375 | 0,0877 | 0,0883 | 2 | 209 | 12 | 14 % | 0,19 | vorbereiten |
+| B2 | Opus Z2 | nein | 0,300 | 0,3177 | 0,3201 | 1 | 168 | 12 | 20 % | 0,52 | vorbereiten |
+| B2 | Opus Z3 | nein | 0,300 | 0,3177 | 0,3201 | 1 | 146 | 12 | 18 % | 0,51 | vorbereiten |
+| B2 | Opus Z4 | nein | 0,300 | 0,3177 | 0,3201 | 1 | 170 | 12 | 15 % | 0,59 | vorbereiten |
+| B3 | Haiku Z1 | **ja** | 0,850 | 0,0149 | 0,0151 | 4 | 1041 | 9 | 0 % | 0,01 | öffnen |
+| B3 | Sonnet Z2 | nein | 0,300 | 0,3945 | 0,3974 | 1 | 59 | 12 | 4 % | 0,18 | vorbereiten |
+| B3 | Opus Z2 | nein | 0,300 | 0,3945 | 0,3974 | 1 | 156 | 12 | 17 % | 0,50 | vorbereiten |
+| B3 | Opus Z3 | nein | 0,390 | 0,0854 | 0,0869 | 3 | 176 | 12 | 18 % | 0,56 | vorbereiten |
+| B3 | Opus Z4 | nein | 0,383 | 0,0860 | 0,0867 | 2 | 379 | 12 | 22 % | 0,66 | vorbereiten |
+
+**Was entscheidet.** Über alle Claude-Läufe gilt: Jeder Ziel-Treffer begann mit `synth_segment` („öffnen“). Fast jeder Lauf, der zuerst `free_gaps`/`optimize` ausführte („vorbereiten“), blieb bei NA 0,30 – das ist Befund E14. Ausnahmen sind Sonnet B3 nach Fix (0,51) und Opus Z3/Z4 B3 (≈ 0,39). Vor den Korrekturen begann Opus dreimal mit „öffnen“. Mit dem Prompt-Satz zu `start_rejected` (Z2–Z4) begann es in allen zehn Läufen mit „vorbereiten“, auch nachdem die `optimize`-Zeile entfernt war (Z4).
+
+**Versuch** (nicht archiviert, Kosten in der Summe enthalten): Opus B1 auf Stand Z4 ohne den Satz zu `start_rejected` lief zweimal, beide Läufe erreichten das Ziel (RMS 0,0119 und 0,0130, 4 Elemente). Auf Stand Z3 ohne die `optimize`-Zeile lief es einmal und erreichte das Ziel (RMS 0,0033, 3 Elemente). Beide Sätze sind deshalb wieder aus dem Prompt entfernt (Stand „nach Fix“). Die Funktionen (Verlauf, Variablenauswahl) bleiben und sind in [entwurfssteuerung.md](../entwurfssteuerung.md) beschrieben.
+
+Auch auf dem Endstand bleibt die Wahl des ersten Schritts zufällig: Opus öffnete auf B1 und B2 zuerst, auf B3 nicht; Haiku öffnete auf B1 in Z1, im Endlauf nicht. **Einzelläufe ergeben daher keine belastbare Rangfolge der Modelle.** Belastbar ist, dass E14 jeden Lauf entscheidet, der vorbereitet; öffnen allein reicht nicht (Haiku im Endlauf auf B2/B3).
+
+### 11.4 Beobachtungen
+
+- **Opus 5.5** (vor Fix): B1 Ziel mit RMS 0,0011 (Regel 0,0154). **B3 Ziel mit RMS 0,0145, viermal kleiner als die Regel (0,060)**, bei gleicher Elementzahl (4). B2 nur NA 0,41 (Regel 0,79). Der Weg: einen Abschnitt öffnen, dann die Randdicke als Nebenbedingung gewichten (`set_constraint min_edge_thickness`) und optimieren, wiederholt bis zum Budgetende; das senkt den RMS weit unter das Ziel. Nach Fix: B1 Ziel (RMS 0,024, 3 Elemente), B2 NA 0,46, B3 in E14.
+- **Haiku 5.5** (Zwischenstand Z1): B1 Ziel mit RMS 0,0004, B3 Ziel mit RMS 0,0149 und **B2 NA 0,835, weiter als die Regel (0,79)**, für 0,01–0,02 $ pro Lauf. Auf B2 öffnete erst `set_constraint` + `free_gaps` (Spalt 7/8) + `optimize variables=curvatures_and_gaps` (E16), danach ein Abschnitt mit Strahlsuche (`beam_width` 3) die Apertur von 0,465 auf 0,835. Im Endlauf bereitete es auf B1 zuerst vor (E14, NA 0,30); auf B2 und B3 öffnete es zuerst, verbrauchte dann aber 9–10 Entscheidungen mit `insert_module front.shell_ca` ohne Glas oder mit verletzter Schranke des Arbeitsabstands (9.3) und kam nur auf NA 0,45 bzw. 0,375.
+- **Sonnet 5.5** bereitet in allen Läufen zuerst vor und bleibt damit in E14 (B1 und B2 bei NA 0,30). Vor Fix beendete `abandon` die Sitzung, und `optimize` mit erweiterter Auswahl scheiterte. Nach Fix nutzt es das ganze Budget (12 Entscheidungen; `abandon` springt zum besten offenen Kandidaten), kommt aber nur auf B3 aus der Falle (NA 0,51).
+- **Gegen die Regel:** Die Regel ist stabil, mit denselben Zahlen wie in M10-T7b (B1 0,0154, B2 0,79, B3 0,060). Die Modelle sind besser, wenn sie öffnen und dann nacharbeiten: RMS bis zu 40-mal kleiner auf B1 und 4-mal kleiner auf B3, Haiku auf B2 weiter offen. Sie sind viel schlechter, wenn sie vorbereiten. Die lokalen Modelle (M10-T7b, alte Sphäre) erreichen keinen Benchmark.
+
+### 11.5 Folgerungen und Fragen an den Maintainer
+
+1. **E14 zu beheben** ist die wirksamste Verbesserung für alle Entscheider. Das ist eine Frage an den Maintainer, weil `free_gaps` auch die Regel und damit die Referenz V3RS betrifft. Möglich wäre: `free_gaps` ohne Flächenliste lässt Spalte mit Geisterplatten fest (wie jetzt `optimize`), oder Operator A verschiebt bei einem zu kurzen Plattenspalt die Platte bzw. hebt die Schranke, oder der Zustand warnt vor dem ersten Abschnitt.
+2. **Mehrere Läufe pro Modell** (z. B. drei) und deren Median, bevor Modelle verglichen werden; die Streuung des ersten Schritts ist groß.
+3. Nach ADR-0012, Punkt 10: Große Modelle zeigen gegenüber der Regel einen Vorteil im RMS (Opus und Haiku auf B1/B3) und auf B2 in der NA (Haiku). Die Anbindung lohnt sich, wenn E14 behoben ist. Haiku 5.5 ist dabei mit Abstand am günstigsten.
+4. **Offen in M10-T7:** V4 (Mensch, mindestens B2) und B4 (private Patentsysteme, nur lokal).
+
+### 11.6 Reproduktion
+
+```bash
+KOSTEN=docs/ergebnisse/m10-t7c-arbeit/claude_cost.json
+python tools/m10t7_bewertung.py --varianten V3RS
+for m in claude-haiku-5-5 claude-sonnet-5-5 claude-opus-5-5; do
+  python tools/m10t7_bewertung.py --benchmarks B1,B2,B3 --varianten LM --decider claude \
+      --model $m --effort medium --max-usd 20 --cost-file $KOSTEN
+done
+python tools/m10t7_bewertung.py --archiv --tabelle
+```
+
+`--no-strict` ist seit diesem PR der Standard. Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7c/<B>_<Variante> <ziel>`).

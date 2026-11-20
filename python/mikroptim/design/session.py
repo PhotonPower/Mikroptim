@@ -49,6 +49,20 @@ def _check_results(outs) -> None:
                               f"{type(e).__name__}: {e}") from None
 
 
+def _synth_outcome(reports) -> str:
+    """Kurzfassung des Ausgangs eines ``synth_segment`` für den Verlauf: Status und erreichte
+    NA, bei ``start_rejected`` die Meldung des Controllers (gekürzt)."""
+    res = (reports[0].get("result") if reports else None) or {}
+    status = res.get("status")
+    if not status:
+        return ""
+    if status == "start_rejected":
+        msg = str(res.get("message") or "")
+        return f" ({status}, Apertur nicht geöffnet: {msg[:240]})"
+    ap = (res.get("point") or {}).get("aperture")
+    return f" ({status}" + (f", NA {ap:.4g})" if isinstance(ap, (int, float)) else ")")
+
+
 class Session:
     def __init__(self, directory):
         self.dir = pathlib.Path(directory)
@@ -98,11 +112,18 @@ class Session:
         return cid
 
     def history(self) -> list[str]:
+        """Verlauf für den Zustand: verändernde Aktionen mit neuen Kandidaten; bei
+        ``synth_segment`` mit Ausgang des Controllers und erreichter NA bzw. dessen Meldung
+        (Befund M10-T7c: ``start_rejected`` erzeugt einen Kandidaten ohne geöffnete Apertur und
+        sah im Verlauf wie ein Erfolg aus; Sonnet 5.5 wiederholte den Abschnitt elfmal)."""
         out = []
         for e in self.log():
             for r in e.get("results", []):
                 if r.get("new_candidates"):
-                    out.append(f"#{e['candidate']}: {r['action']} → {r['new_candidates']}")
+                    line = f"#{e['candidate']}: {r['action']} → {r['new_candidates']}"
+                    if r.get("action") == "synth_segment":
+                        line += _synth_outcome(r.get("reports") or [])
+                    out.append(line)
         return out
 
     def log(self) -> list[dict]:
@@ -235,10 +256,28 @@ class Session:
                                        "failed_reason": str(e)}, state=state)
         return self.apply(candidate, response, decider=used.describe(), state=state)
 
-    def run(self, decider, candidate: int, *, max_steps: int = 10, fallback=None) -> int:
+    def resume_candidate(self, abandoned: int) -> int | None:
+        """Kandidat, mit dem ``run`` nach ``abandon`` weitermacht: der nächste offene Vorfahre
+        des verworfenen Kandidaten, sonst der zuletzt erzeugte offene Kandidat, sonst ``None``."""
+        cands = self.candidates()
+        c = cands[abandoned]["parent"]
+        while c is not None:
+            if cands[c]["status"] == "open":
+                return c
+            c = cands[c]["parent"]
+        open_ = self.open_candidates()
+        return max(open_) if open_ else None
+
+    def run(self, decider, candidate: int, *, max_steps: int = 10, fallback=None,
+            resume=None) -> int:
         """Folge von Entscheidungen: Weiter jeweils mit dem zuletzt erzeugten Kandidaten, Fehler
         einer Entscheidung gehen als last_errors in den nächsten Zustand. Ende bei finish,
-        abandon, leerem Budget oder max_steps. Rückgabe: letzter Kandidat."""
+        leerem Budget, max_steps oder wenn kein offener Kandidat mehr bleibt.
+
+        ``abandon`` verwirft nur den Kandidaten, nicht die Sitzung (Befund M10-T7c: Sonnet 5.5
+        verwarf den letzten Kandidaten mit Restbudget, die Sitzung endete). Weiter geht es mit
+        ``resume(session, verworfener_kandidat)`` (Standard ``resume_candidate``: nächster
+        offener Vorfahre); liefert es ``None``, endet der Lauf. Rückgabe: letzter Kandidat."""
         errors = []
         for _ in range(max_steps):
             if self.meta["decisions"] >= self.meta["budget"]["actions"]:
@@ -247,8 +286,21 @@ class Session:
             errors = [f"{r.get('action')}: {r.get('message')}" for r in entry["results"]
                       if r["status"] != "ok"]
             new = [c for r in entry["results"] for c in r.get("new_candidates", [])]
-            if self.meta["candidates"][str(candidate)]["status"] != "open":
+            # finish/abandon betreffen den Kandidaten, auf dem die Antwort zuletzt stand
+            current = new[-1] if new else candidate
+            status = {self.meta["candidates"][str(c)]["status"] for c in (candidate, current)}
+            if "finished" in status:
+                candidate = current
                 break
-            if new:
-                candidate = new[-1]
+            if "abandoned" in status:
+                gone = current if self.meta["candidates"][str(current)]["status"] == "abandoned" \
+                    else candidate
+                nxt = resume(self, gone) if resume is not None else self.resume_candidate(gone)
+                if nxt is None or self.meta["candidates"][str(nxt)]["status"] != "open":
+                    candidate = gone
+                    break
+                errors.append(f"abandon: Kandidat {gone} verworfen, weiter mit Kandidat {nxt}")
+                candidate = nxt
+                continue
+            candidate = current
         return candidate

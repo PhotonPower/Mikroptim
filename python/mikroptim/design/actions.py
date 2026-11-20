@@ -256,15 +256,24 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
         return getattr(operators, name)(a, system_path, workdir)
     if name == "optimize":
         variables = a.get("variables", "current")
-        if variables != "current":
-            raise ActionError("not_implemented", f"optimize variables={variables}: nur 'current'")
+        if variables not in OPTIMIZE_VARIABLES:
+            raise ActionError("invalid_parameter",
+                              f"optimize variables={variables!r}: erlaubt {OPTIMIZE_VARIABLES}")
+        src, added = _widen_variables(system_path, variables, workdir)
         out = _tmp_out(workdir)
-        args = ["optimize", system_path, "-o", out, "--quiet",
+        args = ["optimize", src, "-o", out, "--quiet",
                 "--max-iterations", int(a.get("cycles", 100))]
         if a.get("jacobian"):
             args += ["--jacobian", a["jacobian"]]
-        rep = cli_json(args)
-        return [(out, {"merit": (rep.get("result") or {}), "runs": rep.get("runs")})]
+        try:
+            rep = cli_json(args)
+        finally:
+            if src != system_path:
+                pathlib.Path(src).unlink(missing_ok=True)
+        report = {"merit": (rep.get("result") or {}), "runs": rep.get("runs")}
+        if added:
+            report["variables"] = {"selection": variables, **added}
+        return [(out, report)]
     if name == "synth_segment":
         _require(a, "target")
         t = a["target"]
@@ -571,6 +580,63 @@ def _free_gaps(a, system_path, workdir):
     """Dicken als Variablen freigeben: Luftspalte und, mit include_glass_thickness, Glasdicken;
     Schranken [min, max_gap], der Startwert liegt immer im Bereich."""
     data = read_system(system_path)
+    if not _add_gap_variables(data, a):
+        return None  # nichts Neues: kein neuer Kandidat, die Folgeaktion läuft auf demselben
+    out = _tmp_out(pathlib.Path(workdir))
+    write_system(data, out)
+    return out
+
+
+#: Variablenauswahl von ``optimize`` (Schema ``optimize.variables``); jede Stufe umfasst die
+#: vorige. Gläser bleiben immer fest (Glasvariablen über split_lens/free_part).
+OPTIMIZE_VARIABLES = ("current", "all_curvatures", "curvatures_and_gaps", "everything")
+
+
+def _widen_variables(system_path, variables, workdir):
+    """Variablen für ``optimize`` erweitern (M10-T7c; vorher ``not_implemented``, von Opus und
+    Sonnet in 18 Antworten verlangt): ``all_curvatures`` macht jede sphärische Fläche ohne
+    Krümmungsvariable variabel (ohne Schranken, wie die Menisken von Operator A),
+    ``curvatures_and_gaps`` gibt zusätzlich die Luftspalte ohne Geisterplatten frei wie
+    ``free_gaps``,
+    ``everything`` auch die Glasdicken. Rückgabe: (Systemdatei für optimize, neu freigegebene
+    Flächen); bei ``current`` oder ohne Neues die unveränderte Datei."""
+    if variables == "current":
+        return system_path, {}
+    data = read_system(system_path)
+    surfaces = data["surfaces"]
+    items = data.setdefault("variables", {"items": []}).setdefault("items", [])
+    spheres = [i for i, s in enumerate(surfaces) if s.get("type") == "sphere"]
+    covered = set()
+    for it in items:
+        if it.get("type") != "curvature":
+            continue
+        if "surface" in it:
+            covered.add(int(it["surface"]))
+        elif it.get("surfaces") == "all":
+            covered.update(spheres)
+        else:
+            covered.update(int(x) for x in it.get("surfaces", []))
+    curv = [i for i in spheres if i not in covered]
+    if curv:
+        items.append({"type": "curvature", "surfaces": curv})
+    gaps = []
+    if variables in ("curvatures_and_gaps", "everything"):
+        # Spalte mit Geisterplatten bleiben fest: dort fügt Operator A ein; frei schob der
+        # Optimierer den Spalt auf die Plattenlage, danach lehnte synth den Start ab (E14,
+        # M10-T7c). free_gaps mit ausdrücklicher Flächenliste kann sie weiter freigeben.
+        plate_gaps = {int(g["after_surface"]) for g in data.get("ghost_plates", [])}
+        sel = [s for s in range(len(surfaces) - 1) if s not in plate_gaps]
+        gaps = _add_gap_variables(data, {"surfaces": sel,
+                                         "include_glass_thickness": variables == "everything"})
+    if not curv and not gaps:
+        return system_path, {}
+    out = _tmp_out(pathlib.Path(workdir))
+    write_system(data, out)
+    return out, {"curvatures": curv, "thicknesses": gaps}
+
+
+def _add_gap_variables(data, a) -> list[int]:
+    """Dickenvariablen nach ``free_gaps`` in ``data`` eintragen; Rückgabe: neue Flächen."""
     surfaces = data["surfaces"]
     sel = a.get("surfaces", "all")
     candidates = range(len(surfaces) - 1) if sel == "all" else [int(s) for s in sel]
@@ -607,8 +673,4 @@ def _free_gaps(a, system_path, workdir):
             continue
         items.append({"type": "thickness", "surface": s, "min": lo, "max": hi})
         added.append(s)
-    if not added:
-        return None  # nichts Neues: kein neuer Kandidat, die Folgeaktion läuft auf demselben
-    out = _tmp_out(pathlib.Path(workdir))
-    write_system(data, out)
-    return out
+    return added

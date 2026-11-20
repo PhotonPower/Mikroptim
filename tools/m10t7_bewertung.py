@@ -272,6 +272,27 @@ def run_synth(bench, work, beam=False) -> dict:
             "system": str(out)}
 
 
+def best_open_resume(target_na):
+    """``resume`` für ``Session.run``: nach ``abandon`` weiter mit dem besten offenen Kandidaten
+    in der Rangfolge der Bewertung (``rank_key``; Bewertungen pro Kandidat zwischengespeichert,
+    die Systemdateien ändern sich nicht)."""
+    cache = {}
+
+    def resume(session, _abandoned):
+        ranked = []
+        for c in session.open_candidates():
+            if c not in cache:
+                try:
+                    cache[c] = assess(session.system_path(c), target_na)
+                except RuntimeError:
+                    cache[c] = None
+            if cache[c] is not None:
+                ranked.append((rank_key(cache[c]), c))
+        return min(ranked)[1] if ranked else None
+
+    return resume
+
+
 def run_session(bench, work, decider, fallback, steps) -> dict:
     from mikroptim import design
 
@@ -283,7 +304,8 @@ def run_session(bench, work, decider, fallback, steps) -> dict:
     t = time.perf_counter()
     aborted = aborted_trace = None
     try:
-        s.run(decider, 0, max_steps=steps, fallback=fallback)
+        s.run(decider, 0, max_steps=steps, fallback=fallback,
+              resume=best_open_resume(bench["na"]))
     except Exception as e:  # Budget, Konfiguration: Lauf abbrechen, Teilergebnis bewerten
         import traceback  # noqa: PLC0415
 
@@ -379,7 +401,7 @@ def make_llm(args, ledger):
               f"{model_max if model_max else 'unbekannt'})", flush=True)
         return d
     return design.ClaudeDecider(args.model or "claude-opus-5-5", effort=args.effort,
-                                ledger=ledger, strict=not args.no_strict)
+                                ledger=ledger, strict=args.strict)
 
 
 def variant_config(variant, reference_sphere=DEFAULT_REFERENCE_SPHERE) -> tuple[str, str]:
@@ -497,8 +519,11 @@ def parser() -> argparse.ArgumentParser:
                     f"0 = Modellmaximum; Standard {DEFAULT_NUM_CTX})")
     ap.add_argument("--effort", default="medium")
     ap.add_argument("--max-usd", type=float, default=20.0)
-    ap.add_argument("--no-strict", action="store_true",
-                    help="Claude: Werkzeuge ohne strict (falls die API die Schemas ablehnt)")
+    st = ap.add_mutually_exclusive_group()
+    st.add_argument("--strict", dest="strict", action="store_true", default=False,
+                    help="Claude: Werkzeuge mit strict (lehnt die API derzeit ab, M10-T7c)")
+    st.add_argument("--no-strict", dest="strict", action="store_false",
+                    help="Claude: Werkzeuge ohne strict (Standard)")
     ap.add_argument("--cost-file", default=None,
                     help="Kostensumme der Claude-Läufe (Standard <work>/claude_cost.json)")
     ap.add_argument("--tabelle", action="store_true")

@@ -116,8 +116,8 @@ Zusätzlicher Entscheider für Vergleiche; nur für Daten ohne Schutzbedarf (Kan
 |---|---|
 | Modell | `--model`, Standard `claude-opus-5-5`; `claude-sonnet-5-5`, `claude-haiku-5-5` |
 | Lese-Werkzeuge | wie bei Ollama als Tool-Calls, Ergebnisse als `tool_result`; höchstens `max_tool_calls` (6) |
-| Antwort | Werkzeug `submit_decision` mit `strict: true` (Eingabe `assessment`, `actions`); `tool_choice` `auto`, weil erzwungene Werkzeugwahl bei Opus 5.5 und Sonnet 5.5 abgelehnt wird. Die Eingabe wird mit `validate_response` und gegen die Parameter von `schema.ACTION_DEFS` geprüft; Fehler gehen als `tool_result` mit `is_error` zurück (höchstens zwei Nachbesserungen, danach `DecisionError` → Rückfall-Entscheider) |
-| strict-Schemas | aus `ACTION_DEFS` abgeleitet (`claude.strict_schema`): `oneOf` → `anyOf`, `prefixItems` → `items`, ohne Zahl- und Längenschranken (die prüft die Ausführung), jedes Objekt mit `additionalProperties: false` |
+| Antwort | Werkzeug `submit_decision` (Eingabe `assessment`, `actions`); `tool_choice` `auto`, weil erzwungene Werkzeugwahl bei Opus 5.5 und Sonnet 5.5 abgelehnt wird. Die Eingabe wird mit `validate_response` und gegen die Parameter von `schema.ACTION_DEFS` geprüft (Pflichtparameter, keine unbekannten Parameter, seit M10-T7c auch die Aufzählungen der obersten Ebene, z. B. `optimize.variables`; Typen und Schranken prüft die Ausführung mit strukturierten Fehlern); Fehler gehen als `tool_result` mit `is_error` zurück (höchstens zwei Nachbesserungen, danach `DecisionError` → Rückfall-Entscheider) |
+| Werkzeugschemas, `strict` | aus `ACTION_DEFS` abgeleitet (`claude.strict_schema`): `oneOf` → `anyOf`, `prefixItems` → `items`, ohne Zahl- und Längenschranken (die prüft die Ausführung), jedes Objekt mit `additionalProperties: false`. **Seit M10-T7c Standard ohne `strict`:** Die API lehnt die strict-Schemas ab (400: „too many optional parameters (185) … limit: 24“; `submit_decision` allein hat 133, die sieben Lese-Werkzeuge zusammen 52; strict nur für einen Teil der Werkzeuge hilft also nicht, kleinere Schemas hießen, Aktionen oder Parameter wegzulassen). `strict` bleibt wählbar (`ClaudeDecider(strict=True)`, `--strict`), falls die Grenze fällt; `--no-strict` ist der Standard |
 | Thinking, Aufwand | `thinking` adaptiv mit Zusammenfassung (protokolliert, nie ausgeführt); `output_config.effort` ausdrücklich, Standard `medium` (`--effort`) |
 | Ablehnung | `stop_reason` wird vor dem Lesen geprüft; server-seitige Rückfälle `fallbacks="default"` (Beta `server-side-fallback-2026-07-01`) außer bei Haiku; abgelehnte Anfrage → `DecisionError`; `max_tokens` → Nachbesserung |
 | Verlauf | `response.content` wird unverändert (mit Thinking-Blöcken) angehängt, der Verlauf nur verlängert |
@@ -256,6 +256,8 @@ Derselbe Zustand ist Grundlage der GUI-Ansicht eines Kandidaten und der Eingabe 
 }
 ```
 
+**Umgesetzter Verlauf (`history`):** die letzten zehn verändernden Aktionen als `#<Kandidat>: <Aktion> → [neue Kandidaten]`; seit M10-T7c bei `synth_segment` mit Ausgang des Controllers und erreichter NA (`(step_too_small, NA 0.4475)`), bei `start_rejected` mit dessen Meldung (`(start_rejected, Apertur nicht geöffnet: Startpunkt nicht annehmbar …)`). Vorher sah ein abgelehnter Start wie ein Erfolg aus (Bewertung, Abschnitt 11).
+
 ## 4. Aktionen `mikroptim.design.action/1`
 
 Schema: `data/design/schemas/design_action.schema.json`.
@@ -281,7 +283,7 @@ Diese Werkzeuge stehen dem Sprachmodell als Tool-Calls zur Verfügung und dem Me
 
 | Aktion | Parameter | Umsetzung |
 |---|---|---|
-| `optimize` | Variablenauswahl, Zyklen, Jacobi-Verfahren | `mikroptim optimize` |
+| `optimize` | Variablenauswahl, Zyklen, Jacobi-Verfahren | `mikroptim optimize`; `variables`: `current` (Variablen der Datei, Standard), `all_curvatures` (zusätzlich jede sphärische Fläche ohne Krümmungsvariable, ohne Schranken), `curvatures_and_gaps` (dazu die Luftspalte wie `free_gaps`, aber ohne Spalte mit Geisterplatten), `everything` (dazu die Glasdicken wie `free_gaps` mit `include_glass_thickness`); Gläser bleiben fest. Spalte mit Geisterplatten bleiben fest, weil Operator A dort einfügt: frei schob der Optimierer den Spalt nach der Blende auf die Plattenlage, danach lehnte `synth` den Start ab (Befund E14, Bewertung Abschnitt 11); `free_gaps` mit Flächenliste gibt sie weiter frei. Die erweiterten Variablen stehen im neuen Kandidaten, der Bericht nennt sie unter `variables` (seit M10-T7c; vorher `not_implemented`) |
 | `synth_segment` | Zielpunkt (Apertur, Feld, Spektrumstufe), Strahlbreite, Varianten, Elementbudget, seit M10-T7b `augmented_lagrangian` und `sine_condition` | `mikroptim synth` (`--beam`, `--augmented-lagrangian`, `--sine-condition`) |
 | `penalty_continuation` | Stufen, Faktor | Homotopie §7 |
 | `snap_glasses` | k, max. Kombinationen | `mikroptim snap` |
@@ -330,8 +332,8 @@ Diese Werkzeuge stehen dem Sprachmodell als Tool-Calls zur Verfügung und dem Me
 | Aktion | Wirkung |
 |---|---|
 | `branch` | die nächsten Aktionen als getrennte Kandidaten ausführen (gemeinsamer LM-Aufruf, wenn die Topologie gleich ist) |
-| `abandon` | Kandidat verwerfen, mit Grund (Protokoll) |
-| `finish` | Kandidat als Ergebnis vorschlagen; Zielprüfung und Rangfolge entscheiden |
+| `abandon` | Kandidat verwerfen, mit Grund (Protokoll). Seit M10-T7c beendet es nicht die Sitzung: `Session.run` macht mit einem offenen Kandidaten weiter (`resume`; Standard der nächste offene Vorfahre, im Bewertungsskript der beste offene Kandidat nach der Rangfolge der Bewertung) und nennt das in `last_errors`; ohne offenen Kandidaten endet der Lauf. Steht `abandon` nach einer verändernden Aktion derselben Antwort, betrifft es den neuen Kandidaten |
+| `finish` | Kandidat als Ergebnis vorschlagen und die Sitzung beenden; Zielprüfung und Rangfolge entscheiden |
 
 ### 4.7 Prüfungen des Executors (nicht verhandelbar)
 

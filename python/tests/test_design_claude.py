@@ -84,7 +84,8 @@ def test_tool_call_then_submit(session):
     assert first["betas"] == [claude.FALLBACK_BETA] and first["fallbacks"] == "default"
     assert first["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert [t["name"] for t in first["tools"]] == sorted(t["name"] for t in first["tools"])
-    assert all(t["strict"] for t in first["tools"])
+    # Standard ohne strict (die API lehnt die strict-Schemas ab, Befund M10-T7c)
+    assert not any("strict" in t for t in first["tools"]) and dec["strict"] is False
     # Verlauf nur angehängt: assistant-Antwort unverändert, danach tool_result
     assert second["messages"][:1] == first["messages"]
     assert second["messages"][1] == {"role": "assistant", "content": reply1.content}
@@ -236,8 +237,39 @@ def test_replay_of_claude_run_without_api(session, tmp_path):
     assert again.log()[0]["decider"]["original"]["kind"] == "claude"
 
 
+def _optional_parameters(s):
+    """Zahl der optionalen Parameter wie im Limit der API für strict-Werkzeuge."""
+    n = 0
+    if isinstance(s, dict):
+        if "properties" in s:
+            n += sum(1 for k in s["properties"] if k not in set(s.get("required", [])))
+        n += sum(_optional_parameters(v) for v in s.values())
+    elif isinstance(s, list):
+        n += sum(_optional_parameters(v) for v in s)
+    return n
+
+
+def test_strict_is_opt_in_and_answers_still_validated(session):
+    """M10-T7c: Die API lehnte strict ab (185 optionale Parameter, Grenze 24; das
+    Entscheidungswerkzeug allein liegt darüber); Standard ist strict aus, strict=True setzt es
+    auf jedes Werkzeug.
+    Ohne strict prüft der Entscheider die Antwort weiter gegen das Aktionsschema."""
+    assert not any("strict" in t for t in claude.tool_definitions())
+    assert all(t["strict"] for t in claude.tool_definitions(strict=True))
+    submit_tool = next(t for t in claude.tool_definitions() if t["name"] == claude.SUBMIT_TOOL)
+    assert _optional_parameters(submit_tool["input_schema"]) > 24
+    fake = FakeClient([message(submit({"action": "synth_segment"})),          # target fehlt
+                       message(submit({"action": "optimize", "variables": "alles"})),
+                       message(submit({"action": "free_gaps", "surfaces": [3]}))])
+    d = design.ClaudeDecider(client=fake)
+    entry = session.step(d, 0)
+    assert entry["results"][0]["status"] == "ok" and len(fake.requests) == 3
+    rejected = entry["decider"]["trace"]["rejected"]
+    assert len(rejected) == 2 and "target fehlt" in rejected[0] and "'alles'" in rejected[1]
+
+
 def test_strict_tool_schemas():
-    tools = claude.tool_definitions()
+    tools = claude.tool_definitions(strict=True)
     names = [t["name"] for t in tools]
     assert names == sorted(set(schema.TOOL_ACTIONS) | {claude.SUBMIT_TOOL})
 
@@ -259,7 +291,7 @@ def test_strict_tool_schemas():
     items = submit_tool["input_schema"]["properties"]["actions"]["items"]["anyOf"]
     assert {i["properties"]["action"]["const"] for i in items} == set(claude.decision_actions())
     # Tool-Liste deterministisch (Prompt-Caching)
-    assert json.dumps(tools, sort_keys=True) == json.dumps(claude.tool_definitions(),
+    assert json.dumps(tools, sort_keys=True) == json.dumps(claude.tool_definitions(strict=True),
                                                            sort_keys=True)
 
 

@@ -132,3 +132,38 @@ def test_num_ctx_reaches_ollama_request(tool, monkeypatch, model_max, expected):
     assert body["options"]["num_ctx"] == expected
     assert body["options"]["temperature"] == 0.0
     assert d.options["num_ctx"] == expected
+
+
+def test_strict_off_by_default(tool):
+    """M10-T7c: Die API lehnt die strict-Schemas ab; Standard ohne strict, --strict wählt es."""
+    assert tool.parser().parse_args([]).strict is False
+    assert tool.parser().parse_args(["--strict"]).strict is True
+    assert tool.parser().parse_args(["--no-strict"]).strict is False
+
+
+def test_resume_after_abandon_picks_best_open_candidate(tool, tmp_path, monkeypatch):
+    """Nach abandon geht die Sitzung mit dem besten offenen Kandidaten in der Rangfolge der
+    Bewertung weiter (rank_key); jede Bewertung nur einmal."""
+    from mikroptim import design
+
+    s = design.Session.create(SYSTEMS / "testsystem_mehrlinser.json", tmp_path / "s")
+    for c, surf in ((0, 3), (0, 5), (1, 5)):
+        s.apply(c, {"format": "mikroptim.design.action/1", "candidate": c, "assessment": "",
+                    "actions": [{"action": "free_gaps", "surfaces": [surf]}]}, decider={})
+    s.meta["candidates"]["3"]["status"] = "abandoned"
+    na = {0: 0.3, 1: 0.5, 2: 0.5, 3: 0.9}
+    rms = {0: 0.01, 1: 0.2, 2: 0.1, 3: 0.0}
+    calls = []
+
+    def fake_assess(path, target_na):
+        c = int(path.stem)
+        calls.append(c)
+        return {"na": na[c], "rms_max_waves": rms[c], "failed_rays": 0, "elements": 4,
+                "goal": False}
+
+    monkeypatch.setattr(tool, "assess", fake_assess)
+    resume = tool.best_open_resume(0.6)
+    assert resume(s, 3) == 2  # größte NA, dann kleinster RMS; 3 ist verworfen
+    s.meta["candidates"]["2"]["status"] = "abandoned"
+    assert resume(s, 2) == 1
+    assert sorted(calls) == [0, 1, 2]

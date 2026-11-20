@@ -66,8 +66,12 @@ def main(argv=None) -> int:
                     "<dir>/claude_cost.json")
     ru.add_argument("--no-fallbacks", action="store_true",
                     help="Claude: keine server-seitigen Rückfälle bei Ablehnung")
-    ru.add_argument("--no-strict", action="store_true",
-                    help="Claude: Werkzeuge ohne strict (falls die API das Schema ablehnt)")
+    st = ru.add_mutually_exclusive_group()
+    st.add_argument("--strict", dest="strict", action="store_true", default=False,
+                    help="Claude: Werkzeuge mit strict (lehnt die API derzeit ab: zu viele "
+                    "optionale Parameter; Standard ohne strict, M10-T7c)")
+    st.add_argument("--no-strict", dest="strict", action="store_false",
+                    help="Claude: Werkzeuge ohne strict (Standard)")
     ru.add_argument("--steps", type=int, default=10)
     ru.add_argument("-c", "--candidate", type=int, default=None)
     ru.add_argument("--fallback", choices=["rule", "human", "none"], default="none")
@@ -103,7 +107,7 @@ def main(argv=None) -> int:
                 ledger = CostLedger(a.max_usd, a.cost_file or s.dir / "claude_cost.json")
                 decider = ClaudeDecider(a.model or DEFAULT_MODEL, effort=a.effort,
                                         fallbacks=False if a.no_fallbacks else None,
-                                        strict=not a.no_strict, ledger=ledger)
+                                        strict=a.strict, ledger=ledger)
             elif a.decider == "rule":
                 decider = RuleDecider()
             else:

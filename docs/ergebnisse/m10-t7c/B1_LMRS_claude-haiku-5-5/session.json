@@ -1,0 +1,56 @@
+{
+  "format": "mikroptim.design.session/1",
+  "start": "docs/ergebnisse/m10-t7c/B1_LMRS_claude-haiku-5-5/start.json",
+  "spec": {
+    "na": 0.6
+  },
+  "budget": {
+    "actions": 12
+  },
+  "candidates": {
+    "0": {
+      "parent": null,
+      "status": "open",
+      "action": null
+    },
+    "1": {
+      "parent": 0,
+      "status": "open",
+      "action": "free_gaps"
+    },
+    "2": {
+      "parent": 1,
+      "status": "open",
+      "action": "optimize"
+    },
+    "3": {
+      "parent": 2,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "4": {
+      "parent": 3,
+      "status": "open",
+      "action": "optimize"
+    },
+    "5": {
+      "parent": 4,
+      "status": "open",
+      "action": "set_constraint"
+    },
+    "6": {
+      "parent": 5,
+      "status": "abandoned",
+      "action": "synth_segment",
+      "reason": "Geometrisch unmöglich (Randdicke < 0, Halbkugel überschritten, Flächen berühren sich am Rand), Apertur nur 0,3 statt 0,6, Homotopie blockiert, F über F_max; Budget nur noch eine Aktion."
+    },
+    "7": {
+      "parent": 6,
+      "status": "abandoned",
+      "action": "optimize",
+      "reason": "Apertur nur NA 0,3 statt 0,6, Homotopie blockiert (F_B > F_max), drei Herstellbarkeitsfehler (Randdicke, Halbkugel, Flächenberührung am Rand); Einfügen einer Schale scheitert an der Dickenschranke. Kein Gewinn gegenüber dem Elternkandidaten."
+    }
+  },
+  "next_id": 8,
+  "decisions": 12
+}

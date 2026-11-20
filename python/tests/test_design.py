@@ -118,6 +118,128 @@ def test_branch_abandon_finish(session):
     assert session.open_candidates() == [0]
 
 
+class ScriptDecider(design.Decider):
+    """Antwortet nacheinander mit den vorgegebenen Aktionslisten und merkt sich die Zustände."""
+
+    kind = "skript"
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.states = []
+
+    def decide(self, state, session):
+        self.states.append(state)
+        return response(*self.answers.pop(0), candidate=state["candidate"])
+
+
+def test_run_continues_after_abandon(session):
+    """M10-T7c: abandon verwirft nur den Kandidaten; run macht mit dem nächsten offenen
+    Vorfahren weiter (Sonnet 5.5 beendete sonst die Sitzung mit Restbudget). Auch ein abandon
+    nach einer verändernden Aktion derselben Antwort betrifft den neuen Kandidaten."""
+    d = ScriptDecider([{"action": "free_gaps", "surfaces": [3]}],              # 0 → 1
+                      [{"action": "free_gaps", "surfaces": [5]},               # 1 → 2
+                       {"action": "abandon", "reason": "Test"}],              # 2 verworfen
+                      [{"action": "abandon", "reason": "Test"}],              # 1 verworfen
+                      [{"action": "finish", "reason": "Test"}])               # 0 fertig
+    last = session.run(d, 0, max_steps=10)
+    assert [e["candidate"] for e in session.log()] == [0, 1, 1, 0]
+    c = session.candidates()
+    assert c[2]["status"] == "abandoned" and c[1]["status"] == "abandoned"
+    assert c[0]["status"] == "finished" and last == 0
+    assert "abandon: Kandidat 2 verworfen, weiter mit Kandidat 1" in d.states[2]["last_errors"]
+    assert d.answers == []
+
+
+def test_run_resume_hook_and_end(session):
+    """Eigene Wahl nach abandon (Bewertungsskript: bester offener Kandidat); ``None`` beendet
+    den Lauf, ebenso ein abandon ohne offenen Kandidaten."""
+    picked = []
+
+    def resume(s, gone):
+        picked.append(gone)
+        return None
+
+    d = ScriptDecider([{"action": "free_gaps", "surfaces": [3]}],
+                      [{"action": "abandon", "reason": "Test"}],
+                      [{"action": "finish", "reason": "nie erreicht"}])
+    assert session.run(d, 0, max_steps=10, resume=resume) == 1
+    assert picked == [1] and len(session.log()) == 2 and len(d.answers) == 1
+    d = ScriptDecider([{"action": "abandon", "reason": "Test"}])
+    assert session.run(d, 0, max_steps=10) == 0
+    assert session.open_candidates() == [] and len(session.log()) == 3
+
+
+def test_history_names_synth_outcome(session):
+    """M10-T7c: Der Verlauf im Zustand nennt Ausgang und NA jedes synth_segment; start_rejected
+    sah vorher wie ein Erfolg aus."""
+    entries = [
+        {"seq": 1, "candidate": 0, "results": [{"action": "synth_segment", "status": "ok",
+         "new_candidates": [1], "reports": [{"result": {
+             "status": "start_rejected", "message": "Startpunkt nicht annehmbar (F_B > F_max)",
+             "start_point": {"aperture": 0.3}}}]}]},
+        {"seq": 2, "candidate": 1, "results": [{"action": "synth_segment", "status": "ok",
+         "new_candidates": [2], "reports": [{"result": {
+             "status": "step_too_small", "point": {"aperture": 0.4475}}}]},
+                                               {"action": "free_gaps", "status": "ok",
+                                                "new_candidates": [3]}]}]
+    with open(session.dir / "log.jsonl", "a", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    assert session.history() == [
+        "#0: synth_segment → [1] (start_rejected, Apertur nicht geöffnet: Startpunkt nicht "
+        "annehmbar (F_B > F_max))",
+        "#1: synth_segment → [2] (step_too_small, NA 0.4475)",
+        "#1: free_gaps → [3]"]
+
+
+def test_optimize_variable_selection(session):
+    """optimize variables (vorher not_implemented außer current): jede Auswahl erweitert die
+    Variablen der Datei; Glas bleibt fest, die letzte Dicke (Arbeitsabstand) auch."""
+    expect = {"all_curvatures": ([1, 2, 3, 4, 6, 7], []),
+              "curvatures_and_gaps": ([1, 2, 3, 4, 6, 7], [0, 3, 5]),
+              "everything": ([1, 2, 3, 4, 6, 7], [0, 1, 2, 3, 4, 5, 6])}
+    for sel, (curv, thick) in expect.items():
+        r = response({"action": "optimize", "variables": sel, "cycles": 2})
+        validate(r, "design_action.schema.json")
+        entry = session.apply(0, r, decider={})
+        res = entry["results"][0]
+        assert res["status"] == "ok", res
+        assert res["reports"][0]["variables"] == {"selection": sel, "curvatures": curv,
+                                                  "thicknesses": thick}
+        data = json.loads(session.system_path(res["new_candidates"][0]).read_text(
+            encoding="utf-8"))
+        items = data["variables"]["items"]
+        assert [i["surfaces"] for i in items if i["type"] == "curvature"] == [curv]
+        assert sorted(i["surface"] for i in items if i["type"] == "thickness") == thick
+        assert not any(i["type"] == "glass" for i in items)
+    # schon variable Flächen werden nicht doppelt freigegeben
+    entry = session.apply(3, response({"action": "optimize", "variables": "everything",
+                                       "cycles": 2}, candidate=3), decider={})
+    assert entry["results"][0]["status"] == "ok"
+    assert "variables" not in entry["results"][0]["reports"][0]
+    assert not list((session.dir / "tmp").glob("*.json"))  # keine Zwischendateien
+
+
+def test_optimize_widening_keeps_ghost_plate_gaps(tmp_path):
+    """E14 (M10-T7c): Spalte mit Geisterplatten bleiben bei curvatures_and_gaps/everything
+    fest. Frei schob der Optimierer den Spalt nach der Blende auf die Plattenlage, danach fand
+    Operator A dort keinen Platz und synth lehnte den Start ab (Opus, Sonnet auf B1–B3)."""
+    s = design.Session.create(SYSTEMS / "einzellinse_homotopie_start.json", tmp_path / "s")
+    data = json.loads(s.system_path(0).read_text(encoding="utf-8"))
+    plate_gaps = {g["after_surface"] for g in data["ghost_plates"]}
+    assert plate_gaps
+    entry = s.apply(0, response({"action": "optimize", "variables": "everything", "cycles": 2}),
+                    decider={})
+    res = entry["results"][0]
+    assert res["status"] == "ok", res
+    freed = res["reports"][0]["variables"]["thicknesses"]
+    assert freed and not plate_gaps & set(freed)
+    # free_gaps mit ausdrücklicher Liste gibt den Spalt weiter frei
+    entry = s.apply(0, response({"action": "free_gaps", "surfaces": sorted(plate_gaps)}),
+                    decider={})
+    assert entry["results"][0]["new_candidates"]
+
+
 def test_human_decider_and_replay(session, tmp_path):
     answer = json.dumps(response({"action": "free_gaps", "surfaces": [3]}))
     human = design.HumanDecider(stdin=io.StringIO(answer + "\n"), stdout=io.StringIO())
