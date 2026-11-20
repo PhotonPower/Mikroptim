@@ -101,3 +101,45 @@ def test_synth_options_field_rule(tool):
     assert tool.synth_options(args(feldregel=True)) == ["--stall", "0", "--field-rule"]
     assert tool.synth_options(args(feldregel=True, farbregel=True)) == [
         "--color-rule", "--field-rule"]
+
+
+def test_synth_options_prune(tool):
+    """M6-T9: --rueckbau reicht synth --prune und die Einstellungen durch, --elementbudget nur die
+    Einstellungen; limit_elements setzt das Budget statt --max-elements anzuhängen."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=False, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[])
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.synth_options(args(rueckbau=False, elementbudget=None)) == ["--stall", "0"]
+    assert tool.synth_options(args(rueckbau=True)) == ["--stall", "0", "--prune"]
+    assert tool.synth_options(args(rueckbau=True, rueckbau_faktor=0.5, rueckbau_versuche=6,
+                                   rueckbau_stufen=4)) == [
+        "--stall", "0", "--prune", "--prune-factor", "0.5", "--prune-attempts", "6",
+        "--prune-stages", "4"]
+    assert tool.synth_options(args(elementbudget=9, rueckbau_versuche=2)) == [
+        "--stall", "0", "--prune-attempts", "2"]
+    assert tool.synth_options(args(nur_rueckbau=True)) == ["--stall", "0", "--prune"]
+    assert tool.limit_elements(["--rings", "16"], 7) == ["--rings", "16", "--max-elements", "7"]
+    assert tool.limit_elements(["--element-budget", "9"], 7) == ["--element-budget", "7"]
+    assert tool.limit_elements(["--element-budget", "5"], 7) == ["--element-budget", "5"]
+
+
+def test_remove_dummy_planes_merged_gap_once(tool):
+    """M6-T9: Haben beide Spalte um eine Hilfsebene Dickenvariablen (in verschiedenen Einträgen),
+    steht der vereinigte Spalt danach nur einmal in den Variablen."""
+    s = {"surfaces": [{"type": "stop", "thickness": 0.5, "material": "AIR"},
+                      {"type": "plane", "thickness": 0.1, "material": "AIR"},
+                      {"type": "sphere", "curvature": 0.1, "thickness": 1.0, "material": "N-BK7"},
+                      {"type": "sphere", "curvature": -0.1, "thickness": 0.2, "material": "AIR"},
+                      {"type": "sphere", "curvature": 0.1, "thickness": 5.0, "material": "AIR"}],
+         "variables": {"items": [{"type": "thickness", "surface": 0},
+                                 {"type": "thickness", "surfaces": [1, 3]},
+                                 {"type": "thickness", "surface": 1}]},
+         "constraints": {"items": []}}
+    tool.remove_dummy_planes(s)
+    assert len(s["surfaces"]) == 4
+    assert s["surfaces"][0]["thickness"] == 0.6
+    assert s["variables"]["items"] == [{"type": "thickness", "surface": 0},
+                                       {"type": "thickness", "surfaces": [2]}]

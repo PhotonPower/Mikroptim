@@ -1,0 +1,42 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t9\JFV855R_budget12\p2_r21_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.8659, Feldanteil 0.203, 12 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Apertur und Feld gemeinsam                  Feld(t) = F0 + t^1.000 (F1 - F0), Schritt 3.125e-02 / 3.906e-03 / 2.500e-01
+  Rückbau                                     nach den Phasen und vor dem Abschluss, am Elementbudget 12; 3 Stufen, 4 Versuche pro Runde, F_B <= 0.500 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.8659  0.203   0  -        max_iterations       500  3.495177e-03  3.304408e-03  0.07788   6.035e-06  12  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.8659  0.203   0  -        max_iterations       500  3.617700e-03  3.469559e-03  0.07916   6.815e-06  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.8659  0.203   0  -        max_iterations       500  3.684631e-03  3.540363e-03  0.07906   7.610e-06  12  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture_field   0.8685  0.228   0  0.03125  max_iterations       500  2.742270e-02  2.705921e-02  0.14868   8.849e-05  12  shrink (Delta 0.01562)
+      4  aperture_field   0.8672  0.216   0  0.01562  max_iterations       500  1.222653e-02  1.196457e-02  0.11532   3.777e-05  12  shrink (Delta 0.00781)
+      5  aperture_field   0.8666  0.209   0  0.00781  max_iterations       500  6.657888e-03  6.411271e-03  0.09176   2.050e-05  12  shrink (Delta 0.00391)
+      6  aperture_field   0.8662  0.206   0  0.00391  max_iterations       500  4.771865e-03  4.557760e-03  0.08306   1.333e-05  12  keep (Delta 0.00391)
+      7  aperture_field   0.8666  0.209   0  0.00391  max_iterations       500  6.439301e-03  6.198519e-03  0.09244   1.893e-05  12  insert (Delta 0.00195): Feldregel (RMS Rand/Achse 0.0924107/0.0362168 Wellen, W131 = 0.980041, W222 = 0.311886, W220 = 0.0073977): Operator A im Luftspalt nach Fläche 25 (|ȳ/y| = 0.326316)
+      8  removal_stage    0.8662  0.206   0  -        max_iterations       500  1.419788e-02  1.385060e-02  0.14816   2.763e-05  12  -: Element ab Fläche 22 (SYN-36, Seidel-Beitrag 1.005 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      9  removal_stage    0.8662  0.206   0  -        max_iterations       500  3.029056e-02  2.973143e-02  0.20665   5.903e-05  12  -: Element ab Fläche 22 (SYN-36, Seidel-Beitrag 1.005 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     10  removal_stage    0.8662  0.206   0  -        max_iterations       500  4.374718e-02  4.306858e-02  0.25440   7.416e-05  12  -: Element ab Fläche 22 (SYN-36, Seidel-Beitrag 1.005 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     11  removal          0.8662  0.206   0  -        -                      -  -             -             -         -            12  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 22 (SYN-36, Seidel-Beitrag 1.005 Wellen): F_B 0.0430686 > 0.00255102
+     12  removal_stage    0.8662  0.206   0  -        max_iterations       500  7.641465e-03  7.375772e-03  0.10189   2.069e-05  12  -: Element ab Fläche 14 (buchdahl(n0=1.80668), Seidel-Beitrag 11.39 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     13  removal_stage    0.8662  0.206   0  -        max_iterations       500  1.141224e-02  1.113577e-02  0.12019   3.007e-05  12  -: Element ab Fläche 14 (buchdahl(n0=1.80668), Seidel-Beitrag 11.39 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     14  removal_stage    0.8662  0.206   0  -        max_iterations       500  1.581955e-02  1.549812e-02  0.13824   4.033e-05  12  -: Element ab Fläche 14 (buchdahl(n0=1.80668), Seidel-Beitrag 11.39 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     15  removal          0.8662  0.206   0  -        -                      -  -             -             -         -            12  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 14 (buchdahl(n0=1.80668), Seidel-Beitrag 11.39 Wellen): F_B 0.0154981 > 0.00255102
+     16  removal_stage    0.8662  0.206   0  -        max_iterations       500  8.687109e-03  8.418275e-03  0.10156   2.675e-05  12  -: Element ab Fläche 18 (buchdahl(n0=1.80668), Seidel-Beitrag 12.8 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     17  removal_stage    0.8662  0.206   0  -        max_iterations       500  1.345938e-02  1.312148e-02  0.13267   3.452e-05  12  -: Element ab Fläche 18 (buchdahl(n0=1.80668), Seidel-Beitrag 12.8 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     18  removal_stage    0.8662  0.206   0  -        max_iterations       500  2.035869e-02  1.998232e-02  0.16861   4.554e-05  12  -: Element ab Fläche 18 (buchdahl(n0=1.80668), Seidel-Beitrag 12.8 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     19  removal          0.8662  0.206   0  -        -                      -  -             -             -         -            12  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 18 (buchdahl(n0=1.80668), Seidel-Beitrag 12.8 Wellen): F_B 0.0199823 > 0.00255102
+     20  removal_stage    0.8662  0.206   0  -        max_iterations       500  4.923374e-01  4.866969e-01  0.70698   1.486e-03  12  -: Element ab Fläche 12 (buchdahl(n0=1.80668), Seidel-Beitrag 21.25 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     21  removal_stage    0.8662  0.206   0  -        numerical_error        0  1.448614e+234  1.448614e+234  166.79836   1.486e-03  12  -: Element ab Fläche 12 (buchdahl(n0=1.80668), Seidel-Beitrag 21.25 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     22  removal          0.8662  0.206   0  -        -                      -  -             -             -         -            12  -: Rückbau verworfen (Elementbudget 12): Element ab Fläche 12 (buchdahl(n0=1.80668), Seidel-Beitrag 21.25 Wellen): Optimierung ohne endliches Ergebnis
+
+Status: max_elements (Apertur und Feld, t 0.00390625: Schrittweite unter Δ_min = 0.00390625 (letzter Versuch F_B = 0.00619852); Bedarf (Operator A), aber höchste Elementzahl 12 erreicht)
+Endpunkt: NA 0.8662, Feldanteil 0.206, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 12 -> 12 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 19, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                25.9
+Ergebnis geschrieben: docs\ergebnisse\m6-t9\JFV855R_budget12\p2_r22.json
+Protokoll geschrieben: docs\ergebnisse\m6-t9\JFV855R_budget12\p2_r22_log.json

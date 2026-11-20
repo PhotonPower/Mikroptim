@@ -1,0 +1,41 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t9\F1R_feldregel_rueckbau\p1_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4725, Feldanteil 0.100, 4 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     nach den Phasen und vor dem Abschluss; 3 Stufen, 8 Versuche pro Runde, F_B <= 0.500 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4725  0.100   0  -        converged_step       200  4.941618e-03  4.859896e-03  0.07916   4.434e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4725  0.100   0  -        converged_step        32  4.947695e-03  4.879427e-03  0.07924   4.278e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4725  0.100   0  -        converged_step        30  4.972465e-03  4.885061e-03  0.07935   4.218e-06   4  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4925  0.100   0  0.02000  converged_step        99  7.721324e-03  7.597325e-03  0.10237   8.001e-06   4  shrink (Delta 0.01000)
+      4  aperture         0.4825  0.100   0  0.01000  converged_step       273  6.262495e-03  6.152734e-03  0.09067   4.600e-06   4  shrink (Delta 0.00500)
+      5  aperture         0.4775  0.100   0  0.00500  converged_step        42  5.556430e-03  5.461674e-03  0.08464   4.426e-06   4  shrink (Delta 0.00250)
+      6  aperture         0.4750  0.100   0  0.00250  converged_step        67  5.265172e-03  5.175926e-03  0.08232   4.114e-06   4  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+      7  removal_stage    0.4725  0.100   0  -        max_iterations       500  5.564805e-03  5.486657e-03  0.07987   4.698e-06   4  -: Element ab Fläche 6 (buchdahl(n0=1.80668), Seidel-Beitrag 0.1686 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.4725  0.100   0  -        converged_step        29  8.587331e-03  8.516304e-03  0.09601   5.893e-06   4  -: Element ab Fläche 6 (buchdahl(n0=1.80668), Seidel-Beitrag 0.1686 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.4725  0.100   0  -        max_iterations       500  2.468539e-02  2.464125e-02  0.14286   1.833e-04   4  -: Element ab Fläche 6 (buchdahl(n0=1.80668), Seidel-Beitrag 0.1686 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.4725  0.100   0  -        -                      -  -             -             -         -             4  -: Rückbau verworfen (am Ende): Element ab Fläche 6 (buchdahl(n0=1.80668), Seidel-Beitrag 0.1686 Wellen): F_B 0.0246413 > 0.00255102
+     11  removal_stage    0.4725  0.100   0  -        converged_step       176  6.094887e-03  6.045310e-03  0.07755   8.346e-06   4  -: Element ab Fläche 4 (buchdahl(n0=1.79232), Seidel-Beitrag 0.2459 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.4725  0.100   0  -        max_iterations       500  9.181255e-03  9.138613e-03  0.09431   9.943e-06   4  -: Element ab Fläche 4 (buchdahl(n0=1.79232), Seidel-Beitrag 0.2459 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.4725  0.100   0  -        max_iterations       500  1.540932e-02  1.535557e-02  0.12365   1.052e-05   4  -: Element ab Fläche 4 (buchdahl(n0=1.79232), Seidel-Beitrag 0.2459 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.4725  0.100   0  -        -                      -  -             -             -         -             4  -: Rückbau verworfen (am Ende): Element ab Fläche 4 (buchdahl(n0=1.79232), Seidel-Beitrag 0.2459 Wellen): F_B 0.0153556 > 0.00255102
+     15  removal_stage    0.4725  0.100   0  -        converged_step       282  6.070264e-03  6.018861e-03  0.07842   6.892e-06   4  -: Element ab Fläche 2 (CAF2, Seidel-Beitrag 0.3262 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.4725  0.100   0  -        max_iterations       500  8.950220e-03  8.903607e-03  0.09411   8.436e-06   4  -: Element ab Fläche 2 (CAF2, Seidel-Beitrag 0.3262 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.4725  0.100   0  -        max_iterations       500  1.436471e-02  1.432121e-02  0.11850   1.337e-05   4  -: Element ab Fläche 2 (CAF2, Seidel-Beitrag 0.3262 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.4725  0.100   0  -        -                      -  -             -             -         -             4  -: Rückbau verworfen (am Ende): Element ab Fläche 2 (CAF2, Seidel-Beitrag 0.3262 Wellen): F_B 0.0143212 > 0.00255102
+     19  removal_stage    0.4725  0.100   0  -        max_iterations       500  1.993299e-02  1.984974e-02  0.08595   6.028e-04   4  -: Element ab Fläche 8 (buchdahl(n0=1.80668), Seidel-Beitrag 0.5668 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     20  removal_stage    0.4725  0.100   0  -        max_iterations       500  1.606626e-01  1.597957e-01  0.22520   3.821e-03   4  -: Element ab Fläche 8 (buchdahl(n0=1.80668), Seidel-Beitrag 0.5668 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     21  removal_stage    0.4725  0.100   0  -        max_iterations       500  2.079036e-02  2.074766e-02  0.09700   5.913e-04   4  -: Element ab Fläche 8 (buchdahl(n0=1.80668), Seidel-Beitrag 0.5668 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     22  removal          0.4725  0.100   0  -        -                      -  -             -             -         -             4  -: Rückbau verworfen (am Ende): Element ab Fläche 8 (buchdahl(n0=1.80668), Seidel-Beitrag 0.5668 Wellen): F_B 0.0207477 > 0.00255102
+
+Status: step_too_small (Apertur 0.4725: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00517593); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4725, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 4 -> 4 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 19, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                32.3
+Ergebnis geschrieben: docs\ergebnisse\m6-t9\F1R_feldregel_rueckbau\p1_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t9\F1R_feldregel_rueckbau\p1_r3_log.json

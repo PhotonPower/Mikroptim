@@ -6,6 +6,7 @@
 #include "insertion_test_systems.hpp"
 #include "mikroptim/glass/buchdahl_fit.hpp"
 #include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/optim/design_operators.hpp"
 #include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/paraxial/paraxial.hpp"
 #include "mikroptim/synth/homotopy.hpp"
@@ -588,6 +589,228 @@ TEST(HomotopyControl, InsertionMustImprove) {
                  std::invalid_argument);
 }
 
+// Rückbau (M6-T9): Startsystem aus der Basis (Element 0) und `groups.size()` weiteren Elementen.
+SystemDescription mock_system(double aperture, const std::vector<const char*>& groups) {
+    SystemDescription d = MockModel::start(aperture);
+    for (const char* g : groups) {
+        Surface s;
+        if (g != nullptr) {
+            s.group = g;
+        }
+        d.surfaces.push_back(s);
+    }
+    return d;
+}
+
+// Rückbau vor dem Abschluss: Kandidaten in der Reihenfolge des Modells (Element 2 zuerst); das
+// notwendige Element 2 wird nach der Rückbau-Homotopie verworfen (Zustand zurück), das
+// überflüssige Element 1 entfernt; danach ist nichts mehr entfernbar.
+TEST(HomotopyControl, PruneRemovesSuperfluousKeepsNecessary) {
+    MockSpec spec;
+    spec.capacity0 = 0.31;
+    spec.capacity_step = 0.1; // zwei beitragende Elemente: Kapazität 0,41
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.4);
+    o.prune = true;
+    const HomotopyResult r =
+        run_homotopy(m, mock_system(0.3, {"useless", nullptr}), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.start_elements, 3);
+    EXPECT_EQ(r.elements, 2);
+    EXPECT_EQ(r.insertions, 0);
+    EXPECT_EQ(r.removals, 1);
+    EXPECT_EQ(r.removal_attempts, 3); // Element 2, Element 1 (entfernt), dann Element 1 (vorher 2)
+    ASSERT_EQ(r.system.surfaces.size(), 2U);
+    EXPECT_FALSE(r.system.surfaces[1].group.has_value()); // das notwendige Element blieb
+    EXPECT_EQ(m.collapse_fractions,
+              (std::vector<double>{1.0 / 3.0, 0.5, 1.0, 1.0 / 3.0, 0.5, 1.0, 1.0 / 3.0, 0.5, 1.0}));
+    const auto stages = steps_of(r, HomotopyStepKind::RemovalStage);
+    const auto notes = steps_of(r, HomotopyStepKind::Removal);
+    ASSERT_EQ(stages.size(), 9U);
+    ASSERT_EQ(notes.size(), 3U);
+    EXPECT_FALSE(notes[0]->accepted);
+    EXPECT_TRUE(notes[1]->accepted);
+    EXPECT_FALSE(notes[2]->accepted);
+    EXPECT_NE(notes[0]->operation.find("Rückbau verworfen (vor dem Abschluss): Mock-Element 2"),
+              std::string::npos)
+        << notes[0]->operation;
+    EXPECT_NE(notes[1]->operation.find("Mock-Element 1 entfernt"), std::string::npos)
+        << notes[1]->operation;
+    EXPECT_EQ(notes[0]->elements, 3);
+    EXPECT_EQ(notes[1]->elements, 2);
+    for (const HomotopyStep* s : stages) {
+        EXPECT_FALSE(s->accepted);
+        EXPECT_EQ(s->point, stages.front()->point);
+    }
+    // nach dem Rückbau der Abschluss am entfernten System
+    EXPECT_EQ(r.steps.back().kind, HomotopyStepKind::Goal);
+    EXPECT_EQ(r.steps.back().elements, 2);
+    // Zusammenfassung und JSON nennen den Rückbau
+    std::ostringstream text;
+    write_homotopy_summary(r, text);
+    EXPECT_NE(text.str().find("1 Rückbauten in 3 Versuchen"), std::string::npos) << text.str();
+    const nlohmann::json j = nlohmann::json::parse(homotopy_result_json(r));
+    EXPECT_EQ(j["removals"], 1);
+    EXPECT_EQ(j["removal_attempts"], 3);
+    EXPECT_EQ(j["steps"][static_cast<std::size_t>(notes[1]->index)]["kind"], "removal");
+
+    // höchstens ein Versuch pro Runde: nur Element 2, verworfen
+    HomotopyOptions one = o;
+    one.prune_attempts = 1;
+    MockModel m1(spec);
+    const HomotopyResult r1 =
+        run_homotopy(m1, mock_system(0.3, {"useless", nullptr}), mock_point(0.3), one);
+    EXPECT_EQ(r1.elements, 3);
+    EXPECT_EQ(r1.removal_attempts, 1);
+    // Mindestzahl: mit 3 Elementen nichts zu entfernen
+    HomotopyOptions min3 = o;
+    min3.prune_min_elements = 3;
+    MockModel m3(spec);
+    const HomotopyResult r3 =
+        run_homotopy(m3, mock_system(0.3, {"useless", nullptr}), mock_point(0.3), min3);
+    EXPECT_EQ(r3.removal_attempts, 0);
+    EXPECT_EQ(r3.elements, 3);
+    // Schwelle: F_B = F_max/2 nach dem Entfernen; Faktor 0,4 verwirft alles, Toleranz 0 nicht
+    HomotopyOptions strict = o;
+    strict.prune_merit_factor = 0.4;
+    MockModel ms(spec);
+    EXPECT_EQ(
+        run_homotopy(ms, mock_system(0.3, {"useless", nullptr}), mock_point(0.3), strict).removals,
+        0);
+    HomotopyOptions tol = o;
+    tol.prune_tolerance = 0.0;
+    MockModel mt(spec);
+    EXPECT_EQ(
+        run_homotopy(mt, mock_system(0.3, {"useless", nullptr}), mock_point(0.3), tol).removals, 1);
+}
+
+// Rückbau nach einer Phase nur, wenn in ihr eingefügt wurde; vor dem Abschluss nur, wenn seit
+// dem letzten Rückbau eingefügt wurde.
+TEST(HomotopyControl, PruneAfterPhaseWithInsertions) {
+    MockSpec spec;
+    spec.capacity0 = 0.4;
+    spec.capacity_step = 0.2;
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.5);
+    o.prune = true;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.insertions, 1);
+    EXPECT_EQ(r.elements, 2);         // das eingefügte Element ist notwendig
+    EXPECT_EQ(r.removal_attempts, 1); // einmal nach der Aperturphase, nicht noch einmal am Ende
+    const auto notes = steps_of(r, HomotopyStepKind::Removal);
+    ASSERT_EQ(notes.size(), 1U);
+    EXPECT_NE(notes[0]->operation.find("(nach der Phase)"), std::string::npos);
+    EXPECT_EQ(notes[0]->point.aperture, 0.5);
+
+    // Abbruch in der Phase (max_elements): Rückbau am letzten guten Zustand, Status bleibt
+    MockSpec stop = spec;
+    stop.capacity_step = 0.1;
+    MockModel ms(stop);
+    HomotopyOptions os = mock_options(0.6);
+    os.prune = true;
+    os.max_elements = 2;
+    const HomotopyResult rs = run_homotopy(ms, MockModel::start(0.3), mock_point(0.3), os);
+    EXPECT_EQ(rs.status, HomotopyStatus::MaxElements) << rs.message;
+    EXPECT_EQ(rs.removal_attempts, 1);
+    EXPECT_EQ(rs.elements, 2);
+    const auto stop_notes = steps_of(rs, HomotopyStepKind::Removal);
+    ASSERT_EQ(stop_notes.size(), 1U);
+    EXPECT_NE(stop_notes[0]->operation.find("(am Ende)"), std::string::npos);
+    EXPECT_EQ(rs.steps.back().kind, HomotopyStepKind::Removal);
+}
+
+// Elementbudget (M6-T9): Verlangt ein Einfügen mehr als max_elements, zuerst Rückbau; das
+// überflüssige Element geht, das neue kommt. Ohne Option bzw. ohne entfernbares Element Abbruch.
+TEST(HomotopyControl, ElementBudgetPrunesBeforeInserting) {
+    MockSpec spec;
+    spec.capacity0 = 0.4;
+    spec.capacity_step = 0.2;
+    HomotopyOptions o = mock_options(0.5);
+    o.max_elements = 2;
+    MockModel off(spec);
+    const HomotopyResult r0 = run_homotopy(off, mock_system(0.3, {"useless"}), mock_point(0.3), o);
+    EXPECT_EQ(r0.status, HomotopyStatus::MaxElements) << r0.message;
+    EXPECT_EQ(r0.removal_attempts, 0);
+
+    o.prune_at_limit = true;
+    MockModel m(spec);
+    const HomotopyResult r = run_homotopy(m, mock_system(0.3, {"useless"}), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.removals, 1);
+    EXPECT_EQ(r.insertions, 1);
+    EXPECT_EQ(r.elements, 2);
+    ASSERT_EQ(r.system.surfaces.size(), 2U);
+    EXPECT_FALSE(r.system.surfaces[1].group.has_value()); // das eingefügte Element
+    const auto notes = steps_of(r, HomotopyStepKind::Removal);
+    ASSERT_EQ(notes.size(), 1U);
+    EXPECT_NE(notes[0]->operation.find("(Elementbudget 2)"), std::string::npos);
+    // die Phase versucht nach dem Rückbau neu (Δ₀), erst danach das Einfügen
+    const auto it = std::find_if(r.steps.begin(), r.steps.end(), [](const HomotopyStep& s) {
+        return s.kind == HomotopyStepKind::Insertion;
+    });
+    ASSERT_NE(it, r.steps.end());
+    EXPECT_GT(it->index, notes[0]->index);
+
+    // nur notwendige Elemente: ein Rückbau-Versuch an diesem Punkt, dann Abbruch
+    MockSpec necessary = spec;
+    necessary.capacity0 = 0.2; // beide Elemente tragen bei: Kapazität 0,4
+    MockModel mn(necessary);
+    const HomotopyResult rn = run_homotopy(mn, mock_system(0.3, {nullptr}), mock_point(0.3), o);
+    EXPECT_EQ(rn.status, HomotopyStatus::MaxElements) << rn.message;
+    EXPECT_EQ(rn.removal_attempts, 1);
+    EXPECT_EQ(rn.removals, 0);
+    EXPECT_EQ(rn.elements, 2);
+}
+
+// Ohne Rückbau: kein Aufruf des Modells, Protokoll wie vorher (Optionen gesetzt, aber aus);
+// ungültige Optionen.
+TEST(HomotopyControl, PruneOffUnchangedAndInvalidOptions) {
+    MockSpec spec;
+    spec.capacity0 = 0.4;
+    spec.capacity_step = 0.2;
+    MockModel a(spec);
+    MockModel b(spec);
+    HomotopyOptions o = mock_options(0.5);
+    HomotopyOptions p = o;
+    p.prune_stages = 5;
+    p.prune_attempts = 7;
+    p.prune_merit_factor = 0.5;
+    p.prune_tolerance = 0.1;
+    const HomotopyResult ra = run_homotopy(a, mock_system(0.3, {"useless"}), mock_point(0.3), o);
+    const HomotopyResult rb = run_homotopy(b, mock_system(0.3, {"useless"}), mock_point(0.3), p);
+    EXPECT_TRUE(b.collapse_fractions.empty());
+    ASSERT_EQ(ra.steps.size(), rb.steps.size());
+    for (std::size_t i = 0; i < ra.steps.size(); ++i) {
+        HomotopyStep x = ra.steps[i];
+        HomotopyStep y = rb.steps[i];
+        x.seconds = y.seconds = 0.0;
+        EXPECT_EQ(homotopy_step_json(x), homotopy_step_json(y)) << i;
+    }
+    EXPECT_EQ(ra.system, rb.system);
+    EXPECT_EQ(homotopy_result_json(ra).find("removal"), std::string::npos);
+
+    MockModel m({});
+    for (int k = 0; k < 5; ++k) {
+        HomotopyOptions bad = mock_options(0.5);
+        bad.prune = true;
+        if (k == 0) {
+            bad.prune_stages = 0;
+        } else if (k == 1) {
+            bad.prune_attempts = 0;
+        } else if (k == 2) {
+            bad.prune_merit_factor = 1.5;
+        } else if (k == 3) {
+            bad.prune_merit_factor = 0.0;
+        } else {
+            bad.prune_min_elements = -1;
+        }
+        EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), bad),
+                     std::invalid_argument)
+            << k;
+    }
+}
+
 TEST(HomotopyControl, JointApertureFieldInvalidOptions) {
     MockModel m({});
     HomotopyOptions o = mock_options(0.5);
@@ -991,6 +1214,71 @@ TEST(OpticalHomotopy, FieldRuleRecommendsMeniscusAtFieldPosition) {
     OpticalHomotopyOptions bad = o;
     bad.field_ratio = 0.0;
     EXPECT_THROW(OpticalHomotopyModel(start, bad), std::invalid_argument);
+}
+
+// Rückbau am optischen Modell (M6-T9): Ein Null-Meniskus (Operator A mit Dicke 0) hat den
+// Seidel-Beitrag 0 und ist der erste Kandidat; Rückbau-Homotopie und Entfernen lassen die Merit
+// unverändert und ergeben das Ausgangssystem (Orakel: Merit und Nebenbedingungen vor dem
+// Einfügen). Während der Homotopie gelten die mechanischen Bedingungen nicht für den Block,
+// danach wieder mit Standardauswahl.
+TEST(OpticalHomotopy, RemovalOfNullElementRestoresSystem) {
+    const LoadedSystem start = homotopy_start();
+    OpticalHomotopyModel m(start, {});
+    const HomotopyPoint p = m.start_point();
+    const SystemDescription& base = m.start_system();
+    // Null-Meniskus im Luftspalt hinter der Linse, hinter den Geisterplatten
+    const InsertionResult ins =
+        insert_meniscus(base, meniscus(2, 1.5, -0.05, catalog_glass("N-BK7")));
+    // mechanische Bedingungen mit Standardauswahl wie nach finish_insertion (auch der Meniskus)
+    SystemDescription with = ins.system;
+    with.constraints = base.constraints;
+    ASSERT_EQ(ins.first_new_surface, 3);
+    ASSERT_EQ(m.elements(with), 2);
+    const auto merit = [&](const SystemDescription& d) {
+        const LoadedSystem l = m.load(m.realize(d, p));
+        return make_cpu_merit({}, {}, 1)(make_system_batch(l, 1)).at(0);
+    };
+    const double f0 = merit(base);
+    EXPECT_LE(relative_change(f0, merit(with)), kInsertionMeritRelative);
+
+    const std::vector<HomotopyRemoval> c = m.removal_candidates(with, p);
+    ASSERT_EQ(c.size(), 2U);
+    EXPECT_EQ(c[0].first_surface, 3) << c[0].text;
+    EXPECT_EQ(c[0].elements, 1);
+    EXPECT_EQ(c[1].first_surface, 1);
+    EXPECT_LE(c[0].score, 1e-9 * c[1].score) << c[0].text << " / " << c[1].text;
+    EXPECT_NE(c[0].text.find("Element ab Fläche 3 (N-BK7"), std::string::npos) << c[0].text;
+
+    std::vector<std::string> warnings;
+    SystemDescription cur = with;
+    for (const double f : {0.5, 1.0}) {
+        cur = m.collapse(with, cur, c[0], f, warnings);
+        EXPECT_LE(relative_change(f0, merit(cur)), kInsertionMeritRelative) << f;
+    }
+    EXPECT_TRUE(is_null_element(cur, 3));
+    // mechanische Bedingungen ohne die Flächen 3, 4 (Spalte 3, 4)
+    for (const ConstraintSpec& k : cur.constraints->items) {
+        if (!is_mechanical(k.type)) {
+            continue;
+        }
+        for (const int s : constraint_surfaces(cur, k)) {
+            EXPECT_TRUE(s < 3 || s > 4) << s;
+        }
+    }
+    const SystemDescription removed = m.remove(with, cur, c[0], warnings);
+    EXPECT_TRUE(warnings.empty());
+    EXPECT_LE(relative_change(f0, merit(removed)), kInsertionMeritRelative);
+    ASSERT_EQ(removed.surfaces.size(), base.surfaces.size());
+    for (std::size_t s = 0; s < base.surfaces.size(); ++s) {
+        EXPECT_EQ(removed.surfaces[s].curvature, base.surfaces[s].curvature) << s;
+        EXPECT_NEAR(removed.surfaces[s].thickness, base.surfaces[s].thickness,
+                    kRemovalRoundtripRelative * base.surfaces[s].thickness)
+            << s;
+    }
+    EXPECT_EQ(removed.ghost_plates, base.ghost_plates);
+    ASSERT_TRUE(removed.constraints.has_value());
+    EXPECT_EQ(removed.constraints->items, base.constraints->items); // Standardauswahl zurück
+    EXPECT_EQ(m.elements(removed), 1);
 }
 
 TEST(OpticalHomotopy, RealizeScalesGhostPlatesAndWeights) {

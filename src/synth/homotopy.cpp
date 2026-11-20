@@ -3,6 +3,8 @@
 
 #include "mikroptim/synth/homotopy.hpp"
 
+#include "mikroptim/model/format_error.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -46,6 +48,10 @@ const char* to_string(HomotopyStepKind kind) {
         return "goal";
     case HomotopyStepKind::ApertureField:
         return "aperture_field";
+    case HomotopyStepKind::RemovalStage:
+        return "removal_stage";
+    case HomotopyStepKind::Removal:
+        return "removal";
     }
     return "?";
 }
@@ -151,6 +157,12 @@ void check_options_impl(const HomotopyOptions& o) {
     if (!finite_positive(o.joint_field_exponent)) {
         invalid("Exponent des Feldes der gemeinsamen Homotopie muss endlich und > 0 sein");
     }
+    if (o.prune_stages < 1 || o.prune_attempts < 1 || o.prune_min_elements < 0 ||
+        !finite_positive(o.prune_merit_factor) || o.prune_merit_factor > 1.0 ||
+        !std::isfinite(o.prune_tolerance)) {
+        invalid("Rückbau ungültig (Stufen und Versuche ≥ 1, Mindestzahl ≥ 0, 0 < Faktor ≤ 1, "
+                "Toleranz endlich)");
+    }
 }
 
 } // namespace
@@ -239,6 +251,22 @@ std::vector<bool> HomotopyModel::prefilter(std::span<const SystemDescription* co
     return std::vector<bool>(starts.size(), true);
 }
 
+std::vector<HomotopyRemoval> HomotopyModel::removal_candidates(const SystemDescription&,
+                                                               const HomotopyPoint&) {
+    return {};
+}
+
+SystemDescription HomotopyModel::collapse(const SystemDescription&, const SystemDescription&,
+                                          const HomotopyRemoval&, double,
+                                          std::vector<std::string>&) {
+    throw std::invalid_argument("Homotopie: das Modell kann keine Elemente zurückbauen");
+}
+
+SystemDescription HomotopyModel::remove(const SystemDescription&, const SystemDescription&,
+                                        const HomotopyRemoval&, std::vector<std::string>&) {
+    throw std::invalid_argument("Homotopie: das Modell kann keine Elemente zurückbauen");
+}
+
 namespace {
 
 // Abbruch der Steuerung (Status und Meldung), intern als Ausnahme durch die Phasen gereicht.
@@ -268,26 +296,50 @@ public:
     void run(State& s) {
         r_.start_elements = model_.elements(s.system);
         elements_ = r_.start_elements;
+        try {
+            phases(s);
+        } catch (const Stop&) {
+            // Rückbau (M6-T9) auch am Ende eines abgebrochenen Laufs (am letzten guten Zustand);
+            // ein weiterer Abbruch darin (z. B. max_steps) beendet nur den Rückbau
+            if (o_.prune) {
+                try {
+                    maybe_prune(s, true, "am Ende");
+                } catch (const Stop&) {
+                }
+            }
+            throw;
+        }
+    }
+
+private:
+    void phases(State& s) {
         start_phase(s);
         if (o_.joint_aperture_field && r_.target.aperture != s.point.aperture &&
             r_.target.field != s.point.field) {
             joint_phase(s);
+            maybe_prune(s, false);
         }
         if (r_.target.aperture != s.point.aperture) {
             single_phase(s, HomotopyStepKind::Aperture, r_.target.aperture, o_.aperture_step);
+            maybe_prune(s, false);
         }
         if (r_.target.field != s.point.field) {
             single_phase(s, HomotopyStepKind::Field, r_.target.field, o_.field_step);
+            maybe_prune(s, false);
         }
         if (r_.target.spectrum_width != s.point.spectrum_width) {
             single_phase(s, HomotopyStepKind::SpectrumWidth, r_.target.spectrum_width,
                          o_.spectrum_step);
+            maybe_prune(s, false);
         }
-        spectrum_phase(s);
+        if (s.point.spectrum < r_.target.spectrum) {
+            spectrum_phase(s);
+            maybe_prune(s, false);
+        }
+        maybe_prune(s, true);
         finish_phase(s);
     }
 
-private:
     HomotopyModel& model_;
     const HomotopyOptions& o_;
     HomotopyResult& r_;
@@ -298,6 +350,11 @@ private:
 
     // F_B des zuletzt übernommenen Zustands (ohne Zweige der inneren Homotopie; M6-T8)
     double good_fb_ = std::numeric_limits<double>::quiet_NaN();
+    // Rückbau (M6-T9): Zahl der Einfügungen beim letzten Rückbau, ob schon einer lief, Punkt des
+    // letzten Rückbaus am Elementbudget
+    int insertions_at_prune_ = 0;
+    bool pruned_ = false;
+    std::optional<HomotopyPoint> limit_prune_point_;
 
     void emit(HomotopyStep step) {
         step.index = static_cast<int>(r_.steps.size());
@@ -416,6 +473,14 @@ private:
                        no_need_message + "; keine Geisterplatte aktiv (kein Bedarf)"};
         }
         if (elements_ >= o_.max_elements) {
+            // Elementbudget (M6-T9): erst zurückbauen, je Punkt höchstens einmal; entfernt der
+            // Rückbau etwas, geht der Lauf ohne Einfügen weiter (die Phase versucht neu)
+            if (o_.prune_at_limit && limit_prune_point_ != s.point) {
+                limit_prune_point_ = s.point;
+                if (prune(s, "Elementbudget " + std::to_string(o_.max_elements)) > 0) {
+                    return;
+                }
+            }
             throw Stop{HomotopyStatus::MaxElements,
                        no_need_message + "; Bedarf (Operator " +
                            std::string(to_string(need.recommendation)) +
@@ -544,6 +609,116 @@ private:
                                  std::to_string(ins.branches.size()) + " übernommen");
     }
 
+    // Rückbau nach einer Phase (final = false: nur, wenn seit dem letzten Rückbau eingefügt
+    // wurde) bzw. vor dem Abschluss oder nach einem Abbruch (final = true: auch, wenn noch keiner
+    // lief).
+    void maybe_prune(State& s, bool final, const char* reason = nullptr) {
+        if (!o_.prune) {
+            return;
+        }
+        if (r_.insertions == insertions_at_prune_ && (pruned_ || !final)) {
+            return;
+        }
+        prune(s, reason != nullptr ? reason : final ? "vor dem Abschluss" : "nach der Phase");
+    }
+
+    // Rückbau-Runden am guten Zustand `s`: pro Runde die Kandidaten des Modells der Reihe nach
+    // (höchstens prune_attempts), der erste Erfolg beendet die Runde; ohne Erfolg Ende. Liefert
+    // die Zahl der entfernten Kandidaten.
+    int prune(State& s, const std::string& reason) {
+        pruned_ = true;
+        insertions_at_prune_ = r_.insertions;
+        int removed = 0;
+        for (;;) {
+            const std::vector<HomotopyRemoval> candidates =
+                model_.removal_candidates(s.system, s.point);
+            int tried = 0;
+            bool success = false;
+            for (const HomotopyRemoval& c : candidates) {
+                if (elements_ - c.elements < o_.prune_min_elements) {
+                    continue;
+                }
+                if (tried >= o_.prune_attempts) {
+                    break;
+                }
+                ++tried;
+                if (try_removal(s, c, reason)) {
+                    ++removed;
+                    success = true;
+                    break;
+                }
+            }
+            if (!success) {
+                return removed;
+            }
+        }
+    }
+
+    // Ein Kandidat: Rückbau-Homotopie (prune_stages Stufen, Optimierung nach jeder Stufe),
+    // Entfernen des Null-Elements, Annahme nach F_B. Bei Ablehnung bleibt `s` unverändert.
+    bool try_removal(State& s, const HomotopyRemoval& c, const std::string& reason) {
+        ++r_.removal_attempts;
+        const double before = good_fb_;
+        double limit = o_.prune_merit_factor * threshold_;
+        if (o_.prune_tolerance >= 0.0 && std::isfinite(before)) {
+            limit = std::min(limit, (1.0 + o_.prune_tolerance) * before);
+        }
+        State trial = s;
+        HomotopySolve last;
+        std::string why;
+        std::vector<std::string> warnings;
+        try {
+            const int K = o_.prune_stages;
+            for (int k = 0; k < K; ++k) {
+                const double f = 1.0 / static_cast<double>(K - k);
+                trial.system = model_.collapse(s.system, trial.system, c, f, warnings);
+                HomotopyStep step =
+                    solve(trial.system, trial.point, HomotopyStepKind::RemovalStage);
+                step.operation = c.text + ", Rückbau-Stufe " + std::to_string(k + 1) + "/" +
+                                 std::to_string(K) + " (Anteil " + number(f) + ")";
+                last = step.solve;
+                emit(step);
+                if (!std::isfinite(last.merit) || last.status == LmStatus::NumericalError) {
+                    why = "Optimierung ohne endliches Ergebnis";
+                    break;
+                }
+            }
+            if (why.empty()) {
+                trial.system = model_.remove(s.system, trial.system, c, warnings);
+            }
+        } catch (const std::invalid_argument& e) {
+            why = e.what();
+        } catch (const FormatError& e) {
+            why = e.what();
+        }
+        const double fb = last.wavefront + last.ghost_penalty;
+        if (why.empty() && last.failed_rays > 0) {
+            why = std::to_string(last.failed_rays) + " versagte Strahlen";
+        }
+        if (why.empty() && !(fb <= limit)) {
+            why = "F_B " + number(fb) + " > " + number(limit);
+        }
+        HomotopyStep note;
+        note.kind = HomotopyStepKind::Removal;
+        note.point = s.point;
+        if (why.empty()) {
+            s.system = std::move(trial.system);
+            elements_ = model_.elements(s.system);
+            good_fb_ = fb;
+            ++r_.removals;
+            note.accepted = true;
+            note.operation = c.text + " entfernt (" + reason + "): F_B " + number(fb) + " ≤ " +
+                             number(limit) + ", vorher " + number(before);
+        } else {
+            note.operation = "Rückbau verworfen (" + reason + "): " + c.text + ": " + why;
+        }
+        for (const std::string& w : warnings) {
+            note.operation += "; Warnung: " + w;
+        }
+        emit(note);
+        return why.empty();
+    }
+
     // Startpunkt: Penalty-Fortsetzung; nicht annehmbar → Einfügen, solange es Bedarf gibt.
     void start_phase(State& s) {
         HomotopyStep last = penalty_continuation(s, HomotopyStepKind::Start);
@@ -653,7 +828,8 @@ private:
             // Δ < Δ_min: Einfügen am letzten guten Zustand, wenn es Bedarf gibt
             const HomotopyNeed need = need_for(s, &trial);
             step.recommendation = need.recommendation;
-            step.action = need.recommendation == GhostOperator::None || elements_ >= o_.max_elements
+            step.action = need.recommendation == GhostOperator::None ||
+                                  (elements_ >= o_.max_elements && !o_.prune_at_limit)
                               ? HomotopyAction::Stop
                               : HomotopyAction::Insert;
             step.operation = need.text;
@@ -686,7 +862,8 @@ private:
             }
             const HomotopyNeed need = need_for(s, &trial);
             step.recommendation = need.recommendation;
-            step.action = need.recommendation == GhostOperator::None || elements_ >= o_.max_elements
+            step.action = need.recommendation == GhostOperator::None ||
+                                  (elements_ >= o_.max_elements && !o_.prune_at_limit)
                               ? HomotopyAction::Stop
                               : HomotopyAction::Insert;
             step.operation = need.text;
@@ -911,11 +1088,16 @@ std::string homotopy_result_json(const HomotopyResult& r, int indent) {
            {"merit_threshold", num(r.merit_threshold)},
            {"start_elements", r.start_elements},
            {"elements", r.elements},
-           {"insertions", r.insertions},
-           {"solves", r.solves},
-           {"goal", goal_json(r.goal)},
-           {"seconds", num(r.seconds)},
-           {"steps", steps}};
+           {"insertions", r.insertions}};
+    if (r.removal_attempts > 0) {
+        // nur mit Rückbau (M6-T9), sonst wie vorher
+        j["removal_attempts"] = r.removal_attempts;
+        j["removals"] = r.removals;
+    }
+    j["solves"] = r.solves;
+    j["goal"] = goal_json(r.goal);
+    j["seconds"] = num(r.seconds);
+    j["steps"] = std::move(steps);
     return j.dump(indent);
 }
 
@@ -965,8 +1147,12 @@ void write_homotopy_summary(const HomotopyResult& r, std::ostream& out) {
         << fmt("%.4g", r.point.ghost_weight) << ", eps x" << fmt("%.4g", r.point.ghost_smoothing)
         << " (Ziel NA " << fmt("%.4f", r.target.aperture) << ")\n";
     out << "Glaselemente: " << r.start_elements << " -> " << r.elements << " (" << r.insertions
-        << " Einfügungen), Optimierungen: " << r.solves
-        << ", F_max = " << fmt("%.6e", r.merit_threshold) << " Wellen^2\n";
+        << " Einfügungen";
+    if (r.removal_attempts > 0) {
+        out << ", " << r.removals << " Rückbauten in " << r.removal_attempts << " Versuchen";
+    }
+    out << "), Optimierungen: " << r.solves << ", F_max = " << fmt("%.6e", r.merit_threshold)
+        << " Wellen^2\n";
     if (!r.goal.tuples.empty()) {
         out << "Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und "
                "Wellenlänge (Ziel "
