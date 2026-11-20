@@ -31,7 +31,7 @@ Details und abgeleitete Kenngrößen: [docs/spezifikation.md](docs/spezifikation
 
 ## Bauen
 
-Voraussetzungen: CMake ≥ 3.25, ein C++20-Compiler (GCC ≥ 11, Clang ≥ 14 oder MSVC 2022), optional CUDA Toolkit **12.x** (nicht 13, siehe [ADR-0002](docs/adr/0002-cuda-12.md)).
+Voraussetzungen: CMake ≥ 3.25, ein C++20-Compiler (GCC ≥ 11, Clang ≥ 14 oder MSVC 2022), optional CUDA Toolkit **12.x oder 13.x** (siehe [ADR-0015](docs/adr/0015-cuda13-ohne-p100.md)).
 
 ```bash
 # nur CPU
