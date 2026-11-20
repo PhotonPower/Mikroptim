@@ -470,6 +470,16 @@ Gegen Überkonstruktion (Zhang Kap. 8) gilt: Jede strukturelle Aktion des Modell
 
 V3 ist der entscheidende Vergleich. Er trennt den Nutzen der neuen Diagnose und der Operatoren vom Nutzen des Sprachmodells. V4 zeigt, wie weit das Modell vom Designer entfernt ist, der dieselben Werkzeuge hat. Verglichen werden mehrere Ollama-Modelle, jeweils Instruktions- und Thinking-Variante.
 
+**Referenzsphäre der Benchmarks (Entscheidung Maintainer 2026-11-20, M10-T7c).** Alle Benchmarks rechnen mit `reference_sphere: image_infinite` ([ADR-0017](adr/0017-referenzsphaere-bildpunkt.md)). Das Skript `tools/m10t7_bewertung.py` setzt das Feld in der Startkopie im Arbeitsverzeichnis; die Startsysteme unter `data/systems/` und die Ergebnisse von M10-T7/M10-T7b bleiben unverändert und reproduzierbar. Die Konvention steht im Ergebnis-Kürzel und im Feld `reference_sphere` jeder Ergebnisdatei:
+
+| Variante (Kommandozeile) | Referenzsphäre | Ergebnis-Kürzel |
+|---|---|---|
+| `V0`, `V1`, `V3`, `V3AL`, `V4`, `LM` (Standard) | `image_infinite` (`--referenzsphaere` wählt eine andere Art) | `V0RS`, `V1RS`, **`V3RS`**, `V3ALRS`, `V4RS`, `LMRS_<modell>` |
+| `V0-alt`, `V1-alt`, `V3-alt`, `V3AL-alt`, `LM-alt` | `last_surface` (Startdatei ohne Feld, bitgleich zu M10-T7b) | `V0`, `V1`, `V3`, `V3AL`, `LM_<modell>` |
+| `V0RS`, `V3RS` (Namen aus M10-T7b) | immer `image_infinite` | `V0RS`, `V3RS` |
+
+Mit `--referenzsphaere image_exit_pupil` lautet das Kürzel `…RSAP`. **Referenz der Regel ist V3RS** (V3 mit `image_infinite`; erreicht B3 und B2 bis NA 0,79, [Bericht, Abschnitt 9](ergebnisse/m10-t7-bewertung.md#9-m10-t7b-wiederholung-mit-den-operatoren-aus-m10-t4)). Standard-Ergebnisverzeichnis ist `docs/ergebnisse/m10-t7c`; `--vergleich docs/ergebnisse/m10-t7b` stellt die Läufe gleicher Kürzel gegenüber. Für Ollama setzt `--num-ctx` die Kontextlänge (Standard 65.536, begrenzt auf das Maximum des Modells aus `/api/show`, 0 = Maximum; installiert: gpt-oss:20b 131.072, qwen3:14b 40.960).
+
 **Messgrößen:** Ziel erreicht, Elementzahl, RMS bzw. Strehl, Empfindlichkeit, LM-Aufrufe, Laufzeit, Tokens (bei Thinking-Modellen getrennt nach Denken und Antwort), Anteil abgelehnter Aktionen.
 
 ## 9. Aufgaben (Vorschlag M10)
