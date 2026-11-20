@@ -1,0 +1,104 @@
+﻿Stufe c0_apertur: NA 0.5000, Feld 1.000, Spektrum mono, 9 Elemente
+c0_apertur_start: Exit 0, 0 s
+  Rückkehr: 6 Platten, F 1.000969e-03 -> 1.000969e-03
+c0_apertur_r0: Exit 0, 739 s
+  c0_apertur_r0: step_too_small, Punkt 0.6275, 9 Elemente
+c0_apertur_r0_relax: Exit 0, 22 s
+c0_apertur_r1: Exit 0, 740 s
+  c0_apertur_r1: step_too_small, Punkt 0.6325, 9 Elemente
+c0_apertur_r1_relax: Exit 0, 24 s
+c0_apertur_r2: Exit 1, 1537 s
+python : Traceback (most recent call last):
+In Zeile:1 Zeichen:391
++ ... | Out-Null; python -u tools/m6t6_zielspezifikation.py --gpu --zyklus  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "tools\m6t6_zielspezifikation.py", 
+line 1711, in <module>
+    z2_candidate()
+             ^^^^^^
+  File "tools\m6t6_zielspezifikation.py", 
+line 1507, in main
+    help='M6-T10: Runden von synth_loop in Feld- und Aperturstufe (Standard 8)')
+^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", 
+line 1265, in cycle_run
+    st = system_state(load(cur))
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", 
+line 1154, in cycle_stage
+    res, rounds = synth_loop(r, tag, start,
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", 
+line 628, in synth_loop
+    out = runner.synth(name, cur, opts)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "tools\m6t6_zielspezifikation.py", 
+line 413, in synth
+    self.run(name, args)
+  File "tools\m6t6_zielspezifikation.py", 
+line 401, in run
+    raise RuntimeError(f'{name}: mikroptim endete mit {r.returncode}, siehe {text}')
+RuntimeError: c0_apertur_r2: mikroptim endete mit 1, siehe C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a
+09753798f6f4d410\docs\ergebnisse\m6-t10\E_9linser_apertur\c0_apertur_r2.txt
+Stufe c0_apertur: NA 0.5000, Feld 1.000, Spektrum mono, 9 Elemente
+  Rückkehr: 6 Platten, F 1.000969e-03 -> 1.000969e-03
+c0_apertur_r0: vorhanden, übersprungen
+  c0_apertur_r0: step_too_small, Punkt 0.6275, 9 Elemente
+c0_apertur_r0_relax: vorhanden, übersprungen
+c0_apertur_r1: vorhanden, übersprungen
+  c0_apertur_r1: step_too_small, Punkt 0.6325, 9 Elemente
+c0_apertur_r1_relax: vorhanden, übersprungen
+c0_apertur_r2: Exit 0, 1841 s
+  c0_apertur_r2: max_elements, Punkt 0.6725, 16 Elemente
+c0_apertur_r2_relax: Exit 0, 9 s
+Stufe c0_apertur: NA 0.5000, Feld 1.000, Spektrum mono, 9 Elemente
+  Rückkehr: 6 Platten, F 1.000969e-03 -> 1.000969e-03
+c0_apertur_r0: vorhanden, übersprungen
+  c0_apertur_r0: step_too_small, Punkt 0.6275, 9 Elemente
+c0_apertur_r0_relax: vorhanden, übersprungen
+c0_apertur_r1: vorhanden, übersprungen
+  c0_apertur_r1: step_too_small, Punkt 0.6325, 9 Elemente
+c0_apertur_r1_relax: vorhanden, übersprungen
+c0_apertur_r2: vorhanden, übersprungen
+  c0_apertur_r2: max_elements, Punkt 0.6725, 16 Elemente
+c0_apertur_r2_relax: vorhanden, übersprungen
+c0_apertur_z2_s0: Exit 0, 10 s
+c0_apertur_rueckbau: Exit 0, 405 s
+c0_apertur_z2r_s0: Exit 0, 11 s
+c0_apertur_z2r_pupille: Exit 0
+c0_apertur_z2r_unendlich: Exit 0
+c0_apertur_z2r_psf: Exit 0
+c0_apertur_z2r_vektor: Exit 0
+  c0_apertur: Punkt NA 0.6725, Feld 1.000; 16 Elemente, nach dem Rückbau 16
+Stufe c1_apertur: NA 0.6725, Feld 1.000, Spektrum mono, 16 Elemente
+c1_apertur_start: Exit 0, 0 s
+  Rückkehr: 6 Platten, F 3.981019e-03 -> 3.981019e-03
+c1_apertur_r0: Exit 0, 1024 s
+  c1_apertur_r0: max_elements, Punkt 0.7000, 16 Elemente
+c1_apertur_r0_relax: Exit 0, 6 s
+Stufe c0_apertur: NA 0.5000, Feld 1.000, Spektrum mono, 9 Elemente
+  Rückkehr: 6 Platten, F 1.000969e-03 -> 1.000969e-03
+c0_apertur_r0: vorhanden, übersprungen
+  c0_apertur_r0: step_too_small, Punkt 0.6275, 9 Elemente
+c0_apertur_r0_relax: vorhanden, übersprungen
+c0_apertur_z2_s0: vorhanden, übersprungen
+c0_apertur_rueckbau: vorhanden, übersprungen
+c0_apertur_z2r_s0: vorhanden, übersprungen
+  c0_apertur: Punkt NA 0.6275, Feld 1.000; 9 Elemente, nach dem Rückbau 16
+Stufe c1_apertur: NA 0.6725, Feld 1.000, Spektrum mono, 16 Elemente
+  Rückkehr: 6 Platten, F 3.981019e-03 -> 3.981019e-03
+c1_apertur_r0: vorhanden, übersprungen
+  c1_apertur_r0: max_elements, Punkt 0.7000, 16 Elemente
+c1_apertur_r0_relax: vorhanden, übersprungen
+c1_apertur_z2_s0: Exit 0, 4 s
+c1_apertur_rueckbau: Exit 0, 145 s
+c1_apertur_z2r_s0: Exit 0, 5 s
+c1_apertur_z2r_pupille: Exit 0
+c1_apertur_z2r_unendlich: Exit 0
+c1_apertur_z2r_psf: Exit 0
+c1_apertur_z2r_vektor: Exit 0
+  c1_apertur: Punkt NA 0.7000, Feld 1.000; 16 Elemente, nach dem Rückbau 16
+fertig: docs\ergebnisse\m6-t10\E_9linser_apertur\c1_apertur_z2r_s0.json

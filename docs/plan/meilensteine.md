@@ -282,6 +282,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** Mock-Tests (überflüssiges Element entfernt, notwendiges behalten, Budget), Orakel am optischen Modell (Null-Element: entfernt, Merit unverändert; Linse bleibt), CLI-Test, Bitgleichheit ohne Option; Messung F1 (NA 0,5, volles Feld) und JFV855 (NA 0,87) mit Rückbau, Bericht `docs/ergebnisse/m6-t9-rueckbau.md`.
 - **Stand:** umgesetzt und gemessen. Rückbau am realen System (Z2): F1 25 → 9 El. bei NA 0,5 und vollem Feld, 0,012/0,037/0,038 Wellen (ρ = 1: 6 El., ≤ 0,068); JFV855 25 → 5 El. bei NA 0,869 / 23 % Feld, danach öffnet die Feldstufe auf 64 % (11 El.). Mit Geisterplatten bzw. mitten in den Stufen entfernt der Rückbau kaum etwas (F17); Lauf ab der Einzellinse mit Rückbau in allen Stufen nur 58 % Feld.
 
+### M6-T10 – Stufenweise Synthese mit Rückbau am realen System und Rückkehr zu Geisterplatten
+- **Abhängig von:** M6-T9, M10-T4 (Befund F17; vom Maintainer am 2026-11-20 freigegeben)
+- **Inhalt:** Rückkehr vom realen System (ohne Geisterplatten) zu einem Startsystem der Synthese mit Geisterplatten (`return_to_ghost_plates`: `place_ghost_dictionary` an Lagen aus den paraxialen Strahlhöhen, Plattenspalte fest, Normierungsradius aus den realen Strahlhöhen; `insert --ghost-return`, `synth --start-from-real`); zyklischer Ablauf im Skript (`--zyklus`): Stufe → Z2 → Rückbau am realen System → Rückkehr zu Geisterplatten → nächste Stufe, bis Ziel oder Stillstand.
+- **Abnahme:** Merit-Invarianz der Rückkehr, Lagen gegen den Aberrationsbericht, CLI- und Skripttests, ohne Option unverändert; Messung ab dem 5-Linser bei NA 0,869 (M6-T9) und ab dem 9-/6-Linser bei NA 0,5 (volles Feld): Feld, Farbe, Apertur; Bericht `docs/ergebnisse/m6-t10-zyklisch.md` mit Vergleich zu M6-T6b, M6-T8, M6-T9.
+- **Stand:** umgesetzt und gemessen ([Bericht](../ergebnisse/m6-t10-zyklisch.md)). Rückkehr zu Geisterplatten merit-invariant (Testsysteme ≤ 1,1·10⁻¹⁵, Messläufe ≤ 1,1·10⁻¹⁰ relativ). Ab dem 9-Linser NA 0,6725 bei vollem Feld (16 El., 0,030/0,071/0,078 Wellen, Rand knapp über λ/14); ab dem 5-Linser bei NA 0,869 Feld 65 % (12 El., wie ohne Platten), Apertur dort Stillstand; Farbe aus den monochromatischen Systemen nicht beugungsbegrenzt (0,5–1,8 Wellen). Rückbau nach den Stufen 0 von 195 Versuchen: Stufen enden an der Schwelle (F17 verallgemeinert); die zurückgekehrten Platten bleiben in den monochromatischen Stufen passiv.
+
 ---
 
 ## M7 – Performance

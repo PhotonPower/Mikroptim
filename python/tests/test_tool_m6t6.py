@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import types
 
 import pytest
@@ -143,3 +144,97 @@ def test_remove_dummy_planes_merged_gap_once(tool):
     assert s["surfaces"][0]["thickness"] == 0.6
     assert s["variables"]["items"] == [{"type": "thickness", "surface": 0},
                                        {"type": "thickness", "surfaces": [2]}]
+
+
+def test_system_state_and_stage_done(tool):
+    """M6-T10: Punkt eines realen Systems (NA aus Pupille und Brennweite, Feldanteil aus dem
+    größten Feldwinkel, Spektrum) und Ziel der Stufen."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    st = tool.system_state(s)
+    assert st["aperture"] == pytest.approx(0.987 / 3.29)
+    assert st["field"] == pytest.approx(1.0, rel=1e-5)
+    assert st["spectrum"] == "mono"
+    assert st["elements"] == 1
+    tool.set_field(s, [a * 0.25 for a in tool.FIELD_ANGLES], tool.FIELD_WEIGHTS)
+    tool.set_spectrum(s, *tool.SPECTRA["voll"])
+    st = tool.system_state(s)
+    assert st["field"] == pytest.approx(0.25)
+    assert st["spectrum"] == "voll"
+    assert not tool.stage_done("feld", st)
+    assert tool.stage_done("farbe", st)
+    assert not tool.stage_done("apertur", st)
+    assert tool.stage_done("apertur", dict(st, aperture=0.95))
+    assert tool.stage_done("feld", dict(st, field=1.0))
+
+
+def test_return_to_ghosts_command(tool, tmp_path, monkeypatch):
+    """M6-T10: Rückkehr zu Geisterplatten über mikroptim insert --ghost-return mit den Gläsern
+    des Startsystems; der JSON-Bericht wird auch vor Warnungen gefunden."""
+    calls = []
+
+    def fake_run(args, stdout, stderr, cwd):
+        calls.append(list(args))
+        stdout.write('{"details": {"positions": []}, "relative_change": 0.0}\n'
+                     "mikroptim insert: Warnung: field: Spalt nach Fläche 3 schon belegt\n")
+        out = args[args.index("-o") + 1]
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("{}")
+        return types.SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(tool.subprocess, "run", fake_run)
+    runner = tool.Runner("mikroptim", str(tmp_path / "out"), synth_options=[])
+    path, report = tool.return_to_ghosts(runner, "c0_feld_start", "real.json",
+                                         positions="aperture,field,front")
+    assert path.endswith("c0_feld_start.json")
+    assert report["relative_change"] == 0.0
+    a = calls[0]
+    assert a[1:3] == ["insert", "real.json"]
+    assert "--ghost-return" in a
+    assert a[a.index("--ghost-positions") + 1] == "aperture,field,front"
+    assert a[a.index("--ghost-order") + 1] == "10"
+    glasses = [a[i + 1] for i, x in enumerate(a) if x == "--ghost-glass"]
+    assert glasses == ["SYN-36", "CAF2", "SYN-30"]
+    # Fortsetzung: vorhandene Datei wird nicht neu erzeugt
+    tool.return_to_ghosts(runner, "c0_feld_start", "real.json")
+    assert len(calls) == 1
+
+
+def test_cycle_run_stops_at_goal_or_stall(tool, tmp_path, monkeypatch):
+    """M6-T10: Der zyklische Ablauf überspringt Stufen am Ziel, beginnt jede Stufe am Ergebnis
+    der vorigen (nach dem Rückbau) und endet, wenn ein Durchlauf nichts mehr öffnet."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    tool.set_field(s, [a * 0.5 for a in tool.FIELD_ANGLES], tool.FIELD_WEIGHTS)
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(s), encoding="utf-8")
+    seen = []
+
+    def fake_stage(r, args, k, kind, cur, common, relax, rings, log=print):
+        seen.append((k, kind, os.path.basename(cur)))
+        x = json.loads(open(cur, encoding="utf-8").read())
+        if kind == "feld":  # öffnet nur bis 80 %
+            f = min(0.8, tool.system_state(x)["field"] + 0.3)
+            tool.set_field(x, [a * f for a in tool.FIELD_ANGLES], tool.FIELD_WEIGHTS)
+        elif kind == "farbe":
+            tool.set_spectrum(x, *tool.SPECTRA["voll"])
+        out = os.path.join(r.out, f"c{k}_{kind}_z2r_s0.json")
+        tool.save(x, out)
+        return {"kind": kind, "tag": f"c{k}_{kind}", "z2r": out,
+                "end_state": tool.system_state(x)}
+
+    monkeypatch.setattr(tool, "cycle_stage", fake_stage)
+    args = types.SimpleNamespace(
+        exe="mikroptim", out=str(tmp_path / "zyklus"), gpu=False, aktuell=False, farbregel=False,
+        farb_achromat=False, sinusbedingung=None, feldregel=True, synth_arg=[],
+        elementbudget=12, rueckbau=False, start=str(start), referenzsphaere="image_infinite",
+        zyklus="feld,farbe", zyklus_wiederholen=3, geister_lagen="aperture,field")
+    assert tool.cycle_run(args) == 0
+    # Durchlauf 1: feld (0,5 → 0,8), farbe; Durchlauf 2: feld (bleibt 0,8), farbe am Ziel;
+    # kein Fortschritt → Ende
+    assert [(k, kind) for k, kind, _ in seen] == [(0, "feld"), (1, "farbe"), (2, "feld")]
+    assert seen[1][2] == "c0_feld_z2r_s0.json"
+    summary = json.loads((tmp_path / "zyklus" / "m6t10_zyklus.json").read_text(encoding="utf-8"))
+    assert summary["final_state"]["spectrum"] == "voll"
+    assert summary["final_state"]["field"] == pytest.approx(0.8)
+    assert len(summary["stages"]) == 3

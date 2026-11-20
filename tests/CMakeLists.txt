@@ -44,6 +44,7 @@ add_executable(mikroptim_tests
     test_ghost_diagnosis.cpp
     test_ghost_optimization.cpp
     test_ghost_penalty.cpp
+    test_ghost_return.cpp
     test_ghost_schema.cpp
     test_glass_catalog.cpp
     test_glass_hull.cpp

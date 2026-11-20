@@ -1,0 +1,56 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t10\C_6linser\c1_apertur_start.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 12 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 14; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  2.098789e-01  2.094243e-01  0.86482   1.054e-04  12  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        max_iterations       500  1.864236e-01  1.862118e-01  0.82109   1.112e-04  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        max_iterations       500  1.860364e-01  1.858630e-01  0.81582   1.113e-04  12  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.5000  1.000   0  -        -                      -  -             -             -         -            12  ok: Operator B: Linse an Fläche 21 geteilt, c_s = 1.35056/mm, Glas nach Fläche 22 frei, Zielglas CAF2 (Farbregel)
+      4  insertion_stage  0.5000  1.000   0  -        max_iterations       500  3.737688e-01  3.725868e-01  0.92035   2.422e-03  12  ok, Zweig 0, Stufe 0
+      5  penalty          0.5000  1.000   0  -        max_iterations       500  1.529669e-01  1.524151e-01  0.76042   1.124e-04  13  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+      6  penalty          0.5000  1.000   0  -        converged_step       413  1.496119e-01  1.494662e-01  0.75241   1.117e-04  13  ok: Gewichte der einseitigen Bedingungen ×0.1
+      7  penalty          0.5000  1.000   0  -        max_iterations       500  1.495292e-01  1.494074e-01  0.75191   1.116e-04  13  ok: Gewichte der einseitigen Bedingungen ×1
+      8  insertion        0.5000  1.000   0  -        -                      -  -             -             -         -            13  ok: Operator A: Meniskus nach Fläche 18 bei 0.488378 mm, c0 = 0.0393616/mm, Glas SYN-36 (Platte 3, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      9  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.608812e-01  1.604875e-01  0.74666   1.919e-04  13  ok, Zweig 0, Stufe 0.03125
+     10  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.549199e-01  1.547576e-01  0.77613   1.309e-04  13  ok, Zweig 0, Stufe 0.0625
+     11  insertion_stage  0.5000  1.000   0  -        converged_step      1576  1.561376e-01  1.559476e-01  0.81582   1.250e-04  13  ok, Zweig 0, Stufe 0.125
+     12  insertion_stage  0.5000  1.000   0  -        converged_step      2424  1.602820e-01  1.601491e-01  0.84148   1.285e-04  13  ok, Zweig 0, Stufe 0.25
+     13  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.696059e-01  1.609229e-01  0.70475   1.951e-04  13  ok, Zweig 0, Stufe 0.5
+     14  insertion_stage  0.5000  1.000   0  -        converged_step      1653  1.494414e-01  1.493722e-01  0.81157   1.082e-04  13  ok, Zweig 1, Stufe 0.03125
+     15  insertion_stage  0.5000  1.000   0  -        converged_step      1673  1.490562e-01  1.472598e-01  0.80571   1.077e-04  13  ok, Zweig 1, Stufe 0.0625
+     16  insertion_stage  0.5000  1.000   0  -        converged_step      1406  1.482947e-01  1.465051e-01  0.79445   1.057e-04  13  ok, Zweig 1, Stufe 0.125
+     17  insertion_stage  0.5000  1.000   0  -        converged_step       528  1.528725e+00  2.382026e-01  0.69648   1.196e-03  13  ok, Zweig 1, Stufe 0.25
+     18  insertion_stage  0.5000  1.000   0  -        max_iterations       500  1.469998e-01  1.468183e-01  0.74223   1.156e-04  13  ok, Zweig 1, Stufe 0.5
+     19  penalty          0.5000  1.000   0  -        max_iterations       500  1.369838e-01  1.365137e-01  0.71169   1.041e-04  14  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     20  penalty          0.5000  1.000   0  -        max_iterations       500  1.365291e-01  1.363817e-01  0.71019   1.042e-04  14  ok: Gewichte der einseitigen Bedingungen ×0.1
+     21  penalty          0.5000  1.000   0  -        max_iterations       500  1.364640e-01  1.363209e-01  0.71162   1.041e-04  14  ok: Gewichte der einseitigen Bedingungen ×1
+     22  removal_stage    0.5000  1.000   0  -        max_iterations      1500  1.352114e-01  1.350802e-01  0.72998   1.068e-04  14  -: Element ab Fläche 19 (SYN-36, Seidel-Beitrag 2.251 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     23  removal_stage    0.5000  1.000   0  -        max_iterations      1714  1.341011e-01  1.339956e-01  0.71770   1.084e-04  14  -: Element ab Fläche 19 (SYN-36, Seidel-Beitrag 2.251 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     24  removal_stage    0.5000  1.000   0  -        max_iterations       682  1.396691e-01  1.395798e-01  0.65952   2.207e-04  14  -: Element ab Fläche 19 (SYN-36, Seidel-Beitrag 2.251 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     25  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            14  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 19 (SYN-36, Seidel-Beitrag 2.251 Wellen): F_B 0.13958 > 0.00510204
+     26  removal_stage    0.5000  1.000   0  -        max_iterations      1070  1.360740e-01  1.359448e-01  0.70180   1.027e-04  14  -: Element ab Fläche 17 (SYN-36, Seidel-Beitrag 6.963 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     27  removal_stage    0.5000  1.000   0  -        max_iterations      1076  1.347934e-01  1.346725e-01  0.69003   1.010e-04  14  -: Element ab Fläche 17 (SYN-36, Seidel-Beitrag 6.963 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     28  removal_stage    0.5000  1.000   0  -        converged_step      1460  1.356460e-01  1.355190e-01  0.72691   9.903e-05  14  -: Element ab Fläche 17 (SYN-36, Seidel-Beitrag 6.963 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     29  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            14  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 17 (SYN-36, Seidel-Beitrag 6.963 Wellen): 1 versagte Strahlen
+     30  removal_stage    0.5000  1.000   0  -        max_iterations      1124  1.462052e-01  1.460722e-01  0.79698   1.010e-04  14  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 7.995 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     31  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.673188e-01  1.671978e-01  0.85985   1.145e-04  14  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 7.995 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     32  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.557661e-01  1.550334e-01  0.82098   1.165e-04  14  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 7.995 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     33  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            14  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 11 (SYN-30, Seidel-Beitrag 7.995 Wellen): F_B 0.155033 > 0.00510204
+     34  removal_stage    0.5000  1.000   0  -        converged_step      1111  2.460238e-01  2.444951e-01  1.03810   1.181e-03  14  -: Element ab Fläche 13 (SYN-30, Seidel-Beitrag 10.92 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     35  removal_stage    0.5000  1.000   0  -        max_iterations       703  3.138004e-01  3.137190e-01  0.91196   2.539e-03  14  -: Element ab Fläche 13 (SYN-30, Seidel-Beitrag 10.92 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     36  removal_stage    0.5000  1.000   0  -        converged_step      1923  3.110555e-01  3.108434e-01  0.98749   2.468e-03  14  -: Element ab Fläche 13 (SYN-30, Seidel-Beitrag 10.92 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     37  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            14  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 13 (SYN-30, Seidel-Beitrag 10.92 Wellen): 1 versagte Strahlen
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.136321 > F_max = 0.00510204); Bedarf (Operator A), aber höchste Elementzahl 14 erreicht)
+Endpunkt: NA 0.5000, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 12 -> 14 (2 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 32, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                1182.0
+Ergebnis geschrieben: docs\ergebnisse\m6-t10\C_6linser\c1_apertur_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t10\C_6linser\c1_apertur_r0_log.json
