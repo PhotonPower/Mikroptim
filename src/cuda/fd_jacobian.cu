@@ -341,6 +341,16 @@ void DeviceFdJacobian::compute(TraceEngine& engine, const VariableSet& set,
         const auto blocks = static_cast<unsigned>(runs * (P + 1));
         fd_difference_kernel<<<blocks, kFdJacobianThreads>>>(a);
         MKO_CUDA_CHECK(cudaGetLastError());
+        // Sofort warten: Sonst meldete erst der Lauf RESIDUALS der nächsten Tranche einen Fehler
+        // dieses Kernels (Diagnose; eine Synchronisation pro Tranche kostet praktisch nichts).
+        detail::synchronize_checked(
+            "FD-Differenzkernel",
+            [&] {
+                return "Tranche ab Variante " + std::to_string(t.first) + ", " +
+                       std::to_string(runs) + " Läufe, P=" + std::to_string(P) + ", Zeilen " +
+                       std::to_string(a.rows) + "+" + std::to_string(a.extra_count);
+            },
+            __FILE__, __LINE__);
     };
     info_ = engine.run_on_device(fd.batch, settings, n, consume);
     MKO_CUDA_CHECK(cudaDeviceSynchronize());

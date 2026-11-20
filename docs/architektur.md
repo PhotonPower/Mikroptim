@@ -657,6 +657,11 @@ size_t pack_table_bytes(int S, int G, int K, int wavelengths);   // dynamische T
 std::vector<TuplePack> make_tuple_packs(const ResidualLayout&, const BatchShape&, int max_rays,
                                         size_t bytes_per_ray, size_t dynamic_budget);
 size_t pack_dynamic_bytes(const std::vector<TuplePack>&, const BatchShape&, size_t bytes_per_ray);
+// Absicherung vor jedem Start von RESIDUALS/MERIT (Fehlersuche nach M6-T10, hardware.md):
+// lückenlose Abdeckung der Tupel, Strahlen, first_row, Brechzahlenfenster, Budget;
+// std::logic_error bei Verletzung
+void check_tuple_packs(const std::vector<TuplePack>&, const ResidualLayout&, const BatchShape&,
+                       size_t bytes_per_ray, size_t dynamic_budget, bool transforms = false);
 
 // include/mikroptim/batch/batch_merit.hpp, batch_extrema.hpp (Host, auch ohne CUDA)
 struct MeritResult { int variants; int64_t rays_per_variant; std::vector<double> merit;  // [V]

@@ -28,6 +28,32 @@ namespace mko::cuda::detail {
                     ": " + cudaGetErrorString(err));
 }
 
+// Wartet nach den Kernelstarts eines Laufs auf das Gerät (cudaDeviceSynchronize) und wirft bei
+// einem Fehler CudaError mit dem Namen des Laufs `what` und seinen Kenngrößen `context()` (nur im
+// Fehlerfall aufgerufen, liefert std::string), damit ein Fehler, der erst hier gemeldet wird,
+// eingeordnet werden kann. Fehler wie "an illegal memory access" sind dauerhaft (der
+// CUDA-Kontext des Prozesses ist danach unbrauchbar) und können auch aus einem früheren
+// asynchronen Kernelstart stammen; die Meldung sagt das dazu.
+template <class Context>
+void synchronize_checked(const char* what, const Context& context, const char* file, int line) {
+    const cudaError_t err = cudaDeviceSynchronize();
+    if (err == cudaSuccess) {
+        return;
+    }
+    // Dauerhaft ist der Fehler, wenn er nach dem Zurücksetzen erneut gemeldet wird.
+    cudaGetLastError();
+    const bool sticky =
+        cudaPeekAtLastError() != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess;
+    std::string message = std::string("CUDA-Fehler ") + file + ":" + std::to_string(line) +
+                          ": cudaDeviceSynchronize() nach " + what + " (" + context() +
+                          "): " + cudaGetErrorString(err);
+    if (sticky) {
+        message += " (dauerhafter Fehler: der CUDA-Kontext ist unbrauchbar, der Prozess muss neu "
+                   "starten; Ursache kann auch ein früherer asynchroner Kernel sein)";
+    }
+    throw CudaError(message);
+}
+
 } // namespace mko::cuda::detail
 
 // Wie MKO_CUDA_TRY, wirft aber mko::cuda::CudaError (Host-Fehler beim Konfigurieren).
