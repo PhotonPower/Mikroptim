@@ -1,0 +1,414 @@
+{
+ "start": "docs/ergebnisse/m6-t12/A1W4/z2_s0.json",
+ "start_state": {
+  "aperture": 0.44500000000000006,
+  "field": 0.240625,
+  "spectrum": "mono",
+  "elements": 8
+ },
+ "kinds": [
+  "farbe"
+ ],
+ "synth_options": [
+  "--color-rule",
+  "--split-spectrum",
+  "--split-member-start",
+  "--color-chromatic",
+  "0.5",
+  "--color-module",
+  "doublet",
+  "--ghost-dictionary-extra",
+  "4",
+  "--field-rule",
+  "--insertion-improve",
+  "4"
+ ],
+ "ghost_positions": "aperture,field",
+ "element_budget": 14,
+ "stages": [
+  {
+   "kind": "farbe",
+   "tag": "c0_farbe",
+   "start": "docs/ergebnisse/m6-t12/A1W4_farbe/c_start.json",
+   "start_state": {
+    "aperture": 0.44500000000000006,
+    "field": 0.240625,
+    "spectrum": "mono",
+    "elements": 8
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_real.json",
+    "output": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_start.json",
+    "surfaces_before": 17,
+    "surfaces_after": 17,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 837.2873127155007,
+    "merit_after": 837.2873127155078,
+    "relative_change": 8.554137471918742e-15,
+    "focal_length_before": 3.288516071540791,
+    "focal_length_after": 3.2885160715407897,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 12,
+       "distance": 0.14208751532981917,
+       "norm_radius": 1.7535806082322756,
+       "marginal_height": 0.7689785946086314,
+       "ratio": 1.2476411279154527,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 14,
+       "distance": 0.13683803992151783,
+       "norm_radius": 1.5921664760063574,
+       "marginal_height": 0.6626029109918449,
+       "ratio": 1.3688780014060222,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 857.5782573207164,
+     "merit_after": 857.5782573207275,
+     "relative_change": 1.2991595812522744e-14
+    },
+    "warnings": []
+   },
+   "ghost_start": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_start.json",
+   "result": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_voll_r3_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c0_farbe_voll_r0",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.44500000000000006,
+      "field": 0.240625,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.033203125
+     },
+     "elements": 10,
+     "insertions": 6,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 2637.834445953369,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "c0_farbe_voll_r1",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.44500000000000006,
+      "field": 0.240625,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.0341796875
+     },
+     "elements": 11,
+     "insertions": 5,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 2100.452750682831,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "c0_farbe_voll_r2",
+     "status": "step_too_small",
+     "point": {
+      "aperture": 0.44500000000000006,
+      "field": 0.240625,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.0361328125
+     },
+     "elements": 11,
+     "insertions": 4,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 1403.7684922218323,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "c0_farbe_voll_r3",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.44500000000000006,
+      "field": 0.240625,
+      "spectrum": 0,
+      "ghost_weight": 100.0,
+      "ghost_smoothing": 0.1,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 14,
+     "insertions": 7,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.09410560295522828,
+      "tuples": [
+       {
+        "field": 0,
+        "wavelength": 0,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 435.83,
+        "rms_waves": 0.03513759407387935,
+        "failed_rays": 0
+       },
+       {
+        "field": 0,
+        "wavelength": 1,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 486.13,
+        "rms_waves": 0.035434694899744226,
+        "failed_rays": 0
+       },
+       {
+        "field": 0,
+        "wavelength": 2,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.03693815753008909,
+        "failed_rays": 0
+       },
+       {
+        "field": 0,
+        "wavelength": 3,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 587.56,
+        "rms_waves": 0.03064241812643111,
+        "failed_rays": 0
+       },
+       {
+        "field": 0,
+        "wavelength": 4,
+        "field_angle_deg": 0.0,
+        "wavelength_nm": 656.27,
+        "rms_waves": 0.04067735252194683,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 0,
+        "field_angle_deg": 0.7326498131341774,
+        "wavelength_nm": 435.83,
+        "rms_waves": 0.09150258270760343,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 1,
+        "field_angle_deg": 0.7326498131341774,
+        "wavelength_nm": 486.13,
+        "rms_waves": 0.06018461748864112,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 2,
+        "field_angle_deg": 0.7326498131341774,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.06533580708368311,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 3,
+        "field_angle_deg": 0.7326498131341774,
+        "wavelength_nm": 587.56,
+        "rms_waves": 0.06991721551137012,
+        "failed_rays": 0
+       },
+       {
+        "field": 1,
+        "wavelength": 4,
+        "field_angle_deg": 0.7326498131341774,
+        "wavelength_nm": 656.27,
+        "rms_waves": 0.09410560295522828,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 0,
+        "field_angle_deg": 1.0456195146582474,
+        "wavelength_nm": 435.83,
+        "rms_waves": 0.06293552794522184,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 1,
+        "field_angle_deg": 1.0456195146582474,
+        "wavelength_nm": 486.13,
+        "rms_waves": 0.08039442290739454,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 2,
+        "field_angle_deg": 1.0456195146582474,
+        "wavelength_nm": 546.07,
+        "rms_waves": 0.08120522267137341,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 3,
+        "field_angle_deg": 1.0456195146582474,
+        "wavelength_nm": 587.56,
+        "rms_waves": 0.06765574058351734,
+        "failed_rays": 0
+       },
+       {
+        "field": 2,
+        "wavelength": 4,
+        "field_angle_deg": 1.0456195146582474,
+        "wavelength_nm": 656.27,
+        "rms_waves": 0.07492677705784981,
+        "failed_rays": 0
+       }
+      ]
+     },
+     "mu_scale": 0.5,
+     "seconds": 5205.537160396576,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r3_relax"
+    }
+   ],
+   "point": {
+    "aperture": 0.44500000000000006,
+    "field": 0.240625,
+    "spectrum": 0,
+    "ghost_weight": 100.0,
+    "ghost_smoothing": 0.1,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 1.0
+   },
+   "elements_stage": 14,
+   "z2": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2_s2.json",
+   "elements_z2": 14,
+   "prune": {
+    "status": "max_elements",
+    "removals": 0,
+    "attempts": 16,
+    "elements_before": 14,
+    "elements_after": 14,
+    "point": {
+     "aperture": 0.44500000000000006,
+     "field": 0.240625,
+     "spectrum_width": 0.85
+    },
+    "reopen": {
+     "reached": true,
+     "skipped": "nichts entfernt"
+    }
+   },
+   "z2r": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_s2.json",
+   "elements": 14,
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_psf.json",
+    "vektor": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_vektor.json"
+   },
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_vollfeld_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.44500000000000006,
+    "field": 0.240625,
+    "spectrum": "voll",
+    "elements": 14
+   },
+   "seconds": 12127.821375370026
+  }
+ ],
+ "prune_point": 0.85,
+ "color_target": "voll",
+ "times": {
+  "c0_farbe_start": 0.025098562240600586,
+  "c0_farbe_voll_r0": 2637.834445953369,
+  "c0_farbe_voll_r0_relax": 2.986311674118042,
+  "c0_farbe_voll_r1": 2100.452750682831,
+  "c0_farbe_voll_r1_relax": 12.940624475479126,
+  "c0_farbe_voll_r2": 1403.7684922218323,
+  "c0_farbe_voll_r2_relax": 51.309128522872925,
+  "c0_farbe_voll_r3": 5205.537160396576,
+  "c0_farbe_voll_r3_relax": 42.9499671459198,
+  "c0_farbe_z2_s0": 35.42890191078186,
+  "c0_farbe_z2_s1": 36.049415588378906,
+  "c0_farbe_z2_s2": 34.57667279243469,
+  "c0_farbe_rueckbau": 458.49770498275757,
+  "c0_farbe_z2r_s0": 34.32075357437134,
+  "c0_farbe_z2r_s1": 33.38322448730469,
+  "c0_farbe_z2r_s2": 35.0048348903656,
+  "c0_farbe_z2r_pupille": 0.18091201782226562,
+  "c0_farbe_z2r_unendlich": 0.17425799369812012,
+  "c0_farbe_z2r_psf": 0.28662586212158203,
+  "c0_farbe_z2r_vektor": 0.6879093647003174,
+  "c0_farbe_z2r_vollfeld_pupille": 0.1727595329284668,
+  "c0_farbe_z2r_vollfeld_unendlich": 0.1761322021484375,
+  "c0_farbe_z2r_vollfeld_psf": 0.29993486404418945,
+  "c0_farbe_z2r_vollfeld_vektor": 0.679401159286499
+ },
+ "final": "docs/ergebnisse/m6-t12/A1W4_farbe/c0_farbe_z2r_s2.json",
+ "final_state": {
+  "aperture": 0.44500000000000006,
+  "field": 0.240625,
+  "spectrum": "voll",
+  "elements": 14
+ },
+ "seconds_total": 12127.835190057755
+}

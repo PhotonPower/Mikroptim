@@ -1,0 +1,26 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t12\A1W4\p2_r4_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.178, 7 Glaselement(e)
+  Ziel                                        NA 0.4450, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Glas-Wörterbuch (M6-T12)                    +0 Platten an 0 Lage(n): SYN-32 (Flint, n_d 1.7688, v_d 48.42, dP_gF -0.0037, Partner CAF2, Rest 1.840e-04, schon im Wörterbuch), CAF2 (anomal, n_d 1.4338, v_d 95.00, dP_gF 0.0546, Partner SYN-11, Rest 3.114e-05, schon im Wörterbuch), SYN-13 (Flint, n_d 1.5733, v_d 47.80, dP_gF 0.0004, Partner CAF2, Rest 2.290e-04, schon im Wörterbuch), SYN-04 (anomal, n_d 1.4736, v_d 88.47, dP_gF 0.0373, Partner SYN-12, Rest 3.404e-05, schon im Wörterbuch)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.178   0  -        max_iterations       500  4.730151e-03  4.637301e-03  0.06775   1.914e-05   7  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.178   0  -        converged_step        58  4.736468e-03  4.650076e-03  0.06781   1.934e-05   7  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.178   0  -        converged_step        35  4.760111e-03  4.653200e-03  0.06783   1.923e-05   7  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.4450  0.303   0  0.12500  max_iterations      4500  3.227430e+11  7.793576e+03  116.84070   1.730e-03   7  shrink (Delta 0.06250)
+      4  field            0.4450  0.241   0  0.06250  max_iterations       500  5.801407e-03  5.628300e-03  0.07459   9.047e-05   7  shrink (Delta 0.03125)
+      5  field            0.4450  0.209   0  0.03125  converged_step       251  5.420805e-03  5.272554e-03  0.07344   2.778e-05   7  shrink (Delta 0.01562)
+      6  field            0.4450  0.194   0  0.01562  converged_step        79  5.098141e-03  4.979657e-03  0.07087   1.937e-05   7  keep (Delta 0.01562)
+      7  field            0.4450  0.209   0  0.01562  converged_step        45  5.527878e-03  5.381952e-03  0.07391   2.540e-05   7  stop (Delta 0.00781): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Feldanteil 0.19375: Schrittweite unter Δ_min = 0.015625 (letzter Versuch F_B = 0.00538195); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4450, Feldanteil 0.194, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.4450)
+Glaselemente: 7 -> 7 (0 Einfügungen), Optimierungen: 8, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                175.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t12\A1W4\p2_r5.json
+Protokoll geschrieben: docs\ergebnisse\m6-t12\A1W4\p2_r5_log.json

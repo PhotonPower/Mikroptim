@@ -31,6 +31,10 @@ feld,farbe,apertur und einem realen System als --start (z. B. Z2 nach dem Rückb
 je Stufe Rückkehr zu Geisterplatten (`mikroptim insert --ghost-return`), Stufe, Z2, Rückbau am
 realen System und Z2 danach; Tabelle mit `--zyklus-tabelle DIR`.
 
+Erweitertes Glas-Wörterbuch der Geisterplatten (M6-T12, Bericht
+docs/ergebnisse/m6-t12-glaswoerterbuch.md): --woerterbuch-extra [N] (synth --ghost-dictionary-extra,
+ohne Zahl 4), --woerterbuch-glas GLAS.
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -1100,7 +1104,7 @@ GHOST_GLASSES = ['SYN-36', 'CAF2', 'SYN-30']
 
 # M6-T12: empfohlene Zahl der Zusatzgläser des erweiterten Wörterbuchs (--woerterbuch-extra ohne
 # Zahl; Begründung aus der Messung im Bericht docs/ergebnisse/m6-t12-glaswoerterbuch.md)
-WOERTERBUCH_STANDARD = 2
+WOERTERBUCH_STANDARD = 4
 
 
 def first_json(text):

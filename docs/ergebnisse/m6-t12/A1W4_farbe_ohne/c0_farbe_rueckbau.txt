@@ -1,0 +1,68 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t12\A1W4_farbe_ohne\c0_farbe_rueckbau_in.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.241, 13 Glaselement(e)
+  Ziel                                        NA 0.4450, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     nach den Phasen und vor dem Abschluss, am Elementbudget 13; 3 Stufen, 30 Versuche pro Runde, F_B <= 0.500 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.241   0  -        max_iterations       500  1.688843e-03  1.669591e-03  0.06156   0.000e+00  13  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.241   0  -        max_iterations       500  1.684637e-03  1.665750e-03  0.06158   0.000e+00  13  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.241   0  -        max_iterations       500  1.678896e-03  1.660347e-03  0.06154   0.000e+00  13  ok: Gewichte der einseitigen Bedingungen ×1
+      3  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.664791e-03  1.646173e-03  0.06166   0.000e+00  13  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.03397 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      4  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.648779e-03  1.630719e-03  0.06176   0.000e+00  13  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.03397 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      5  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.637082e-03  1.619224e-03  0.06184   0.000e+00  13  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.03397 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+      6  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  ok: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.03397 Wellen) entfernt (vor dem Abschluss): F_B 0.00161922 ≤ 0.00255102, vorher 0.00166035
+      7  removal_stage    0.4450  0.241   0  -        max_iterations       500  7.651949e-03  3.242905e-03  0.09355   0.000e+00  11  -: Element ab Fläche 4 (CAF2, Seidel-Beitrag 1.536 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.644471e-03  5.599870e-03  0.10014   0.000e+00  11  -: Element ab Fläche 4 (CAF2, Seidel-Beitrag 1.536 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.540155e-02  2.708330e-02  0.28181   0.000e+00  11  -: Element ab Fläche 4 (CAF2, Seidel-Beitrag 1.536 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 4 (CAF2, Seidel-Beitrag 1.536 Wellen): F_B 0.0270833 > 0.00255102
+     11  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.393831e-03  4.037560e-03  0.09660   0.000e+00  11  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.236 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.036099e-02  9.420409e-03  0.16483   0.000e+00  11  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.236 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.425349e-02  3.116140e-02  0.35465   0.000e+00  11  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.236 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.236 Wellen): F_B 0.0311614 > 0.00255102
+     15  removal_stage    0.4450  0.241   0  -        max_iterations       500  7.987700e-03  7.941796e-03  0.17531   0.000e+00  11  -: Element ab Fläche 15 (SYN-36, Kittglied, Seidel-Beitrag 6.706 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.877236e-02  1.788541e-02  0.23079   0.000e+00  11  -: Element ab Fläche 15 (SYN-36, Kittglied, Seidel-Beitrag 6.706 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.393985e-02  5.278342e-02  0.27403   0.000e+00  11  -: Element ab Fläche 15 (SYN-36, Kittglied, Seidel-Beitrag 6.706 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 15 (SYN-36, Kittglied, Seidel-Beitrag 6.706 Wellen): F_B 0.0527834 > 0.00255102
+     19  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.201854e-01  1.272980e-02  0.13539   0.000e+00  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.888 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     20  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.606406e-02  1.459561e-02  0.21282   0.000e+00  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.888 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     21  removal_stage    0.4450  0.241   0  -        max_iterations       500  2.948139e+01  2.419000e+01  6.50132   0.000e+00  11  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.888 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     22  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 13 (SYN-36, Seidel-Beitrag 6.888 Wellen): F_B 24.19 > 0.00255102
+     23  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.722872e-01  2.458891e-01  1.38878   0.000e+00  11  -: Element ab Fläche 9 (SYN-36, Kittglied, Seidel-Beitrag 16.93 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     24  removal_stage    0.4450  0.241   0  -        max_iterations       500  6.293266e-01  6.268573e-01  1.95056   0.000e+00  11  -: Element ab Fläche 9 (SYN-36, Kittglied, Seidel-Beitrag 16.93 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     25  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.797473e-01  3.717518e-01  1.58117   0.000e+00  11  -: Element ab Fläche 9 (SYN-36, Kittglied, Seidel-Beitrag 16.93 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     26  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 9 (SYN-36, Kittglied, Seidel-Beitrag 16.93 Wellen): F_B 0.371752 > 0.00255102
+     27  removal_stage    0.4450  0.241   0  -        max_iterations       500  6.135287e-03  5.868515e-03  0.12758   0.000e+00  11  -: Element ab Fläche 6 (SYN-30, Kittglied, Seidel-Beitrag 18.44 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     28  removal_stage    0.4450  0.241   0  -        max_iterations       500  2.988883e+02  5.960786e+01  12.28893   0.000e+00  11  -: Element ab Fläche 6 (SYN-30, Kittglied, Seidel-Beitrag 18.44 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     29  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.346597e-01  3.830861e-01  1.25807   0.000e+00  11  -: Element ab Fläche 6 (SYN-30, Kittglied, Seidel-Beitrag 18.44 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     30  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  -: Rückbau verworfen (vor dem Abschluss): Element ab Fläche 6 (SYN-30, Kittglied, Seidel-Beitrag 18.44 Wellen): F_B 0.383086 > 0.00255102
+     31  smoothing        0.4450  0.241   0  -        max_iterations       500  1.633115e-03  1.615918e-03  0.06174   0.000e+00  11  ok: ε ×0.1
+     32  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            11  ok: Ziel erreicht: größter RMS 0.06174 Wellen (Ziel 0.07143)
+
+Status: goal_reached (Ziel erreicht)
+Endpunkt: NA 0.4450, Feldanteil 0.241, Spektrumstufe 0, mu x1, eps x0.1 (Ziel NA 0.4450)
+Glaselemente: 13 -> 11 (0 Einfügungen, 1 Rückbauten in 7 Versuchen), Optimierungen: 25, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 452.37 nm: RMS 0.01057 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 495.12 nm: RMS 0.01098 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.01599 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 581.34 nm: RMS 0.01656 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 639.74 nm: RMS 0.02236 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 452.37 nm: RMS 0.06013 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 495.12 nm: RMS 0.03854 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 546.07 nm: RMS 0.03853 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 581.34 nm: RMS 0.04432 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 639.74 nm: RMS 0.06174 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 452.37 nm: RMS 0.05266 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 495.12 nm: RMS 0.04788 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 546.07 nm: RMS 0.04784 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 581.34 nm: RMS 0.04106 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 639.74 nm: RMS 0.03982 Wellen, versagt 0
+  Laufzeit [s]                                415.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t12\A1W4_farbe_ohne\c0_farbe_rueckbau.json
+Protokoll geschrieben: docs\ergebnisse\m6-t12\A1W4_farbe_ohne\c0_farbe_rueckbau_log.json
