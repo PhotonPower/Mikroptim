@@ -393,6 +393,83 @@ TEST(GlassPreselection, MemberStartRadiiMatchPowerAndSeidelSums) {
     }
 }
 
+// Glied im konvergenten Bündel (M6-T11, incoming_slope): vor dem Glied eine dünne Linse N-BK7
+// mit Brechkraft K₀ (Dicken 0, an der Blende), also Randstrahlneigung u₁/y = −K₀ am Glied.
+// Seidel-Summen der Flächen des Glieds aus dem Aberrationsbericht = thin_member_seidel(n, c, −K₀)
+// mal a⁴ bzw. a²H; Biegung S_I = 0 mit dieser Neigung; ohne Neigung bitgleich wie bisher.
+TEST(GlassPreselection, MemberShapeWithIncomingSlope) {
+    const mko::GlassCatalog cat = test_catalog();
+    const std::vector<mko::GlassDispersion> g = mko::catalog_dispersions(cat);
+    mko::GlassPreselectionOptions o;
+    o.power = 0.01;
+    o.max_power_sum = 6.0;
+    o.max_results = 1;
+    const std::vector<mko::PreselectedGlasses> r = mko::preselect_glasses(g, o);
+    ASSERT_EQ(r.size(), 1U);
+    std::vector<std::string> names;
+    std::vector<double> n;
+    for (int i : r[0].glasses) {
+        names.push_back(g[static_cast<std::size_t>(i)].name);
+        n.push_back(cat.at(names.back()).index(546.074));
+    }
+    const double a = 2.0;
+    const double k0 = 0.02;
+    const double n_a = cat.at("N-BK7").index(546.074);
+    const double c_a = k0 / (2.0 * (n_a - 1.0)); // bikonvex, Brechkraft K₀
+    const mko::ThinMemberShape m =
+        mko::thin_member_shape(n, r[0].powers, mko::MemberBending::MinSpherical, -k0);
+    const mko::ThinMemberShape m0 = mko::thin_member_shape(n, r[0].powers);
+    const mko::ThinMemberShape m0x =
+        mko::thin_member_shape(n, r[0].powers, mko::MemberBending::MinSpherical, 0.0);
+    EXPECT_EQ(m0.curvatures, m0x.curvatures);
+    EXPECT_NE(m.curvatures, m0.curvatures);
+    // System: Blende, Linse A (N-BK7, Dicke 0), Luft 0, Glied, Bildabstand 100 mm
+    std::vector<std::string> all{"N-BK7", "AIR"};
+    std::vector<double> c{c_a, -c_a};
+    for (std::size_t i = 0; i < m.curvatures.size(); ++i) {
+        all.push_back(i < names.size() ? names[i] : "AIR");
+        c.push_back(m.curvatures[i]);
+    }
+    std::ostringstream s;
+    s.precision(17);
+    s << R"({"format": "mikroptim.system/1", "name": "Glied", "units": "mm", "glass_catalogs": [],)"
+      << R"("spectrum": {"wavelengths_nm": [546.074], "weights": [1.0], "reference_nm": 546.074},)"
+      << R"("source": {"type": "collimated", "field_angles_deg": [1.0], "field_weights": [1.0]},)"
+      << R"("surfaces": [{"type": "stop", "semi_diameter": )" << a
+      << R"(, "thickness": 0.0, "material": "AIR"})";
+    for (std::size_t i = 0; i < c.size(); ++i) {
+        const bool last = i + 1 == c.size();
+        s << R"(, {"type": "sphere", "curvature": )" << c[i] << R"(, "thickness": )"
+          << (last ? 100.0 : 0.0) << R"(, "material": ")" << all[i] << R"(", "semi_diameter": )"
+          << 2.0 * a << "}";
+    }
+    s << "]}";
+    const mko::SystemDescription sys = mko::read_system_json(s.str());
+    const mko::AberrationReport rep = mko::compute_aberrations(sys, cat);
+    ASSERT_NEAR(rep.surfaces[3].u_before / rep.surfaces[3].y, -k0, 1e-15);
+    double s1 = 0.0;
+    double s2 = 0.0;
+    double scale1 = 0.0;
+    double scale2 = 0.0;
+    for (std::size_t i = 3; i < rep.surfaces.size(); ++i) {
+        s1 += rep.surfaces[i].S[0];
+        s2 += rep.surfaces[i].S[1];
+        scale1 = std::max(scale1, std::abs(rep.surfaces[i].S[0]));
+        scale2 = std::max(scale2, std::abs(rep.surfaces[i].S[1]));
+    }
+    const double y4 = a * a * a * a;
+    const double y2h = a * a * rep.lagrange;
+    EXPECT_NEAR(s1, y4 * m.spherical, kThinMemberSeidel * scale1);
+    EXPECT_NEAR(s2, y2h * m.coma, kThinMemberSeidel * scale2);
+    const std::array<double, 2> direct = mko::thin_member_seidel(n, m.curvatures, -k0);
+    EXPECT_EQ(direct[0], m.spherical);
+    if (m.spherical_zero) {
+        EXPECT_NEAR(s1, 0.0, kThinMemberSeidel * scale1);
+    }
+    std::printf("Glied mit u1/y = %.3f/mm: S_I %+.3e (Bericht) %+.3e (Formel), S_II %+.3e/%+.3e\n",
+                -k0, s1, y4 * m.spherical, s2, y2h * m.coma);
+}
+
 // Filter der Kandidaten: Vorauswahl auf den gefilterten Gläsern = ungefilterte Vorauswahl,
 // danach Kombinationen mit einem Glas außerhalb des Filters gestrichen (Bereiche wie
 // list_glass_properties, Namenslisten, festes Glas bleibt auch außerhalb des Filters).

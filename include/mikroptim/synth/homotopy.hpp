@@ -102,6 +102,10 @@ struct HomotopyNeed {
     // (−1: Empfehlung aus der Diagnose), weitere Spalte in absteigender Eignung
     int field_gap = -1;
     std::vector<int> field_candidates{};
+    // Kittglied-Modul der Farbregel (M6-T11): Null-Kittglied im Luftspalt nach dieser
+    // Dateifläche (−1: kein Modul), weitere Spalte in absteigender Eignung
+    int module_gap = -1;
+    std::vector<int> module_candidates{};
 };
 
 // Ein angewandter Einfüge-Operator: Startsysteme der Zweige (Operator mit Dicke 0 eingefügt, die
@@ -121,6 +125,7 @@ struct HomotopyInsertion {
     double gap = 0.0;
     double min_gap = 0.0;
     std::vector<int> default_constraints;
+    bool doublet = false; // Null-Kittglied der Farbregel (M6-T11): innere Homotopie beider Teile
 };
 
 // Kandidat des Rückbaus (M6-T9): ein Element (Glasblock), das versuchsweise über die

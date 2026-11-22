@@ -352,6 +352,20 @@ def synth_options(args):
         opts.append('--color-rule')
     if args.farb_achromat:
         opts.append('--split-achromat')
+    # M6-T11: Operator B mit Rang nach dem spektralen Rest und Startradien des Glieds, Farbbedarf
+    # aus den chromatischen Seidel-Termen, Kittglied-Modul statt Meniskus
+    if getattr(args, 'farb_spektrum_rang', False):
+        opts.append('--split-spectrum')
+    if getattr(args, 'farb_startradien', False):
+        opts.append('--split-member-start')
+    if getattr(args, 'farb_chromatisch', None):
+        opts += ['--color-chromatic', repr(args.farb_chromatisch)]
+    if getattr(args, 'farb_modul', None):
+        opts += ['--color-module', args.farb_modul]
+        if getattr(args, 'farb_modul_immer', False):
+            opts.append('--color-module-always')
+        if getattr(args, 'farb_anomal', False):
+            opts.append('--color-module-anomalous')
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
     if getattr(args, 'feldregel', False):
@@ -1118,6 +1132,47 @@ def stage_done(kind, state):
     return state['spectrum'] in ('voll', 'erweitert')
 
 
+def prune_point(system, kind, q, na, field):
+    """Punkt des Rückbaus bei Q × Parameter der Stufe (M6-T11, Vorschlag aus M6-T10/F17): Apertur
+    Q·NA (Pupillenradius der Datei), Feld Q·Feldanteil, Farbe Spektrumbreite Q (Wellenlängen um
+    λ_ref skaliert wie die stetige Spektrum-Homotopie). Ändert `system`; liefert (NA, Feld)."""
+    if kind == 'apertur':
+        f = system.get('target', {}).get('focal_length', FOCAL)
+        system['surfaces'][0]['semi_diameter'] = f * q * na
+        return q * na, field
+    if kind == 'feld':
+        return na, q * field
+    sp = system['spectrum']
+    ref = sp['reference_nm']
+    sp['wavelengths_nm'] = [ref + q * (w - ref) for w in sp['wavelengths_nm']]
+    return na, field
+
+
+def reopen_after_prune(r, tag, pruned, kind, na, field, state, common, zopt):
+    """Nach dem Rückbau bei Q × Parameter zurück zum erreichten Punkt (M6-T11): Apertur und Feld
+    mit synth ohne Einfügen (höchstens die Elemente des Rückbaus), Farbe direkt über die
+    Nachoptimierung Z2 am vollen Spektrum. Erreicht synth den Punkt nicht, bleibt der Stand vor
+    dem Rückbau (Rückgabe None statt der Datei). Liefert (Datei oder None, Bericht)."""
+    if kind == 'farbe':
+        return pruned, {'reached': True, 'via': 'z2'}
+    s = load(pruned)
+    n = glass_elements(s)
+    p0 = system_state(s)
+    if kind == 'apertur':
+        opts = ['--target-na', repr(na), '--start-field', repr(field), '--target-field',
+                repr(field)]
+    else:
+        opts = ['--target-na', repr(p0['aperture']), '--start-field', repr(load(
+            r.path(tag + '_rueckbau_log.json'))['result']['point']['field']),
+                '--target-field', repr(field)]
+    out = r.synth(tag + '_wieder', pruned, opts + limit_elements(common, n))
+    res = load(r.path(tag + '_wieder_log.json'))['result']
+    pt = res['point']
+    reached = (pt['aperture'] >= na - 1e-9) and (pt['field'] >= field - 1e-9)
+    info = {'reached': reached, 'status': res['status'], 'point': pt, 'elements': n}
+    return (out if reached else None), info
+
+
 def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
     """Eine Stufe des Zyklus (M6-T10): reales System → Geisterplatten (Rückkehr) → Stufe
     (synth_loop wie im Hauptlauf) → Z2 (ohne Platten nachoptimiert) → Rückbau am realen System
@@ -1159,6 +1214,8 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
     else:
         seq = {'mono': ['zwei', 'voll'], None: ['zwei', 'voll'], 'zwei': ['voll']}[
             st['spectrum']]
+        if getattr(args, 'farb_ziel', None) == 'voll':
+            seq = ['voll']  # M6-T11: direkt zum Zielspektrum (mit --farb-stetig weich ab λ_ref)
         res = start
         stufen = (['--spectrum-continuous'] if args.farb_stetig else
                   ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
@@ -1168,10 +1225,20 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
             set_spectrum(s, wl, w)
             inp = r.path(f'{tag}_{sub}_in.json')
             save(s, inp)
+
+            def full_field_spectrum(system, point, wl=wl, w=w):
+                # M6-T11: synth schreibt das Spektrum des Endpunkts (Spektrumstufe bzw. -breite);
+                # der Neustart braucht wieder das Zielspektrum der Teilstufe
+                set_field(system, FIELD_ANGLES, FIELD_WEIGHTS)
+                set_spectrum(system, wl, w)
+
+            restart = full_field_spectrum if (args.farb_stetig or args.farb_stufen > 0) else \
+                full_field
             res, rr = synth_loop(r, f'{tag}_{sub}', inp,
                                  ['--target-na', repr(na), '--start-field', repr(f),
                                   '--target-field', repr(f)] + stufen + common, relax,
-                                 lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
+                                 (lambda p: p.get('spectrum_width', 0.0)) if args.farb_stetig
+                                 else (lambda p: 0.0), 1.0, restart=restart, max_rounds=4, forced=1,
                                  forced_kind='split', stage_budget=args.farb_budget, log=log)
             rounds += rr
     pt = rounds[-1]['point']
@@ -1185,9 +1252,14 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
     z2_in = r.path(tag + '_z2_punkt.json')
     save(s, z2_in)
     z2 = polish(r, tag + '_z2', z2_in, zopt, spectrum=None)
-    # Rückbau am realen System (M6-T9: dort wirkt er, F17), Punkt = erreichter Punkt
+    # Rückbau am realen System (M6-T9: dort wirkt er, F17), Punkt = erreichter Punkt bzw. mit
+    # --rueckbau-punkt Q (M6-T11) Q × Parameter der Stufe (Abstand zur Schwelle, F17)
+    q = getattr(args, 'rueckbau_punkt', None)
     s = load(z2)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
+    nap, fp = nak, fk
+    if q:
+        nap, fp = prune_point(s, kind, q, nak, fk)
     p_in = r.path(tag + '_rueckbau_in.json')
     save(s, p_in)
     prune_opts = ['--prune', '--prune-factor', repr(args.rueckbau_faktor or 0.5),
@@ -1197,12 +1269,21 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
     # höchstens die Elemente von Z2: ist der Startpunkt nicht annehmbar (F_B > F_max), fügte
     # synth sonst zuerst ein (Lauf D: 13 → 14 Elemente statt Rückbau)
     pruned = r.synth(tag + '_rueckbau', p_in,
-                     ['--target-na', repr(nak), '--start-field', repr(fk), '--target-field',
-                      repr(fk)] + prune_opts +
+                     ['--target-na', repr(nap), '--start-field', repr(fp), '--target-field',
+                      repr(fp)] + prune_opts +
                      limit_elements(common, glass_elements(load(z2))))
     pres = load(r.path(tag + '_rueckbau_log.json'))['result']
+    reopen = None
+    if q and pres.get('removals', 0) > 0:
+        # zurück zum erreichten Punkt ohne Einfügen; erreicht der Lauf ihn nicht, bleibt Z2
+        back, reopen = reopen_after_prune(r, tag, pruned, kind, nak, fk, st, common, zopt)
+        pruned = back if back is not None else z2
+    elif q:
+        pruned, reopen = z2, {'reached': True, 'skipped': 'nichts entfernt'}
     s = load(pruned)
     set_field(s, [a * fk for a in FIELD_ANGLES], FIELD_WEIGHTS)
+    if q:
+        s['spectrum'] = copy.deepcopy(load(z2)['spectrum'])  # Farbstufe: Spektrum zurück
     z2r_in = r.path(tag + '_z2r_punkt.json')
     save(s, z2r_in)
     z2r = polish(r, tag + '_z2r', z2r_in, zopt, spectrum=None)
@@ -1210,7 +1291,10 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
                  'prune': {'status': pres['status'], 'removals': pres.get('removals', 0),
                            'attempts': pres.get('removal_attempts', 0),
                            'elements_before': pres.get('start_elements'),
-                           'elements_after': pres['elements']},
+                           'elements_after': pres['elements'],
+                           'point': {'aperture': nap, 'field': fp,
+                                     'spectrum_width': q if (q and kind == 'farbe') else 1.0},
+                           'reopen': reopen},
                  'z2r': z2r, 'elements': glass_elements(load(z2r)),
                  'eval': evaluate(r, tag + '_z2r', z2r)})
     if fk < 0.999:
@@ -1250,6 +1334,11 @@ def cycle_run(args):
     summary = {'start': args.start, 'start_state': system_state(s), 'kinds': kinds,
                'synth_options': r.synth_options, 'ghost_positions': args.geister_lagen,
                'element_budget': args.elementbudget, 'stages': []}
+    # M6-T11: nur mit den Optionen (Zusammenfassungen von M6-T10 bleiben gleich)
+    if getattr(args, 'rueckbau_punkt', None):
+        summary['prune_point'] = args.rueckbau_punkt
+    if getattr(args, 'farb_ziel', 'zwei') != 'zwei':
+        summary['color_target'] = args.farb_ziel
     path = r.path('m6t10_zyklus.json')
 
     def write():
@@ -1358,7 +1447,7 @@ def archive(out_dir):
                       # M6-T10: zyklischer Lauf
                       r'm6t10_zyklus\.json|c_start\.json|c\d+_[a-z]+_start(\.json|_bericht\.txt)|'
                       r'c\d+_[a-z]+(_zwei|_voll)?_r\d+(_log\.json|\.txt)|'
-                      r'c\d+_[a-z]+_rueckbau(_log\.json|\.txt)|c\d+_[a-z]+_z2r?_s\d\.(json|txt)|'
+                      r'c\d+_[a-z]+_(rueckbau|wieder)(_log\.json|\.txt)|c\d+_[a-z]+_z2r?_s\d\.(json|txt)|'
                       r'c\d+_[a-z]+_z2r(_vollfeld)?_(pupille|unendlich|psf|vektor)\.json)$')
     # Ergebnisdateien der Stufen (auch Neustart-Dateien, wenn eine Stufe dort endete)
     referenced = set()
@@ -1511,7 +1600,37 @@ def main():
     ap.add_argument('--geister-lagen', default='aperture,field', metavar='LISTE',
                     help='M6-T10: Lagen der Rückkehr zu Geisterplatten (mikroptim insert '
                          '--ghost-positions; Standard aperture,field)')
+    ap.add_argument('--farb-spektrum-rang', action='store_true',
+                    help='M6-T11: Operator B/Farbregel mit Partnerglas nach dem spektralen Rest '
+                         'über das Zielspektrum (synth --split-spectrum)')
+    ap.add_argument('--farb-startradien', action='store_true',
+                    help='M6-T11: Operator B mit zusätzlichem Zweig „Startradien des Glieds“ '
+                         '(synth --split-member-start)')
+    ap.add_argument('--farb-chromatisch', type=float, default=None, metavar='S',
+                    help='M6-T11: Farbbedarf aus den chromatischen Seidel-Termen, Anteil S am '
+                         'größten RMS (synth --color-chromatic S)')
+    ap.add_argument('--farb-modul', choices=['doublet', 'strong'], default=None,
+                    help='M6-T11: Null-Kittglied bzw. starkes Kittglied (Wissensbasis) einfügen, '
+                         'wenn die Farbe dominiert und keine Linse teilbar ist '
+                         '(synth --color-module)')
+    ap.add_argument('--farb-modul-immer', action='store_true',
+                    help='M6-T11: Kittglied-Modul statt Teilen (synth --color-module-always)')
+    ap.add_argument('--farb-anomal', action='store_true',
+                    help='M6-T11: Modul mit mindestens einem anomalen Glas, |ΔP_g,F| >= 0,01 '
+                         '(anomalous_pgf; synth --color-module-anomalous)')
+    ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default='zwei',
+                    help='M6-T11: Farbstufe über zwei Wellenlängen zum vollen Spektrum (Standard, '
+                         'wie M6-T10) oder direkt zum vollen Spektrum')
+    ap.add_argument('--rueckbau-punkt', type=float, default=None, metavar='Q',
+                    help='M6-T11: Rückbau im Zyklus bei Q × Parameter der Stufe (NA, Feld bzw. '
+                         'Spektrumbreite; z. B. 0,85) statt am erreichten Punkt, danach zurück '
+                         'zum erreichten Punkt')
     args = ap.parse_args()
+    if args.rueckbau_punkt is not None and not 0.0 < args.rueckbau_punkt < 1.0:
+        ap.error('--rueckbau-punkt muss in (0, 1) liegen')
+    if (args.farb_spektrum_rang or args.farb_startradien or args.farb_chromatisch or
+            args.farb_modul):
+        args.farbregel = True
     if args.zyklus:
         return cycle_run(args)
     if args.apertur_zweig:

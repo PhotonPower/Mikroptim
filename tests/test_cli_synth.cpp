@@ -630,5 +630,56 @@ TEST(CliSynth, StartFromReal) {
     EXPECT_NE(help.find("--start-from-real"), std::string::npos);
 }
 
+// M6-T11: Optionen der Farbstufe. Ohne Optionen kein Eintrag color_rule_ext und keine neuen
+// Schlüssel unter split (Protokoll wie bisher); mit Optionen im JSON und im Textkopf;
+// Fehlbedienung Exit 2. Die Einzellinse bei 480/644 nm erreicht das Ziel weiter.
+TEST(CliSynth, ColorStageOptions) {
+    const std::string achromat = MKO_SOURCE_DIR "/data/systems/einzellinse_achromat_start.json";
+    EXPECT_EQ(synth({achromat, "--color-module", "triplet"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--color-module"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--color-module-always"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--color-module-anomalous"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--color-chromatic", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--color-module", "strong", "--color-module-incidence", "95"}).code,
+              cli::kExitUsage);
+    const std::string help = synth({"--help"}).out;
+    for (const char* o :
+         {"--split-spectrum", "--split-member-start", "--color-chromatic", "--color-module",
+          "--color-module-always", "--color-module-anomalous", "--color-module-incidence"}) {
+        EXPECT_NE(help.find(o), std::string::npos) << o;
+    }
+
+    const SynthCliResult plain = synth({achromat, "--color-rule", "--max-elements", "3", "--json"});
+    ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
+    const nlohmann::json jp = nlohmann::json::parse(plain.out);
+    EXPECT_FALSE(jp["options"].contains("color_rule_ext"));
+    EXPECT_FALSE(jp["options"]["split"].contains("spectrum_rank"));
+    EXPECT_FALSE(jp["options"]["split"].contains("member_start"));
+
+    const SynthCliResult with = synth(
+        {achromat, "--split-spectrum", "--split-member-start", "--color-chromatic", "0.5",
+         "--color-module", "doublet", "--color-module-anomalous", "--max-elements", "3", "--json"});
+    ASSERT_EQ(with.code, cli::kExitOk) << with.err;
+    const nlohmann::json jw = nlohmann::json::parse(with.out);
+    EXPECT_EQ(jw["options"]["color_rule"], 2.0); // --color-chromatic setzt --color-rule
+    EXPECT_EQ(jw["options"]["split"]["preselect"], true);
+    EXPECT_EQ(jw["options"]["split"]["spectrum_rank"], nlohmann::json::array({480.0, 644.0}));
+    EXPECT_EQ(jw["options"]["split"]["member_start"], true);
+    const nlohmann::json& ext = jw["options"]["color_rule_ext"];
+    EXPECT_EQ(ext["chromatic_share"], 0.5);
+    EXPECT_EQ(ext["module"], "doublet");
+    EXPECT_EQ(ext["always"], false);
+    EXPECT_EQ(ext["anomalous"], true);
+    EXPECT_EQ(ext["incidence_deg"], 40.0);
+    EXPECT_EQ(jw["result"]["status"], "goal_reached");
+
+    const SynthCliResult text = synth(
+        {achromat, "--color-module", "strong", "--color-module-always", "--max-elements", "1"});
+    ASSERT_EQ(text.code, cli::kExitOk) << text.err;
+    EXPECT_NE(text.out.find("Farbregel (M6-T11)"), std::string::npos) << text.out;
+    EXPECT_NE(text.out.find("starkes Kittglied (40.0°) statt Teilen"), std::string::npos)
+        << text.out;
+}
+
 } // namespace
 } // namespace mko::test

@@ -339,10 +339,11 @@ std::array<double, 2> element_seidel(double n, double k, double bk, double ck) {
 } // namespace
 
 std::array<double, 2> thin_member_seidel(std::span<const double> indices,
-                                         std::span<const double> curvatures) {
+                                         std::span<const double> curvatures,
+                                         double incoming_slope) {
     check_member(indices, curvatures, 1, "Krümmungsliste");
     std::array<double, 2> s{0.0, 0.0};
-    double u = 0.0; // kollimiert, y = 1
+    double u = incoming_slope; // y = 1; 0 = kollimiert
     for (std::size_t i = 0; i < indices.size(); ++i) {
         const double n = indices[i];
         const double k = (n - 1.0) * (curvatures[i] - curvatures[i + 1]);
@@ -356,7 +357,7 @@ std::array<double, 2> thin_member_seidel(std::span<const double> indices,
 }
 
 ThinMemberShape thin_member_shape(std::span<const double> indices, std::span<const double> powers,
-                                  MemberBending bending) {
+                                  MemberBending bending, double incoming_slope) {
     check_member(indices, powers, 0, "Brechkraftliste");
     // c_i = c₁ − D_i, D_i = Σ_{j<i} K_j/(n_j − 1); BK_i = (n_i − 1)(c_i + c_{i+1}) = α_i c₁ + β_i
     // mit α_i = 2(n_i − 1), β_i = −2(n_i − 1) D_i − K_i; CK_i = 2u_i − K_i hängt nicht von c₁ ab.
@@ -364,7 +365,7 @@ ThinMemberShape thin_member_shape(std::span<const double> indices, std::span<con
     auto& [a, b, d] = r.spherical_coefficients;
     auto& [s, t] = r.coma_coefficients;
     double offset = 0.0;
-    double u = 0.0;
+    double u = incoming_slope;
     std::vector<double> step(indices.size());
     for (std::size_t i = 0; i < indices.size(); ++i) {
         const double n = indices[i];
@@ -421,7 +422,7 @@ ThinMemberShape thin_member_shape(std::span<const double> indices, std::span<con
     for (std::size_t i = 0; i < indices.size(); ++i) {
         r.curvatures[i + 1] = r.curvatures[i] - step[i];
     }
-    const std::array<double, 2> sum = thin_member_seidel(indices, r.curvatures);
+    const std::array<double, 2> sum = thin_member_seidel(indices, r.curvatures, incoming_slope);
     r.spherical = sum[0];
     r.coma = sum[1];
     return r;

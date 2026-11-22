@@ -78,6 +78,36 @@ TEST(HomotopyControl, RefusedInsertionStopsCleanly) {
     EXPECT_NE(r.message.find("nicht möglich: Linse zu dünn"), std::string::npos) << r.message;
 }
 
+// Wirft die Optimierung eines von mehreren Zweigen (M6-T11, Lauf F3: Glasvariable mit n <= 0
+// im Zweig „Startradien des Glieds“), wird nur dieser Zweig verworfen; werfen alle, geht die
+// Ausnahme weiter wie bisher.
+TEST(HomotopyControl, ThrowingBranchIsDiscarded) {
+    MockSpec spec;
+    spec.capacity0 = 0.32;
+    spec.capacity_step = 1.0;
+    spec.branch_throws = 1;
+    MockModel m(spec);
+    const HomotopyResult r =
+        run_homotopy(m, MockModel::start(0.3), mock_point(0.3), mock_options(0.6));
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    bool noted = false;
+    for (const HomotopyStep& s : r.steps) {
+        if (s.operation.find("Zweig verworfen: Brechzahl") != std::string::npos) {
+            noted = true;
+            EXPECT_EQ(s.branch, 1);
+        }
+        if (s.operation.find("übernommen") != std::string::npos) {
+            EXPECT_NE(s.operation.find("Zweig 0 von 2"), std::string::npos) << s.operation;
+        }
+    }
+    EXPECT_TRUE(noted);
+    MockSpec both = spec;
+    both.branch_throws = 2;
+    MockModel mb(both);
+    EXPECT_THROW((void)run_homotopy(mb, MockModel::start(0.3), mock_point(0.3), mock_options(0.6)),
+                 std::runtime_error);
+}
+
 // Stetige Spektrumbreite (M11-T5f): eigene Phase mit Schrittweitensteuerung von 0 bis 1.
 TEST(HomotopyControl, SpectrumWidthPhase) {
     MockModel m{MockSpec{}};

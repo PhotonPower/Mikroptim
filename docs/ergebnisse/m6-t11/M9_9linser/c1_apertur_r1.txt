@@ -1,0 +1,38 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t11\M9_9linser\c1_apertur_r0_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 1.000, 16 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  1.000   0  -        max_iterations       500  1.937055e-01  1.904548e-01  0.98420   2.848e-04  16  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  1.000   0  -        max_iterations       500  1.974247e-01  1.965191e-01  0.96411   2.830e-04  16  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  1.000   0  -        max_iterations       500  1.978284e-01  1.976871e-01  0.95851   2.851e-04  16  ok: Gewichte der einseitigen Bedingungen ×1
+      3  removal_stage    0.5000  1.000   0  -        max_iterations       500  5.215774e-01  5.190041e-01  1.23062   3.954e-03  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 5.305 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      4  removal_stage    0.5000  1.000   0  -        converged_step       145  3.338331e+23  3.338331e+15  338.02196   1.137e-02  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 5.305 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      5  removal_stage    0.5000  1.000   0  -        converged_step       134  9.494660e+91  9.494660e+83  528.69846   1.137e-02  16  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 5.305 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+      6  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 1 (CAF2, Seidel-Beitrag 5.305 Wellen): 99 versagte Strahlen
+      7  removal_stage    0.5000  1.000   0  -        max_iterations       500  3.537269e+00  3.513687e+00  2.00163   5.023e-02  16  -: Element ab Fläche 3 (SYN-36, Seidel-Beitrag 8.422 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.5000  1.000   0  -        max_iterations       500  4.902911e+00  4.871799e+00  2.35950   7.184e-02  16  -: Element ab Fläche 3 (SYN-36, Seidel-Beitrag 8.422 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.5000  1.000   0  -        max_iterations       500  4.168856e+00  4.156843e+00  1.84436   7.007e-02  16  -: Element ab Fläche 3 (SYN-36, Seidel-Beitrag 8.422 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 3 (SYN-36, Seidel-Beitrag 8.422 Wellen): F_B 4.15684 > 0.00510204
+     11  removal_stage    0.5000  1.000   0  -        max_iterations       500  5.171024e-01  5.166437e-01  1.12222   4.947e-03  16  -: Element ab Fläche 18 (SYN-30, Kittglied, Seidel-Beitrag 25.92 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.5000  1.000   0  -        max_iterations       500  3.747471e+01  2.460481e+01  8.54949   3.629e-02  16  -: Element ab Fläche 18 (SYN-30, Kittglied, Seidel-Beitrag 25.92 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.5000  1.000   0  -        max_iterations       500  5.865498e+01  4.697019e+01  11.32111   8.412e-02  16  -: Element ab Fläche 18 (SYN-30, Kittglied, Seidel-Beitrag 25.92 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 18 (SYN-30, Kittglied, Seidel-Beitrag 25.92 Wellen): F_B 46.9702 > 0.00510204
+     15  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.842854e-01  1.841644e-01  1.01934   4.796e-05  16  -: Element ab Fläche 14 (SYN-36, Seidel-Beitrag 31.46 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.911044e-01  1.908511e-01  1.01102   5.436e-05  16  -: Element ab Fläche 14 (SYN-36, Seidel-Beitrag 31.46 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.5000  1.000   0  -        max_iterations       500  1.884035e-01  1.882385e-01  1.01409   6.550e-05  16  -: Element ab Fläche 14 (SYN-36, Seidel-Beitrag 31.46 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.5000  1.000   0  -        -                      -  -             -             -         -            16  -: Rückbau verworfen (Elementbudget 16): Element ab Fläche 14 (SYN-36, Seidel-Beitrag 31.46 Wellen): F_B 0.188239 > 0.00510204
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.197687 > F_max = 0.00510204); Bedarf (Operator B), aber höchste Elementzahl 16 erreicht)
+Endpunkt: NA 0.5000, Feldanteil 1.000, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 16 -> 16 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                243.0
+Ergebnis geschrieben: docs\ergebnisse\m6-t11\M9_9linser\c1_apertur_r1.json
+Protokoll geschrieben: docs\ergebnisse\m6-t11\M9_9linser\c1_apertur_r1_log.json

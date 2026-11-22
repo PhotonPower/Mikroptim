@@ -1,0 +1,259 @@
+{
+ "start": "docs/ergebnisse/m6-t9/JFV855R_z2_rueckbau/z2_s0.json",
+ "start_state": {
+  "aperture": 0.8688730993755489,
+  "field": 0.2314293625051999,
+  "spectrum": "mono",
+  "elements": 5
+ },
+ "kinds": [
+  "farbe"
+ ],
+ "synth_options": [
+  "--color-rule",
+  "--split-spectrum",
+  "--split-member-start",
+  "--color-chromatic",
+  "0.5",
+  "--color-module",
+  "doublet",
+  "--field-rule",
+  "--insertion-improve",
+  "4"
+ ],
+ "ghost_positions": "aperture,field",
+ "element_budget": 12,
+ "stages": [
+  {
+   "kind": "farbe",
+   "tag": "c0_farbe",
+   "start": "docs/ergebnisse/m6-t11/M5_5linser/c_start.json",
+   "start_state": {
+    "aperture": 0.8688730993755489,
+    "field": 0.2314293625051999,
+    "spectrum": "mono",
+    "elements": 5
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_real.json",
+    "output": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_start.json",
+    "surfaces_before": 11,
+    "surfaces_after": 11,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 50253.824046093854,
+    "merit_after": 50253.82404609385,
+    "relative_change": 1.4478415826643891e-16,
+    "focal_length_before": 3.2899344312570955,
+    "focal_length_after": 3.2899344312570964,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 4,
+       "distance": 0.2603019479766368,
+       "norm_radius": 3.9766281822124996,
+       "marginal_height": 3.7314030615281517,
+       "ratio": 0.21515016129830722,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 8,
+       "distance": 0.806723264926836,
+       "norm_radius": 3.1776596493378535,
+       "marginal_height": 1.8983530010905487,
+       "ratio": 0.48109829966117057,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 48613.90292158309,
+     "merit_after": 48613.90292158294,
+     "relative_change": 2.9933649334512176e-15
+    },
+    "warnings": []
+   },
+   "ghost_start": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_start.json",
+   "result": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_voll_final.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c0_farbe_voll_r0",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.8688730993755489,
+      "field": 0.2314293625051999,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.1474609375
+     },
+     "elements": 12,
+     "insertions": 8,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 4391.598176240921,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "c0_farbe_voll_r1",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.8688730993755489,
+      "field": 0.2314293625051999,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.1474609375
+     },
+     "elements": 12,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 887.0358464717865,
+     "relaxed_gaps": [],
+     "relax": "c0_farbe_voll_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "c0_farbe_voll_r2",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.8688730993755489,
+      "field": 0.2314293625051999,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 0.1484375
+     },
+     "elements": 12,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 639.685154914856
+    }
+   ],
+   "point": {
+    "aperture": 0.8688730993755489,
+    "field": 0.2314293625051999,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 0.1484375
+   },
+   "elements_stage": 12,
+   "z2": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2_s2.json",
+   "elements_z2": 12,
+   "prune": {
+    "status": "max_elements",
+    "removals": 0,
+    "attempts": 6,
+    "elements_before": 12,
+    "elements_after": 12,
+    "point": {
+     "aperture": 0.8688730993755489,
+     "field": 0.2314293625051999,
+     "spectrum_width": 0.85
+    },
+    "reopen": {
+     "reached": true,
+     "skipped": "nichts entfernt"
+    }
+   },
+   "z2r": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_s2.json",
+   "elements": 12,
+   "eval": {
+    "pupille": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_psf.json",
+    "vektor": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_vektor.json"
+   },
+   "eval_full_field": {
+    "pupille": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_vollfeld_pupille.json",
+    "unendlich": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_vollfeld_unendlich.json",
+    "psf": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_vollfeld_psf.json",
+    "vektor": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_vollfeld_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.8688730993755489,
+    "field": 0.2314293625051999,
+    "spectrum": "voll",
+    "elements": 12
+   },
+   "seconds": 6790.491094827652
+  }
+ ],
+ "prune_point": 0.85,
+ "color_target": "voll",
+ "times": {
+  "c0_farbe_start": 0.02437305450439453,
+  "c0_farbe_voll_r0": 4391.598176240921,
+  "c0_farbe_voll_r0_relax": 57.719711780548096,
+  "c0_farbe_voll_r1": 887.0358464717865,
+  "c0_farbe_voll_r1_relax": 59.154380083084106,
+  "c0_farbe_voll_r2": 639.685154914856,
+  "c0_farbe_z2_s0": 49.8798828125,
+  "c0_farbe_z2_s1": 52.18751931190491,
+  "c0_farbe_z2_s2": 53.2362961769104,
+  "c0_farbe_rueckbau": 432.1264548301697,
+  "c0_farbe_z2r_s0": 55.18216586112976,
+  "c0_farbe_z2r_s1": 55.867613792419434,
+  "c0_farbe_z2r_s2": 54.0371036529541,
+  "c0_farbe_z2r_pupille": 0.16744542121887207,
+  "c0_farbe_z2r_unendlich": 0.18736624717712402,
+  "c0_farbe_z2r_psf": 0.2852342128753662,
+  "c0_farbe_z2r_vektor": 0.6903505325317383,
+  "c0_farbe_z2r_vollfeld_pupille": 0.16925406455993652,
+  "c0_farbe_z2r_vollfeld_unendlich": 0.17520856857299805,
+  "c0_farbe_z2r_vollfeld_psf": 0.2952003479003906,
+  "c0_farbe_z2r_vollfeld_vektor": 0.7047500610351562
+ },
+ "final": "docs/ergebnisse/m6-t11/M5_5linser/c0_farbe_z2r_s2.json",
+ "final_state": {
+  "aperture": 0.8688730993755489,
+  "field": 0.2314293625051999,
+  "spectrum": "voll",
+  "elements": 12
+ },
+ "seconds_total": 6790.49978017807
+}

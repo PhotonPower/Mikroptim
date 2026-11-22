@@ -4,12 +4,15 @@
 #include "mikroptim/synth/optical_homotopy.hpp"
 
 #include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/model/format_error.hpp"
 #include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/trace/surface_table.hpp"
 
 #include "mikroptim/batch/batch_residuals.hpp"
 #include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/glass/glass_hull.hpp"
+#include "mikroptim/glass/glass_preselection.hpp"
+#include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/optim/augmented_lagrangian.hpp"
 #include "mikroptim/optim/design_operators.hpp"
 #include "mikroptim/optim/ghost_penalty.hpp"
@@ -284,6 +287,244 @@ MeniscusPlan field_meniscus_plan(const SystemDescription& realized, const Homoto
     throw std::invalid_argument("Homotopie (optisch): Feldregel ohne Luftspalt mit Glas");
 }
 
+// Chromatischer Anteil der Farbregel (M6-T11, Kriterium d): σ_col aus der Spanne der paraxialen
+// Fokuslagen der Spektrallinien im Bereich des Spektrums (mit λ_ref), Querfarbe und
+// Sphärochromasie (Seidel, kürzeste gegen längste Wellenlänge) [Wellen bei λ_ref]. W_L =
+// Δz·NA²/(2 λ_ref) ist die Defokussierung zwischen den äußersten Fokuslagen; jede Wellenlänge
+// liegt höchstens W_L/2 von der besten gemeinsamen Ebene (RMS einer Defokussierung W ρ² ohne
+// Kolben W/√12), ebenso ΔW111/2 (Kippung, RMS W/2) und ΔW040/2 (ρ⁴ mit bester Defokussierung,
+// RMS W/√180).
+double chromatic_rms(const AberrationReport& rep, const Spectrum& spectrum, double na) {
+    const auto [lo, hi] =
+        std::minmax_element(spectrum.wavelengths_nm.begin(), spectrum.wavelengths_nm.end());
+    double zmin = 0.0; // λ_ref: Verschiebung 0
+    double zmax = 0.0;
+    for (const FocalShift& f : rep.focal_shifts) {
+        if (f.nm >= *lo - 0.01 && f.nm <= *hi + 0.01 && std::isfinite(f.shift)) {
+            zmin = std::min(zmin, f.shift);
+            zmax = std::max(zmax, f.shift);
+        }
+    }
+    const double lambda_mm = rep.reference_nm * 1e-6;
+    const double wl = (zmax - zmin) * na * na / (2.0 * lambda_mm);
+    const SeidelWaves w = rep.waves();
+    const double a = wl / (4.0 * std::sqrt(3.0));
+    const double b = std::abs(w.dW111) / 4.0;
+    const double c = std::abs(w.dW040) / (2.0 * std::sqrt(180.0));
+    return std::sqrt(a * a + b * b + c * c);
+}
+
+// Einfallswinkel [°] eines meridionalen Strahls (Höhe y in der Scheitelebene, Steigung u) auf
+// eine Kugelfläche der Krümmung c mit Scheitel in dieser Ebene; leer ohne Schnitt (wie
+// incidence_angle_deg in mikroptim.design, M10-T5).
+std::optional<double> incidence_angle_deg(double y, double u, double c) {
+    const double norm = std::hypot(1.0, u);
+    const double dz = 1.0 / norm;
+    const double dy = u / norm;
+    constexpr double kDeg = 57.295779513082320876798;
+    if (c == 0.0) {
+        return std::acos(std::min(1.0, std::abs(dz))) * kDeg;
+    }
+    const double r = 1.0 / c;
+    const double b = -r * dz + y * dy;
+    const double disc = b * b - y * y;
+    if (disc < 0.0) {
+        return std::nullopt;
+    }
+    // Schnitt nahe am Scheitel: kleinere Wurzel von t² + 2 b t + y² = 0
+    double s = b != 0.0 ? -b - std::copysign(std::sqrt(disc), b) : std::sqrt(disc);
+    s = s != 0.0 ? y * y / s : 0.0;
+    const double pz = s * dz;
+    const double py = y + s * dy;
+    const double nz = (pz - r) * c;
+    const double ny = py * c;
+    const double cosi = std::abs(dz * nz + dy * ny) / std::hypot(nz, ny);
+    return std::acos(std::min(1.0, cosi)) * kDeg;
+}
+
+// Krümmung der Kittfläche des starken Kittglieds (M10-T5, _strong_curvature in
+// mikroptim.design): der Strahl (y, u) trifft sie unter `target` Grad; beide Biegungen, die mit
+// kleinerem |c|; |c| ≤ 0,9/semi (Halbkugelgrad). Leer, wenn der Winkel nicht erreichbar ist.
+std::optional<double> strong_curvature(double y, double u, double semi, double target) {
+    const double c_max = 0.9 / semi;
+    std::optional<double> best;
+    for (const double sign : {1.0, -1.0}) {
+        const auto f = [&](double c) {
+            return incidence_angle_deg(y, u, sign * c).value_or(90.0) - target;
+        };
+        double lo = 0.0;
+        double hi = 0.0;
+        bool found = false;
+        for (int k = 0; k < 200 && !found; ++k) {
+            const double c1 = c_max * k / 200.0;
+            const double c2 = c_max * (k + 1) / 200.0;
+            if ((f(c1) <= 0.0 && f(c2) >= 0.0) || (f(c1) >= 0.0 && f(c2) <= 0.0)) {
+                lo = c1;
+                hi = c2;
+                found = true;
+            }
+        }
+        if (!found) {
+            continue;
+        }
+        for (int it = 0; it < 100; ++it) {
+            const double mid = 0.5 * (lo + hi);
+            if ((f(lo) <= 0.0) == (f(mid) <= 0.0)) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        const double c = sign * 0.5 * (lo + hi);
+        if (!best || std::abs(c) < std::abs(*best)) {
+            best = c;
+        }
+    }
+    return best;
+}
+
+// Gläser des Kittglied-Moduls (M6-T11): bestes Paar der Glasvorauswahl über den ganzen Katalog
+// (Rang nach dem spektralen Rest über split.preselect_wavelengths_nm bzw. dem Koeffizienten),
+// gefiltert nach anomalous_pgf (mindestens ein Glas mit |ΔP_g,F| ≥ 0,01) bzw. beim starken
+// Kittglied nach merte_pair (|Δn_d| 0,05 … 0,15, |Δν_d| ≥ 15, |ΔP_g,F| ≤ 0,01); Schwellen wie
+// data/design/knowledge/glass_rules.json. Leer ohne passendes Paar.
+struct ModuleGlasses {
+    MaterialSpec front;
+    MaterialSpec back;
+    std::string text;
+};
+
+std::optional<ModuleGlasses> module_glasses(const GlassCatalog& catalog,
+                                            const OpticalHomotopyOptions& o) {
+    const std::vector<GlassDispersion> g = catalog_dispersions(catalog);
+    if (g.size() < 2) {
+        return std::nullopt;
+    }
+    GlassPreselectionOptions po;
+    po.max_power_sum = o.split.preselect_max_power_sum;
+    po.max_results = static_cast<int>(g.size() * (g.size() - 1) / 2);
+    if (o.split.preselect_wavelengths_nm.size() >= 2) {
+        po.wavelengths_nm = o.split.preselect_wavelengths_nm;
+    }
+    const std::vector<PreselectedGlasses> pairs = preselect_glasses(g, po);
+    const bool strong = o.color_module == OpticalHomotopyOptions::ColorModule::StrongDoublet;
+    for (const PreselectedGlasses& c : pairs) {
+        const std::string& na = g[static_cast<std::size_t>(c.glasses[0])].name;
+        const std::string& nb = g[static_cast<std::size_t>(c.glasses[1])].name;
+        GlassProperties pa;
+        GlassProperties pb;
+        try {
+            pa = glass_properties(catalog.at(na));
+            pb = glass_properties(catalog.at(nb));
+        } catch (const std::exception&) {
+            continue; // Bereich deckt g … C nicht ab
+        }
+        if (o.color_module_anomalous &&
+            !(std::abs(pa.dp_gF) >= 0.01 || std::abs(pb.dp_gF) >= 0.01)) {
+            continue;
+        }
+        if (strong) {
+            const double dn = std::abs(pa.n_d - pb.n_d);
+            if (!(dn >= 0.05 && dn <= 0.15) || !(std::abs(pa.v_d - pb.v_d) >= 15.0) ||
+                !(std::abs(pa.p_gF - pb.p_gF) <= 0.01)) {
+                continue;
+            }
+        }
+        ModuleGlasses m;
+        m.front.kind = MaterialKind::Catalog;
+        m.front.name = na;
+        m.back.kind = MaterialKind::Catalog;
+        m.back.name = nb;
+        m.text = na + " + " + nb + " (" +
+                 (po.wavelengths_nm.empty() ? "sekundäres Spektrum " + number(c.residual)
+                                            : "spektraler Rest " + number(c.spectral_residual)) +
+                 ", Summe |phi|/phi = " + number(c.power_sum) +
+                 (o.color_module_anomalous ? ", anomalous_pgf" : "") +
+                 (strong ? ", merte_pair" : "") + ")";
+        return m;
+    }
+    return std::nullopt;
+}
+
+// Krümmung c₀ des Kittglied-Moduls im Luftspalt nach Fläche g (M6-T11), Vorderfläche in der
+// Spaltmitte: Null-Kittglied die Krümmung der Fläche hinter dem Spalt (auf die Schranken der
+// neuen Krümmungsvariablen begrenzt), starkes Kittglied aus dem Einfallswinkel des paraxialen
+// Randstrahls (Höhe und Steigung nach Fläche g); leer, wenn der Winkel nicht erreichbar ist
+// oder außerhalb der Schranken läge. `incidence` erhält den Winkel [°] (NaN beim Null-Kittglied).
+std::optional<double> module_curvature(const SystemDescription& realized,
+                                       const AberrationReport& rep, int g,
+                                       const OpticalHomotopyOptions& o, double& incidence) {
+    const auto& surf = realized.surfaces;
+    const auto i = static_cast<std::size_t>(g);
+    incidence = std::numeric_limits<double>::quiet_NaN();
+    const NewCurvatureVariables& cv = o.meniscus.curvature_variables;
+    const auto inside = [&cv](double c) {
+        return !cv.enabled || ((!cv.min || c >= *cv.min) && (!cv.max || c <= *cv.max));
+    };
+    if (o.color_module != OpticalHomotopyOptions::ColorModule::StrongDoublet) {
+        double c = surf[i + 1].curvature;
+        if (cv.enabled) {
+            c = std::clamp(c, cv.min.value_or(c), cv.max.value_or(c));
+        }
+        return c;
+    }
+    const SurfaceAberration& a = rep.surfaces.at(i);
+    const double y = a.y + 0.5 * surf[i].thickness * a.u_after;
+    const double semi = std::max({surf[i].semi_diameter, surf[i + 1].semi_diameter, std::abs(y)});
+    if (!(semi > 0.0)) {
+        return std::nullopt;
+    }
+    const std::optional<double> c =
+        strong_curvature(y, a.u_after, semi, o.color_module_incidence_deg);
+    if (!c || !inside(*c)) {
+        return std::nullopt;
+    }
+    incidence = incidence_angle_deg(y, a.u_after, *c).value_or(90.0);
+    return c;
+}
+
+// Luftspalte für das Kittglied-Modul (M6-T11): innere Spalte (nicht der Arbeitsabstand) mit
+// Dicke ≥ 2·min_air_gap, in denen module_curvature eine Krümmung liefert, nach der mittleren
+// Randstrahlhöhe |y| der Spaltflächen absteigend (Längsfarbe eines dünnen Elements ∝ y² φ/ν).
+std::vector<int> module_gaps(const SystemDescription& realized, const AberrationReport& rep,
+                             const OpticalHomotopyOptions& o) {
+    const auto& surf = realized.surfaces;
+    // untere Schranken der Dickenvariablen pro Spalt: beide Teilstücke (je die halbe Dicke)
+    // müssen sie einhalten, sonst lehnt der Lader das System ab (Lauf F7, M6-T11)
+    std::vector<double> lower(surf.size(), 0.0);
+    for (const ResolvedVariable& v : resolve_variables(realized)) {
+        if (v.type == VariableType::Thickness && v.surface >= 0 &&
+            static_cast<std::size_t>(v.surface) < surf.size() && std::isfinite(v.lower)) {
+            lower[static_cast<std::size_t>(v.surface)] =
+                std::max(lower[static_cast<std::size_t>(v.surface)], v.lower);
+        }
+    }
+    std::vector<std::pair<double, int>> gaps;
+    for (std::size_t s = 0; s + 2 < surf.size(); ++s) {
+        if (surf[s].material.kind != MaterialKind::Air ||
+            !(surf[s].thickness >= 2.0 * o.min_air_gap) || !(surf[s].thickness > 0.0) ||
+            !(0.5 * surf[s].thickness >= lower[s])) {
+            continue;
+        }
+        double incidence = 0.0;
+        if (!module_curvature(realized, rep, static_cast<int>(s), o, incidence)) {
+            continue;
+        }
+        const double y =
+            0.5 * (std::abs(rep.surfaces.at(s).y) + std::abs(rep.surfaces.at(s + 1).y));
+        if (std::isfinite(y)) {
+            gaps.emplace_back(y, static_cast<int>(s));
+        }
+    }
+    std::stable_sort(gaps.begin(), gaps.end(),
+                     [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::vector<int> out;
+    for (const auto& gp : gaps) {
+        out.push_back(gp.second);
+    }
+    return out;
+}
+
 } // namespace
 
 bool is_one_sided(const ConstraintSpec& spec) {
@@ -336,6 +577,12 @@ OpticalHomotopyModel::OpticalHomotopyModel(const LoadedSystem& start,
         !(options_.field_min_rms >= 0.0) || !std::isfinite(options_.field_min_rms) ||
         (options_.field_glass && options_.field_glass->kind == MaterialKind::Air)) {
         invalid("ungültige Feldregel (Faktor > 0, kleinster RMS ≥ 0, Glas nicht Luft)");
+    }
+    if (!(options_.color_chromatic_share >= 0.0) ||
+        !std::isfinite(options_.color_chromatic_share) ||
+        !(options_.color_module_incidence_deg > 0.0) ||
+        !(options_.color_module_incidence_deg < 90.0)) {
+        invalid("ungültige Farbregel (Anteil ≥ 0, Einfallswinkel in (0°, 90°))");
     }
     // Glasvariablen: Startgläser einmal in Buchdahl-Materialien umwandeln (wie optimize)
     (void)convert_glass_variables(start_, like_.catalog);
@@ -591,7 +838,8 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     }
     AberrationOptions ao;
     ao.real_rays = false;
-    ao.focal_shift = false;
+    // Fokusverlauf nur für Kriterium (d) (M6-T11); ohne es wie bisher
+    ao.focal_shift = options_.color_chromatic_share > 0.0;
     AberrationReport rep;
     try {
         rep = compute_aberrations(realized, like_.catalog, ao);
@@ -605,7 +853,14 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     // (c) Schritt der Spektrum-Homotopie (Stufe > 0): die Farbe ist per Konstruktion der Grund
     const bool by_stage = (p.spectrum > 0 && !options_.spectra.empty()) ||
                           (options_.spectrum_continuous && p.spectrum_width > 0.0);
-    if (!by_ratio && !by_seidel && !by_stage) {
+    // (d) chromatischer Anteil aus dem Aberrationsbericht (M6-T11)
+    double chromatic = std::numeric_limits<double>::quiet_NaN();
+    bool by_chromatic = false;
+    if (options_.color_chromatic_share > 0.0) {
+        chromatic = chromatic_rms(rep, realized.spectrum, p.aperture);
+        by_chromatic = chromatic >= options_.color_chromatic_share * worst_rms;
+    }
+    if (!by_ratio && !by_seidel && !by_stage && !by_chromatic) {
         return std::nullopt;
     }
     // Linsen nach ihrem Beitrag gleichen Vorzeichens zum Gesamtwert; die erste, die sich teilen
@@ -650,20 +905,47 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
             candidates.push_back(lens); // am guten Zustand vielleicht teilbar (andere Dicken)
         }
     }
-    if (best < 0) {
+    // Kittglied-Modul (M6-T11): keine Linse teilbar bzw. immer
+    std::vector<int> gaps;
+    std::string module_text;
+    if (options_.color_module != OpticalHomotopyOptions::ColorModule::None) {
+        if (const std::optional<ModuleGlasses> mg = module_glasses(like_.catalog, options_)) {
+            gaps = module_gaps(realized, rep, options_);
+            module_text = mg->text;
+        }
+    }
+    if (best < 0 && gaps.empty()) {
         return std::nullopt;
     }
     HomotopyNeed n;
     n.recommendation = GhostOperator::B;
     n.split_lens = best;
     n.split_candidates = candidates;
-    n.text = std::string("Farbregel (") +
-             (by_stage   ? "Spektrumstufe "
-              : by_ratio ? "RMS-Verhältnis "
-                         : "Seidel ") +
-             number(worst_ratio) + ", größter RMS " + number(worst_rms) +
-             " Wellen, ΔW020 = " + number(w.dW020) + ", W040 = " + number(w.W040) +
-             "): Operator B an der Linse ab Fläche " + std::to_string(best);
+    std::string why = std::string("Farbregel (") +
+                      (by_stage    ? "Spektrumstufe "
+                       : by_ratio  ? "RMS-Verhältnis "
+                       : by_seidel ? "Seidel "
+                                   : "chromatischer Anteil ") +
+                      number(worst_ratio) + ", größter RMS " + number(worst_rms) +
+                      " Wellen, ΔW020 = " + number(w.dW020) + ", W040 = " + number(w.W040);
+    if (std::isfinite(chromatic)) {
+        why += ", sigma_col = " + number(chromatic) + " Wellen, ΔW111 = " + number(w.dW111) +
+               ", ΔW040 = " + number(w.dW040);
+    }
+    n.module_candidates = gaps; // Varianten (insertion_options)
+    if (!gaps.empty() && (best < 0 || options_.color_module_always)) {
+        n.module_gap = gaps.front();
+        n.split_lens = -1; // Modul zuerst; Teilen bleibt Variante (insertion_options)
+        n.text = why + "): " +
+                 (options_.color_module == OpticalHomotopyOptions::ColorModule::StrongDoublet
+                      ? "starkes Kittglied"
+                      : "Null-Kittglied") +
+                 " im Luftspalt nach Fläche " + std::to_string(n.module_gap) + ", Gläser " +
+                 module_text +
+                 (best < 0 ? " (keine Linse teilbar)" : std::string(" (Modul statt Teilen)"));
+        return n;
+    }
+    n.text = why + "): Operator B an der Linse ab Fläche " + std::to_string(best);
     return n;
 }
 
@@ -940,6 +1222,9 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
         }
         return ins;
     }
+    if (need.module_gap >= 0) {
+        return insert_module(system, realized, p, need, std::move(ins));
+    }
     if (need.recommendation == GhostOperator::B ||
         need.recommendation == GhostOperator::BAnomalous) {
         SplitPlan plan;
@@ -984,6 +1269,29 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                 variants.emplace_back(std::move(a), true);
             }
         }
+        // M6-T11: Startradien des ganzen Glieds (thin_member_shape) als weiterer Zweig
+        bool member = false;
+        if (options_.split.member_start && plan.preselected) {
+            // Randstrahlneigung u/y vor der Linse (paraxial, am realisierten Punkt; Linse in
+            // Luft); ohne Bericht (Punktquelle) kollimiert
+            double slope = 0.0;
+            if (realized.source.type == SourceType::Collimated) {
+                AberrationOptions ao;
+                ao.real_rays = false;
+                ao.focal_shift = false;
+                const AberrationReport rep = compute_aberrations(realized, like_.catalog, ao);
+                const SurfaceAberration& sa =
+                    rep.surfaces.at(static_cast<std::size_t>(plan.split.lens_surface));
+                if (sa.y != 0.0 && std::isfinite(sa.u_before / sa.y)) {
+                    slope = sa.u_before / sa.y;
+                }
+            }
+            SystemDescription a = r.system;
+            if (apply_member_start(a, plan, like_.catalog, realized.spectrum.reference_nm, slope)) {
+                variants.emplace_back(std::move(a), true);
+                member = true;
+            }
+        }
         bool achromat = false;
         for (auto& [sys, with_achromat] : variants) {
             if ((options_.split.start_at_target || with_achromat) && plan.preselected) {
@@ -1015,11 +1323,16 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
                    ": Linse an Fläche " + std::to_string(plan.split.lens_surface) +
                    " geteilt, c_s = " + number(plan.split.curvature) + "/mm, Glas nach Fläche " +
                    std::to_string(plan.free_surface) + " frei" +
-                   (plan.preselected ? ", Zielglas " + plan.target_glass.name +
-                                           (achromat ? " (2 Zweige: wie bisher, Achromat-Start)"
-                                            : options_.split.start_at_target ? " (Start)"
-                                                                             : "")
-                                     : std::string()) +
+                   (plan.preselected
+                        ? ", Zielglas " + plan.target_glass.name +
+                              (member ? " (" + std::to_string(ins.branches.size()) +
+                                            " Zweige: wie bisher" +
+                                            (ins.branches.size() > 2 ? ", Achromat-Start" : "") +
+                                            ", Startradien des Glieds)"
+                               : achromat ? " (2 Zweige: wie bisher, Achromat-Start)"
+                               : options_.split.start_at_target ? " (Start)"
+                                                                : "")
+                        : std::string()) +
                    (plan.plate >= 0 ? " (Platte " + std::to_string(plan.plate) + ", mu x" +
                                           number(options_.penalty_raise) + ")"
                                     : std::string(" (Farbregel)"));
@@ -1028,8 +1341,128 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
     invalid("kein Operator empfohlen");
 }
 
+// Kittglied-Modul der Farbregel (M6-T11): Null-Kittglied (insert_null_doublet) im ersten
+// geeigneten Spalt aus need.module_gap und need.module_candidates, Gläser aus der Vorauswahl,
+// Gläser fest, innere Homotopie über die Dicke beider Teile.
+HomotopyInsertion OpticalHomotopyModel::insert_module(const SystemDescription& system,
+                                                      const SystemDescription& realized,
+                                                      const HomotopyPoint& p,
+                                                      const HomotopyNeed& need,
+                                                      HomotopyInsertion ins) const {
+    const std::optional<ModuleGlasses> mg = module_glasses(like_.catalog, options_);
+    if (!mg) {
+        invalid("Kittglied-Modul: kein Glaspaar in der Vorauswahl");
+    }
+    const bool strong = options_.color_module == OpticalHomotopyOptions::ColorModule::StrongDoublet;
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    const AberrationReport rep = compute_aberrations(realized, like_.catalog, ao);
+    std::vector<int> order{need.module_gap};
+    for (const int g : need.module_candidates) {
+        if (g != need.module_gap) {
+            order.push_back(g);
+        }
+    }
+    const auto& surf = realized.surfaces;
+    std::string why;
+    for (const int g : order) {
+        if (g < 0 || static_cast<std::size_t>(g) + 2 >= surf.size()) {
+            continue;
+        }
+        const auto i = static_cast<std::size_t>(g);
+        if (surf[i].material.kind != MaterialKind::Air || !(surf[i].thickness > 0.0)) {
+            continue;
+        }
+        NullDoublet d;
+        d.after_surface = g;
+        d.position = 0.5 * surf[i].thickness;
+        d.front_glass = mg->front;
+        d.back_glass = mg->back;
+        d.curvature_variables = options_.meniscus.curvature_variables;
+        double incidence = 0.0;
+        const std::optional<double> c0 = module_curvature(realized, rep, g, options_, incidence);
+        if (!c0) {
+            if (why.empty()) {
+                why = "Einfallswinkel " + number(options_.color_module_incidence_deg) +
+                      "° im Spalt nach Fläche " + std::to_string(g) +
+                      " nicht erreichbar oder außerhalb der Schranken";
+            }
+            continue;
+        }
+        d.curvature = *c0;
+        InsertionResult r;
+        try {
+            r = insert_null_doublet(system, d);
+        } catch (const std::invalid_argument& e) {
+            if (why.empty()) {
+                why = e.what();
+            }
+            continue;
+        }
+        SystemDescription sys = std::move(r.system);
+        // Gläser bleiben die der Vorauswahl (Katalog): eine Glasvariable bei Dicke 0 hat keinen
+        // Gradienten, und der LM schob sie im Lauf P (M6-T11) bis zu n <= 0
+        ins.op = need.recommendation;
+        ins.doublet = true;
+        ins.first_surface = r.first_new_surface;
+        ins.new_surfaces = r.new_surfaces;
+        ins.plate = -1;
+        ins.gap = sys.surfaces[static_cast<std::size_t>(r.first_new_surface + 2)].thickness;
+        ins.min_gap = options_.min_air_gap;
+        try {
+            const LoadedSystem l = load(realize(sys, p));
+            const SystemBatchHost b = make_system_batch(l, 1);
+            const VariableSet set(l.system, b.topology());
+            for (int k = 0; k < set.size(); ++k) {
+                if (set[k].type == VariableType::Thickness &&
+                    set[k].file_surface == r.first_new_surface + 2 &&
+                    std::isfinite(set.lower()[static_cast<std::size_t>(k)])) {
+                    ins.min_gap = std::max(ins.min_gap, set.lower()[static_cast<std::size_t>(k)]);
+                }
+            }
+        } catch (const FormatError& e) {
+            // nicht ladbar (z. B. Teilstück unter einer Dickenschranke): nächster Spalt
+            if (why.empty()) {
+                why = e.what();
+            }
+            continue;
+        }
+        for (int j = 0; j < options_.element_stages; ++j) {
+            double t = options_.element_thickness;
+            for (int k = j; k < options_.element_stages - 1; ++k) {
+                t *= 0.5;
+            }
+            ins.stages.push_back(t);
+        }
+        ins.branches.push_back(std::move(sys));
+        ins.text = std::string(strong ? "Starkes Kittglied" : "Null-Kittglied") +
+                   " (Farbregel, Modul): nach Fläche " + std::to_string(g) + " bei " +
+                   number(d.position) + " mm, c0 = " + number(d.curvature) + "/mm" +
+                   (strong ? " (Einfallswinkel " + number(incidence) + "°)" : std::string()) +
+                   ", Gläser " + mg->text + ", Dicke je bis " + number(options_.element_thickness) +
+                   " mm";
+        return ins;
+    }
+    invalid("Kittglied-Modul: kein geeigneter Luftspalt" + (why.empty() ? "" : " (" + why + ")"));
+}
+
 void OpticalHomotopyModel::set_stage(SystemDescription& system, const HomotopyInsertion& ins,
                                      double t) {
+    if (ins.doublet) {
+        // Null-Kittglied (M6-T11): beide Teile Dicke t, Spalt dahinter um 2t kürzer
+        const auto f = static_cast<std::size_t>(ins.first_surface);
+        system.surfaces.at(f).thickness = t;
+        system.surfaces.at(f + 1).thickness = t;
+        const double gap = std::max(ins.gap - 2.0 * t, ins.min_gap);
+        system.surfaces.at(f + 2).thickness = gap;
+        for (GhostPlate& g : system.ghost_plates) {
+            if (g.after_surface == ins.first_surface + 2 && g.distance > gap) {
+                g.distance = gap;
+            }
+        }
+        return;
+    }
     if (ins.op != GhostOperator::A) {
         return;
     }
@@ -1047,7 +1480,8 @@ void OpticalHomotopyModel::set_stage(SystemDescription& system, const HomotopyIn
 
 void OpticalHomotopyModel::finish_insertion(SystemDescription& system,
                                             const HomotopyInsertion& ins) {
-    if (ins.op == GhostOperator::A && options_.element_max_thickness > options_.element_thickness) {
+    if ((ins.op == GhostOperator::A || ins.doublet) &&
+        options_.element_max_thickness > options_.element_thickness) {
         VariableSpec v;
         v.type = VariableType::Thickness;
         v.selection = SurfaceSelection::One;
@@ -1055,6 +1489,11 @@ void OpticalHomotopyModel::finish_insertion(SystemDescription& system,
         v.min = options_.element_thickness;
         v.max = options_.element_max_thickness;
         v.comment = "Mittendicke des Meniskus (Homotopie)";
+        if (ins.doublet) {
+            v.selection = SurfaceSelection::List;
+            v.surfaces.push_back(ins.first_surface + 1);
+            v.comment = "Mittendicken des Kittglieds (Homotopie, M6-T11)";
+        }
         if (!system.variables) {
             system.variables = Variables{};
         }
@@ -1125,6 +1564,45 @@ std::vector<HomotopyNeed> OpticalHomotopyModel::insertion_options(const SystemDe
                                                                   const HomotopyNeed& need,
                                                                   int max) {
     std::vector<HomotopyNeed> out{need};
+    if (need.module_gap >= 0 || (!need.module_candidates.empty() && need.split_lens >= 0)) {
+        // Farbregel mit Kittglied-Modul (M6-T11): weitere Spalte des Moduls und die teilbaren
+        // Linsen, die Art der Empfehlung zuerst
+        std::vector<HomotopyNeed> modules;
+        for (const int g : need.module_candidates) {
+            if (g == need.module_gap) {
+                continue;
+            }
+            HomotopyNeed n = need;
+            n.module_gap = g;
+            n.split_lens = -1;
+            n.text = "Variante der Farbregel: Kittglied-Modul im Luftspalt nach Fläche " +
+                     std::to_string(g);
+            modules.push_back(std::move(n));
+        }
+        std::vector<HomotopyNeed> splits;
+        for (const int lens : need.split_candidates) {
+            if (need.module_gap < 0 && lens == need.split_lens) {
+                continue;
+            }
+            HomotopyNeed n = need;
+            n.module_gap = -1;
+            n.split_lens = lens;
+            n.text =
+                "Variante der Farbregel: Operator B an der Linse ab Fläche " + std::to_string(lens);
+            splits.push_back(std::move(n));
+        }
+        auto& first = need.module_gap >= 0 ? modules : splits;
+        auto& second = need.module_gap >= 0 ? splits : modules;
+        for (auto* list : {&first, &second}) {
+            for (HomotopyNeed& n : *list) {
+                if (static_cast<int>(out.size()) >= max) {
+                    return out;
+                }
+                out.push_back(std::move(n));
+            }
+        }
+        return out;
+    }
     if (need.field_gap >= 0) {
         // Feldregel (M6-T8): die übrigen Spalte in absteigender Eignung
         for (const int g : need.field_candidates) {

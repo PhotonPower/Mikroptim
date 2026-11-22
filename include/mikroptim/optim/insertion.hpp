@@ -241,6 +241,16 @@ struct SplitInitOptions {
     // Gesamtbrechkraft dünn gleich) und das freigegebene Glas startet beim Zielglas
     // (apply_achromat_start). Liegen die neuen Krümmungen außerhalb ihrer Schranken, wie ohne.
     bool achromat_start = false;
+    // Rang der Vorauswahl nach dem spektralen Rest über diese Wellenlängen [nm] (M6-T11; M11-T5g,
+    // GlassPreselectionOptions::wavelengths_nm, mindestens zwei); leer: nach dem Koeffizienten
+    // der Ordnung 2 wie bisher.
+    std::vector<double> preselect_wavelengths_nm;
+    // Startradien des ganzen Glieds (M6-T11, nur mit Vorauswahl): alle drei Krümmungen aus
+    // thin_member_shape (Biegung S_I = 0, Randstrahlneigung vor der Linse aus dem paraxialen
+    // Strahl des Systems) bei gleicher dünner Brechkraft wie die
+    // ungeteilte Linse, freigegebenes Glas beim Zielglas (apply_member_start). Liegen die neuen
+    // Krümmungen außerhalb ihrer Schranken, wie ohne.
+    bool member_start = false;
 };
 
 struct SplitPlan {
@@ -256,6 +266,8 @@ struct SplitPlan {
     bool preselected = false;          // Zielglas aus der Glasvorauswahl (M11-T5)
     double secondary_spectrum = 0.0;   // Rest der Vorauswahl |Σ φ η₂|/|φ| (NaN ohne)
     double front_power_fraction = 0.0; // Anteil des vorderen Teils an der Brechkraft (Vorauswahl)
+    // Streuung des Brechkraftrests über preselect_wavelengths_nm (M6-T11; NaN ohne Spektrum)
+    double spectral_residual = 0.0;
     std::string reason;
 };
 
@@ -284,5 +296,18 @@ SplitPlan split_for_color(const SystemDescription& system, const GlassCatalog& c
 // Krümmung außerhalb der Schranken einer Krümmungsvariablen läge.
 bool apply_achromat_start(SystemDescription& system, const SplitPlan& plan,
                           const GlassCatalog& catalog, double lambda_nm);
+
+// Startradien des ganzen Glieds für ein mit `plan` geteiltes System (M6-T11): mit der dünnen
+// Brechkraft der ursprünglichen Linse φ = (n_L − 1)(c₁ − c₂) bei `lambda_nm`, den Anteilen
+// φ_vorn = Anteil · φ, φ_hinten = φ − φ_vorn aus der Vorauswahl und den Brechzahlen bei
+// `lambda_nm` werden alle drei Krümmungen aus thin_member_shape (MemberBending::MinSpherical,
+// docs/numerik.md, Abschnitt 15) gesetzt; das Glas des freigegebenen Teils ist das Zielglas.
+// Liefert false und lässt `system` unverändert, wenn plan nicht aus der Vorauswahl stammt, die
+// Biegung nicht berechenbar ist oder eine neue Krümmung außerhalb der Schranken einer
+// Krümmungsvariablen läge.
+// incoming_slope: Neigung u/y des paraxialen Randstrahls vor der Linse (thin_member_shape;
+// 0 = kollimiert).
+bool apply_member_start(SystemDescription& system, const SplitPlan& plan,
+                        const GlassCatalog& catalog, double lambda_nm, double incoming_slope = 0.0);
 
 } // namespace mko

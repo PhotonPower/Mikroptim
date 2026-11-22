@@ -151,12 +151,19 @@ struct ThinMemberShape {
 // 546,074 nm) und Brechkräften `powers` (z. B. PreselectedGlasses::powers). Wirft
 // std::invalid_argument bei ungleichen Längen, n ≤ 1, nicht endlichen Werten oder (ZeroComa)
 // wenn S_II nicht von c₁ abhängt.
+//
+// incoming_slope (M6-T11): Neigung u₁ des Randstrahls vor dem Glied bei y = 1 (u/y [1/mm],
+// Vorzeichen wie der Aberrationsbericht, n′u′ = nu − yφ), z. B. für ein Glied im konvergenten
+// Bündel innerhalb eines Systems; 0 = kollimiert wie bisher (bitgleich). Dann u_i = u₁ − Σ_{j<i}
+// K_j.
 ThinMemberShape thin_member_shape(std::span<const double> indices, std::span<const double> powers,
-                                  MemberBending bending = MemberBending::MinSpherical);
+                                  MemberBending bending = MemberBending::MinSpherical,
+                                  double incoming_slope = 0.0);
 
 // Seidel-Summen S_I, S_II (y = 1, H = 1) des dünnen Glieds mit den Krümmungen `curvatures`
-// (m + 1 Flächen; die Brechkräfte folgen daraus).
+// (m + 1 Flächen; die Brechkräfte folgen daraus); incoming_slope wie bei thin_member_shape.
 std::array<double, 2> thin_member_seidel(std::span<const double> indices,
-                                         std::span<const double> curvatures);
+                                         std::span<const double> curvatures,
+                                         double incoming_slope = 0.0);
 
 } // namespace mko

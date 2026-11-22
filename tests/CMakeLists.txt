@@ -32,6 +32,7 @@ add_executable(mikroptim_tests
     test_cli_synth.cpp
     test_cli_tolerance.cpp
     test_cli_trace.cpp
+    test_color_stage.cpp
     test_constraints_schema.cpp
     test_convex_hull.cpp
     test_decenter.cpp
