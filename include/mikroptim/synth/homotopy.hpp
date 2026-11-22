@@ -359,6 +359,10 @@ struct HomotopyOptions {
     // guten Zustands davor; sonst wird es verworfen und die nächste Variante des Modells
     // (insertion_options, höchstens insertion_attempts) versucht. Verbessert keine, endet der
     // Lauf wie ohne Bedarf. Standard aus. Nur im Controller ohne Strahlsuche.
+    // Startphase (M6-T11b): Einfügungen, solange der Startpunkt nicht annehmbar ist, werden
+    // ebenso geprüft, mit Spielraum: übernommen, wenn F_B danach kleiner ist als davor ODER
+    // höchstens F_max (endlich, ohne versagte Strahlen); sonst nächste Variante, verbessert
+    // keine, Abbruch StartRejected.
     bool insertion_must_improve = false;
     int insertion_attempts = 4;
     // Rückbau (M6-T9, Befund F16): Elemente versuchsweise über die Rückbau-Homotopie entfernen

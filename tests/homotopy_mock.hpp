@@ -44,6 +44,10 @@ struct MockSpec {
     int alternatives = 1;          // Varianten, die insertion_options höchstens liefert
     double option_bonus = 0.0;     // Variante k: F_B × (1 − option_bonus · k)
     int bad_options = 0;           // Varianten k < bad_options: F_B × 4 nach dem Einfügen (M6-T8)
+    double bad_factor = 4.0;       // Faktor der schlechten Varianten (M6-T11b)
+    // Systeme mit weniger Elementen: ein versagter Strahl, F_B = failed_merit · F_max (M6-T11b)
+    int failed_below_elements = 0;
+    double failed_merit = 0.2;
     double perturbation = 0.0;     // gestörte Starts: Marke ± perturbation
     double prefilter_max = std::numeric_limits<double>::infinity(); // Vorfilter: Marke ≤ Wert
     bool group_by_elements = false; // solve_all bündelt Systeme gleicher Flächenzahl
@@ -168,7 +172,11 @@ public:
         fb *= 1.0 - 0.1 * system.surfaces.back().curvature / spec_.branch_spread;
         fb *= 1.0 - spec_.option_bonus * system.surfaces.back().semi_diameter;
         if (e > 1 && system.surfaces.back().semi_diameter < spec_.bad_options) {
-            fb *= 4.0;
+            fb *= spec_.bad_factor;
+        }
+        if (e < spec_.failed_below_elements) {
+            fb = spec_.failed_merit * spec_.threshold;
+            s.failed_rays = 1;
         }
         s.wavefront = fb;
         s.merit = fb;

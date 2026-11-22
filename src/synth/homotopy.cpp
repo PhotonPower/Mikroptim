@@ -466,9 +466,11 @@ private:
     // Stufe, sonst wählt die monochromatische Merit immer den Zweig ohne Farbkorrektur)
     // before_fb (M6-T8, insertion_must_improve): F_B des guten Zustands; dann wird ein Einfügen
     // nur übernommen, wenn F_B danach kleiner ist, sonst die nächste Variante versucht.
+    // start (M6-T11b, Startphase): zusätzlich übernommen, wenn F_B danach höchstens F_max ist
+    // (Spielraum, z. B. nach einem Start mit versagten Strahlen und kleinem F_B).
     void insert(State& s, const HomotopyNeed& need, HomotopyStatus no_need_status,
                 const std::string& no_need_message, const HomotopyPoint* choose_at = nullptr,
-                const double* before_fb = nullptr) {
+                const double* before_fb = nullptr, bool start = false) {
         if (need.recommendation == GhostOperator::None) {
             throw Stop{no_need_status,
                        no_need_message + "; keine Geisterplatte aktiv (kein Bedarf)"};
@@ -502,7 +504,8 @@ private:
             insert_once(s, option, no_need_status, no_need_message, choose_at);
             const HomotopySolve& last = r_.steps.back().solve;
             const double after = last.wavefront + last.ghost_penalty;
-            if (std::isfinite(after) && last.failed_rays == 0 && after < *before_fb) {
+            if (std::isfinite(after) && last.failed_rays == 0 &&
+                (after < *before_fb || (start && after <= threshold_))) {
                 return;
             }
             s = backup;
@@ -513,13 +516,19 @@ private:
             note.point = s.point;
             note.recommendation = option.recommendation;
             note.operation = "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
-                             number(*before_fb) + " davor (Einfügen nur mit Verbesserung)";
+                             number(*before_fb) + " davor" +
+                             (start ? " und > F_max = " + number(threshold_) : std::string()) +
+                             " (Einfügen nur mit Verbesserung" +
+                             (start ? ", Startphase" : "") + ")";
             emit(note);
             tried += (tried.empty() ? "" : ", ") + number(after);
         }
         throw Stop{no_need_status, no_need_message + "; kein Einfügen verbessert F_B (" +
                                        std::to_string(options.size()) + " Varianten, F_B " + tried +
-                                       " ≥ " + number(*before_fb) + ")"};
+                                       " ≥ " + number(*before_fb) +
+                                       (start ? ", alle > F_max = " + number(threshold_)
+                                              : std::string()) +
+                                       ")"};
     }
 
     void insert_once(State& s, const HomotopyNeed& need, HomotopyStatus no_need_status,
@@ -744,14 +753,17 @@ private:
     }
 
     // Startpunkt: Penalty-Fortsetzung; nicht annehmbar → Einfügen, solange es Bedarf gibt.
+    // Mit insertion_must_improve (M6-T11b) auch hier nur Einfügungen, die F_B verbessern oder
+    // danach höchstens F_max haben (vorher stieg F_B in M6-T11, Lauf F7, von 0,011 auf 0,046).
     void start_phase(State& s) {
         HomotopyStep last = penalty_continuation(s, HomotopyStepKind::Start);
         while (!acceptable(last.solve)) {
             const HomotopyNeed need = model_.diagnose(s.system, s.point);
+            const double before = last.solve.wavefront + last.solve.ghost_penalty;
             insert(s, need, HomotopyStatus::StartRejected,
-                   "Startpunkt nicht annehmbar (F_B = " +
-                       number(last.solve.wavefront + last.solve.ghost_penalty) +
-                       " > F_max = " + number(threshold_) + ")");
+                   "Startpunkt nicht annehmbar (F_B = " + number(before) +
+                       " > F_max = " + number(threshold_) + ")",
+                   nullptr, o_.insertion_must_improve ? &before : nullptr, true);
             last = r_.steps.back();
         }
     }

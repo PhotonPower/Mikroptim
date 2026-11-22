@@ -156,6 +156,8 @@ Strukturelle Aktionen (M10-T4, `mikroptim/design/operators.py`; Geometrie über 
               "position": 1.0, "thickness": 1.5, "glasses": [{"name": "N-BK7"}]}]}
 ```
 
+Würde der Arbeitsabstand nach dem Nachfokussieren der Schale negativ, verkleinert `insert_module` die Schale schrittweise (Dicke × `SHELL_SHRINK_FACTOR` = 0,5, höchstens `SHELL_SHRINK_STEPS` = 4 Schritte, Warnung im Bericht); reicht das nicht, lehnt es das Modul mit Fehler `precondition` ab (M6-T11b).
+
 Wissensbasis (M10-T5, [docs/entwurfssteuerung.md, Abschnitt 5](../docs/entwurfssteuerung.md#5-wissensbasis)): Linsenmodule, Brechkraftverteilungen und Glasregeln in eigenen Worten mit Quelle unter `data/design/knowledge/` (im Paket als `mikroptim/design/knowledge/`, andere Stelle mit `MIKROPTIM_KNOWLEDGE_DIR`). Lese-Aktionen `module_lookup` (Module nach Gruppe, korrigierbarer Aberration, Zone, NA) und `glass_query` (Gläser der Kataloge nach Glasregeln, n_d, ν_d, P_g,F, ΔP_g,F, Transmission, Partner); Glasangaben in Aktionen dürfen statt `{"name": …}` ein `{"filter": …}` sein (erstes Glas der Abfrage):
 
 ```python

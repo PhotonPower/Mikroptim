@@ -256,6 +256,9 @@ def test_synth_options_color_stage(tool):
         "--color-module", "doublet", "--color-module-always", "--color-module-anomalous"]
     # ohne Modul keine Modul-Unteroptionen
     assert tool.synth_options(args(farb_modul_immer=True, farb_anomal=True)) == ["--color-rule"]
+    # M6-T11b: Rang und Startradien sind Standard von synth, abschaltbar
+    assert tool.synth_options(args(ohne_farb_spektrum_rang=True, ohne_farb_startradien=True)) == [
+        "--color-rule", "--no-split-spectrum", "--no-split-member-start"]
 
 
 def test_prune_point(tool):

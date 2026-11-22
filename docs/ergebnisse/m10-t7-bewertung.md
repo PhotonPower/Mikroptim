@@ -12,7 +12,7 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **M10-T7e (Abschnitt 13):** Operator A senkt im kurzen Plattenspalt die Schranke der Teilstücke (Plattenspalte wieder frei), E19 mit zweitem Versuch nach `optimize`, gestörte Starts für die Regel, `insert_module` mit Standardglas und angehobener Dicke. Fehler der Modelle 108 → 11 von 272 bzw. 400 Aktionen. **Erstmals B2 am Ziel (Haiku, NA 0,950, RMS 0,037)**, B3 Opus 2/3 und Haiku 1/3. Die Regel V3RS erreicht ungestört wieder B2 0,790 und B3, mit fünf gestörten Starts aber nur B1 (5/5), B2 Median 0,458, B3 Median 0,410. Kosten 4,02 $ (kumuliert 23,82 $).
 
-**Stand M10-T7: abgeschlossen bis auf V4 (Mensch) und B4 (private Systeme).** Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
+**Stand M10-T7: abgeschlossen bis auf V4 (Mensch); B4 ruht** (Entscheidung Maintainer 2026-11-22: die Patentsysteme sind Platzhalter, als Referenz unbrauchbar). **Referenz der Regel seit M6-T11b: Median von V3RS über fünf gestörte Starts** ([Abschnitt 14](#14-m6-t11b-referenz-der-regel-als-median-gestörter-starts)). Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
 
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
 
@@ -657,3 +657,45 @@ python tools/m10t7_bewertung.py --out docs/ergebnisse/m10-t7e --archiv --zusamme
 ```
 
 Jede Sitzung lässt sich ohne API wiederholen (`python -m mikroptim.design replay docs/ergebnisse/m10-t7e/<B>_<Variante> <ziel>`). Eine Wiederholung nicht in zwei Prozessen gleichzeitig rechnen: Das Skript legt die Sitzung im Arbeitsverzeichnis neu an und überschreibt die des anderen Prozesses.
+
+## 14. M6-T11b: Referenz der Regel als Median gestörter Starts
+
+Entscheidung Maintainer 2026-11-22 (Frage 1 aus 13.4): Die Referenz der Regel ist ab hier der **Median von V3RS über fünf gestörte Starts** (σ = 2 %, `--stoer-seed 0`), nicht der Einzellauf. Gleichzeitig ruht **B4** (die Patentsysteme sind Platzhalter, keine fertig entwickelten Systeme, als Referenz unbrauchbar; ebenso der Patentvergleich aus M6-T6). Ergebnisse, Protokolle und beste Systeme unter [`m6-t11b/`](m6-t11b/). Nur die Regel, keine Claude- oder Ollama-Aufrufe. 13 Prozesse liefen gleichzeitig auf der CPU (B1 in einem, B2 und B3 je ein Prozess pro Start); die Zeiten sind nur Orientierung. Code-Stand: `main` a79fa49 plus dieser PR (auch mit den übrigen Punkten von M6-T11b: Standard `--split-spectrum`/`--split-member-start`, `--insertion-improve` in der Startphase, Verkleinern der Schale in `insert_module`).
+
+### 14.1 Umsetzung im Skript
+
+`tools/m10t7_bewertung.py` rechnet ohne `--gestoerte-starts` für die Regel-Varianten (V3, V3AL) den ungestörten Einzellauf **und** fünf gestörte Starts (`RULE_REFERENCE_STARTS = 5`, Kürzel `V3RS_s1` … `_s5`); andere Varianten nur den Einzellauf. `--regel-einzellauf` rechnet nur den Einzellauf (Verhalten bis M10-T7e), `--gestoerte-starts N` gilt wie bisher für alle Varianten (0: nur Einzelläufe), `--nur-starts 0,3-5` verteilt die Starts auf mehrere Prozesse (0 = Einzellauf). `--tabelle` beginnt mit einer Tabelle der Referenz (Ziel x/5, Median und Spanne der NA, Median von RMS und Elementzahl, Einzellauf daneben); `--zusammenfassung` führt die gestörten Starts der Regel als Zeile „V3RS Referenz (Median 5 gestörte Starts)“ vor dem „V3RS Einzellauf“. Test `test_rule_reference_is_median_of_perturbed_starts` (Ablauf und Tabellen mit ersetzter Rechnung, Werte wie B2 in 13.2).
+
+### 14.2 Ergebnisse
+
+| Bench. | Referenz V3RS (5 gestörte Starts): Ziel | NA Median (Spanne) | RMS Median | Elemente Median | Einzellauf: Ziel | NA | RMS |
+|---|---|---|---|---|---|---|---|
+| B1 | **5/5** | 0,600 (0,600–0,600) | 0,0155 | 4 | ja | 0,600 | 0,0154 |
+| B2 | 0/5 | **0,458** (0,448–0,828) | 0,0808 | 5 | nein | 0,790 | 0,0907 |
+| B3 | 0/5 | **0,410** (0,405–0,668) | 0,0822 | 7 | ja | 0,850 | 0,0595 |
+
+Einzelläufe (NA / RMS / Elemente / Entscheidungen / Zeit):
+
+| Bench. | Einzellauf | s1 | s2 | s3 | s4 | s5 |
+|---|---|---|---|---|---|---|
+| B1 | **0,600** / 0,0154 / 4 / 2 / 16 s | **0,600** / 0,0157 / 4 / 2 | **0,600** / 0,0152 / 4 / 2 | **0,600** / 0,0154 / 4 / 2 | **0,600** / 0,0155 / 4 / 2 | **0,600** / 0,0168 / 4 / 2 |
+| B2 | 0,790 / 0,0907 / 4 / 11 / 1.382 s | 0,448 / 0,0799 / 5 / 7 | 0,453 / 0,0808 / 4 / 5 | 0,458 / 0,0789 / 4 / 4 | 0,805 / 0,0908 / 5 / 9 | 0,828 / 0,0918 / 5 / 9 |
+| B3 | **0,850** / 0,0595 / 4 / 5 / 1.153 s | 0,405 / 0,0822 / 5 / 12 | 0,665 / 0,0910 / 7 / 12 | 0,410 / 0,0727 / 7 / 12 | 0,668 / 0,0917 / 6 / 11 | 0,410 / 0,0734 / 7 / 12 |
+
+Alle 18 Läufe ergeben dieselben NA, RMS und Elementzahlen wie in M10-T7e (13.2): Die Regel benutzt weder Farbregel noch Glasvorauswahl noch `--insertion-improve`, und ihre Schale ist so bemessen, dass der Arbeitsabstand positiv bleibt (`RuleDecider._shell`, Zielwert 1,05 × Schranke); das Verkleinern der Schale in `insert_module` griff in keinem Lauf. Die Zahlen von M10-T7e sind damit bestätigt und mit dem neuen Stand reproduzierbar.
+
+### 14.3 Einordnung
+
+- **Neue Referenz der Regel: B1 5/5 (RMS-Median 0,0155), B2 NA 0,458, B3 NA 0,410** (jeweils Median, kein Ziel). Der Einzellauf (B2 0,790, B3 Ziel 0,850) liegt am oberen Rand bzw. außerhalb der Streuung: Auf B2 enden drei Starts bei 0,45–0,46 und zwei bei 0,81–0,83, auf B3 drei bei 0,41 und zwei bei 0,67.
+- **Gegen die Modelle (13.2, Median NA):** B2 Opus 0,945 und Haiku 0,798 gegen Regel 0,458; B3 Opus und Haiku 0,850 gegen 0,410. Beide Modelle sind auf B2/B3 klar besser als die Referenz der Regel, auf B1 gleich im Ziel und besser im RMS (Haiku 0,0110 gegen 0,0155). Gegen den Einzellauf der Regel sah das auf B3 umgekehrt aus; der Median ist die fairere Messlatte, weil auch die Modelle mehrfach gerechnet wurden.
+- Der Erfolg der Regel hängt auf B2/B3 an einem Pfad durch die Stufen (12.4): Starts, die im zweiten Abschnitt die Wiederhol-Schwelle (+0,01 NA) knapp verfehlen, landen bei 0,41–0,46.
+
+### 14.4 Reproduktion
+
+```bash
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m6-t11b --varianten V3RS   # Einzellauf + 5 gestörte Starts
+# verteilt auf Prozesse (eigenes Arbeitsverzeichnis je Prozess):
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m6-t11b --work <arbeit_B2_3> --benchmarks B2 \
+    --varianten V3RS --nur-starts 3
+python tools/m10t7_bewertung.py --out docs/ergebnisse/m6-t11b --archiv --tabelle --zusammenfassung
+```

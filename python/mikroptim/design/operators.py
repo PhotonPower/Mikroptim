@@ -35,6 +35,12 @@ SHELL_THICKNESS = 0.3
 GAUSS_SPACING = 0.4
 #: größter Halbkugelgrad |c|·h der Vorlagen
 MAX_HEMISPHERE = 0.9
+#: Verkleinern der aplanatischen Schale, wenn der Arbeitsabstand nach dem Nachfokussieren negativ
+#: würde (M6-T11b): Dicke pro Schritt × Faktor, höchstens so viele Schritte, danach verworfen
+SHELL_SHRINK_FACTOR = 0.5
+SHELL_SHRINK_STEPS = 4
+#: Meldung von ``mikroptim insert --aplanatic-shell`` bei Arbeitsabstand ≤ 0 (design_operators.cpp)
+_NEGATIVE_WD = "Arbeitsabstand nach dem Nachfokussieren"
 
 
 # --- Hilfen -----------------------------------------------------------------------------------
@@ -346,8 +352,7 @@ def _insert_module(a, system_path, workdir, warnings):
             raise ActionError("missing_parameter", "aplanatic_shell: glasses fehlt (Glas der Schale)")
         pos = float(a.get("position", SHELL_POSITION * gap))
         t = float(a.get("thickness", SHELL_THICKNESS * (gap - pos)))
-        out, rep = _insert_in_bounds(system_path, workdir,
-                                     ["--aplanatic-shell", f"{s},{pos!r},{t!r},{glasses[0]}"], warnings)
+        out, rep, t = _insert_shell(system_path, workdir, s, pos, t, glasses[0], warnings)
         report.update({"position": pos, "thickness": t, "glass": glasses[0],
                        "surfaces": [rep["first_new_surface"], rep["first_new_surface"] + 1],
                        **{k: rep["details"][k] for k in ("intercept", "image_intercept",
@@ -431,6 +436,50 @@ def _insert_module(a, system_path, workdir, warnings):
     _drop(files, out)
     _set_group(out, report["surfaces"], group)
     return [(out, report)]
+
+
+def _insert_shell(system_path, workdir, s, pos, t, glass, warnings):
+    """Aplanatische Schale einfügen (``_insert_in_bounds``). Würde der Arbeitsabstand nach dem
+    Nachfokussieren negativ (M6-T11b; drei Antworten der Modelle in M10-T7e), wird die Schale
+    schrittweise verkleinert: Dicke × ``SHELL_SHRINK_FACTOR``, höchstens ``SHELL_SHRINK_STEPS``
+    Schritte; die Radien folgen aus Lage und Dicke (aplanatische und konzentrische Fläche, der
+    Arbeitsabstand danach ist etwa R₂ = Q n/n′ − t). Reicht das nicht, wird das Modul mit einer
+    Meldung verworfen, statt ein ungültiges System zu bauen. Rückgabe (Datei, Bericht, Dicke)."""
+    t0 = t
+    for k in range(SHELL_SHRINK_STEPS + 1):
+        try:
+            out, rep = _insert_in_bounds(system_path, workdir,
+                                         ["--aplanatic-shell", f"{s},{pos!r},{t!r},{glass}"],
+                                         warnings)
+        except ToolError as e:
+            if _NEGATIVE_WD not in str(e):
+                raise
+            if k == SHELL_SHRINK_STEPS:
+                raise ActionError(
+                    "precondition",
+                    f"aplanatic_shell verworfen: der Arbeitsabstand nach dem Nachfokussieren bleibt "
+                    f"negativ, auch nach Verkleinern der Schale (Dicke {t0:.4g} → {t:.4g} mm in "
+                    f"{k} Schritten, Lage {pos:.4g} mm); Schale näher an Fläche {s} legen oder "
+                    f"einen anderen Spalt wählen ({e})") from None
+            t *= SHELL_SHRINK_FACTOR
+            continue
+        q = rep.get("details", {}).get("intercept")
+        if q is not None and not q > 0:
+            # Schale hinter dem Schnittpunkt des Randstrahls mit der Achse: keine aplanatische
+            # Lösung (Radien im Bereich von |Q|); eine sehr dünne Schale ergäbe paraxial wieder
+            # einen positiven Arbeitsabstand, aber ein unsinniges System
+            out.unlink(missing_ok=True)
+            raise ActionError(
+                "precondition",
+                f"aplanatic_shell verworfen: die Schale (Lage {pos:.4g} mm) liegt hinter dem "
+                f"Schnittpunkt des Randstrahls mit der Achse (Q = {q:.4g} mm), keine aplanatische "
+                f"Schale möglich; Schale näher an Fläche {s} legen")
+        if k:
+            warnings.append(f"Arbeitsabstand nach dem Nachfokussieren mit Dicke {t0:.4g} mm "
+                            f"negativ: Schale in {k} Schritten auf Dicke {t:.4g} mm verkleinert "
+                            f"(Radien neu aus Lage und Dicke)")
+        return out, rep, t
+    raise AssertionError("unreachable")
 
 
 def _merte_partner(system_path, glass: str) -> str:
