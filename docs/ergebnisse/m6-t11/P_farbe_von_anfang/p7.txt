@@ -1,0 +1,89 @@
+Glas-Einrasten: Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Datei                                       docs\ergebnisse\m6-t11\P_farbe_von_anfang\p6_s2.json
+  Ergebnisdatei                               docs\ergebnisse\m6-t11\P_farbe_von_anfang\p7.json
+  Backend                                     GPU 0 (NVIDIA GeForce RTX 3090), FP64
+  Quadratur                                   16 Ringe x 8 Speichen
+  Strahlversagen                              weich, w_fail ab 1.000e+06 Wellen² (Strafverfahren x10 bis 1e14)
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Glaselemente                                1
+  Glas-Hülle                                  39 Gläser, Dimension 3
+  Nachbarn je Element                         3
+  Kombinationen (Läufe)                       3 von 3 (alle)
+  Zyklen höchstens                            500
+
+Kandidaten (nächste Katalog-Gläser, Abstand im normierten (n0, nu1, nu2)-Raum der Glas-Hülle)
+  Fläche 11: kontinuierlich n0 = 1.5591226, nu1 = -5.178101e-02, nu2 = 1.309129e-02, Abstand zur Hülle 2.914e-06
+       0  SYN-09        5.624142e-02
+       1  SYN-11        8.115313e-02
+       2  SYN-10        1.011611e-01
+
+Kombinationen (sortiert nach Summe d²; Merit in Wellen² bei 546.070 nm)
+  Lauf  Gläser                          Summe d²      eingerastet      reoptimiert  Zyklen  Status             versagt
+     0  SYN-09                         3.163e-03  6.519821090e+00  1.102615233e-02     500  max_iterations           0  bester
+     1  SYN-11                         6.586e-03  2.079057530e+01  1.220665203e-02     500  max_iterations           0
+     2  SYN-10                         1.023e-02  3.522776150e+01  1.392464870e-02     500  max_iterations           0
+
+Ergebnis
+  Gewählte Gläser                             Fläche 11: SYN-09
+  Bester Lauf                                 0
+  Status                                      max_iterations
+  Merit kontinuierlich [Wellen²]              4.882677379e-03
+  Merit eingerastet, ohne Reopt. [Wellen²]    6.519821090e+00
+  Merit eingerastet, reoptimiert [Wellen²]    1.102615233e-02
+  Verschlechterung [Wellen²]                  6.143475e-03
+  Verschlechterung relativ                    1.258218e+00
+  Versagte Strahlen kontinuierlich/Ergebnis   0 / 0
+
+Variablen (ohne Glas)
+  Name    Einheit            vorher          nachher
+  c[10]   1/mm      8.049336443e-01  8.072553764e-01
+  c[12]   1/mm      9.182286006e-01  9.210507905e-01
+  t[0]    mm               5.011426         3.618189
+  t[10]   mm               0.419520         0.427053
+  t[11]   mm               1.866052         1.897584
+  w       mm               0.312549         0.300000
+  t[3]    mm               0.102700         0.146525
+  t[6]    mm               0.157185         0.149753
+  t[9]    mm               0.469899         0.415466
+  c[11]   1/mm      1.386329189e+00  1.382310916e+00
+  c[7]    1/mm      5.670011177e-01  5.687844990e-01
+  c[8]    1/mm     -5.861277103e-01 -5.981491502e-01
+  c[9]    1/mm     -1.542057924e-01 -1.583399652e-01
+  t[7]    mm               1.597851         1.544273
+  t[8]    mm               0.500000         0.500000
+  c[4]    1/mm      3.722459100e-01  3.737702687e-01
+  c[5]    1/mm      1.282223368e-01  1.288653415e-01
+  c[6]    1/mm      5.619590279e-01  5.605325725e-01
+  t[4]    mm               0.581784         0.563944
+  t[5]    mm               0.500004         0.500000
+  c[1]    1/mm      3.224270353e-01  3.237259321e-01
+  c[2]    1/mm      1.852345847e-01  1.702638686e-01
+  c[3]    1/mm      3.743394053e-01  3.731852880e-01
+  t[1]    mm               0.500009         0.500000
+  t[2]    mm               0.500113         0.500000
+
+Wellenfront (Quadratur 16 Ringe x 8 Speichen, CPU, FP64, RMS in Wellen bei 546.070 nm; vorher = kontinuierlich, nachher = eingerastet)
+  Feld  Winkel [deg]  Wellenlänge [nm]  Strahlen    RMS vorher   RMS nachher  versagt vorher/nachher
+     0         0.000           404.660        16      0.063895      0.050864                   0 / 0
+     0         0.000           435.830        16      0.045157      0.039671                   0 / 0
+     0         0.000           486.130        16      0.038592      0.029339                   0 / 0
+     0         0.000           546.070        16      0.039816      0.045895                   0 / 0
+     0         0.000           587.560        16      0.040870      0.062042                   0 / 0
+     0         0.000           656.270        16      0.041540      0.085616                   0 / 0
+     0         0.000           706.520        16      0.042289      0.099360                   0 / 0
+     1         1.137           404.660       128      0.084583      0.165345                   0 / 0
+     1         1.137           435.830       128      0.063078      0.120495                   0 / 0
+     1         1.137           486.130       128      0.047893      0.066015                   0 / 0
+     1         1.137           546.070       128      0.054671      0.061356                   0 / 0
+     1         1.137           587.560       128      0.065249      0.086418                   0 / 0
+     1         1.137           656.270       128      0.081923      0.130503                   0 / 0
+     1         1.137           706.520       128      0.091980      0.158548                   0 / 0
+     2         1.623           404.660       128      0.145362      0.265948                   0 / 0
+     2         1.623           435.830       128      0.120440      0.202210                   0 / 0
+     2         1.623           486.130       128      0.088676      0.121105                   0 / 0
+     2         1.623           546.070       128      0.073719      0.080713                   0 / 0
+     2         1.623           587.560       128      0.076839      0.095776                   0 / 0
+     2         1.623           656.270       128      0.091545      0.144841                   0 / 0
+     2         1.623           706.520       128      0.103265      0.180182                   0 / 0
+
+Ergebnis geschrieben: docs\ergebnisse\m6-t11\P_farbe_von_anfang\p7.json
