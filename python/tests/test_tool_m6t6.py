@@ -261,6 +261,22 @@ def test_synth_options_color_stage(tool):
         "--color-rule", "--no-split-spectrum", "--no-split-member-start"]
 
 
+def test_synth_options_ghost_dictionary(tool):
+    """M6-T12: erweitertes Glas-Wörterbuch wird an jeden synth-Aufruf durchgereicht; ohne Option
+    bleibt die Liste wie bisher; --woerterbuch-extra ohne Zahl nimmt die Standardgröße."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=False, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[])
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.synth_options(args()) == ["--stall", "0"]
+    assert tool.synth_options(args(woerterbuch_extra=2, woerterbuch_glas=["SYN-21"])) == [
+        "--stall", "0", "--ghost-dictionary-extra", "2", "--ghost-dictionary-glass", "SYN-21"]
+    assert tool.synth_options(args(woerterbuch_extra=0)) == ["--stall", "0"]
+    assert isinstance(tool.WOERTERBUCH_STANDARD, int) and 2 <= tool.WOERTERBUCH_STANDARD <= 4
+
+
 def test_prune_point(tool):
     """M6-T11: Rückbau bei Q × Parameter der Stufe: Apertur (Pupillenradius), Feld, Farbe
     (Spektrumbreite um λ_ref)."""

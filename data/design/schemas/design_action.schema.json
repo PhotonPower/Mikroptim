@@ -560,6 +560,12 @@
           "maximum": 200,
           "description": "M10-T7e (E19): lehnt synth den Start ab, ohne dass eine Geisterplatte Bedarf meldet (start_rejected), erst optimize mit so vielen LM-Zyklen und dann ein zweiter Versuch (Standard 20; 0: aus)"
         },
+        "ghost_dictionary_extra": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "synth --ghost-dictionary-extra N (M6-T12): Glas-Wörterbuch der vorhandenen Geisterplatten um N Gläser erweitern, abwechselnd Flint und anomale Teildispersion (Rangfolge der Glasvorauswahl)"
+        },
         "reason": {
           "$ref": "#/$defs/reason"
         }

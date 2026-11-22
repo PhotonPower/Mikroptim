@@ -301,6 +301,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** Orakel-Tests (Mock-Homotopie: Sprung in der Startphase verworfen, Spielraum; Achromat: Startradien-Zweig kleiner als ohne), CLI- und Skripttests, ohne die Optionen bzw. mit `--no-…` bitgleich; Python-Tests der Schale; Regel-Läufe B1–B3 mit fünf gestörten Starts, Abschnitt 14 im [Bewertungsbericht](../ergebnisse/m10-t7-bewertung.md).
 - **Stand:** umgesetzt. Spektraler Rang und Startradien Standard von `synth` (wirksam mit Vorauswahl bzw. Farbregel; `--no-…` bitgleich zum alten Stand); `--insertion-improve` in der Startphase mit Spielraum (Orakel: Sprung F_B 2 → 4,5 F_max verworfen); `insert_module` verkleinert die Schale (Dicke × 0,5, bis vier Schritte) bzw. verwirft sie; Referenz der Regel = Median über fünf gestörte Starts: B1 5/5, B2 NA 0,458, B3 NA 0,410 (Einzellauf 0,790 bzw. Ziel; alle 18 Läufe gleich M10-T7e). B4 und der Patentvergleich aus M6-T6 ruhen.
 
+### M6-T12 – Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern
+- **Abhängig von:** M6-T11, M11-T5g (vom Maintainer am 2026-11-22 freigegeben; Befund aus M6-T11: monochromatische Läufe bauen nur aus CaF₂, SYN-30, SYN-36 und sind danach nicht farbkorrigierbar)
+- **Inhalt:** Wörterbuch der Geisterplatten konfigurierbar erweitern (`extend_ghost_dictionaries`, `synth --ghost-dictionary-extra N`, `--ghost-dictionary-glass`, Skript `--woerterbuch-extra`, Aktion `synth_segment` mit `ghost_dictionary_extra`): Flint- und anomale Gläser aus dem Katalog nach der Rangfolge der Glasvorauswahl (spektraler Rest, `anomalous_pgf`), ohne Option bitgleich; Diagnose und Operatoren (A, B, Einrasten) mit den Zusatzgläsern; Standardgröße aus Messung.
+- **Abnahme:** Tests mit optischen Orakeln (Flint-Platte korrigiert die Farbe einer Einzellinse, Flint-Plattenanteil führt zu Flint-Element bzw. Kittglied mit Flint als Zielglas), Merit-Invarianz und Wiederholbarkeit der Erweiterung, Bitgleichheit ohne Option, CLI- und Skripttests; Messung monochromatisch wie M6-T10 (9-Linser-Pfad) mit anschließender Farbstufe und „Farbe früh“ wie F3 aus M6-T11, Bericht `docs/ergebnisse/m6-t12-glaswoerterbuch.md` mit Vergleich zu M6-T10/M6-T11.
+- **Stand:** STAND_M6T12
+
 ---
 
 ## M7 – Performance

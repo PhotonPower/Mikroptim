@@ -373,6 +373,12 @@ def synth_options(args):
             opts.append('--color-module-anomalous')
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
+    # M6-T12: Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern (jeder
+    # synth-Aufruf; wiederholt ohne Wirkung, nach einer Rückkehr zu Geisterplatten erneut)
+    if getattr(args, 'woerterbuch_extra', None):
+        opts += ['--ghost-dictionary-extra', str(args.woerterbuch_extra)]
+    for g in getattr(args, 'woerterbuch_glas', None) or []:
+        opts += ['--ghost-dictionary-glass', g]
     if getattr(args, 'feldregel', False):
         opts.append('--field-rule')  # M6-T8
     if getattr(args, 'einfuegen_verbessern', None):
@@ -1092,6 +1098,10 @@ def osc_branch(args):
 # erfundenen Testgläser, hier mit Katalognamen wie nach buchdahl_to_catalog)
 GHOST_GLASSES = ['SYN-36', 'CAF2', 'SYN-30']
 
+# M6-T12: empfohlene Zahl der Zusatzgläser des erweiterten Wörterbuchs (--woerterbuch-extra ohne
+# Zahl; Begründung aus der Messung im Bericht docs/ergebnisse/m6-t12-glaswoerterbuch.md)
+WOERTERBUCH_STANDARD = 2
+
 
 def first_json(text):
     """Erstes JSON-Objekt eines Textes (Warnungen auf stderr landen in derselben Datei)."""
@@ -1632,6 +1642,14 @@ def main():
     ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default='zwei',
                     help='M6-T11: Farbstufe über zwei Wellenlängen zum vollen Spektrum (Standard, '
                          'wie M6-T10) oder direkt zum vollen Spektrum')
+    ap.add_argument('--woerterbuch-extra', type=int, nargs='?', const=WOERTERBUCH_STANDARD,
+                    default=None, metavar='N',
+                    help='M6-T12: Glas-Wörterbuch der Geisterplatten um N Gläser erweitern, '
+                         'abwechselnd Flint und anomal (synth --ghost-dictionary-extra N; ohne '
+                         f'Zahl {WOERTERBUCH_STANDARD})')
+    ap.add_argument('--woerterbuch-glas', action='append', default=[], metavar='GLAS',
+                    help='M6-T12: Zusatzglas des Wörterbuchs ausdrücklich (mehrfach; synth '
+                         '--ghost-dictionary-glass)')
     ap.add_argument('--rueckbau-punkt', type=float, default=None, metavar='Q',
                     help='M6-T11: Rückbau im Zyklus bei Q × Parameter der Stufe (NA, Feld bzw. '
                          'Spektrumbreite; z. B. 0,85) statt am erreichten Punkt, danach zurück '
