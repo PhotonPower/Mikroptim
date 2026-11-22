@@ -110,9 +110,12 @@ struct SynthArgs {
     bool split_start_target = false; // und das freigegebene Glas dort starten
     bool split_achromat = false;     // M11-T5e: Achromat-Start des geteilten Glieds
     // M6-T11: Rang nach dem spektralen Rest, Startradien des Glieds, Farbbedarf aus den
-    // chromatischen Seidel-Termen, Kittglied-Modul der Farbregel
-    bool split_spectrum = false;
-    bool split_member = false;
+    // chromatischen Seidel-Termen, Kittglied-Modul der Farbregel. Rang und Startradien sind seit
+    // M6-T11b Standard; sie wirken nur, wenn Operator B die Glasvorauswahl benutzt
+    // (--split-preselect u. a. oder die Farbregel) bzw. auf den Rang der Gläser des
+    // Kittglied-Moduls. --no-split-spectrum und --no-split-member-start schalten ab.
+    bool split_spectrum = true;
+    bool split_member = true;
     double color_chromatic = 0.0;
     OpticalHomotopyOptions::ColorModule color_module = OpticalHomotopyOptions::ColorModule::None;
     bool color_module_always = false;
@@ -252,6 +255,10 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--split-member-start") {
             a.split_preselect = true;
             a.split_member = true;
+        } else if (arg == "--no-split-spectrum") {
+            a.split_spectrum = false;
+        } else if (arg == "--no-split-member-start") {
+            a.split_member = false;
         } else if (arg == "--color-chromatic") {
             a.color_rule = true;
             a.color_chromatic = positive(arg, next_value(args, i, arg));
@@ -680,10 +687,14 @@ void print_synth_usage(std::ostream& out) {
            "hintere\n"
            "                            Außenkrümmung aus dem dünnen Achromat, Zielglas als Start\n"
            "  --split-start-target      ebenso, und das freigegebene Glas startet beim Zielglas\n"
-           "  --split-spectrum          Vorauswahl nach dem spektralen Rest über das Spektrum der\n"
-           "                            Datei statt nach dem Koeffizienten (M6-T11)\n"
-           "  --split-member-start      Operator B: weiterer Zweig mit den Startradien des ganzen\n"
-           "                            Glieds (S_I = 0, thin_member_shape; M6-T11)\n"
+           "  --split-spectrum          Operator B mit Vorauswahl; Rang nach dem spektralen Rest\n"
+           "                            über das Spektrum der Datei (M6-T11; der Rang ist seit\n"
+           "                            M6-T11b Standard, die Option schaltet die Vorauswahl ein)\n"
+           "  --split-member-start      Operator B mit Vorauswahl; weiterer Zweig mit den\n"
+           "                            Startradien des ganzen Glieds (S_I = 0; Zweig Standard\n"
+           "                            seit M6-T11b, die Option schaltet die Vorauswahl ein)\n"
+           "  --no-split-spectrum       Rang der Vorauswahl nach dem Koeffizienten (vor M6-T11b)\n"
+           "  --no-split-member-start   ohne den Zweig „Startradien des Glieds“ (vor M6-T11b)\n"
            "  --color-chromatic S       Farbregel auch, wenn der chromatische Anteil aus dem\n"
            "                            Aberrationsbericht >= S x größter RMS (M6-T11)\n"
            "  --color-module K          Farbregel: Kittglied-Modul K = doublet (Null-Kittglied)\n"
@@ -1022,9 +1033,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        (a.field_glass.empty() ? std::string(", Glas der Linse vor dem Spalt")
                                               : ", Glas " + a.field_glass));
             }
+            // M6-T11b: Rang und Startradien sind Standard, sie wirken aber nur mit der
+            // Vorauswahl von Operator B (bzw. der Farbregel); nur dann erwähnt
+            const bool split_used = a.split_preselect || a.color_rule;
             if (a.color_chromatic > 0.0 ||
-                a.color_module != OpticalHomotopyOptions::ColorModule::None || a.split_spectrum ||
-                a.split_member) {
+                a.color_module != OpticalHomotopyOptions::ColorModule::None ||
+                (split_used && (a.split_spectrum || a.split_member))) {
                 // M6-T11: nur mit den Optionen
                 std::string t;
                 const auto add = [&t](const std::string& s) { t += (t.empty() ? "" : ", ") + s; };
@@ -1040,10 +1054,10 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                         (a.color_module_always ? " statt Teilen" : " ohne teilbare Linse") +
                         (a.color_module_anomalous ? ", anomales Glas" : ""));
                 }
-                if (a.split_spectrum) {
+                if (split_used && a.split_spectrum) {
                     add("Vorauswahl nach dem spektralen Rest");
                 }
-                if (a.split_member) {
+                if (split_used && a.split_member) {
                     add("Startradien des Glieds");
                 }
                 kv(out, "Farbregel (M6-T11)", t);
@@ -1157,12 +1171,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
         }
-        // M6-T11: nur mit den Optionen (ohne sie bleibt das Protokoll wie bisher)
-        if (a.split_spectrum || a.split_member) {
-            options["split"]["spectrum_rank"] =
-                a.split_spectrum ? Json(o.split.preselect_wavelengths_nm) : Json(nullptr);
-            options["split"]["member_start"] = a.split_member;
-        }
+        // M6-T11: Rang und Startradien von Operator B (seit M6-T11b Standard, daher immer im
+        // Protokoll; spectrum_rank null: Rang nach dem Koeffizienten, auch monochromatisch)
+        options["split"]["spectrum_rank"] = o.split.preselect_wavelengths_nm.empty()
+                                                ? Json(nullptr)
+                                                : Json(o.split.preselect_wavelengths_nm);
+        options["split"]["member_start"] = a.split_member;
         if (a.color_chromatic > 0.0 ||
             a.color_module != OpticalHomotopyOptions::ColorModule::None) {
             options["color_rule_ext"] = Json{

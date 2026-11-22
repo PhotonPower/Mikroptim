@@ -289,3 +289,66 @@ def test_perturbed_starts_within_bounds_and_summary(tool, tmp_path, monkeypatch)
     assert r["perturbation"]["sigma"] == 0.01 and r["perturbation"]["seed"] == 0
     s = tool.summary(out)
     assert "| B1 | V0RS | 1/1 |" in s and "| B1 | V0RS_s* | 2/3 |" in s
+
+
+def test_rule_reference_is_median_of_perturbed_starts(tool, tmp_path, monkeypatch):
+    """M6-T11b (Entscheidung Maintainer 2026-11-22): Ohne --gestoerte-starts rechnet die Regel
+    (V3) den Einzellauf und fünf gestörte Starts, andere Varianten nur den Einzellauf; die
+    Referenz der Regel in Tabelle und Zusammenfassung ist der Median über die gestörten Starts,
+    der Einzellauf steht daneben. --regel-einzellauf rechnet nur den Einzellauf."""
+    assert tool.RULE_REFERENCE_STARTS == 5
+    args = tool.parser().parse_args([])
+    assert tool.starts_of("V3", args) == [None, 1, 2, 3, 4, 5]
+    assert tool.starts_of("V0", args) == [None]
+    assert tool.starts_of("V3", tool.parser().parse_args(["--regel-einzellauf"])) == [None]
+    assert tool.starts_of("V3", tool.parser().parse_args(["--gestoerte-starts", "2"])) == [1, 2]
+    assert tool.starts_of("V0", tool.parser().parse_args(["--gestoerte-starts", "2"])) == [1, 2]
+    assert tool.starts_of("V3", tool.parser().parse_args(["--gestoerte-starts", "0"])) == [None]
+    # Verteilen auf Prozesse: 0 = Einzellauf
+    assert tool.starts_of("V3", tool.parser().parse_args(["--nur-starts", "0,4-5"])) == [None, 4, 5]
+    assert tool.starts_of("V0", tool.parser().parse_args(["--nur-starts", "1"])) == []
+    with pytest.raises(SystemExit):
+        tool.starts_of("V3", tool.parser().parse_args(["--nur-starts", "x"]))
+    # Einzellauf am oberen Rand der Streuung wie B2 in M10-T7e: NA 0,79 gegen gestört
+    # 0,448 … 0,828 (Median 0,458)
+    nas = {None: 0.79, 1: 0.448, 2: 0.453, 3: 0.458, 4: 0.805, 5: 0.828}
+    calls = []
+
+    def fake_session(bench, work, decider, fallback, steps):
+        k = (bench.get("perturbation") or {}).get("index")
+        calls.append(work.name)
+        return {"seconds": 1.0, "best": {"goal": False, "na": nas[k], "rms_max_waves": 0.08,
+                                         "failed_rays": 0, "elements": 4 + (k or 0) % 2}}
+
+    def fake_synth(bench, work, beam=False):
+        calls.append(work.name)
+        return {"seconds": 1.0, "best": {"goal": False, "na": 0.5, "rms_max_waves": 0.1,
+                                         "failed_rays": 0, "elements": 3}}
+
+    monkeypatch.setattr(tool, "run_session", fake_session)
+    monkeypatch.setattr(tool, "run_synth", fake_synth)
+    out, work = tmp_path / "out", tmp_path / "arbeit"
+    assert tool.main(["--benchmarks", "B2", "--varianten", "V0,V3", "--out", str(out),
+                      "--work", str(work)]) == 0
+    assert calls == ["V0RS", "V3RS", "V3RS_s1", "V3RS_s2", "V3RS_s3", "V3RS_s4", "V3RS_s5"]
+    ref = tool.rule_reference(out)
+    assert ref["B2"]["starts"] == 5 and ref["B2"]["goal"] == 0
+    assert ref["B2"]["na"] == 0.458 and ref["B2"]["na_range"] == (0.448, 0.828)
+    assert ref["B2"]["single"]["na"] == 0.79
+    s = tool.summary(out)
+    lines = [ln for ln in s.splitlines() if ln.startswith("| B2 |")]
+    assert lines[0].startswith("| B2 | V3RS Referenz (Median 5 gestörte Starts) | 0/5 |")
+    assert "| 0,458 |" in lines[0]  # NA Median
+    assert lines[1].startswith("| B2 | V3RS Einzellauf | 0/1 | 0,790 |")
+    assert lines[2].startswith("| B2 | V0RS | 0/1 |")
+    t = tool.table(out)
+    assert "Referenz der Regel: V3RS" in t and "Median über 5 gestörte Starts" in t
+    assert "| B2 | 0/5 | 0,458 (0,448–0,828) | 0,0800 | 5 | nein | 0,790 | 0,0800 |" in t
+    # nur der Einzellauf: keine Referenzzeile, Beschriftung wie bisher
+    out2 = tmp_path / "out2"
+    calls.clear()
+    assert tool.main(["--benchmarks", "B2", "--varianten", "V3", "--regel-einzellauf",
+                      "--out", str(out2), "--work", str(work)]) == 0
+    assert calls == ["V3RS"]
+    assert tool.rule_reference(out2) == {}
+    assert "| B2 | V3RS | 0/1 |" in tool.summary(out2)

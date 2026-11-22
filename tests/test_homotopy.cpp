@@ -619,6 +619,74 @@ TEST(HomotopyControl, InsertionMustImprove) {
                  std::invalid_argument);
 }
 
+// Einfügen nur mit Verbesserung auch in der Startphase (M6-T11b, Lauf F7 aus M6-T11: F_B stieg
+// beim Einfügen von 0,011 auf 0,046). Orakel: Der Start liegt über der Kapazität (F_B = 2 F_max),
+// Variante 0 springt auf F_B = 4,5 F_max (> davor und > F_max) und wird verworfen, Variante 1
+// (0,45 F_max) übernommen. Ohne Option wird der Sprung übernommen (wie bisher) und der Lauf endet
+// am nicht annehmbaren Start.
+TEST(HomotopyControl, InsertionMustImproveInStartPhase) {
+    const auto run = [](bool improve, int bad) {
+        MockSpec spec;
+        spec.capacity0 = 0.4;
+        spec.capacity_step = 0.2;
+        spec.alternatives = 3;
+        spec.bad_options = bad;
+        spec.bad_factor = 10.0;
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.5);
+        o.insertion_must_improve = improve;
+        o.insertion_attempts = 3;
+        return run_homotopy(m, MockModel::start(0.45), mock_point(0.45), o);
+    };
+    const auto fb = [](const HomotopyStep& s) { return s.solve.wavefront + s.solve.ghost_penalty; };
+
+    const HomotopyResult off = run(false, 1);
+    EXPECT_EQ(off.status, HomotopyStatus::StartRejected) << off.message;
+    EXPECT_EQ(off.elements, 2);
+    EXPECT_DOUBLE_EQ(fb(off.steps.back()), 4.5); // der Sprung wurde übernommen
+
+    const HomotopyResult r = run(true, 1);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.elements, 2);
+    EXPECT_EQ(r.system.surfaces.back().semi_diameter, 1.0); // Variante 1
+    const auto ins = steps_of(r, HomotopyStepKind::Insertion);
+    ASSERT_EQ(ins.size(), 3U); // Variante 0, Vermerk „verworfen“, Variante 1
+    EXPECT_FALSE(ins[1]->accepted);
+    EXPECT_NE(ins[1]->operation.find("F_B danach 4.5"), std::string::npos) << ins[1]->operation;
+    EXPECT_NE(ins[1]->operation.find("> F_max"), std::string::npos) << ins[1]->operation;
+    EXPECT_NE(ins[1]->operation.find("Startphase"), std::string::npos) << ins[1]->operation;
+
+    const HomotopyResult none = run(true, 3);
+    EXPECT_EQ(none.status, HomotopyStatus::StartRejected);
+    EXPECT_NE(none.message.find("kein Einfügen verbessert F_B (3 Varianten"), std::string::npos)
+        << none.message;
+    EXPECT_NE(none.message.find("alle > F_max"), std::string::npos) << none.message;
+    EXPECT_EQ(none.elements, 1); // Zustand vor dem Einfügen
+}
+
+// Spielraum der Startphase (M6-T11b): Der Start hat einen versagten Strahl bei kleinem F_B
+// (0,2 F_max), das Einfügen hebt F_B auf 0,45 F_max (> davor), bleibt aber unter F_max ohne
+// versagte Strahlen und wird übernommen.
+TEST(HomotopyControl, InsertionInStartPhaseAcceptedBelowThreshold) {
+    MockSpec spec;
+    spec.capacity0 = 0.4;
+    spec.capacity_step = 0.2;
+    spec.failed_below_elements = 2;
+    MockModel m(spec);
+    HomotopyOptions o = mock_options(0.5);
+    o.insertion_must_improve = true;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.45), mock_point(0.45), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    EXPECT_EQ(r.elements, 2);
+    const auto ins = steps_of(r, HomotopyStepKind::Insertion);
+    ASSERT_EQ(ins.size(), 1U);
+    for (const HomotopyStep& s : r.steps) {
+        EXPECT_EQ(s.operation.find("verworfen"), std::string::npos) << s.operation;
+    }
+    EXPECT_EQ(r.steps.front().solve.failed_rays, 1);
+    EXPECT_DOUBLE_EQ(r.steps.front().solve.wavefront, 0.2);
+}
+
 // Rückbau (M6-T9): Startsystem aus der Basis (Element 0) und `groups.size()` weiteren Elementen.
 SystemDescription mock_system(double aperture, const std::vector<const char*>& groups) {
     SystemDescription d = MockModel::start(aperture);

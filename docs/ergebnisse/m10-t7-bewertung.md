@@ -12,7 +12,7 @@ Bericht zur Aufgabe M10-T7 ([Meilensteinplan](../plan/meilensteine.md#m10-t7--be
 
 **M10-T7e (Abschnitt 13):** Operator A senkt im kurzen Plattenspalt die Schranke der Teilstücke (Plattenspalte wieder frei), E19 mit zweitem Versuch nach `optimize`, gestörte Starts für die Regel, `insert_module` mit Standardglas und angehobener Dicke. Fehler der Modelle 108 → 11 von 272 bzw. 400 Aktionen. **Erstmals B2 am Ziel (Haiku, NA 0,950, RMS 0,037)**, B3 Opus 2/3 und Haiku 1/3. Die Regel V3RS erreicht ungestört wieder B2 0,790 und B3, mit fünf gestörten Starts aber nur B1 (5/5), B2 Median 0,458, B3 Median 0,410. Kosten 4,02 $ (kumuliert 23,82 $).
 
-**Stand M10-T7: abgeschlossen bis auf V4 (Mensch) und B4 (private Systeme).** Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
+**Stand M10-T7: abgeschlossen bis auf V4 (Mensch); B4 ruht** (Entscheidung Maintainer 2026-11-22: die Patentsysteme sind Platzhalter, als Referenz unbrauchbar). **Referenz der Regel seit M6-T11b: Median von V3RS über fünf gestörte Starts** ([Abschnitt 14](#14-m6-t11b-referenz-der-regel-als-median-gestörter-starts)). Die folgenden Absätze beschreiben den ursprünglichen Stand von M10-T7.
 
 **Stand M10-T7: Teilergebnis.** V0, V1 und V3 auf B1–B3 sowie zwei Ollama-Modelle (Instruktion und Thinking) auf B1–B3 sind gerechnet; V2 ist aus dem Bericht M6-T6 übernommen. **Ausstehend:** Claude-Läufe (kein `ANTHROPIC_API_KEY` in der Umgebung, `ant` nicht installiert), V4 (Mensch), B4 (private Patentsysteme).
 

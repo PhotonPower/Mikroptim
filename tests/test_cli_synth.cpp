@@ -630,9 +630,10 @@ TEST(CliSynth, StartFromReal) {
     EXPECT_NE(help.find("--start-from-real"), std::string::npos);
 }
 
-// M6-T11: Optionen der Farbstufe. Ohne Optionen kein Eintrag color_rule_ext und keine neuen
-// Schlüssel unter split (Protokoll wie bisher); mit Optionen im JSON und im Textkopf;
-// Fehlbedienung Exit 2. Die Einzellinse bei 480/644 nm erreicht das Ziel weiter.
+// M6-T11: Optionen der Farbstufe. Ohne Optionen kein Eintrag color_rule_ext; Rang nach dem
+// spektralen Rest und Startradien des Glieds sind seit M6-T11b Standard (im Protokoll unter
+// split, mit --no-split-spectrum/--no-split-member-start aus); mit Optionen im JSON und im
+// Textkopf; Fehlbedienung Exit 2. Die Einzellinse bei 480/644 nm erreicht das Ziel weiter.
 TEST(CliSynth, ColorStageOptions) {
     const std::string achromat = MKO_SOURCE_DIR "/data/systems/einzellinse_achromat_start.json";
     EXPECT_EQ(synth({achromat, "--color-module", "triplet"}).code, cli::kExitUsage);
@@ -644,8 +645,9 @@ TEST(CliSynth, ColorStageOptions) {
               cli::kExitUsage);
     const std::string help = synth({"--help"}).out;
     for (const char* o :
-         {"--split-spectrum", "--split-member-start", "--color-chromatic", "--color-module",
-          "--color-module-always", "--color-module-anomalous", "--color-module-incidence"}) {
+         {"--split-spectrum", "--split-member-start", "--no-split-spectrum",
+          "--no-split-member-start", "--color-chromatic", "--color-module", "--color-module-always",
+          "--color-module-anomalous", "--color-module-incidence"}) {
         EXPECT_NE(help.find(o), std::string::npos) << o;
     }
 
@@ -653,8 +655,22 @@ TEST(CliSynth, ColorStageOptions) {
     ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
     const nlohmann::json jp = nlohmann::json::parse(plain.out);
     EXPECT_FALSE(jp["options"].contains("color_rule_ext"));
-    EXPECT_FALSE(jp["options"]["split"].contains("spectrum_rank"));
-    EXPECT_FALSE(jp["options"]["split"].contains("member_start"));
+    // M6-T11b: Standard
+    EXPECT_EQ(jp["options"]["split"]["preselect"], false); // die Farbregel wählt selbst vor
+    EXPECT_EQ(jp["options"]["split"]["spectrum_rank"], nlohmann::json::array({480.0, 644.0}));
+    EXPECT_EQ(jp["options"]["split"]["member_start"], true);
+    EXPECT_EQ(jp["result"]["status"], "goal_reached");
+
+    const SynthCliResult off = synth({achromat, "--color-rule", "--no-split-spectrum",
+                                      "--no-split-member-start", "--max-elements", "3", "--json"});
+    ASSERT_EQ(off.code, cli::kExitOk) << off.err;
+    const nlohmann::json jo = nlohmann::json::parse(off.out);
+    EXPECT_TRUE(jo["options"]["split"]["spectrum_rank"].is_null());
+    EXPECT_EQ(jo["options"]["split"]["member_start"], false);
+    EXPECT_EQ(jo["result"]["status"], "goal_reached");
+    // M6-T11 (Bericht, Abschnitt 2): der Zweig „Startradien“ gewinnt, RMS kleiner als ohne
+    EXPECT_LT(jp["result"]["goal"]["max_rms_waves"].get<double>(),
+              jo["result"]["goal"]["max_rms_waves"].get<double>());
 
     const SynthCliResult with = synth(
         {achromat, "--split-spectrum", "--split-member-start", "--color-chromatic", "0.5",

@@ -358,6 +358,11 @@ def synth_options(args):
         opts.append('--split-spectrum')
     if getattr(args, 'farb_startradien', False):
         opts.append('--split-member-start')
+    # M6-T11b: Rang und Startradien sind Standard von synth; abschalten
+    if getattr(args, 'ohne_farb_spektrum_rang', False):
+        opts.append('--no-split-spectrum')
+    if getattr(args, 'ohne_farb_startradien', False):
+        opts.append('--no-split-member-start')
     if getattr(args, 'farb_chromatisch', None):
         opts += ['--color-chromatic', repr(args.farb_chromatisch)]
     if getattr(args, 'farb_modul', None):
@@ -1606,6 +1611,12 @@ def main():
     ap.add_argument('--farb-startradien', action='store_true',
                     help='M6-T11: Operator B mit zusätzlichem Zweig „Startradien des Glieds“ '
                          '(synth --split-member-start)')
+    ap.add_argument('--ohne-farb-spektrum-rang', action='store_true',
+                    help='M6-T11b: Rang der Vorauswahl nach dem Koeffizienten wie vor M6-T11b '
+                         '(synth --no-split-spectrum; der spektrale Rang ist Standard)')
+    ap.add_argument('--ohne-farb-startradien', action='store_true',
+                    help='M6-T11b: ohne Zweig „Startradien des Glieds“ wie vor M6-T11b '
+                         '(synth --no-split-member-start; der Zweig ist Standard)')
     ap.add_argument('--farb-chromatisch', type=float, default=None, metavar='S',
                     help='M6-T11: Farbbedarf aus den chromatischen Seidel-Termen, Anteil S am '
                          'größten RMS (synth --color-chromatic S)')

@@ -73,6 +73,15 @@ Variable begrenzt (Dicken nicht unter die Lage einer Geisterplatte im Spalt); de
 ``--stoer-seed``, Benchmark und k. Die Zusammenfassung (``--zusammenfassung``) fasst ``_s<k>`` wie
 Wiederholungen zusammen (Treffer x/N, Median, Spanne).
 
+Referenz der Regel (M6-T11b, Entscheidung Maintainer 2026-11-22): der **Median über fünf gestörte
+Starts** (``V3RS_s1`` … ``_s5``, σ = 2 %), nicht der Einzellauf (die Regel ist stark
+pfadabhängig, Bericht Abschnitte 12.4 und 13.3). Ohne ``--gestoerte-starts`` rechnen die
+Regel-Varianten (V3, V3AL) deshalb den ungestörten Einzellauf und ``RULE_REFERENCE_STARTS``
+gestörte Starts; ``--regel-einzellauf`` rechnet nur den Einzellauf (wie bis M10-T7e),
+``--gestoerte-starts N`` gilt wie bisher für alle Varianten (0: nur Einzelläufe). Tabelle und
+Zusammenfassung führen die Referenz als eigene Zeile (``V3RS Referenz (Median 5 gestörte
+Starts)``), den Einzellauf als ``V3RS Einzellauf``.
+
 Ollama: ``--num-ctx`` (Standard 65536) setzt die Kontextlänge; größer als das Maximum des
 Modells (``/api/show``) wird auf das Maximum begrenzt, 0 heißt Modellmaximum.
 """
@@ -104,8 +113,13 @@ NA_TOLERANCE = 1e-3
 #: Referenzsphäre der Benchmarks (Entscheidung Maintainer 2026-11-20) und Kürzel im Ergebnisnamen
 DEFAULT_REFERENCE_SPHERE = "image_infinite"
 REFERENCE_SUFFIX = {"image_infinite": "RS", "image_exit_pupil": "RSAP", "last_surface": ""}
-#: Referenz der Regel in Bericht und Tabelle
+#: Referenz der Regel in Bericht und Tabelle: Median dieser Variante über RULE_REFERENCE_STARTS
+#: gestörte Starts (M6-T11b, Entscheidung Maintainer 2026-11-22); der Einzellauf bleibt daneben
 RULE_REFERENCE = "V3RS"
+RULE_REFERENCE_STARTS = 5
+#: Grundvarianten der Regel (ohne --gestoerte-starts: Einzellauf plus RULE_REFERENCE_STARTS
+#: gestörte Starts)
+RULE_VARIANTS = ("V3", "V3AL")
 VARIANTS = ("V0", "V1", "V2", "V3", "V3AL", "LM", "V4")
 #: Kontextlänge für Ollama (gpt-oss:20b brach in M10-T7b mit 32768 ab, E12)
 DEFAULT_NUM_CTX = 65536
@@ -625,10 +639,18 @@ def parser() -> argparse.ArgumentParser:
                     help="Wiederholungen mit eigenem Kürzel <tag>_w<N> (M10-T7d), z. B. 1-3; "
                     "Läufe mit Modell sind nicht deterministisch, Ergebnisse werden nicht "
                     "überschrieben")
-    ap.add_argument("--gestoerte-starts", type=int, default=0, metavar="N",
-                    help="jede Variante zusätzlich auf N leicht gestörten Starts (Kürzel "
-                    "<tag>_s<k>, M10-T7e); gestört werden Startwerte der Krümmungs- und "
-                    "Dickenvariablen im Rahmen ihrer Schranken")
+    ap.add_argument("--gestoerte-starts", type=int, default=None, metavar="N",
+                    help="jede Variante auf N leicht gestörten Starts statt des Einzellaufs "
+                    "(Kürzel <tag>_s<k>, M10-T7e; 0: nur Einzelläufe); gestört werden "
+                    "Startwerte der Krümmungs- und Dickenvariablen im Rahmen ihrer Schranken. "
+                    "Ohne die Option rechnen die Regel-Varianten Einzellauf und "
+                    f"{RULE_REFERENCE_STARTS} gestörte Starts (Referenz der Regel, M6-T11b)")
+    ap.add_argument("--nur-starts", default=None, metavar="LISTE",
+                    help="nur diese Starts rechnen (0 = Einzellauf, k = gestörter Start k; "
+                    "z. B. 0,1 oder 2-3), um Läufe auf mehrere Prozesse zu verteilen")
+    ap.add_argument("--regel-einzellauf", action="store_true",
+                    help="Regel-Varianten nur als Einzellauf ohne gestörte Starts (wie bis "
+                    "M10-T7e)")
     ap.add_argument("--stoer-sigma", type=float, default=0.02,
                     help="relative Störung σ der Radien und Dicken (Standard 0,02)")
     ap.add_argument("--stoer-seed", type=int, default=0,
@@ -639,6 +661,21 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--neu-bewerten", action="store_true",
                     help="vorhandene Ergebnisse mit den aktuellen Regeln neu bewerten")
     return ap
+
+
+def _numbers(spec, option, lowest=1) -> list:
+    """Nummernliste aus ``"1,2"``, ``"1-3"`` oder ``"4"`` (ab ``lowest``)."""
+    out = []
+    for part in str(spec).split(","):
+        lo, _, hi = part.partition("-")
+        try:
+            a, b = int(lo), int(hi or lo)
+        except ValueError:
+            raise SystemExit(f"{option}: {spec!r} ist keine Nummernliste") from None
+        if a < lowest or b < a:
+            raise SystemExit(f"{option}: ungültiger Bereich {part!r}")
+        out.extend(n for n in range(a, b + 1) if n not in out)
+    return out
 
 
 def repetitions(spec) -> list:
@@ -666,12 +703,31 @@ def rep_tag(tag, n, k=None) -> str:
     return tag if k is None else f"{tag}_s{k}"
 
 
+def starts_of(base, args) -> list:
+    """Starts einer Grundvariante: ``None`` = ungestörter Einzellauf, k = gestörter Start k.
+    ``--gestoerte-starts N`` gilt für alle Varianten (N gestörte Starts, 0: Einzellauf); ohne die
+    Option rechnen die Regel-Varianten Einzellauf und ``RULE_REFERENCE_STARTS`` gestörte Starts
+    (Referenz der Regel, M6-T11b), mit ``--regel-einzellauf`` nur den Einzellauf."""
+    n = args.gestoerte_starts
+    if n is not None:
+        out = list(range(1, n + 1)) if n else [None]
+    elif base in RULE_VARIANTS and not getattr(args, "regel_einzellauf", False):
+        out = [None] + list(range(1, RULE_REFERENCE_STARTS + 1))
+    else:
+        out = [None]
+    only = getattr(args, "nur_starts", None)
+    if only is not None:
+        keep = {None if k == 0 else k for k in _numbers(only, "--nur-starts", lowest=0)}
+        out = [k for k in out if k in keep]
+    return out
+
+
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     reps = repetitions(args.wiederholung)
-    if args.gestoerte_starts < 0 or not args.stoer_sigma >= 0:
+    if (args.gestoerte_starts is not None and args.gestoerte_starts < 0) or \
+            not args.stoer_sigma >= 0:
         raise SystemExit("--gestoerte-starts und --stoer-sigma müssen ≥ 0 sein")
-    starts = list(range(1, args.gestoerte_starts + 1)) if args.gestoerte_starts else [None]
     out = pathlib.Path(args.out)
     work_root = pathlib.Path(args.work) if args.work else out.parent / f"{out.name}-arbeit"
     if args.neu_bewerten:
@@ -708,7 +764,8 @@ def main(argv=None) -> int:
             b_out = out / "private" if bench.get("private") else out
             b_work.mkdir(parents=True, exist_ok=True)
             b_out.mkdir(parents=True, exist_ok=True)
-            for v, n, k in ((v, n, k) for v in variants for n in reps for k in starts):
+            for v, n, k in ((v, n, k) for v in variants for n in reps
+                            for k in starts_of(variant_config(v, args.referenzsphaere)[0], args)):
                 base, rs = variant_config(v, args.referenzsphaere)
                 tag = rep_tag(tag_of(v, args), n, k)
                 if bench.get("private") and base == "LM" and args.decider == "claude":
@@ -824,7 +881,12 @@ def table(out) -> str:
             f"{fmt(r.get('fallback_decisions'))} | {tokens} | {cost} |")
     note = (f"Referenz der Regel: {RULE_REFERENCE} (V3 mit `reference_sphere: image_infinite`, "
             "ADR-0017; Kürzel RS = image_infinite, RSAP = image_exit_pupil, ohne Zusatz = "
-            "last_surface)\n\n")
+            f"last_surface), als Median über {RULE_REFERENCE_STARTS} gestörte Starts "
+            f"({RULE_REFERENCE}_s1 … _s{RULE_REFERENCE_STARTS}, M6-T11b); {RULE_REFERENCE} allein "
+            "ist der Einzellauf\n\n")
+    ref = rule_reference_table(out)
+    if ref:
+        note += ref + "\n\n"
     head = note + ("| Bench. | Variante | Ziel | NA | RMS max [Wellen] | RMS AP³ | Elemente | LM-Läufe¹ | Zeit [s] | "
             "Entsch. | abgelehnt² | Entsch. mit Fehler | Rückfälle | Tokens Prompt / Ausgabe | Kosten |\n"
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
@@ -837,6 +899,62 @@ def _median(xs):
         return None
     m = len(xs) // 2
     return xs[m] if len(xs) % 2 else 0.5 * (xs[m - 1] + xs[m])
+
+
+def rule_reference(out) -> dict:
+    """Referenz der Regel pro Benchmark (M6-T11b): Median von NA, RMS und Elementzahl über die
+    gestörten Starts ``<RULE_REFERENCE>_s<k>``, Ziel-Treffer, Zahl der Starts und der Einzellauf
+    ``<RULE_REFERENCE>`` daneben (``None``, wenn er fehlt). Benchmarks ohne gestörte Starts der
+    Regel fehlen."""
+    runs, single = {}, {}
+    pat = re.compile(rf"^{re.escape(RULE_REFERENCE)}_s\d+$")
+    for p in sorted(pathlib.Path(out).glob("B*_*.json")):
+        r = json.loads(p.read_text(encoding="utf-8"))
+        if pat.match(r.get("tag", "")):
+            runs.setdefault(r["benchmark"], []).append(r.get("best") or {})
+        elif r.get("tag") == RULE_REFERENCE:
+            single[r["benchmark"]] = r.get("best") or {}
+    ref = {}
+    for b, best in sorted(runs.items()):
+        na = [x.get("na") for x in best if x.get("na") is not None]
+        ref[b] = {"starts": len(best), "goal": sum(1 for x in best if x.get("goal")),
+                  "na": _median(na), "rms": _median([x.get("rms_max_waves") for x in best]),
+                  "elements": _median([x.get("elements") for x in best]),
+                  "na_range": (min(na), max(na)) if na else None,
+                  "single": single.get(b)}
+    return ref
+
+
+def rule_reference_table(out) -> str:
+    """Tabelle der Referenz der Regel (``rule_reference``); leer ohne gestörte Starts."""
+    ref = rule_reference(out)
+    if not ref:
+        return ""
+    rows = []
+    for b, x in ref.items():
+        s = x["single"] or {}
+        rng = "–" if x["na_range"] is None else \
+            f"{fmt(x['na_range'][0], 3)}–{fmt(x['na_range'][1], 3)}"
+        el = x["elements"]
+        el_s = "–" if el is None else (str(int(el)) if el == int(el) else fmt(el, 1))
+        rows.append(f"| {b} | {x['goal']}/{x['starts']} | {fmt(x['na'], 3)} ({rng}) | "
+                    f"{fmt(x['rms'])} | {el_s} | "
+                    f"{('ja' if s.get('goal') else 'nein') if s else '–'} | "
+                    f"{fmt(s.get('na'), 3)} | {fmt(s.get('rms_max_waves'))} |")
+    head = (f"| Bench. | Referenz {RULE_REFERENCE}: Ziel | NA Median (Spanne) | RMS Median | "
+            "Elemente Median | Einzellauf: Ziel | NA | RMS |\n"
+            "|---|---|---|---|---|---|---|---|")
+    return head + "\n" + "\n".join(rows)
+
+
+def summary_label(group, groups_of_bench) -> str:
+    """Beschriftung einer Gruppe der Zusammenfassung (M6-T11b): die gestörten Starts der Regel
+    sind die Referenz, der ungestörte Lauf daneben der Einzellauf. ``{n}`` = Zahl der Läufe."""
+    if group == f"{RULE_REFERENCE}_s*":
+        return f"{RULE_REFERENCE} Referenz (Median {{n}} gestörte Starts)"
+    if group == RULE_REFERENCE and f"{RULE_REFERENCE}_s*" in groups_of_bench:
+        return f"{RULE_REFERENCE} Einzellauf"
+    return group
 
 
 def summary_group(tag) -> str:
@@ -856,7 +974,17 @@ def summary(out) -> str:
         base = summary_group(r["tag"])
         groups.setdefault((r["benchmark"], base), []).append(r)
     rows = []
-    for (b, tag), rs in sorted(groups.items()):
+    benches = {}
+    for b, g in groups:
+        benches.setdefault(b, set()).add(g)
+
+    def order(item):  # Referenz der Regel zuerst, dann ihr Einzellauf, sonst alphabetisch
+        (b, g), _ = item
+        rank = 0 if g == f"{RULE_REFERENCE}_s*" else 1 if g == RULE_REFERENCE else 2
+        return (b, rank, g)
+
+    for (b, tag), rs in sorted(groups.items(), key=order):
+        label = summary_label(tag, benches[b]).format(n=len(rs))
         best = [r.get("best") or {} for r in rs]
         hits = sum(1 for x in best if x.get("goal"))
         na = [x.get("na") for x in best]
@@ -873,7 +1001,7 @@ def summary(out) -> str:
         med = _median(el)
         med_s = "–" if med is None else (str(int(med)) if med == int(med) else fmt(med, 1))
         el_s = "–" if not el else f"{med_s} ({min(el)}–{max(el)})"
-        rows.append(f"| {b} | {tag} | {hits}/{len(rs)} | {fmt(top.get('na'), 3)} | "
+        rows.append(f"| {b} | {label} | {hits}/{len(rs)} | {fmt(top.get('na'), 3)} | "
                     f"{fmt(_median(na), 3)} | {fmt(top.get('rms_max_waves'))} | "
                     f"{fmt(_median(rms))} | {el_s} | {cost_s} |")
     head = ("| Bench. | Variante | Ziel | NA bester Lauf | NA Median | RMS bester Lauf | "

@@ -250,6 +250,57 @@ def test_insert_module_raises_thickness_to_bound(session, tmp_path):
     assert bad["results"][0]["status"] == "error"
 
 
+def test_insert_module_shrinks_shell_negative_working_distance(session):
+    """M6-T11b (Frage 3 aus M10-T7e, 13.4): Würde der Arbeitsabstand nach dem Nachfokussieren der
+    aplanatischen Schale negativ (Testsystem: Lage 1 mm, Dicke 12 mm → −3,17 mm), verkleinert
+    insert_module die Schale (Dicke × 0,5) und setzt sie ein. Orakel: dasselbe System wie das
+    direkte Einfügen mit der verkleinerten Dicke 6 mm (Arbeitsabstand > 0); Warnung in Bericht
+    und Verlauf."""
+    from mikroptim.design import operators
+
+    shell = {"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
+             "position": 1.0, "thickness": 12.0, "glasses": [{"name": "N-BK7"}]}
+    [res] = apply_ok(session, 0, shell)
+    rep = res["reports"][0]
+    assert rep["thickness"] == 12.0 * operators.SHELL_SHRINK_FACTOR == 6.0
+    assert rep["working_distance"] > 0
+    assert len(rep["warnings"]) == 1 and "verkleinert" in rep["warnings"][0]
+    assert "1 Schritten auf Dicke 6 mm" in rep["warnings"][0]
+    assert "Warnung: Arbeitsabstand nach dem Nachfokussieren" in session.history()[-1]
+    [direct] = apply_ok(session, 0, {**shell, "thickness": 6.0})
+    assert "warnings" not in direct["reports"][0]
+    a = load(session, res["new_candidates"][0])
+    b = load(session, direct["new_candidates"][0])
+    assert a["surfaces"] == b["surfaces"]
+    assert a["surfaces"][-1]["thickness"] == rep["working_distance"] > 0
+
+
+def test_insert_module_rejects_when_shrink_insufficient(session, monkeypatch):
+    """M6-T11b: Reicht das Verkleinern nicht (hier höchstens zwei Schritte: Lage 14,38 mm, Dicke
+    0,05 → 0,0125 mm, Arbeitsabstand −0,29 … −1,7 mm), verwirft insert_module das Modul mit
+    klarer Meldung (precondition) und baut kein System. Mit allen Schritten wird die Schale so
+    dünn, dass der paraxiale Arbeitsabstand wieder positiv ist; sie liegt aber hinter dem
+    Schnittpunkt des Randstrahls mit der Achse (Q < 0, 14,34 mm), auch das wird verworfen."""
+    from mikroptim.design import operators
+
+    n0 = len(session.candidates())
+    shell = {"action": "insert_module", "module": "front.shell_ca", "after_surface": 7,
+             "position": 14.38, "thickness": 0.05, "glasses": [{"name": "N-BK7"}]}
+    monkeypatch.setattr(operators, "SHELL_SHRINK_STEPS", 2)
+    entry = session.apply(0, response(shell), decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "error" and res["code"] == "precondition", res
+    assert "aplanatic_shell verworfen" in res["message"]
+    assert "bleibt negativ" in res["message"]
+    assert "0.05 → 0.0125 mm in 2 Schritten" in res["message"]
+    assert not res.get("new_candidates")
+    monkeypatch.undo()
+    entry = session.apply(0, response(shell), decider={"kind": "test"})
+    res = entry["results"][0]
+    assert res["status"] == "error" and res["code"] == "precondition", res
+    assert "hinter dem Schnittpunkt des Randstrahls" in res["message"]
+    assert len(session.candidates()) == n0
+
 def test_thickness_homotopy_keeps_ghost_plates_in_gap(session):
     """M10-T7e: Liegt eine Geisterplatte im Luftspalt hinter dem wachsenden Modul, bleibt sie im
     verkürzten Spalt (wie set_stage in synth); vorher lehnte optimize das System ab (zweimal in
