@@ -238,3 +238,77 @@ def test_cycle_run_stops_at_goal_or_stall(tool, tmp_path, monkeypatch):
     assert summary["final_state"]["spectrum"] == "voll"
     assert summary["final_state"]["field"] == pytest.approx(0.8)
     assert len(summary["stages"]) == 3
+
+
+def test_synth_options_color_stage(tool):
+    """M6-T11: Optionen der Farbstufe werden durchgereicht; ohne sie bleibt die Liste wie bisher."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=True, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[])
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.synth_options(args()) == ["--color-rule"]
+    assert tool.synth_options(args(farb_spektrum_rang=True, farb_startradien=True,
+                                   farb_chromatisch=0.5, farb_modul="doublet",
+                                   farb_modul_immer=True, farb_anomal=True)) == [
+        "--color-rule", "--split-spectrum", "--split-member-start", "--color-chromatic", "0.5",
+        "--color-module", "doublet", "--color-module-always", "--color-module-anomalous"]
+    # ohne Modul keine Modul-Unteroptionen
+    assert tool.synth_options(args(farb_modul_immer=True, farb_anomal=True)) == ["--color-rule"]
+
+
+def test_prune_point(tool):
+    """M6-T11: Rückbau bei Q × Parameter der Stufe: Apertur (Pupillenradius), Feld, Farbe
+    (Spektrumbreite um λ_ref)."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    f = s.get("target", {}).get("focal_length", tool.FOCAL)
+    a = json.loads(json.dumps(s))
+    assert tool.prune_point(a, "apertur", 0.85, 0.6, 0.5) == pytest.approx((0.51, 0.5))
+    assert a["surfaces"][0]["semi_diameter"] == pytest.approx(f * 0.51)
+    b = json.loads(json.dumps(s))
+    assert tool.prune_point(b, "feld", 0.8, 0.6, 0.5) == pytest.approx((0.6, 0.4))
+    assert b == s  # Feld über --start-field, die Datei bleibt
+    c = json.loads(json.dumps(s))
+    tool.set_spectrum(c, *tool.SPECTRA["voll"])
+    assert tool.prune_point(c, "farbe", 0.5, 0.6, 0.5) == (0.6, 0.5)
+    ref = c["spectrum"]["reference_nm"]
+    for w, w0 in zip(c["spectrum"]["wavelengths_nm"], tool.SPECTRA["voll"][0]):
+        assert w == pytest.approx(ref + 0.5 * (w0 - ref))
+
+
+def test_reopen_after_prune(tool, tmp_path, monkeypatch):
+    """M6-T11: nach dem Rückbau bei Q × NA zurück zum erreichten Punkt ohne Einfügen; erreicht
+    synth ihn nicht, bleibt der Stand vor dem Rückbau (None)."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    r = tool.Runner("mikroptim", str(tmp_path))
+    pruned = tmp_path / "c0_apertur_rueckbau.json"
+    tool.save(s, str(pruned))
+    calls = []
+    reach = {"na": 0.6}
+
+    def fake_synth(name, start, options):
+        calls.append((name, options))
+        tool.save({"result": {"status": "goal_reached",
+                              "point": {"aperture": reach["na"], "field": 1.0}}},
+                  r.path(name + "_log.json"))
+        out = r.path(name + ".json")
+        tool.save(s, out)
+        return out
+
+    monkeypatch.setattr(r, "synth", fake_synth)
+    out, info = tool.reopen_after_prune(r, "c0_apertur", str(pruned), "apertur", 0.6, 1.0, {},
+                                        ["--rings", "16"], [])
+    assert out == r.path("c0_apertur_wieder.json") and info["reached"]
+    name, opts = calls[0]
+    assert name == "c0_apertur_wieder"
+    assert opts[:2] == ["--target-na", "0.6"]
+    assert opts[-2:] == ["--max-elements", str(tool.glass_elements(s))]
+    reach["na"] = 0.55
+    out, info = tool.reopen_after_prune(r, "c1_apertur", str(pruned), "apertur", 0.6, 1.0, {},
+                                        [], [])
+    assert out is None and not info["reached"]
+    out, info = tool.reopen_after_prune(r, "c2_farbe", str(pruned), "farbe", 0.6, 1.0, {}, [], [])
+    assert out == str(pruned) and info == {"reached": True, "via": "z2"}

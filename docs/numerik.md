@@ -1078,6 +1078,8 @@ $$S_{II} = \sum_i \frac{y^2K_i^2H}{2}\left[\frac{n_i+1}{n_i(n_i-1)}B_i + \frac{2
 
 Die Startradien gelten für λ_ref und das dünne Glied. Dicken, Abstände zu anderen Gliedern und höhere Ordnungen gleicht danach die Optimierung aus.
 
+**Glied im konvergenten Bündel (M6-T11).** Mit `incoming_slope` = u₁ (Neigung des Randstrahls vor dem Glied bei y = 1, also u/y in 1/mm, Vorzeichen wie der Aberrationsbericht, n′u′ = nu − yφ) gilt u_i = u₁ − Σ_{j<i} K_j statt u₁ = 0; die Formeln für S_I und S_II bleiben (K_i C_i = 2u_i − K_i hängt nicht von c₁ ab, S_I bleibt quadratisch, S_II linear in c₁). Standard 0 (kollimiert, bitgleich wie bisher). Operator B nimmt für die Startradien des Glieds (`apply_member_start`) u/y vor der zu teilenden Linse aus dem paraxialen Randstrahl des Systems. Prüfung `GlassPreselection.MemberShapeWithIncomingSlope`: Glied hinter einer dünnen Linse mit Brechkraft K₀ (u₁ = −K₀), Seidel-Summen der Flächen des Glieds aus dem Aberrationsbericht gegen die Formel innerhalb `kThinMemberSeidel`, S_I = 0 bei der Biegung `MinSpherical`.
+
 **Prüfungen M11-T5g** (Tests `GlassPreselection.*`, `GlassPreselectionRaytrace.*`, `CliGlasses.*`, Toleranzen `kThinMemberSeidel`, `kGlassPreselectionRaytraceTopRank`):
 
 | Prüfung | Ergebnis |

@@ -106,9 +106,18 @@ struct SynthArgs {
     // Neustart: Verschiebungen θ aus dem Protokoll bzw. der JSON-Ausgabe eines früheren Laufs
     std::string shifts_from;
     double al_scale = 1.0;
-    bool split_preselect = false;     // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
-    bool split_start_target = false;  // und das freigegebene Glas dort starten
-    bool split_achromat = false;      // M11-T5e: Achromat-Start des geteilten Glieds
+    bool split_preselect = false;    // M11-T5: Zielglas von Operator B aus der Glasvorauswahl
+    bool split_start_target = false; // und das freigegebene Glas dort starten
+    bool split_achromat = false;     // M11-T5e: Achromat-Start des geteilten Glieds
+    // M6-T11: Rang nach dem spektralen Rest, Startradien des Glieds, Farbbedarf aus den
+    // chromatischen Seidel-Termen, Kittglied-Modul der Farbregel
+    bool split_spectrum = false;
+    bool split_member = false;
+    double color_chromatic = 0.0;
+    OpticalHomotopyOptions::ColorModule color_module = OpticalHomotopyOptions::ColorModule::None;
+    bool color_module_always = false;
+    bool color_module_anomalous = false;
+    std::optional<double> color_module_incidence;
     bool color_rule = false;          // M11-T5c
     int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
     bool spectrum_continuous = false; // M11-T5f: stetige Spektrumbreite
@@ -237,6 +246,35 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--split-achromat") {
             a.split_preselect = true;
             a.split_achromat = true;
+        } else if (arg == "--split-spectrum") {
+            a.split_preselect = true;
+            a.split_spectrum = true;
+        } else if (arg == "--split-member-start") {
+            a.split_preselect = true;
+            a.split_member = true;
+        } else if (arg == "--color-chromatic") {
+            a.color_rule = true;
+            a.color_chromatic = positive(arg, next_value(args, i, arg));
+        } else if (arg == "--color-module") {
+            a.color_rule = true;
+            const std::string_view v = next_value(args, i, arg);
+            if (v == "doublet") {
+                a.color_module = OpticalHomotopyOptions::ColorModule::Doublet;
+            } else if (v == "strong") {
+                a.color_module = OpticalHomotopyOptions::ColorModule::StrongDoublet;
+            } else {
+                throw UsageError("--color-module erwartet doublet oder strong, nicht '" +
+                                 std::string(v) + "'");
+            }
+        } else if (arg == "--color-module-always") {
+            a.color_module_always = true;
+        } else if (arg == "--color-module-anomalous") {
+            a.color_module_anomalous = true;
+        } else if (arg == "--color-module-incidence") {
+            a.color_module_incidence = positive(arg, next_value(args, i, arg));
+            if (!(*a.color_module_incidence < 90.0)) {
+                throw UsageError("--color-module-incidence muss in (0, 90) liegen");
+            }
         } else if (arg == "--split-start-target") {
             a.split_preselect = true;
             a.split_start_target = true;
@@ -491,6 +529,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.spectrum_continuous && a.spectrum_stages > 0) {
         throw UsageError("--spectrum-continuous und --spectrum-stages schließen sich aus");
     }
+    if ((a.color_module_always || a.color_module_anomalous || a.color_module_incidence) &&
+        a.color_module == OpticalHomotopyOptions::ColorModule::None) {
+        throw UsageError("--color-module-always, --color-module-anomalous und "
+                         "--color-module-incidence verlangen --color-module");
+    }
     if (a.beam && a.predictor) {
         throw UsageError("--predictor gibt es nur ohne --beam");
     }
@@ -637,6 +680,17 @@ void print_synth_usage(std::ostream& out) {
            "hintere\n"
            "                            Außenkrümmung aus dem dünnen Achromat, Zielglas als Start\n"
            "  --split-start-target      ebenso, und das freigegebene Glas startet beim Zielglas\n"
+           "  --split-spectrum          Vorauswahl nach dem spektralen Rest über das Spektrum der\n"
+           "                            Datei statt nach dem Koeffizienten (M6-T11)\n"
+           "  --split-member-start      Operator B: weiterer Zweig mit den Startradien des ganzen\n"
+           "                            Glieds (S_I = 0, thin_member_shape; M6-T11)\n"
+           "  --color-chromatic S       Farbregel auch, wenn der chromatische Anteil aus dem\n"
+           "                            Aberrationsbericht >= S x größter RMS (M6-T11)\n"
+           "  --color-module K          Farbregel: Kittglied-Modul K = doublet (Null-Kittglied)\n"
+           "                            oder strong (starkes Kittglied), wenn keine Linse teilbar\n"
+           "  --color-module-always     Modul statt Teilen\n"
+           "  --color-module-anomalous  Modul mit einem anomalen Glas (|ΔP_g,F| >= 0,01)\n"
+           "  --color-module-incidence W  Einfallswinkel an der Kittfläche (strong, Standard 40)\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
            "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
@@ -803,6 +857,19 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         o.split.start_at_target = a.split_start_target;
         o.split.achromat_start = a.split_achromat;
+        // M6-T11: Rang über das Zielspektrum (Spektrum der Startdatei = letzte Spektrumstufe
+        // bzw. Breite 1 der stetigen Homotopie); monochromatisch: Koeffizient wie bisher
+        if (a.split_spectrum && start.system.spectrum.wavelengths_nm.size() >= 2) {
+            o.split.preselect_wavelengths_nm = start.system.spectrum.wavelengths_nm;
+        }
+        o.split.member_start = a.split_member;
+        o.color_chromatic_share = a.color_chromatic;
+        o.color_module = a.color_module;
+        o.color_module_always = a.color_module_always;
+        o.color_module_anomalous = a.color_module_anomalous;
+        if (a.color_module_incidence) {
+            o.color_module_incidence_deg = *a.color_module_incidence;
+        }
         o.lm.stall_window = a.stall_window;
         o.lm.stall_tolerance = a.stall_tolerance;
         o.lm.jacobian.quadrature.rings = a.rings;
@@ -955,6 +1022,32 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        (a.field_glass.empty() ? std::string(", Glas der Linse vor dem Spalt")
                                               : ", Glas " + a.field_glass));
             }
+            if (a.color_chromatic > 0.0 ||
+                a.color_module != OpticalHomotopyOptions::ColorModule::None || a.split_spectrum ||
+                a.split_member) {
+                // M6-T11: nur mit den Optionen
+                std::string t;
+                const auto add = [&t](const std::string& s) { t += (t.empty() ? "" : ", ") + s; };
+                if (a.color_chromatic > 0.0) {
+                    add("chromatischer Anteil >= " + fixed(a.color_chromatic, 3) + " x RMS");
+                }
+                if (a.color_module != OpticalHomotopyOptions::ColorModule::None) {
+                    add(std::string("Modul ") +
+                        (a.color_module == OpticalHomotopyOptions::ColorModule::Doublet
+                             ? "Null-Kittglied"
+                             : "starkes Kittglied (" + fixed(o.color_module_incidence_deg, 1) +
+                                   "°)") +
+                        (a.color_module_always ? " statt Teilen" : " ohne teilbare Linse") +
+                        (a.color_module_anomalous ? ", anomales Glas" : ""));
+                }
+                if (a.split_spectrum) {
+                    add("Vorauswahl nach dem spektralen Rest");
+                }
+                if (a.split_member) {
+                    add("Startradien des Glieds");
+                }
+                kv(out, "Farbregel (M6-T11)", t);
+            }
             if (a.tol_alpha > 0.0) {
                 kv(out, "Toleranzbewusst",
                    "alpha = " + fixed(a.tol_alpha, 4) + ", " +
@@ -1063,6 +1156,25 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+        }
+        // M6-T11: nur mit den Optionen (ohne sie bleibt das Protokoll wie bisher)
+        if (a.split_spectrum || a.split_member) {
+            options["split"]["spectrum_rank"] =
+                a.split_spectrum ? Json(o.split.preselect_wavelengths_nm) : Json(nullptr);
+            options["split"]["member_start"] = a.split_member;
+        }
+        if (a.color_chromatic > 0.0 ||
+            a.color_module != OpticalHomotopyOptions::ColorModule::None) {
+            options["color_rule_ext"] = Json{
+                {"chromatic_share",
+                 a.color_chromatic > 0.0 ? Json(a.color_chromatic) : Json(nullptr)},
+                {"module",
+                 a.color_module == OpticalHomotopyOptions::ColorModule::None      ? Json(nullptr)
+                 : a.color_module == OpticalHomotopyOptions::ColorModule::Doublet ? Json("doublet")
+                                                                                  : Json("strong")},
+                {"always", a.color_module_always},
+                {"anomalous", a.color_module_anomalous},
+                {"incidence_deg", o.color_module_incidence_deg}};
         }
         if (a.prune || a.element_budget) {
             // M6-T9: nur mit der Option

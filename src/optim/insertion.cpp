@@ -722,6 +722,7 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
                        const std::string& source) {
     const MaterialSpec& lens_glass = system.surfaces[sz(lens)].material;
     plan.secondary_spectrum = std::numeric_limits<double>::quiet_NaN();
+    plan.spectral_residual = std::numeric_limits<double>::quiet_NaN();
     // Glasvorauswahl (M11-T5): Partner des Linsenglases aus dem Katalog
     double preselect_front_fraction = std::numeric_limits<double>::quiet_NaN();
     if (options.preselect &&
@@ -746,6 +747,10 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
             po.fixed = {static_cast<int>(it - g.begin())};
             po.max_power_sum = options.preselect_max_power_sum;
             po.max_results = 1;
+            // M6-T11: Rang nach dem spektralen Rest (M11-T5g) statt nach dem Koeffizienten
+            if (options.preselect_wavelengths_nm.size() >= 2) {
+                po.wavelengths_nm = options.preselect_wavelengths_nm;
+            }
             const std::vector<PreselectedGlasses> best = preselect_glasses(g, po);
             if (!best.empty()) {
                 plan.preselected = true;
@@ -753,6 +758,9 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
                 plan.target_glass.kind = MaterialKind::Catalog;
                 plan.target_glass.name = g[sz(best[0].glasses[1])].name;
                 plan.secondary_spectrum = best[0].residual;
+                if (!po.wavelengths_nm.empty()) {
+                    plan.spectral_residual = best[0].spectral_residual;
+                }
                 // Anteil des vorderen Teils an der Brechkraft (φ = 1): hinten frei → vorn Linse
                 preselect_front_fraction =
                     options.free_part == 1 ? best[0].powers[0] : best[0].powers[1];
@@ -855,7 +863,11 @@ SplitPlan finish_split(const SystemDescription& system, const GlassCatalog& cata
     os << "Operator " << (anomalous ? "B (anomal)" : "B") << ": Linse " << lens << "/" << lens + 1
        << " (nu_d = " << num(plan.abbe_lens) << "), Zielglas "
        << (plan.preselected ? "aus der Glasvorauswahl " + plan.target_glass.name +
-                                  " (sekundäres Spektrum " + num(plan.secondary_spectrum) + ")"
+                                  " (sekundäres Spektrum " + num(plan.secondary_spectrum) +
+                                  (std::isfinite(plan.spectral_residual)
+                                       ? ", spektraler Rest " + num(plan.spectral_residual)
+                                       : std::string()) +
+                                  ")"
                             : "der Platte " + std::to_string(plan.plate))
        << (source.empty() ? std::string() : " [" + source + "]")
        << " (nu_d = " << num(plan.abbe_target) << "), c_s = " << num(cs) << " (" << cs_from
@@ -996,6 +1008,70 @@ bool apply_achromat_start(SystemDescription& system, const SplitPlan& plan,
     }
     cement.curvature = cs;
     back.curvature = c2n;
+    return true;
+}
+
+bool apply_member_start(SystemDescription& system, const SplitPlan& plan,
+                        const GlassCatalog& catalog, double lambda_nm, double incoming_slope) {
+    if (!plan.preselected || !std::isfinite(plan.front_power_fraction)) {
+        return false;
+    }
+    const int L = plan.split.lens_surface;
+    if (L < 1 || L + 2 >= static_cast<int>(system.surfaces.size())) {
+        return false;
+    }
+    Surface& front = system.surfaces[sz(L)];
+    Surface& cement = system.surfaces[sz(L + 1)];
+    Surface& back = system.surfaces[sz(L + 2)];
+    // Glas der ungeteilten Linse: das des nicht freigegebenen Teils (wie apply_achromat_start)
+    const MaterialSpec lens_glass = plan.free_surface == L + 1 ? front.material : cement.material;
+    const MaterialSpec& front_glass = plan.free_surface == L ? plan.target_glass : lens_glass;
+    const MaterialSpec& back_glass = plan.free_surface == L + 1 ? plan.target_glass : lens_glass;
+    const double n_lens = material_index(lens_glass, lambda_nm, catalog);
+    const double n_front = material_index(front_glass, lambda_nm, catalog);
+    const double n_back = material_index(back_glass, lambda_nm, catalog);
+    if (!(n_lens > 1.0) || !(n_front > 1.0) || !(n_back > 1.0)) {
+        return false;
+    }
+    const double phi = (n_lens - 1.0) * (front.curvature - back.curvature);
+    const double phi1 = plan.front_power_fraction * phi;
+    const std::array<double, 2> n{n_front, n_back};
+    const std::array<double, 2> k{phi1, phi - phi1};
+    ThinMemberShape shape;
+    try {
+        shape = thin_member_shape(n, k, MemberBending::MinSpherical, incoming_slope);
+    } catch (const std::invalid_argument&) {
+        return false;
+    }
+    if (shape.curvatures.size() != 3) {
+        return false;
+    }
+    for (const double c : shape.curvatures) {
+        if (!std::isfinite(c)) {
+            return false;
+        }
+    }
+    // Schranken der Krümmungsvariablen
+    if (system.variables) {
+        for (const VariableSpec& v : system.variables->items) {
+            if (v.type != VariableType::Curvature) {
+                continue;
+            }
+            for (int j = 0; j < 3; ++j) {
+                const int surf = L + j;
+                const double value = shape.curvatures[sz(j)];
+                const bool covers =
+                    v.selection == SurfaceSelection::All ||
+                    std::find(v.surfaces.begin(), v.surfaces.end(), surf) != v.surfaces.end();
+                if (covers && ((v.min && value < *v.min) || (v.max && value > *v.max))) {
+                    return false;
+                }
+            }
+        }
+    }
+    front.curvature = shape.curvatures[0];
+    cement.curvature = shape.curvatures[1];
+    back.curvature = shape.curvatures[2];
     return true;
 }
 

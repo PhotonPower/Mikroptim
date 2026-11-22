@@ -110,6 +110,32 @@ struct OpticalHomotopyOptions {
     double color_seidel = 0.25;
     double color_min_rms = 0.05;
     //   (c) der Punkt eine Spektrumstufe > 0 der Spektrum-Homotopie ist (spectra nicht leer).
+    //   (d) (M6-T11, mit color_chromatic_share > 0) der chromatische Anteil aus dem
+    //       Aberrationsbericht σ_col ≥ color_chromatic_share · größter RMS ist, mit
+    //       σ_col² = (W_L/(4√3))² + (ΔW111/4)² + (ΔW040/(2√180))², W_L = Δz·NA²/(2 λ_ref)
+    //       [Wellen] aus der Spanne Δz der paraxialen Fokuslagen der Spektrallinien im Bereich
+    //       des Spektrums (Längsfarbe mit sekundärem Spektrum), ΔW111 Querfarbe, ΔW040
+    //       Sphärochromasie (Seidel, kürzeste gegen längste Wellenlänge). Der Bericht kennt die
+    //       Geisterplatten nicht: Farbe, die nur die Platten tragen, zählt (sie ersetzen dort
+    //       ein Kittglied). docs/optimierung.md, Abschnitt 7 („Farbstufe“).
+    double color_chromatic_share = 0.0;
+    // Kittglied-Modul der Farbregel (M6-T11, Wissensbasis M10-T5: generic.null_doublet bzw.
+    // generic.strong_doublet): dominiert die Farbe und lässt sich keine Linse teilen (bzw. mit
+    // color_module_always immer), Null-Kittglied (insert_null_doublet, Merit unverändert) im
+    // Luftspalt mit der größten Randstrahlhöhe |y| (Mittel der Spaltflächen, Spalte ≥
+    // 2·min_air_gap), Gläser = bestes Paar der Glasvorauswahl über den Katalog (Rang wie
+    // split.preselect_wavelengths_nm, Σ|φ|/φ ≤ split.preselect_max_power_sum; mit
+    // color_module_anomalous mindestens ein Glas mit |ΔP_g,F| ≥ 0,01 nach anomalous_pgf, beim
+    // starken Kittglied die Paarregel merte_pair), Glas des hinteren Teils frei wie bei
+    // Operator B; Krümmung c₀ aller drei Flächen: Doublet die der Fläche hinter dem Spalt,
+    // StrongDoublet so, dass der paraxiale Randstrahl die Kittfläche unter
+    // color_module_incidence_deg trifft (Halbkugelgrad ≤ 0,9, flachere Lösung). Danach innere
+    // Homotopie über die Dicke beider Teile wie bei Operator A.
+    enum class ColorModule { None, Doublet, StrongDoublet };
+    ColorModule color_module = ColorModule::None;
+    bool color_module_always = false;
+    bool color_module_anomalous = false;
+    double color_module_incidence_deg = 40.0;
     // Feldregel (M6-T8, Befund F14 aus M6-T6b): Meldet die Geisterdiagnose keinen Bedarf (die
     // Platten sehen Feldfehler kaum: blendennah bzw. mit zu großem Normierungsradius) und
     // dominieren Feldfehler, empfiehlt diagnose Operator A im Luftspalt mit dem größten
@@ -225,6 +251,9 @@ private:
     std::optional<HomotopyNeed> field_need(const SystemDescription& system,
                                            const HomotopyPoint& point) const;
     HomotopyNeed ghost_need(const SystemDescription& system, const HomotopyPoint& point) const;
+    HomotopyInsertion insert_module(const SystemDescription& system,
+                                    const SystemDescription& realized, const HomotopyPoint& point,
+                                    const HomotopyNeed& need, HomotopyInsertion ins) const;
     LoadedSystem like_; // Kataloge
     SystemDescription start_;
     OpticalHomotopyOptions options_;
