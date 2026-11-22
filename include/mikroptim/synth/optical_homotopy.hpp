@@ -126,11 +126,10 @@ struct OpticalHomotopyOptions {
     // 2·min_air_gap), Gläser = bestes Paar der Glasvorauswahl über den Katalog (Rang wie
     // split.preselect_wavelengths_nm, Σ|φ|/φ ≤ split.preselect_max_power_sum; mit
     // color_module_anomalous mindestens ein Glas mit |ΔP_g,F| ≥ 0,01 nach anomalous_pgf, beim
-    // starken Kittglied die Paarregel merte_pair), Glas des hinteren Teils frei wie bei
-    // Operator B; Krümmung c₀ aller drei Flächen: Doublet die der Fläche hinter dem Spalt,
-    // StrongDoublet so, dass der paraxiale Randstrahl die Kittfläche unter
-    // color_module_incidence_deg trifft (Halbkugelgrad ≤ 0,9, flachere Lösung). Danach innere
-    // Homotopie über die Dicke beider Teile wie bei Operator A.
+    // starken Kittglied die Paarregel merte_pair), beide Gläser fest; Krümmung c₀ aller drei
+    // Flächen: Doublet die der Fläche hinter dem Spalt, StrongDoublet so, dass der paraxiale
+    // Randstrahl die Kittfläche unter color_module_incidence_deg trifft (Halbkugelgrad ≤ 0,9,
+    // flachere Lösung). Danach innere Homotopie über die Dicke beider Teile wie bei Operator A.
     enum class ColorModule { None, Doublet, StrongDoublet };
     ColorModule color_module = ColorModule::None;
     bool color_module_always = false;

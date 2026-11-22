@@ -225,7 +225,9 @@ TEST(ColorStage, NullDoubletModuleKeepsMeritAndGrows) {
     EXPECT_NE(ins.text.find(g[static_cast<std::size_t>(best[0].glasses[1])].name),
               std::string::npos)
         << ins.text;
-    EXPECT_EQ(sys.surfaces[2].material.kind, MaterialKind::Buchdahl); // frei wie bei B
+    // beide Gläser fest aus der Vorauswahl (keine Glasvariable bei Dicke 0)
+    EXPECT_EQ(sys.surfaces[2].material.kind, MaterialKind::Catalog);
+    EXPECT_EQ(sys.surfaces[2].material.name, g[static_cast<std::size_t>(best[0].glasses[1])].name);
 
     // Merit unverändert (Dicke 0, drei Flächen gleicher Krümmung)
     const double before = system_merit(m.start_system());

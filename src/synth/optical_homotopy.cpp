@@ -1343,7 +1343,7 @@ HomotopyInsertion OpticalHomotopyModel::insert(const SystemDescription& system,
 
 // Kittglied-Modul der Farbregel (M6-T11): Null-Kittglied (insert_null_doublet) im ersten
 // geeigneten Spalt aus need.module_gap und need.module_candidates, Gläser aus der Vorauswahl,
-// Glas des hinteren Teils frei (wie Operator B), innere Homotopie über die Dicke beider Teile.
+// Gläser fest, innere Homotopie über die Dicke beider Teile.
 HomotopyInsertion OpticalHomotopyModel::insert_module(const SystemDescription& system,
                                                       const SystemDescription& realized,
                                                       const HomotopyPoint& p,
@@ -1401,17 +1401,8 @@ HomotopyInsertion OpticalHomotopyModel::insert_module(const SystemDescription& s
             continue;
         }
         SystemDescription sys = std::move(r.system);
-        // Glas des hinteren Teils frei (Merit bleibt: Dicke 0, drei Flächen gleicher Krümmung)
-        free_glass(sys, r.first_new_surface + 1);
-        if (!has_constraint(sys, ConstraintType::GlassHull)) {
-            ConstraintSpec c;
-            c.type = ConstraintType::GlassHull;
-            if (!sys.constraints) {
-                sys.constraints = Constraints{};
-            }
-            sys.constraints->items.push_back(c);
-        }
-        (void)convert_glass_variables(sys, like_.catalog);
+        // Gläser bleiben die der Vorauswahl (Katalog): eine Glasvariable bei Dicke 0 hat keinen
+        // Gradienten, und der LM schob sie im Lauf P (M6-T11) bis zu n <= 0
         ins.op = need.recommendation;
         ins.doublet = true;
         ins.first_surface = r.first_new_surface;
@@ -1449,9 +1440,8 @@ HomotopyInsertion OpticalHomotopyModel::insert_module(const SystemDescription& s
                    " (Farbregel, Modul): nach Fläche " + std::to_string(g) + " bei " +
                    number(d.position) + " mm, c0 = " + number(d.curvature) + "/mm" +
                    (strong ? " (Einfallswinkel " + number(incidence) + "°)" : std::string()) +
-                   ", Gläser " + mg->text + ", Glas nach Fläche " +
-                   std::to_string(r.first_new_surface + 1) + " frei, Dicke je bis " +
-                   number(options_.element_thickness) + " mm";
+                   ", Gläser " + mg->text + ", Dicke je bis " + number(options_.element_thickness) +
+                   " mm";
         return ins;
     }
     invalid("Kittglied-Modul: kein geeigneter Luftspalt" + (why.empty() ? "" : " (" + why + ")"));
