@@ -299,7 +299,7 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abhängig von:** M6-T11, M10-T7e (vom Maintainer am 2026-11-22 freigegeben)
 - **Inhalt:** (1) `synth --split-spectrum` und `--split-member-start` (Operator B, M6-T11) werden Standard, abschaltbar mit `--no-split-spectrum`/`--no-split-member-start` (Skript `--ohne-farb-spektrum-rang`, `--ohne-farb-startradien`); (2) `--insertion-improve` gilt auch in der Startphase, mit Spielraum (übernommen, wenn F_B sinkt oder danach ≤ F_max); (3) Referenz der Regel = Median über fünf gestörte Starts in `tools/m10t7_bewertung.py`, Einzellauf daneben, Regel-Läufe B1–B3 neu (ohne Sprachmodell); B4 und der Patentvergleich aus M6-T6 ruhen; (4) `insert_module` verkleinert die aplanatische Schale bei negativem Arbeitsabstand und verwirft das Modul, wenn das nicht reicht.
 - **Abnahme:** Orakel-Tests (Mock-Homotopie: Sprung in der Startphase verworfen, Spielraum; Achromat: Startradien-Zweig kleiner als ohne), CLI- und Skripttests, ohne die Optionen bzw. mit `--no-…` bitgleich; Python-Tests der Schale; Regel-Läufe B1–B3 mit fünf gestörten Starts, Abschnitt 14 im [Bewertungsbericht](../ergebnisse/m10-t7-bewertung.md).
-- **Stand:** STAND_T11B
+- **Stand:** umgesetzt. Spektraler Rang und Startradien Standard von `synth` (wirksam mit Vorauswahl bzw. Farbregel; `--no-…` bitgleich zum alten Stand); `--insertion-improve` in der Startphase mit Spielraum (Orakel: Sprung F_B 2 → 4,5 F_max verworfen); `insert_module` verkleinert die Schale (Dicke × 0,5, bis vier Schritte) bzw. verwirft sie; Referenz der Regel = Median über fünf gestörte Starts: B1 5/5, B2 NA 0,458, B3 NA 0,410 (Einzellauf 0,790 bzw. Ziel; alle 18 Läufe gleich M10-T7e). B4 und der Patentvergleich aus M6-T6 ruhen.
 
 ---
 

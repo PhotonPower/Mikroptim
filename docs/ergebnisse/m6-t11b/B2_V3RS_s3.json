@@ -1,0 +1,118 @@
+{
+  "seconds": 729.1921139000333,
+  "aborted": null,
+  "decisions": 4,
+  "actions": 5,
+  "rejected_actions": 0,
+  "rejected_share": 0.0,
+  "fallback_decisions": 0,
+  "lm_solves_synth": 75,
+  "lm_optimize": 1,
+  "candidates": 5,
+  "best_candidate": 4,
+  "best": {
+    "na": 0.4575000000000002,
+    "rms_max_waves": 0.07890095132314817,
+    "rms_eval_exit_pupil": 0.07939363523016064,
+    "failed_rays": 0,
+    "elements": 4,
+    "focal_length": 3.2878088716744527,
+    "goal": false
+  },
+  "usage": {
+    "prompt_tokens": 0,
+    "output_tokens": 0,
+    "thinking_chars": 0,
+    "requests": 0,
+    "cache_read_tokens": 0,
+    "cost_usd": 0.0
+  },
+  "session": "B2_V3RS_s3/",
+  "system": "B2_V3RS_s3/bestes_system.json",
+  "decisions_summary": [
+    {
+      "candidate": 0,
+      "decider": "regel",
+      "actions": [
+        "synth_segment"
+      ],
+      "status": [
+        "ok"
+      ]
+    },
+    {
+      "candidate": 1,
+      "decider": "regel",
+      "actions": [
+        "free_gaps",
+        "optimize"
+      ],
+      "status": [
+        "ok",
+        "ok"
+      ]
+    },
+    {
+      "candidate": 3,
+      "decider": "regel",
+      "actions": [
+        "synth_segment"
+      ],
+      "status": [
+        "ok"
+      ]
+    },
+    {
+      "candidate": 4,
+      "decider": "regel",
+      "actions": [
+        "finish"
+      ],
+      "status": [
+        "ok"
+      ]
+    }
+  ],
+  "reference_sphere": "image_infinite",
+  "benchmark": "B2",
+  "variant": "V3RS",
+  "tag": "V3RS_s3",
+  "target_na": 0.95,
+  "perturbation": {
+    "index": 3,
+    "sigma": 0.02,
+    "seed": 0,
+    "changes": [
+      {
+        "surface": 2,
+        "type": "curvature",
+        "old": 0.342,
+        "new": 0.34136484541929446
+      },
+      {
+        "surface": 3,
+        "type": "curvature",
+        "old": -0.05,
+        "new": -0.05068132159078123
+      },
+      {
+        "surface": 0,
+        "type": "thickness",
+        "old": 2.14,
+        "new": 2.0831331360168552
+      },
+      {
+        "surface": 2,
+        "type": "thickness",
+        "old": 2.0,
+        "new": 2.0127306476619906
+      },
+      {
+        "surface": 4,
+        "type": "thickness",
+        "old": 2.035,
+        "new": 2.076822071926686
+      }
+    ]
+  }
+}
