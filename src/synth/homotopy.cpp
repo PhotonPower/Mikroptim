@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -553,35 +554,55 @@ private:
         int best = -1;
         HomotopySolve best_solve;
         SystemDescription best_system;
+        // Mehrere Zweige (M6-T11): wirft die Optimierung eines Zweigs (z. B. Brechzahl einer
+        // Glasvariable ≤ 0 im Zweig „Startradien des Glieds“, Lauf F3), wird nur dieser Zweig
+        // verworfen; werfen alle, die erste Ausnahme. Ein einzelner Zweig wie bisher.
+        std::exception_ptr first_error;
         for (std::size_t b = 0; b < ins.branches.size(); ++b) {
             SystemDescription sys = ins.branches[b];
             HomotopySolve last;
-            if (ins.stages.empty()) {
-                HomotopyStep step = solve(sys, s.point, HomotopyStepKind::InsertionStage);
-                step.branch = static_cast<int>(b);
-                step.accepted = true;
-                last = step.solve;
-                emit(step);
-            }
-            for (const double v : ins.stages) {
-                model_.set_stage(sys, ins, v);
-                HomotopyStep step = solve(sys, s.point, HomotopyStepKind::InsertionStage);
-                step.branch = static_cast<int>(b);
-                step.stage = v;
-                step.accepted = true;
-                last = step.solve;
-                emit(step);
-            }
-            if (choose_at != nullptr) {
-                // am Bewertungspunkt weiteroptimieren und diesen Stand behalten: der nächste
-                // Versuch der Stufe startet dann vom farbig optimierten System
-                SystemDescription& probe = sys;
-                HomotopyStep step = solve(probe, *choose_at, HomotopyStepKind::InsertionStage);
-                step.branch = static_cast<int>(b);
-                step.accepted = true;
-                step.operation = "Bewertung des Zweigs an der verworfenen Spektrumstufe";
-                last = step.solve;
-                emit(step);
+            try {
+                if (ins.stages.empty()) {
+                    HomotopyStep step = solve(sys, s.point, HomotopyStepKind::InsertionStage);
+                    step.branch = static_cast<int>(b);
+                    step.accepted = true;
+                    last = step.solve;
+                    emit(step);
+                }
+                for (const double v : ins.stages) {
+                    model_.set_stage(sys, ins, v);
+                    HomotopyStep step = solve(sys, s.point, HomotopyStepKind::InsertionStage);
+                    step.branch = static_cast<int>(b);
+                    step.stage = v;
+                    step.accepted = true;
+                    last = step.solve;
+                    emit(step);
+                }
+                if (choose_at != nullptr) {
+                    // am Bewertungspunkt weiteroptimieren und diesen Stand behalten: der nächste
+                    // Versuch der Stufe startet dann vom farbig optimierten System
+                    SystemDescription& probe = sys;
+                    HomotopyStep step = solve(probe, *choose_at, HomotopyStepKind::InsertionStage);
+                    step.branch = static_cast<int>(b);
+                    step.accepted = true;
+                    step.operation = "Bewertung des Zweigs an der verworfenen Spektrumstufe";
+                    last = step.solve;
+                    emit(step);
+                }
+            } catch (const std::exception& e) {
+                if (ins.branches.size() < 2) {
+                    throw;
+                }
+                if (!first_error) {
+                    first_error = std::current_exception();
+                }
+                HomotopyStep note;
+                note.kind = HomotopyStepKind::InsertionStage;
+                note.point = s.point;
+                note.branch = static_cast<int>(b);
+                note.operation = "Zweig verworfen: " + std::string(e.what());
+                emit(note);
+                continue;
             }
             const bool better = [&] {
                 if (best < 0) {
@@ -600,6 +621,9 @@ private:
                 best_solve = last;
                 best_system = std::move(sys);
             }
+        }
+        if (best < 0 && first_error) {
+            std::rethrow_exception(first_error);
         }
         model_.finish_insertion(best_system, ins);
         s.system = std::move(best_system);

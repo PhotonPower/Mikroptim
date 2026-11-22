@@ -36,6 +36,7 @@ struct MockSpec {
     bool goal_never = false;
     double start_merit = -1.0;  // ≥ 0: F_B am Startpunkt (vor dem ersten Schritt)
     bool insert_throws = false; // insert wirft std::invalid_argument (Einfügen nicht möglich)
+    int branch_throws = -1; // >= 0: solve wirft std::runtime_error für Zweig b (M6-T11), 2: beide
 
     // Strahlsuche
     double branch_spread = 1.0;    // Krümmung (Marke) von Zweig b: b · branch_spread
@@ -147,6 +148,11 @@ public:
         const double from = system.surfaces.front().thickness;
         calls.push_back({p, from, e});
         const double jump = std::abs(p.aperture - from);
+        if (spec_.branch_throws >= 0 && e > 1 &&
+            (spec_.branch_throws == 2 ||
+             system.surfaces.back().curvature == spec_.branch_throws * spec_.branch_spread)) {
+            throw std::runtime_error("Brechzahl <= 0");
+        }
         HomotopySolve s;
         s.status = LmStatus::ConvergedMerit;
         s.iterations = jump <= spec_.fast_delta ? 10 : 100;
