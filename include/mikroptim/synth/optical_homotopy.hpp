@@ -146,6 +146,13 @@ struct OpticalHomotopyOptions {
     // Empfehlung am Zustand teilen, entfällt die Empfehlung selbst (insert bräche sonst mit „zu
     // dünn“ ab, bevor die übrigen Varianten versucht werden). Standard aus.
     bool color_variants = false;
+    // Querfarbe (M6-T13): Überwiegt im Aberrationsbericht der Querfarbfehler die Längsfarbe
+    // (|ΔW111|/4 > |ΔW020|/(2√3), RMS von Kippung bzw. Defokus), empfiehlt die Farbregel das
+    // Kittglied-Modul zuerst (auch wenn eine Linse teilbar ist) und ordnet die Spalte nach dem
+    // mittleren |y·ȳ| der Spaltflächen (Querfarbe eines dünnen Elements ∝ y ȳ φ/ν) statt nach
+    // |y|. Anlass: In den Öffnungsstufen ab F3 begrenzen Querfarbe und Verzeichnung am Feldrand
+    // (Bericht M6-T13). Wirkt nur mit color_module. Standard aus.
+    bool color_module_lateral = false;
     // Feldregel (M6-T8, Befund F14 aus M6-T6b): Meldet die Geisterdiagnose keinen Bedarf (die
     // Platten sehen Feldfehler kaum: blendennah bzw. mit zu großem Normierungsradius) und
     // dominieren Feldfehler, empfiehlt diagnose Operator A im Luftspalt mit dem größten

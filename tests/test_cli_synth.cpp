@@ -725,6 +725,15 @@ TEST(CliSynth, ColorStageOptions) {
     ASSERT_EQ(grow.code, cli::kExitOk) << grow.err;
     EXPECT_EQ(nlohmann::json::parse(grow.out)["options"]["grow_margin"], 0.5);
 
+    // M6-T13: --color-module-lateral nur mit --color-module, nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--color-module-lateral"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--color-module-lateral"), std::string::npos);
+    EXPECT_FALSE(jw["options"]["color_rule_ext"].contains("lateral"));
+    const SynthCliResult lat = synth({achromat, "--color-module", "doublet",
+                                      "--color-module-lateral", "--max-elements", "3", "--json"});
+    ASSERT_EQ(lat.code, cli::kExitOk) << lat.err;
+    EXPECT_EQ(nlohmann::json::parse(lat.out)["options"]["color_rule_ext"]["lateral"], true);
+
     // M6-T13: --insertion-improve-finish nur mit --insertion-improve, nur mit Option im JSON
     EXPECT_EQ(synth({achromat, "--insertion-improve-finish"}).code, cli::kExitUsage);
     EXPECT_NE(help.find("--insertion-improve-finish"), std::string::npos);

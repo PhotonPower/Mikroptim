@@ -485,9 +485,10 @@ std::optional<double> module_curvature(const SystemDescription& realized,
 
 // Luftspalte für das Kittglied-Modul (M6-T11): innere Spalte (nicht der Arbeitsabstand) mit
 // Dicke ≥ 2·min_air_gap, in denen module_curvature eine Krümmung liefert, nach der mittleren
-// Randstrahlhöhe |y| der Spaltflächen absteigend (Längsfarbe eines dünnen Elements ∝ y² φ/ν).
+// Randstrahlhöhe |y| der Spaltflächen absteigend (Längsfarbe eines dünnen Elements ∝ y² φ/ν);
+// mit `lateral` (M6-T13) nach |y·ȳ| (Querfarbe eines dünnen Elements ∝ y ȳ φ/ν).
 std::vector<int> module_gaps(const SystemDescription& realized, const AberrationReport& rep,
-                             const OpticalHomotopyOptions& o) {
+                             const OpticalHomotopyOptions& o, bool lateral = false) {
     const auto& surf = realized.surfaces;
     // untere Schranken der Dickenvariablen pro Spalt: beide Teilstücke (je die halbe Dicke)
     // müssen sie einhalten, sonst lehnt der Lader das System ab (Lauf F7, M6-T11)
@@ -510,8 +511,10 @@ std::vector<int> module_gaps(const SystemDescription& realized, const Aberration
         if (!module_curvature(realized, rep, static_cast<int>(s), o, incidence)) {
             continue;
         }
-        const double y =
-            0.5 * (std::abs(rep.surfaces.at(s).y) + std::abs(rep.surfaces.at(s + 1).y));
+        const SurfaceAberration& a0 = rep.surfaces.at(s);
+        const SurfaceAberration& a1 = rep.surfaces.at(s + 1);
+        const double y = lateral ? 0.5 * (std::abs(a0.y * a0.ybar) + std::abs(a1.y * a1.ybar))
+                                 : 0.5 * (std::abs(a0.y) + std::abs(a1.y));
         if (std::isfinite(y)) {
             gaps.emplace_back(y, static_cast<int>(s));
         }
@@ -908,9 +911,13 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     // Kittglied-Modul (M6-T11): keine Linse teilbar bzw. immer
     std::vector<int> gaps;
     std::string module_text;
+    // M6-T13: Querfarbe überwiegt die Längsfarbe (RMS der Seidel-Terme ΔW111/4 gegen
+    // ΔW020/(2√3)): Modul zuerst, Spalt nach |y·ȳ|
+    const bool lateral = options_.color_module_lateral &&
+                         std::abs(w.dW111) / 4.0 > std::abs(w.dW020) / (2.0 * std::sqrt(3.0));
     if (options_.color_module != OpticalHomotopyOptions::ColorModule::None) {
         if (const std::optional<ModuleGlasses> mg = module_glasses(like_.catalog, options_)) {
-            gaps = module_gaps(realized, rep, options_);
+            gaps = module_gaps(realized, rep, options_, lateral);
             module_text = mg->text;
         }
     }
@@ -933,7 +940,7 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
                ", ΔW040 = " + number(w.dW040);
     }
     n.module_candidates = gaps; // Varianten (insertion_options)
-    if (!gaps.empty() && (best < 0 || options_.color_module_always)) {
+    if (!gaps.empty() && (best < 0 || options_.color_module_always || lateral)) {
         n.module_gap = gaps.front();
         n.split_lens = -1; // Modul zuerst; Teilen bleibt Variante (insertion_options)
         n.text = why + "): " +
@@ -942,7 +949,9 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
                       : "Null-Kittglied") +
                  " im Luftspalt nach Fläche " + std::to_string(n.module_gap) + ", Gläser " +
                  module_text +
-                 (best < 0 ? " (keine Linse teilbar)" : std::string(" (Modul statt Teilen)"));
+                 (lateral    ? std::string(" (Querfarbe, Spalt nach |y·ȳ|)")
+                  : best < 0 ? " (keine Linse teilbar)"
+                             : std::string(" (Modul statt Teilen)"));
         return n;
     }
     n.text = why + "): Operator B an der Linse ab Fläche " + std::to_string(best);

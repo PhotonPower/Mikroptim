@@ -520,5 +520,55 @@ TEST(ColorStage, ColorVariantsAreDistinctInsertions) {
     EXPECT_EQ(vp.back().module_gap, -1);
 }
 
+// Querfarbe (M6-T13, color_module_lateral): Dreilinser mit Feld, Querfarbe überwiegt die
+// Längsfarbe (Orakel: Seidel-Terme des Aberrationsberichts, |ΔW111|/4 > |ΔW020|/(2√3)). Dann
+// empfiehlt die Farbregel das Modul zuerst, Spalte absteigend nach dem mittleren |y·ȳ| der
+// Spaltflächen (Orakel: Strahldaten des Berichts); ohne Option Operator B wie bisher.
+TEST(ColorStage, LateralColorModuleOrderedByChiefRayHeight) {
+    SystemDescription d = three_lenses(false).system;
+    d.source.field_angles_deg = {0.0, 20.0};
+    d.source.field_weights = {1.0, 1.0};
+    const LoadedSystem l = prepare_test_system(d);
+    OpticalHomotopyOptions o;
+    o.color_rule = true;
+    o.color_module = ColorModule::Doublet;
+    OpticalHomotopyModel plain(l, o);
+    const HomotopyPoint p = plain.start_point();
+    const HomotopyNeed np = plain.diagnose(plain.start_system(), p);
+    ASSERT_EQ(np.recommendation, GhostOperator::B) << np.text;
+    EXPECT_GE(np.split_lens, 0);
+    EXPECT_EQ(np.module_gap, -1);
+
+    const SystemDescription realized = plain.realize(plain.start_system(), p);
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    const AberrationReport rep = compute_aberrations(realized, l.catalog, ao);
+    const SeidelWaves w = rep.waves();
+    std::printf("dW111/4 = %.4f, dW020/(2 sqrt 3) = %.4f\n", std::abs(w.dW111) / 4.0,
+                std::abs(w.dW020) / (2.0 * std::sqrt(3.0)));
+    ASSERT_GT(std::abs(w.dW111) / 4.0, std::abs(w.dW020) / (2.0 * std::sqrt(3.0)));
+
+    OpticalHomotopyOptions ol = o;
+    ol.color_module_lateral = true;
+    OpticalHomotopyModel lat(l, ol);
+    const HomotopyNeed nl = lat.diagnose(lat.start_system(), p);
+    ASSERT_GE(nl.module_gap, 0) << nl.text;
+    EXPECT_EQ(nl.split_lens, -1);
+    EXPECT_NE(nl.text.find("Querfarbe"), std::string::npos) << nl.text;
+    // Orakel der Reihenfolge: dieselben Spalte wie ohne Option, nach |y·ȳ| absteigend
+    std::vector<int> expected = np.module_candidates;
+    const auto key = [&](int s) {
+        const SurfaceAberration& a = rep.surfaces.at(static_cast<std::size_t>(s));
+        const SurfaceAberration& b = rep.surfaces.at(static_cast<std::size_t>(s + 1));
+        return 0.5 * (std::abs(a.y * a.ybar) + std::abs(b.y * b.ybar));
+    };
+    std::stable_sort(expected.begin(), expected.end(),
+                     [&](int a, int b) { return key(a) > key(b); });
+    EXPECT_EQ(nl.module_candidates, expected);
+    EXPECT_EQ(nl.module_gap, expected.front());
+    EXPECT_NE(np.module_candidates, expected); // Reihenfolge nach |y| ist eine andere
+}
+
 } // namespace
 } // namespace mko::test

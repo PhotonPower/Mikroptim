@@ -381,6 +381,8 @@ def synth_options(args):
             opts.append('--color-module-always')
         if getattr(args, 'farb_anomal', False):
             opts.append('--color-module-anomalous')
+        if getattr(args, 'farb_querfarbe', False):
+            opts.append('--color-module-lateral')  # M6-T13
     if getattr(args, 'farb_varianten', False):
         opts.append('--color-variants')  # M6-T13
     if getattr(args, 'einfuegen_abschluss', False):
@@ -1714,6 +1716,9 @@ def main():
     ap.add_argument('--farb-anomal', action='store_true',
                     help='M6-T11: Modul mit mindestens einem anomalen Glas, |ΔP_g,F| >= 0,01 '
                          '(anomalous_pgf; synth --color-module-anomalous)')
+    ap.add_argument('--farb-querfarbe', action='store_true',
+                    help='M6-T13: überwiegt die Querfarbe, Kittglied-Modul zuerst im Spalt mit dem '
+                         'größten |y·ȳ| (synth --color-module-lateral; mit --farb-modul)')
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
