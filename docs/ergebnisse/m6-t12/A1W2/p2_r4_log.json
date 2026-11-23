@@ -1,0 +1,234 @@
+{
+  "format": "mikroptim.synth/1",
+  "version": "0.1.0",
+  "input": "docs/ergebnisse/m6-t12/A1W2/p2_r3_restart.json",
+  "backend": {
+    "gpu": true,
+    "device": 0,
+    "device_name": "NVIDIA GeForce RTX 3090"
+  },
+  "options": {
+    "target_na": 0.5,
+    "start": {
+      "aperture": 0.5,
+      "field": 0.69375,
+      "spectrum": 0
+    },
+    "rms_target_waves": 0.07142857142857142,
+    "merit_factor": 1.0,
+    "max_elements": 24,
+    "max_iterations": 500,
+    "stall": {
+      "window": 0,
+      "tolerance": 0.001
+    },
+    "augmented_lagrangian": null,
+    "color_rule": null,
+    "sine_condition": null,
+    "spectrum_stages": 0,
+    "spectrum_continuous": false,
+    "split": {
+      "preselect": false,
+      "start_at_target": false,
+      "achromat_start": false
+    },
+    "quadrature": {
+      "rings": 16,
+      "spokes": 8
+    },
+    "jacobian": "fd",
+    "tolerance_aware": null,
+    "element_thickness": 0.5,
+    "element_max_thickness": 5.0,
+    "saddle_delta": 0.002,
+    "field_rule": {
+      "ratio": 1.5,
+      "min_rms_waves": 0.05,
+      "glass": null
+    },
+    "ghost_dictionary": {
+      "extra": 2,
+      "glasses": [
+        {
+          "name": "SYN-32",
+          "class": "flint",
+          "automatic": true,
+          "n_d": 1.7687782087443555,
+          "v_d": 48.41936762082691,
+          "dp_gF": -0.0036986176506615953,
+          "partner": "CAF2",
+          "spectral_residual": 0.0001840285365679086
+        },
+        {
+          "name": "CAF2",
+          "class": "anomalous",
+          "automatic": true,
+          "n_d": 1.4338492787037858,
+          "v_d": 94.9958558476727,
+          "dp_gF": 0.05464506337040875,
+          "partner": "SYN-11",
+          "spectral_residual": 3.113865863993396e-05
+        }
+      ],
+      "positions": 0,
+      "added_plates": 0
+    }
+  },
+  "result": {
+    "status": "max_elements",
+    "message": "Startpunkt nicht annehmbar (F_B = 7.55399 > F_max = 0.00510204); Bedarf (Operator A), aber höchste Elementzahl 24 erreicht",
+    "start_point": {
+      "aperture": 0.5,
+      "field": 0.69375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 0.01,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "target": {
+      "aperture": 0.5,
+      "field": 1.0,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "point": {
+      "aperture": 0.5,
+      "field": 0.69375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "merit_threshold": 0.00510204081632653,
+    "start_elements": 25,
+    "elements": 25,
+    "insertions": 0,
+    "solves": 3,
+    "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+    },
+    "seconds": 54.1956311,
+    "steps": [
+      {
+        "index": 0,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.5,
+          "field": 0.69375,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.01,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 37,
+          "start_merit": 7.634261643392772,
+          "merit": 7.41412863677343,
+          "wavefront": 2.276404199037165,
+          "ghost_penalty": 4.975576519207428,
+          "rms_waves": 1.8263316510257628,
+          "ghost_sum_mm": 0.030881829438661825,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.01",
+        "elements": 25,
+        "goal": null,
+        "seconds": 1.5837185
+      },
+      {
+        "index": 1,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.5,
+          "field": 0.69375,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.1,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 8.824745419118843,
+          "merit": 7.5439953220614235,
+          "wavefront": 2.5351192111746963,
+          "ghost_penalty": 4.9727606371469895,
+          "rms_waves": 1.9654555354323489,
+          "ghost_sum_mm": 0.02930943742695936,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.1",
+        "elements": 25,
+        "goal": null,
+        "seconds": 24.977944
+      },
+      {
+        "index": 2,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.5,
+          "field": 0.69375,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 7.822190834817304,
+          "merit": 7.573696597941095,
+          "wavefront": 2.5709821285243004,
+          "ghost_penalty": 4.98301255109327,
+          "rms_waves": 1.9862501992062924,
+          "ghost_sum_mm": 0.029032708305181842,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×1",
+        "elements": 25,
+        "goal": null,
+        "seconds": 27.6306186
+      }
+    ]
+  },
+  "output": "docs/ergebnisse/m6-t12/A1W2/p2_r4.json"
+}

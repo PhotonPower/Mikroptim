@@ -697,5 +697,74 @@ TEST(CliSynth, ColorStageOptions) {
         << text.out;
 }
 
+// M6-T12: erweitertes Glas-Wörterbuch. Ohne Option kein Eintrag ghost_dictionary; mit
+// --ghost-dictionary-extra 0 (nichts ausgewählt) Ergebnis und Ergebnisdatei bitgleich zum Lauf
+// ohne Option; mit Option Platten je Lage dazu (Katalog basis.json: kein Flint, also nur CaF₂ als
+// anomales Glas), im JSON und im Textkopf; Fehlbedienung Exit 2, unbekanntes Glas Exit 1.
+TEST(CliSynth, GhostDictionaryExtra) {
+    const SynthTempDir dir("ghost_dictionary");
+    const std::vector<std::string> base{kStart, "--target-na", "0.31", "--merit-factor", "10",
+                                        "--max-elements", "2", "--max-iterations", "40",
+                                        "--element-stages", "2", "--json"};
+    const auto run = [&](std::vector<std::string> extra, const std::string& out) {
+        std::vector<std::string> a = base;
+        a.insert(a.end(), extra.begin(), extra.end());
+        a.insert(a.end(), {"-o", out});
+        return synth(a);
+    };
+    const std::string plain_out = dir.file("ohne.json");
+    const SynthCliResult plain = run({}, plain_out);
+    ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
+    const nlohmann::json jp = nlohmann::json::parse(plain.out);
+    EXPECT_FALSE(jp["options"].contains("ghost_dictionary"));
+
+    const std::string zero_out = dir.file("null.json");
+    const SynthCliResult zero = run({"--ghost-dictionary-extra", "0"}, zero_out);
+    ASSERT_EQ(zero.code, cli::kExitOk) << zero.err;
+    nlohmann::json jz = nlohmann::json::parse(zero.out);
+    EXPECT_EQ(jz["options"]["ghost_dictionary"]["added_plates"], 0);
+    jz["options"].erase("ghost_dictionary");
+    jz["output"] = jp["output"];
+    // Laufzeiten ausgenommen
+    const auto no_seconds = [](nlohmann::json j) {
+        j["result"].erase("seconds");
+        for (nlohmann::json& st : j["result"]["steps"]) {
+            st.erase("seconds");
+        }
+        return j;
+    };
+    EXPECT_EQ(no_seconds(jz), no_seconds(jp));
+    EXPECT_EQ(read_file(zero_out), read_file(plain_out));
+
+    const std::string out = dir.file("mit.json");
+    const SynthCliResult with = run({"--ghost-dictionary-extra", "2"}, out);
+    ASSERT_EQ(with.code, cli::kExitOk) << with.err;
+    const nlohmann::json j = nlohmann::json::parse(with.out);
+    const nlohmann::json& g = j["options"]["ghost_dictionary"];
+    EXPECT_EQ(g["extra"], 2);
+    ASSERT_EQ(g["glasses"].size(), 1u);
+    EXPECT_EQ(g["glasses"][0]["name"], "CAF2");
+    EXPECT_EQ(g["glasses"][0]["class"], "anomalous");
+    EXPECT_EQ(g["glasses"][0]["present"], false);
+    EXPECT_EQ(g["positions"], 2);
+    EXPECT_EQ(g["added_plates"], 2);
+    const SystemDescription start = load_system(kStart).system;
+    const SystemDescription d = load_system(out).system;
+    EXPECT_EQ(d.ghost_plates.size(), start.ghost_plates.size() + 2);
+
+    const SynthCliResult text = synth({kStart, "--max-steps", "1", "--max-iterations", "5",
+                                       "--ghost-dictionary-glass", "F_SILICA"});
+    ASSERT_EQ(text.code, cli::kExitOk) << text.err;
+    EXPECT_NE(text.out.find("Glas-Wörterbuch (M6-T12)"), std::string::npos) << text.out;
+    EXPECT_NE(text.out.find("F_SILICA (Kron"), std::string::npos) << text.out;
+
+    EXPECT_EQ(synth({kStart, "--ghost-dictionary-extra", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--ghost-dictionary-extra"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--ghost-dictionary-glass", "AIR"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--ghost-dictionary-glass", "GIBTESNICHT", "--max-steps", "1"}).code,
+              cli::kExitError);
+    EXPECT_NE(synth({"--help"}).out.find("--ghost-dictionary-extra"), std::string::npos);
+}
+
 } // namespace
 } // namespace mko::test

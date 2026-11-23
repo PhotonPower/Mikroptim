@@ -10,6 +10,7 @@
 #include "mikroptim/optim/glass_snap.hpp"
 #include "mikroptim/optim/levenberg_marquardt.hpp"
 #include "mikroptim/synth/beam_search.hpp"
+#include "mikroptim/synth/ghost_dictionary.hpp"
 #include "mikroptim/synth/ghost_return.hpp"
 #include "mikroptim/synth/homotopy.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
@@ -97,6 +98,9 @@ struct SynthArgs {
     std::optional<int> ghost_order;
     std::optional<double> ghost_weight;
     std::optional<std::vector<GhostReturnLocation>> ghost_locations;
+    // M6-T12: Glas-Wörterbuch um Flint- und anomale Gläser erweitern (Standard aus)
+    std::optional<int> ghost_extra;
+    std::vector<std::string> ghost_extra_glasses;
     std::optional<double> sine_condition; // M11-T4: Gewicht des Eintrags sine_condition
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: setzt reference_sphere
     bool no_reference_warning = false;                   // --no-reference-warning
@@ -353,6 +357,16 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
                 a.ghost_locations = parse_ghost_return_locations(next_value(args, i, arg));
             } catch (const std::invalid_argument& e) {
                 throw UsageError(std::string("--ghost-positions: ") + e.what());
+            }
+        } else if (arg == "--ghost-dictionary-extra") {
+            a.ghost_extra = parse_int(arg, next_value(args, i, arg));
+            if (*a.ghost_extra < 0) {
+                throw UsageError("--ghost-dictionary-extra muss >= 0 sein");
+            }
+        } else if (arg == "--ghost-dictionary-glass") {
+            a.ghost_extra_glasses.emplace_back(next_value(args, i, arg));
+            if (a.ghost_extra_glasses.back().empty() || a.ghost_extra_glasses.back() == "AIR") {
+                throw UsageError("--ghost-dictionary-glass erwartet einen Katalognamen");
             }
         } else if (arg == "--field-rule") {
             a.field_rule = true;
@@ -649,6 +663,13 @@ void print_synth_usage(std::ostream& out) {
            "                            kappa = 1, eps = 1e-6 mm)\n"
            "  --ghost-positions LISTE   Lagen aus stop, aperture, field, front (Standard\n"
            "                            aperture,field)\n"
+           "  --ghost-dictionary-extra N  Glas-Wörterbuch der Geisterplatten erweitern (M6-T12):\n"
+           "                            an jeder Lage N Platten (Koeffizienten 0, Merit\n"
+           "                            unverändert) aus dem Katalog, abwechselnd bestes\n"
+           "                            Flint- und anomales Glas nach dem spektralen Rest des\n"
+           "                            Achromats mit einem Glas des Wörterbuchs (436-656 nm;\n"
+           "                            Standard aus)\n"
+           "  --ghost-dictionary-glass GLAS  Zusatzglas des Wörterbuchs ausdrücklich (mehrfach)\n"
            "  --field-rule              Feldregel: ohne Geisterbedarf und bei dominierenden\n"
            "                            Feldfehlern Operator A im Luftspalt mit größtem |ȳ/y|\n"
            "                            (M6-T8; Standard aus)\n"
@@ -843,6 +864,21 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 err << "mikroptim synth: Hinweis (--start-from-real): " << n << '\n';
             }
         }
+        // M6-T12: Wörterbuch erweitern (Merit bis auf Rundung gleich; ohne Option unverändert)
+        std::optional<GhostDictionaryExtension> dictionary;
+        if (a.ghost_extra || !a.ghost_extra_glasses.empty()) {
+            GhostDictionaryGlassOptions go;
+            go.count = a.ghost_extra.value_or(0);
+            go.names = a.ghost_extra_glasses;
+            dictionary = extend_ghost_dictionaries(start.system, start.catalog, go);
+            if (dictionary->added_plates > 0) {
+                start = rebuild_loaded_system(start, dictionary->system);
+            }
+            if (start.system.ghost_plates.empty()) {
+                err << "mikroptim synth: Hinweis (--ghost-dictionary-*): System ohne "
+                       "Geisterplatten, Wörterbuch nicht erweitert\n";
+            }
+        }
         OpticalHomotopyOptions o = a.optical;
         o.lm.max_iterations = a.max_iterations;
         o.split.preselect = a.split_preselect;
@@ -1025,6 +1061,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                    std::to_string(ghost_return->system.ghost_plates.size()) + " Platten: " + lagen +
                        "; F vorher/nachher " + sci(ghost_return->merit_before, 6) + " / " +
                        sci(ghost_return->merit_after, 6));
+            }
+            if (dictionary) {
+                kv(out, "Glas-Wörterbuch (M6-T12)",
+                   "+" + std::to_string(dictionary->added_plates) + " Platten an " +
+                       std::to_string(dictionary->positions) + " Lage(n): " +
+                       ghost_dictionary_text(dictionary->glasses));
             }
             if (a.field_rule) {
                 kv(out, "Feldregel",
@@ -1213,6 +1255,27 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
             g["glasses"] = a.ghost_glasses;
             g["order"] = a.ghost_order.value_or(GhostReturnOptions{}.order);
             options["start_from_real"] = std::move(g);
+        }
+        if (dictionary) {
+            // M6-T12: nur mit der Option
+            Json gl = Json::array();
+            for (const GhostDictionaryGlass& g : dictionary->glasses) {
+                gl.push_back(Json{{"name", g.name},
+                                  {"class", std::string(to_string(g.glass_class))},
+                                  {"automatic", g.automatic},
+                                  {"present", g.present},
+                                  {"n_d", g.n_d},
+                                  {"v_d", g.v_d},
+                                  {"dp_gF", g.dp_gF},
+                                  {"partner", g.partner.empty() ? Json(nullptr) : Json(g.partner)},
+                                  {"spectral_residual", std::isfinite(g.spectral_residual)
+                                                            ? Json(g.spectral_residual)
+                                                            : Json(nullptr)}});
+            }
+            options["ghost_dictionary"] = Json{{"extra", a.ghost_extra.value_or(0)},
+                                               {"glasses", std::move(gl)},
+                                               {"positions", dictionary->positions},
+                                               {"added_plates", dictionary->added_plates}};
         }
         if (beam) {
             options["beam"] = Json{{"width", bo.beam_width},

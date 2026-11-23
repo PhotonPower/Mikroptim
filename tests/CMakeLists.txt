@@ -43,6 +43,7 @@ add_executable(mikroptim_tests
     test_fd_jacobian.cpp
     test_ghost_plate.cpp
     test_ghost_diagnosis.cpp
+    test_ghost_dictionary.cpp
     test_ghost_optimization.cpp
     test_ghost_penalty.cpp
     test_ghost_return.cpp

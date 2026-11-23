@@ -1,0 +1,337 @@
+{
+  "format": "mikroptim.system/1",
+  "name": "Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)",
+  "description": "Startsystem (frei erfunden, keine realen Objektivdaten) für den Lauf auf der Zielspezifikation (M6-T6, docs/ergebnisse/m6-t6-zielspezifikation.md). Einzellinse aus einem hochbrechenden Glas mit den Buchdahl-Koordinaten des 3-Term-Fits (400–700 nm) des frei erfundenen Testglases SYN-36 aus data/glass/synthetisch.json (n = 1,807 bei 546 nm, nu_d = 48,6; Buchdahl statt Katalogname, damit die Datei nur Gläser aus basis.json nennt), f = 3,29 mm (f_T 164,5 mm / 50), Pupillenradius 0,987 mm (NA 0,3), eine Wellenlänge 546,07 nm, Felder 0; 3,045 und 4,345 Grad (0, 70 und 100 % von FZ 25 mit f_T = 164,5 mm; die erste Phase rechnet mit 10 % davon). Tracerichtung vom Unendlichraum zum Objekt; die Blende ist Fläche 0 (ADR-0006), der Blendenspalt ist Variable (Start bei objektseitiger Telezentrie). Zwei Hilfsebenen tragen das Wörterbuch aus Geisterplatten (hochbrechend wie SYN-36, Fluorit CAF2, Schwerflint wie SYN-30 als Buchdahl-Fit, K = 10): Fläche 1 im kollimierten Bündel vor der Linse (Platten 0,1 mm dahinter), Fläche 4 im konvergenten Bündel vor dem Objekt (Platten 0,1 mm hinter der Linse). Die Spalte mit Geisterplatten haben keine Dickenvariable (der Einfüge-Operator A teilt sie). Strafgewicht mu = 47,2 Wellen²/mm mit Ordnungsfaktor 1 wie im Startsystem der Abnahme von M6-T3. Nebenbedingungen (Annahmen, siehe Bericht): Brennweite, Petzvalradius >= 130 mm, Blende bis Objekt <= 45 mm, Halbdurchmesser <= 10 mm, Glasrand >= 0,3 mm und Luftrand >= 0,1 mm bei der freien Öffnung plus 0,2 mm, Luftspalte >= 0,1 mm, Glas-Mittendicke >= 0,4 mm; Arbeitsabstand ab der Linse >= 0,25 mm (0,1 mm bis zur Hilfsebene plus >= 0,15 mm).",
+  "units": "mm",
+  "glass_catalogs": ["data/glass/basis.json", "data/glass/synthetisch.json"],
+  "spectrum": {
+    "wavelengths_nm": [435.83, 486.13, 546.07, 587.56, 656.27],
+    "weights": [1.0, 1.0, 1.0, 1.0, 1.0],
+    "reference_nm": 546.07
+  },
+  "source": {
+    "type": "collimated",
+    "field_angles_deg": [0.0, 0.7326498131341774, 1.0456195146582474],
+    "field_weights": [1.0, 1.0, 1.0]
+  },
+  "target": { "focal_length": 3.29, "parfocal_length": 45.0 },
+  "reference_sphere": "image_infinite",
+  "surfaces": [
+    { "type": "stop", "thickness": 12.878905430097511, "material": "AIR", "semi_diameter": 1.4640500000000003 },
+    {
+      "type": "sphere",
+      "curvature": 0.03453878087897386,
+      "thickness": 0.5039375267449088,
+      "material": "CAF2",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, erste Fläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.0788953698782792,
+      "thickness": 0.5,
+      "material": "SYN-11",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, Kittfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04788075881135461,
+      "thickness": 6.24647913458753,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, letzte Fläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.040738559854584064,
+      "thickness": 0.5,
+      "material": "CAF2",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, erste Fläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04025550406595335,
+      "thickness": 0.6178128064001607,
+      "material": "SYN-11",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, Kittfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04093019883692068,
+      "thickness": 5.192650033720592,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Null-Kittglied, letzte Fläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.04095267550983919,
+      "thickness": 0.5,
+      "material": "CAF2",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.0005770992221068307,
+      "thickness": 0.1,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.12481453600109339,
+      "thickness": 0.5556230125241235,
+      "material": "SYN-30",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.14540354240525777,
+      "thickness": 0.5638381632980977,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.792312739866013,
+        "nu": [-0.22659646533027086, 0.2068714829329927, -0.14865693715633221]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.05851051516567634,
+      "thickness": 2.977326431889507,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.22128223857213913,
+      "thickness": 0.8692851777859731,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.02538139427029021,
+      "thickness": 0.5745930635098485,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.7840303475299266,
+        "nu": [-0.19501171608658513, 0.1373936467335989, 0.023613828009611485]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.5864856112703051,
+      "thickness": 1.2412238425696116,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.7585941916012848,
+        "nu": [-0.09556910535127465, 0.039806762169495594, 0.023613828009611485]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.15590889311754721,
+      "thickness": 0.28432234566635667,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": -0.04317821455518071,
+      "thickness": 1.5579127921682963,
+      "material": "SYN-36",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Vorderfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.064056212669986,
+      "thickness": 0.28871060180410413,
+      "material": "AIR",
+      "semi_diameter": 3.5,
+      "comment": "Meniskus (Operator A), Rückfläche"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.887923861479912,
+      "thickness": 0.6364103612020718,
+      "material": "SYN-36",
+      "semi_diameter": 3.5
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.4455029083448868,
+      "thickness": 0.6171496668031846,
+      "material": {
+        "model": "buchdahl",
+        "n0": 1.801593861015002,
+        "nu": [-0.10766749224576977, 0.045672266589695754, 0.023613828009611485]
+      },
+      "semi_diameter": 3.5,
+      "comment": "Kittfläche (Operator B)"
+    },
+    {
+      "type": "sphere",
+      "curvature": 0.8968785127869796,
+      "thickness": 0.3530635763601088,
+      "material": "AIR",
+      "semi_diameter": 3.5
+    }
+  ],
+  "variables": {
+    "items": [
+      { "type": "curvature", "surfaces": [18, 20], "min": -1.2, "max": 1.2 },
+      {
+        "type": "thickness",
+        "surfaces": [0, 3, 6],
+        "min": 0.5,
+        "max": 40.0,
+        "comment": "Blendenspalt: Lage der Blende (Austrittspupille in Gebrauchsrichtung)"
+      },
+      { "type": "thickness", "surfaces": [18, 19], "min": 0.4, "max": 6.0, "comment": "Mittendicke der Linse" },
+      {
+        "type": "working_distance",
+        "min": 0.3,
+        "max": 10.0,
+        "typical": 1.0,
+        "comment": "Abstand Hilfsebene 4 bis Objekt"
+      },
+      {
+        "type": "thickness",
+        "surface": 11,
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [8],
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      },
+      { "type": "curvature", "surfaces": [12, 15], "min": -1.2, "max": 1.2, "comment": "Meniskus (Operator A)" },
+      {
+        "type": "thickness",
+        "surfaces": [12, 13, 14],
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      { "type": "curvature", "surfaces": [9, 11], "min": -1.2, "max": 1.2, "comment": "Meniskus (Operator A)" },
+      {
+        "type": "thickness",
+        "surfaces": [9, 10],
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicke des Meniskus (Homotopie)"
+      },
+      { "type": "curvature", "surfaces": [7, 8], "min": -1.2, "max": 1.2, "comment": "Meniskus (Operator A)" },
+      { "type": "thickness", "surface": 7, "min": 0.5, "max": 5.0, "comment": "Mittendicke des Meniskus (Homotopie)" },
+      { "type": "curvature", "surfaces": [16, 17], "min": -1.2, "max": 1.2, "comment": "Meniskus (Operator A)" },
+      {
+        "type": "thickness",
+        "surface": 16,
+        "min": 0.4,
+        "max": 5.0,
+        "comment": "Mittendicke (M6-T6: erzwungenes Einfügen)"
+      },
+      { "type": "curvature", "surface": 14, "comment": "Kittfläche (Operator B)" },
+      { "type": "glass", "surface": 14, "comment": "Glas freigegeben (Operator B)" },
+      { "type": "curvature", "surface": 19, "comment": "Kittfläche (Operator B)" },
+      { "type": "glass", "surface": 19, "comment": "Glas freigegeben (Operator B)" },
+      { "type": "curvature", "surface": 13, "comment": "Kittfläche (Operator B)" },
+      { "type": "glass", "surface": 13, "comment": "Glas freigegeben (Operator B)" },
+      { "type": "curvature", "surfaces": [1, 2, 3], "min": -1.2, "max": 1.2, "comment": "Null-Kittglied" },
+      {
+        "type": "thickness",
+        "surfaces": [1, 2],
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicken des Kittglieds (Homotopie, M6-T11)"
+      },
+      { "type": "curvature", "surface": 10, "comment": "Kittfläche (Operator B)" },
+      { "type": "glass", "surface": 10, "comment": "Glas freigegeben (Operator B)" },
+      { "type": "curvature", "surfaces": [4, 5, 6], "min": -1.2, "max": 1.2, "comment": "Null-Kittglied" },
+      {
+        "type": "thickness",
+        "surfaces": [4, 5],
+        "min": 0.5,
+        "max": 5.0,
+        "comment": "Mittendicken des Kittglieds (Homotopie, M6-T11)"
+      },
+      {
+        "type": "thickness",
+        "surfaces": [15, 17],
+        "min": 0.1,
+        "max": 10.0,
+        "comment": "Luftspalte (M6-T6: zwischen den Stufen freigegeben)"
+      }
+    ]
+  },
+  "constraints": {
+    "items": [
+      {
+        "type": "focal_length",
+        "weight": 100.0,
+        "comment": "Faustregel: 1e-3 mm Abweichung kostet so viel wie 0,01 Wellen RMS"
+      },
+      {
+        "type": "petzval",
+        "weight": 10000.0,
+        "max_curvature": 0.007692307692307693,
+        "comment": "Petzvalradius >= 130 mm (spezifikation.md)"
+      },
+      {
+        "type": "parfocal_length",
+        "mode": "max",
+        "weight": 1.0,
+        "reference_surface": 0,
+        "offset": 0.0,
+        "comment": "Annahme: Blende bis Objekt <= 45 mm (Anlagefläche in der Blendenebene oder davor)"
+      },
+      {
+        "type": "max_semi_diameter",
+        "weight": 10000.0,
+        "semi_diameter": 10.0,
+        "clearance": 0.2,
+        "comment": "Annahme: Linsendurchmesser <= 20 mm"
+      },
+      {
+        "type": "min_edge_thickness",
+        "weight": 10000.0,
+        "medium": "glass",
+        "thickness": 0.3,
+        "clearance": 0.2,
+        "height": "rays",
+        "comment": "Glasrand bei der freien Öffnung plus 0,2 mm; gilt auch für eingefügte Elemente"
+      },
+      {
+        "type": "min_edge_thickness",
+        "weight": 10000.0,
+        "medium": "air",
+        "thickness": 0.1,
+        "clearance": 0.2,
+        "height": "rays"
+      },
+      { "type": "min_center_thickness", "weight": 10000.0, "medium": "air", "thickness": 0.1 },
+      { "type": "min_center_thickness", "weight": 10000.0, "medium": "glass", "thickness": 0.4 },
+      { "type": "glass_hull", "weight": 10000.0 }
+    ]
+  }
+}

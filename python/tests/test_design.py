@@ -550,3 +550,30 @@ def test_unevaluable_result_is_rejected(session, tmp_path):
         session_module._check_results([(bad, {})])
     assert e.value.code == "invalid_result" and not bad.exists()
     session_module._check_results([(session.system_path(0), {})])  # gültig: kein Fehler
+
+
+def test_synth_segment_ghost_dictionary_extra(session, monkeypatch):
+    """M6-T12: ``ghost_dictionary_extra`` reicht ``synth --ghost-dictionary-extra N`` durch; ohne
+    den Parameter bleibt der Aufruf wie bisher. Die Kommandozeile ist hier ersetzt."""
+    import shutil
+
+    from mikroptim.design import actions
+
+    jsonschema = pytest.importorskip("jsonschema")
+    calls = []
+
+    def fake(args):
+        shutil.copy(args[1], args[args.index("-o") + 1])
+        calls.append([str(x) for x in args])
+        return {"result": {"status": "goal_reached", "point": {"aperture": 0.5}, "steps": []}}
+
+    monkeypatch.setattr(actions, "cli_json", fake)
+    a = {"action": "synth_segment", "target": {"aperture": 0.5}, "ghost_dictionary_extra": 2}
+    validate(response(a), "design_action.schema.json")
+    session.apply(0, response(a), decider={})
+    assert calls[-1][calls[-1].index("--ghost-dictionary-extra") + 1] == "2"
+    session.apply(0, response({"action": "synth_segment", "target": {"aperture": 0.5}}),
+                  decider={})
+    assert "--ghost-dictionary-extra" not in calls[-1]
+    with pytest.raises(jsonschema.ValidationError):
+        validate(response(dict(a, ghost_dictionary_extra=5)), "design_action.schema.json")

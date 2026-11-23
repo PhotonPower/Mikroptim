@@ -116,6 +116,7 @@ ACTION_DEFS = {
                        "augmented_lagrangian": {"type": "integer", "minimum": 1, "maximum": 20},
                        "sine_condition": {"type": "number", "minimum": 0},
                        "start_retry_cycles": {"type": "integer", "minimum": 0, "maximum": 200},
+                       "ghost_dictionary_extra": {"type": "integer", "minimum": 1, "maximum": 4},
                        "reason": _REASON}},
     "snap_glasses": {
         "type": "object", "additionalProperties": False, "required": ["action"],

@@ -1,0 +1,324 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t12\A1W4_farbe\c0_farbe_voll_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.241, 11 Glaselement(e)
+  Ziel                                        NA 0.4450, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 14; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Glas-Wörterbuch (M6-T12)                    +0 Platten an 0 Lage(n): SYN-32 (Flint, n_d 1.7688, v_d 48.42, dP_gF -0.0037, Partner CAF2, Rest 1.840e-04, schon im Wörterbuch), CAF2 (anomal, n_d 1.4338, v_d 95.00, dP_gF 0.0546, Partner SYN-11, Rest 3.114e-05, schon im Wörterbuch), SYN-13 (Flint, n_d 1.5733, v_d 47.80, dP_gF 0.0004, Partner CAF2, Rest 2.290e-04, schon im Wörterbuch), SYN-04 (anomal, n_d 1.4736, v_d 88.47, dP_gF 0.0373, Partner SYN-12, Rest 3.404e-05, schon im Wörterbuch)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.241   0  -        converged_step       171  2.215762e-03  2.206797e-03  0.05367   3.477e-05  11  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.241   0  -        converged_step       144  2.212527e-03  2.203634e-03  0.05367   3.468e-05  11  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.241   0  -        max_iterations       500  2.207262e-03  2.198507e-03  0.05365   3.463e-05  11  ok: Gewichte der einseitigen Bedingungen ×1
+      3  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  4.247809e-03  4.239189e-03  0.10583   3.468e-05  11  keep (Delta 0.03125)
+      4  spectrum_width   0.4450  0.241   0  0.03125  converged_step       133  1.000337e-02  9.995122e-03  0.17793   3.419e-05  11  shrink (Delta 0.01562)
+      5  spectrum_width   0.4450  0.241   0  0.01562  max_iterations       500  6.573057e-03  6.564814e-03  0.14047   3.410e-05  11  shrink (Delta 0.00781)
+      6  spectrum_width   0.4450  0.241   0  0.00781  max_iterations       500  5.310165e-03  5.301838e-03  0.12335   3.415e-05  11  shrink (Delta 0.00391)
+      7  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  4.736130e-03  4.727774e-03  0.11451   3.423e-05  11  keep (Delta 0.00391)
+      8  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.308837e-03  5.300573e-03  0.12342   3.410e-05  11  shrink (Delta 0.00195)
+      9  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.012281e-03  5.004007e-03  0.11893   3.415e-05  11  keep (Delta 0.00195)
+     10  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.294028e-03  5.285779e-03  0.12326   3.405e-05  11  shrink (Delta 0.00098)
+     11  spectrum_width   0.4450  0.241   0  0.00098  converged_step       217  5.156167e-03  5.147887e-03  0.12114   3.412e-05  11  insert (Delta 0.00049): Farbregel (Spektrumstufe 2.74366, größter RMS 0.120213 Wellen, ΔW020 = 0.387036, W040 = 0.281644, sigma_col = 0.0736035 Wellen, ΔW111 = 0.294414, ΔW040 = -0.0028587): Null-Kittglied im Luftspalt nach Fläche 0, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059) (keine Linse teilbar)
+     12  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            11  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 11.917 mm, c0 = 0.0389981/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+     13  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.995603e-03  4.987091e-03  0.11858   3.429e-05  11  ok, Zweig 0, Stufe 0.03125
+     14  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.972991e-03  4.964642e-03  0.11823   3.426e-05  11  ok, Zweig 0, Stufe 0.0625
+     15  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.937574e-03  4.929157e-03  0.11759   3.431e-05  11  ok, Zweig 0, Stufe 0.125
+     16  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.876701e-03  4.868384e-03  0.11629   3.449e-05  11  ok, Zweig 0, Stufe 0.25
+     17  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.882977e-03  4.873755e-03  0.11450   3.657e-05  11  ok, Zweig 0, Stufe 0.5
+     18  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.946458e-03  4.937611e-03  0.11664   3.463e-05  11  ok, Zweig 0, Stufe 0: Bewertung des Zweigs an der verworfenen Spektrumstufe
+     19  penalty          0.4450  0.241   0  -        max_iterations       500  3.459635e-03  3.450393e-03  0.09028   3.437e-05  13  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     20  penalty          0.4450  0.241   0  -        max_iterations       500  3.404519e-03  3.396065e-03  0.08910   3.408e-05  13  ok: Gewichte der einseitigen Bedingungen ×0.1
+     21  penalty          0.4450  0.241   0  -        converged_step       277  3.397788e-03  3.389285e-03  0.08912   3.421e-05  13  ok: Gewichte der einseitigen Bedingungen ×1
+     22  spectrum_width   0.4450  0.241   0  0.03125  converged_step       258  5.906929e-03  5.898573e-03  0.13229   3.392e-05  13  shrink (Delta 0.01562)
+     23  spectrum_width   0.4450  0.241   0  0.01562  converged_step       140  4.509589e-03  4.501067e-03  0.11085   3.408e-05  13  keep (Delta 0.01562)
+     24  spectrum_width   0.4450  0.241   0  0.01562  max_iterations       500  5.898687e-03  5.893662e-03  0.13194   3.388e-05  13  shrink (Delta 0.00781)
+     25  spectrum_width   0.4450  0.241   0  0.00781  max_iterations       500  5.134687e-03  5.129611e-03  0.12087   3.404e-05  13  shrink (Delta 0.00391)
+     26  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  4.798358e-03  4.791033e-03  0.11569   3.408e-05  13  keep (Delta 0.00391)
+     27  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.155341e-03  5.148216e-03  0.12126   3.395e-05  13  shrink (Delta 0.00195)
+     28  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  4.968426e-03  4.960592e-03  0.11837   3.398e-05  13  keep (Delta 0.00195)
+     29  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.093809e-03  5.085805e-03  0.12034   3.393e-05  13  keep (Delta 0.00195)
+     30  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.276266e-03  5.268548e-03  0.12311   3.387e-05  13  shrink (Delta 0.00098)
+     31  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.179438e-03  5.171360e-03  0.12165   3.392e-05  13  insert (Delta 0.00049): Farbregel (Spektrumstufe 2.6679, größter RMS 0.120138 Wellen, ΔW020 = 0.396337, W040 = 0.288679, sigma_col = 0.0755086 Wellen, ΔW111 = 0.30203, ΔW040 = -0.0110475): Null-Kittglied im Luftspalt nach Fläche 0, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059) (keine Linse teilbar)
+     32  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            13  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 5.86463 mm, c0 = 0.0389386/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+     33  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.193793e-03  5.181584e-03  0.11792   3.108e-05  13  ok, Zweig 0, Stufe 0.03125
+     34  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.095536e-03  5.087910e-03  0.11605   3.037e-05  13  ok, Zweig 0, Stufe 0.0625
+     35  insertion_stage  0.4450  0.241   0  -        max_iterations       500  2.615176e-03  2.430132e-03  0.06440   3.514e-05  13  ok, Zweig 0, Stufe 0.125
+     36  insertion_stage  0.4450  0.241   0  -        max_iterations       500  2.431810e-03  2.422978e-03  0.06330   3.463e-05  13  ok, Zweig 0, Stufe 0.25
+     37  insertion_stage  0.4450  0.241   0  -        max_iterations       500  2.470111e-03  2.460950e-03  0.06281   3.447e-05  13  ok, Zweig 0, Stufe 0.5
+     38  insertion_stage  0.4450  0.241   0  -        max_iterations       500  2.454057e-03  2.445101e-03  0.06261   3.451e-05  13  ok, Zweig 0, Stufe 0: Bewertung des Zweigs an der verworfenen Spektrumstufe
+     39  penalty          0.4450  0.241   0  -        max_iterations       500  2.396766e-03  2.387791e-03  0.06018   3.430e-05  15  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     40  penalty          0.4450  0.241   0  -        max_iterations       500  2.357677e-03  2.349045e-03  0.05903   3.417e-05  15  ok: Gewichte der einseitigen Bedingungen ×0.1
+     41  penalty          0.4450  0.241   0  -        converged_step       338  2.345015e-03  2.336643e-03  0.05879   3.397e-05  15  ok: Gewichte der einseitigen Bedingungen ×1
+     42  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.352217e-03  2.344071e-03  0.06021   3.370e-05  15  keep (Delta 0.03125)
+     43  spectrum_width   0.4450  0.241   0  0.03125  converged_step       143  2.369752e-03  2.361696e-03  0.06154   3.366e-05  15  keep (Delta 0.03125)
+     44  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.353655e-03  2.346010e-03  0.06091   3.335e-05  15  keep (Delta 0.03125)
+     45  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.356242e-03  2.348342e-03  0.06104   3.327e-05  15  keep (Delta 0.03125)
+     46  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.353559e-03  2.345919e-03  0.06028   3.310e-05  15  keep (Delta 0.03125)
+     47  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.366269e-03  2.358749e-03  0.06021   3.298e-05  15  keep (Delta 0.03125)
+     48  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.387774e-03  2.380367e-03  0.06095   3.286e-05  15  keep (Delta 0.03125)
+     49  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.414986e-03  2.407679e-03  0.06198   3.272e-05  15  keep (Delta 0.03125)
+     50  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.448566e-03  2.441350e-03  0.06312   3.255e-05  15  keep (Delta 0.03125)
+     51  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.488807e-03  2.481675e-03  0.06434   3.239e-05  15  keep (Delta 0.03125)
+     52  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.536036e-03  2.528980e-03  0.06563   3.225e-05  15  keep (Delta 0.03125)
+     53  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.591577e-03  2.584591e-03  0.06699   3.212e-05  15  keep (Delta 0.03125)
+     54  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.655746e-03  2.648833e-03  0.06843   3.198e-05  15  keep (Delta 0.03125)
+     55  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.729854e-03  2.723041e-03  0.06997   3.185e-05  15  keep (Delta 0.03125)
+     56  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.813161e-03  2.806418e-03  0.07156   3.167e-05  15  keep (Delta 0.03125)
+     57  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  2.910720e-03  2.904062e-03  0.07325   3.155e-05  15  keep (Delta 0.03125)
+     58  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.021524e-03  3.014939e-03  0.07561   3.142e-05  15  keep (Delta 0.03125)
+     59  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.146295e-03  3.139740e-03  0.07866   3.129e-05  15  keep (Delta 0.03125)
+     60  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.286888e-03  3.280350e-03  0.08196   3.118e-05  15  keep (Delta 0.03125)
+     61  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.444309e-03  3.437828e-03  0.08545   3.105e-05  15  keep (Delta 0.03125)
+     62  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.618938e-03  3.612424e-03  0.08917   3.092e-05  15  keep (Delta 0.03125)
+     63  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  3.813729e-03  3.807332e-03  0.09315   3.081e-05  15  keep (Delta 0.03125)
+     64  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  4.025699e-03  4.019289e-03  0.09689   3.050e-05  15  keep (Delta 0.03125)
+     65  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  4.260839e-03  4.254410e-03  0.10016   3.020e-05  15  keep (Delta 0.03125)
+     66  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  4.512786e-03  4.506303e-03  0.10372   3.025e-05  15  keep (Delta 0.03125)
+     67  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  4.791206e-03  4.784653e-03  0.10773   3.038e-05  15  keep (Delta 0.03125)
+     68  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  5.096770e-03  5.090190e-03  0.11198   3.048e-05  15  keep (Delta 0.03125)
+     69  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  5.428563e-03  5.421906e-03  0.11638   3.057e-05  15  shrink (Delta 0.01562)
+     70  spectrum_width   0.4450  0.241   0  0.01562  max_iterations       500  5.249706e-03  5.243026e-03  0.11382   3.061e-05  15  shrink (Delta 0.00781)
+     71  spectrum_width   0.4450  0.241   0  0.00781  max_iterations       500  5.159817e-03  5.153113e-03  0.11240   3.062e-05  15  shrink (Delta 0.00391)
+     72  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.127031e-03  5.120383e-03  0.11209   3.052e-05  15  shrink (Delta 0.00195)
+     73  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.105067e-03  5.098398e-03  0.11175   3.053e-05  15  keep (Delta 0.00195)
+     74  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.113396e-03  5.106674e-03  0.11159   3.061e-05  15  shrink (Delta 0.00098)
+     75  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.102262e-03  5.095533e-03  0.11143   3.062e-05  15  keep (Delta 0.00098)
+     76  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.099426e-03  5.092825e-03  0.11115   3.073e-05  15  keep (Delta 0.00098)
+     77  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.096911e-03  5.090077e-03  0.11091   3.083e-05  15  keep (Delta 0.00098)
+     78  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.094379e-03  5.087498e-03  0.11067   3.092e-05  15  keep (Delta 0.00098)
+     79  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.082571e-03  5.075606e-03  0.11019   3.109e-05  15  keep (Delta 0.00098)
+     80  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.087445e-03  5.080449e-03  0.11019   3.114e-05  15  keep (Delta 0.00098)
+     81  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.085212e-03  5.078160e-03  0.10998   3.121e-05  15  keep (Delta 0.00098)
+     82  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.072959e-03  5.065861e-03  0.10951   3.134e-05  15  keep (Delta 0.00098)
+     83  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.070748e-03  5.063673e-03  0.10932   3.141e-05  15  keep (Delta 0.00098)
+     84  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.068532e-03  5.061320e-03  0.10915   3.148e-05  15  keep (Delta 0.00098)
+     85  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.065394e-03  5.058250e-03  0.10893   3.155e-05  15  keep (Delta 0.00098)
+     86  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.062769e-03  5.055509e-03  0.10874   3.161e-05  15  keep (Delta 0.00098)
+     87  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.061162e-03  5.053908e-03  0.10857   3.166e-05  15  keep (Delta 0.00098)
+     88  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.065381e-03  5.058064e-03  0.10857   3.170e-05  15  keep (Delta 0.00098)
+     89  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.062816e-03  5.055476e-03  0.10838   3.175e-05  15  keep (Delta 0.00098)
+     90  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.060658e-03  5.053290e-03  0.10821   3.180e-05  15  keep (Delta 0.00098)
+     91  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.058366e-03  5.050969e-03  0.10804   3.186e-05  15  keep (Delta 0.00098)
+     92  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.056645e-03  5.049233e-03  0.10788   3.190e-05  15  keep (Delta 0.00098)
+     93  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.054788e-03  5.047349e-03  0.10773   3.195e-05  15  keep (Delta 0.00098)
+     94  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.051848e-03  5.044382e-03  0.10754   3.200e-05  15  keep (Delta 0.00098)
+     95  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.056240e-03  5.048653e-03  0.10753   3.201e-05  15  keep (Delta 0.00098)
+     96  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.053399e-03  5.045896e-03  0.10734   3.205e-05  15  keep (Delta 0.00098)
+     97  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.057592e-03  5.050078e-03  0.10733   3.207e-05  15  keep (Delta 0.00098)
+     98  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.055518e-03  5.048011e-03  0.10716   3.212e-05  15  keep (Delta 0.00098)
+     99  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.059405e-03  5.051839e-03  0.10716   3.214e-05  15  keep (Delta 0.00098)
+    100  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.063785e-03  5.056234e-03  0.10716   3.216e-05  15  keep (Delta 0.00098)
+    101  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.061804e-03  5.054222e-03  0.10699   3.219e-05  15  keep (Delta 0.00098)
+    102  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.065527e-03  5.057944e-03  0.10697   3.222e-05  15  keep (Delta 0.00098)
+    103  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.063304e-03  5.055688e-03  0.10682   3.225e-05  15  keep (Delta 0.00098)
+    104  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.067403e-03  5.059777e-03  0.10681   3.227e-05  15  keep (Delta 0.00098)
+    105  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.071217e-03  5.063585e-03  0.10680   3.230e-05  15  keep (Delta 0.00098)
+    106  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.069315e-03  5.061654e-03  0.10664   3.233e-05  15  keep (Delta 0.00098)
+    107  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.073650e-03  5.065961e-03  0.10664   3.235e-05  15  keep (Delta 0.00098)
+    108  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.077996e-03  5.070317e-03  0.10664   3.237e-05  15  keep (Delta 0.00098)
+    109  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.081976e-03  5.074292e-03  0.10662   3.238e-05  15  keep (Delta 0.00098)
+    110  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.085421e-03  5.077745e-03  0.10657   3.239e-05  15  keep (Delta 0.00098)
+    111  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.082187e-03  5.074489e-03  0.10639   3.242e-05  15  keep (Delta 0.00098)
+    112  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.079825e-03  5.072095e-03  0.10624   3.246e-05  15  keep (Delta 0.00098)
+    113  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.083663e-03  5.075900e-03  0.10623   3.248e-05  15  keep (Delta 0.00098)
+    114  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.087017e-03  5.079252e-03  0.10620   3.250e-05  15  keep (Delta 0.00098)
+    115  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.090626e-03  5.082867e-03  0.10618   3.252e-05  15  keep (Delta 0.00098)
+    116  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.087538e-03  5.079732e-03  0.10602   3.256e-05  15  keep (Delta 0.00098)
+    117  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.084337e-03  5.076529e-03  0.10585   3.260e-05  15  keep (Delta 0.00098)
+    118  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.088196e-03  5.080369e-03  0.10584   3.262e-05  15  keep (Delta 0.00098)
+    119  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.091912e-03  5.084111e-03  0.10581   3.264e-05  15  keep (Delta 0.00098)
+    120  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.093940e-03  5.086139e-03  0.10576   3.267e-05  15  keep (Delta 0.00098)
+    121  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.096899e-03  5.089055e-03  0.10572   3.269e-05  15  keep (Delta 0.00098)
+    122  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.101673e-03  5.093800e-03  0.10571   3.273e-05  15  keep (Delta 0.00098)
+    123  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.103603e-03  5.095740e-03  0.10564   3.275e-05  15  keep (Delta 0.00098)
+    124  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.103364e-03  5.095376e-03  0.10542   3.276e-05  15  keep (Delta 0.00098)
+    125  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.089619e-03  5.081670e-03  0.10506   3.288e-05  15  keep (Delta 0.00098)
+    126  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.090995e-03  5.083055e-03  0.10496   3.292e-05  15  keep (Delta 0.00098)
+    127  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.097187e-03  5.089210e-03  0.10499   3.295e-05  15  keep (Delta 0.00098)
+    128  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.099851e-03  5.091882e-03  0.10495   3.297e-05  15  keep (Delta 0.00098)
+    129  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.101444e-03  5.093468e-03  0.10485   3.299e-05  15  keep (Delta 0.00098)
+    130  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.099803e-03  5.091786e-03  0.10460   3.304e-05  15  keep (Delta 0.00098)
+    131  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.104446e-03  5.096397e-03  0.10459   3.311e-05  15  keep (Delta 0.00098)
+    132  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.108043e-03  5.099995e-03  0.10456   3.313e-05  15  keep (Delta 0.00098)
+    133  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.109920e-03  5.101873e-03  0.10447   3.316e-05  15  keep (Delta 0.00098)
+    134  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.118355e-03  5.111182e-03  0.10465   3.342e-05  15  insert (Delta 0.00049): Farbregel (Spektrumstufe 2.09414, größter RMS 0.115168 Wellen, ΔW020 = 0.302129, W040 = 0.296505, sigma_col = 0.125457 Wellen, ΔW111 = 0.486233, ΔW040 = -0.287969): Null-Kittglied im Luftspalt nach Fläche 0, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059) (keine Linse teilbar)
+    135  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.040518e-03  5.032304e-03  0.10333   3.337e-05  15  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.05092 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    136  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.974246e-03  4.966264e-03  0.10251   3.373e-05  15  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.05092 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    137  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.956169e-03  4.947926e-03  0.10247   3.418e-05  15  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.05092 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    138  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            13  ok: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.05092 Wellen) entfernt (Elementbudget 14): F_B 0.00494793 ≤ 0.00510204, vorher 0.00510187
+    139  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.965306e-03  4.957304e-03  0.10309   3.424e-05  13  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.09976 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    140  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.969380e-03  4.961807e-03  0.10358   3.365e-05  13  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.09976 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    141  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.975921e-03  4.968602e-03  0.10476   3.347e-05  13  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.09976 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    142  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            11  ok: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.09976 Wellen) entfernt (Elementbudget 14): F_B 0.0049686 ≤ 0.00510204, vorher 0.00494793
+    143  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.938531e-03  4.930081e-03  0.10195   3.553e-05  11  -: Element ab Fläche 5 (SYN-13, Seidel-Beitrag 0.3004 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    144  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.953560e-03  4.944126e-03  0.10198   4.011e-05  11  -: Element ab Fläche 5 (SYN-13, Seidel-Beitrag 0.3004 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    145  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.992278e-03  4.981788e-03  0.10139   4.333e-05  11  -: Element ab Fläche 5 (SYN-13, Seidel-Beitrag 0.3004 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    146  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  ok: Element ab Fläche 5 (SYN-13, Seidel-Beitrag 0.3004 Wellen) entfernt (Elementbudget 14): F_B 0.00498179 ≤ 0.00510204, vorher 0.0049686
+    147  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.461107e-03  5.447118e-03  0.11220   6.255e-05  10  -: Element ab Fläche 5 (SYN-32, Seidel-Beitrag 0.8613 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    148  removal_stage    0.4450  0.241   0  -        max_iterations       500  6.914240e-03  6.895482e-03  0.12942   1.062e-04  10  -: Element ab Fläche 5 (SYN-32, Seidel-Beitrag 0.8613 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    149  removal_stage    0.4450  0.241   0  -        max_iterations       500  8.707748e-03  8.684185e-03  0.13741   1.539e-04  10  -: Element ab Fläche 5 (SYN-32, Seidel-Beitrag 0.8613 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    150  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 5 (SYN-32, Seidel-Beitrag 0.8613 Wellen): F_B 0.00868419 > 0.00510204
+    151  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.824840e-03  4.816224e-03  0.10088   3.305e-05  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9154 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    152  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.938409e-03  4.930905e-03  0.10185   3.005e-05  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9154 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    153  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.247314e-03  5.238722e-03  0.10240   3.212e-05  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9154 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    154  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9154 Wellen): F_B 0.00523872 > 0.00510204
+    155  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.853854e-03  4.845403e-03  0.10127   3.291e-05  10  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 0.9418 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    156  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.856896e-02  1.719206e-02  0.16657   9.666e-05  10  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 0.9418 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    157  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.767644e-03  5.758853e-03  0.10121   4.078e-05  10  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 0.9418 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    158  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 1 (CAF2, Seidel-Beitrag 0.9418 Wellen): F_B 0.00575885 > 0.00510204
+    159  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.384021e-03  5.371114e-03  0.10807   4.602e-05  10  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 3.052 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    160  removal_stage    0.4450  0.241   0  -        max_iterations       500  6.080358e-03  6.065970e-03  0.11742   4.640e-05  10  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 3.052 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    161  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.705903e-01  1.688258e-01  0.47094   4.352e-03  10  -: Element ab Fläche 13 (SYN-36, Seidel-Beitrag 3.052 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    162  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 13 (SYN-36, Seidel-Beitrag 3.052 Wellen): F_B 0.168826 > 0.00510204
+    163  spectrum_width   0.4450  0.241   0  0.03125  max_iterations       500  5.219811e-03  5.210275e-03  0.10416   3.891e-05  10  shrink (Delta 0.01562)
+    164  spectrum_width   0.4450  0.241   0  0.01562  max_iterations       500  5.056916e-03  5.047353e-03  0.10171   3.874e-05  10  keep (Delta 0.01562)
+    165  spectrum_width   0.4450  0.241   0  0.01562  max_iterations       500  5.162539e-03  5.153426e-03  0.10402   3.736e-05  10  shrink (Delta 0.00781)
+    166  spectrum_width   0.4450  0.241   0  0.00781  max_iterations       500  5.076138e-03  5.067045e-03  0.10276   3.721e-05  10  keep (Delta 0.00781)
+    167  spectrum_width   0.4450  0.241   0  0.00781  max_iterations       500  5.127925e-03  5.119070e-03  0.10383   3.659e-05  10  shrink (Delta 0.00391)
+    168  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.086983e-03  5.078163e-03  0.10321   3.658e-05  10  keep (Delta 0.00391)
+    169  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.103625e-03  5.094994e-03  0.10367   3.611e-05  10  keep (Delta 0.00391)
+    170  spectrum_width   0.4450  0.241   0  0.00391  max_iterations       500  5.114154e-03  5.105523e-03  0.10401   3.565e-05  10  shrink (Delta 0.00195)
+    171  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.110492e-03  5.101816e-03  0.10387   3.586e-05  10  keep (Delta 0.00195)
+    172  spectrum_width   0.4450  0.241   0  0.00195  max_iterations       500  5.118329e-03  5.109709e-03  0.10406   3.567e-05  10  shrink (Delta 0.00098)
+    173  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.108077e-03  5.099508e-03  0.10389   3.567e-05  10  keep (Delta 0.00098)
+    174  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.104532e-03  5.095974e-03  0.10391   3.548e-05  10  keep (Delta 0.00098)
+    175  spectrum_width   0.4450  0.241   0  0.00098  max_iterations       500  5.096537e-03  5.088053e-03  0.10386   3.528e-05  10  keep (Delta 0.00098)
+    176  smoothing        0.4450  0.241   0  -        max_iterations       500  5.326236e-03  5.315650e-03  0.10486   2.206e-05  10  ok: ε ×0.1
+    177  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.10519 Wellen (Ziel 0.07143)
+    178  ghost_weight     0.4450  0.241   0  -        max_iterations       500  8.031761e-03  7.862577e-03  0.10623   1.407e-05  10  ok: μ ×10
+    179  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.10510 Wellen (Ziel 0.07143)
+    180  ghost_weight     0.4450  0.241   0  -        max_iterations       500  6.087276e-03  5.971307e-03  0.11119   1.459e-07  10  ok: μ ×100
+    181  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.11119 Wellen (Ziel 0.07143)
+    182  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            10  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 11.8372 mm, c0 = 0.0388336/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+    183  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.091361e-03  5.082798e-03  0.10372   3.542e-05  10  ok, Zweig 0, Stufe 0.03125
+    184  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.085634e-03  5.077045e-03  0.10357   3.550e-05  10  ok, Zweig 0, Stufe 0.0625
+    185  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.077960e-03  5.069276e-03  0.10337   3.554e-05  10  ok, Zweig 0, Stufe 0.125
+    186  insertion_stage  0.4450  0.241   0  -        converged_step       221  5.069795e-03  5.061533e-03  0.10342   3.348e-05  10  ok, Zweig 0, Stufe 0.25
+    187  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.176887e-03  5.166894e-03  0.10866   4.606e-05  10  ok, Zweig 0, Stufe 0.5
+    188  penalty          0.4450  0.241   0  -        max_iterations       500  5.106437e-03  5.094779e-03  0.10668   4.213e-05  12  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    189  penalty          0.4450  0.241   0  -        max_iterations       500  5.117443e-03  5.091087e-03  0.10601   4.192e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+    190  penalty          0.4450  0.241   0  -        max_iterations       500  5.032009e-03  5.022961e-03  0.10273   3.644e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+    191  smoothing        0.4450  0.241   0  -        max_iterations       500  5.260858e-03  5.249880e-03  0.10385   2.250e-05  12  ok: ε ×0.1
+    192  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.10329 Wellen (Ziel 0.07143)
+    193  ghost_weight     0.4450  0.241   0  -        max_iterations       500  6.005196e-03  5.877911e-03  0.11077   1.601e-06  12  ok: μ ×10
+    194  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.11079 Wellen (Ziel 0.07143)
+    195  ghost_weight     0.4450  0.241   0  -        max_iterations       500  6.029666e-03  5.897851e-03  0.11133   1.567e-07  12  ok: μ ×100
+    196  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.11133 Wellen (Ziel 0.07143)
+    197  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            12  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 6.84529 mm, c0 = 0.0387269/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+    198  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.023977e-03  5.014922e-03  0.10195   3.594e-05  12  ok, Zweig 0, Stufe 0.03125
+    199  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.017856e-03  5.008834e-03  0.10163   3.572e-05  12  ok, Zweig 0, Stufe 0.0625
+    200  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.008136e-03  4.999167e-03  0.10158   3.497e-05  12  ok, Zweig 0, Stufe 0.125
+    201  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.022000e-03  5.016566e-03  0.10109   3.373e-05  12  ok, Zweig 0, Stufe 0.25
+    202  insertion_stage  0.4450  0.241   0  -        max_iterations       500  5.038233e-03  5.030251e-03  0.10247   3.164e-05  12  ok, Zweig 0, Stufe 0.5
+    203  penalty          0.4450  0.241   0  -        max_iterations       500  4.985004e-03  4.968957e-03  0.10142   3.374e-05  14  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    204  penalty          0.4450  0.241   0  -        max_iterations       500  4.985539e-03  4.976016e-03  0.10140   3.411e-05  14  ok: Gewichte der einseitigen Bedingungen ×0.1
+    205  penalty          0.4450  0.241   0  -        max_iterations       500  4.979604e-03  4.970669e-03  0.10125   3.445e-05  14  ok: Gewichte der einseitigen Bedingungen ×1
+    206  smoothing        0.4450  0.241   0  -        max_iterations       500  5.218278e-03  5.206857e-03  0.10332   2.246e-05  14  ok: ε ×0.1
+    207  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.10218 Wellen (Ziel 0.07143)
+    208  ghost_weight     0.4450  0.241   0  -        max_iterations       500  7.700388e-03  7.482241e-03  0.10789   1.273e-05  14  ok: μ ×10
+    209  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.10704 Wellen (Ziel 0.07143)
+    210  ghost_weight     0.4450  0.241   0  -        max_iterations       500  5.991253e-03  5.864082e-03  0.11215   1.539e-07  14  ok: μ ×100
+    211  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.11216 Wellen (Ziel 0.07143)
+    212  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.928522e-03  4.919566e-03  0.10094   3.509e-05  14  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.01179 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    213  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.877765e-03  4.868972e-03  0.10085   3.499e-05  14  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.01179 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    214  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.855455e-03  4.846630e-03  0.10080   3.569e-05  14  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.01179 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    215  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            12  ok: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.01179 Wellen) entfernt (Elementbudget 14): F_B 0.00484663 ≤ 0.00510204, vorher 0.00586408
+    216  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.833293e-03  4.824531e-03  0.10074   3.604e-05  12  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.02395 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    217  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.811548e-03  4.802878e-03  0.10070   3.619e-05  12  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.02395 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    218  removal_stage    0.4450  0.241   0  -        max_iterations       500  4.682529e-03  4.670816e-03  0.09994   3.496e-05  12  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.02395 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    219  removal          0.4450  0.241   0  -        -                      -  -             -             -         -            10  ok: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 0.02395 Wellen) entfernt (Elementbudget 14): F_B 0.00467082 ≤ 0.00510204, vorher 0.00484663
+    220  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.337738e-01  2.763610e-01  0.92239   3.582e-03  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9629 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    221  removal_stage    0.4450  0.241   0  -        max_iterations       500  1.646661e-01  4.442742e-02  0.17293   1.204e-03  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9629 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    222  removal_stage    0.4450  0.241   0  -        converged_step       208  4.830349e-03  4.821241e-03  0.10045   3.137e-05  10  -: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9629 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    223  removal          0.4450  0.241   0  -        -                      -  -             -             -         -             9  ok: Element ab Fläche 3 (SYN-04, Seidel-Beitrag 0.9629 Wellen) entfernt (Elementbudget 14): F_B 0.00482124 ≤ 0.00510204, vorher 0.00467082
+    224  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.199914e-03  4.774145e-03  0.11058   3.141e-05   9  -: Element ab Fläche 3 (SYN-32, Seidel-Beitrag 0.5755 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    225  removal_stage    0.4450  0.241   0  -        max_iterations       500  7.259692e-03  6.989558e-03  0.13666   3.285e-05   9  -: Element ab Fläche 3 (SYN-32, Seidel-Beitrag 0.5755 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    226  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.718079e-03  5.704412e-03  0.14363   6.933e-05   9  -: Element ab Fläche 3 (SYN-32, Seidel-Beitrag 0.5755 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    227  removal          0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 3 (SYN-32, Seidel-Beitrag 0.5755 Wellen): F_B 0.00570441 > 0.00510204
+    228  removal_stage    0.4450  0.241   0  -        max_iterations       500  6.528461e-03  6.363317e-03  0.10841   4.116e-05   9  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 1.083 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    229  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.280601e-03  5.268198e-03  0.11478   3.203e-05   9  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 1.083 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    230  removal_stage    0.4450  0.241   0  -        max_iterations       500  7.599543e-03  7.594511e-03  0.10896   8.094e-05   9  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 1.083 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    231  removal          0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 1 (CAF2, Seidel-Beitrag 1.083 Wellen): F_B 0.00759451 > 0.00510204
+    232  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.081090e-03  5.070003e-03  0.10877   3.349e-05   9  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 3.026 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    233  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.473990e-03  5.463774e-03  0.11857   3.444e-05   9  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 3.026 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    234  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.589208e-03  5.580071e-03  0.12668   3.265e-05   9  -: Element ab Fläche 11 (SYN-36, Seidel-Beitrag 3.026 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    235  removal          0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 11 (SYN-36, Seidel-Beitrag 3.026 Wellen): F_B 0.00558007 > 0.00510204
+    236  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.646930e-01  3.616395e-01  0.46286   1.201e-02   9  -: Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 7.574 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+    237  removal_stage    0.4450  0.241   0  -        max_iterations       500  3.455447e-01  3.446317e-01  0.42960   1.195e-02   9  -: Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 7.574 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+    238  removal_stage    0.4450  0.241   0  -        max_iterations       500  5.624491e-01  5.609607e-01  0.58148   1.904e-02   9  -: Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 7.574 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+    239  removal          0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Rückbau verworfen (Elementbudget 14): Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 7.574 Wellen): remap_surfaces: Geisterplatte nach Fläche 12 läge in einem entfernten Spalt
+    240  smoothing        0.4450  0.241   0  -        max_iterations       500  4.945062e-03  4.934255e-03  0.10111   2.148e-05   9  ok: ε ×0.1
+    241  goal             0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Ziel verfehlt: größter RMS 0.10036 Wellen (Ziel 0.07143)
+    242  ghost_weight     0.4450  0.241   0  -        max_iterations       500  6.889951e-03  6.663920e-03  0.10371   8.415e-06   9  ok: μ ×10
+    243  goal             0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Ziel verfehlt: größter RMS 0.10307 Wellen (Ziel 0.07143)
+    244  ghost_weight     0.4450  0.241   0  -        max_iterations       500  5.878118e-03  5.710441e-03  0.10582   1.733e-07   9  ok: μ ×100
+    245  goal             0.4450  0.241   0  -        -                      -  -             -             -         -             9  -: Ziel verfehlt: größter RMS 0.10582 Wellen (Ziel 0.07143)
+    246  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -             9  ok: Operator B: Linse an Fläche 1 geteilt, c_s = -0.0479662/mm, Glas nach Fläche 2 frei, Zielglas SYN-11 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+    247  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.813931e-03  4.804721e-03  0.10127   3.138e-05   9  ok, Zweig 0, Stufe 0
+    248  insertion_stage  0.4450  0.241   0  -        max_iterations       500  4.328935e-03  4.320741e-03  0.10069   2.915e-05   9  ok, Zweig 1, Stufe 0
+    249  penalty          0.4450  0.241   0  -        max_iterations       500  4.045905e-03  4.033567e-03  0.09578   2.868e-05  10  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    250  penalty          0.4450  0.241   0  -        max_iterations       500  3.979312e-03  3.971269e-03  0.09481   2.903e-05  10  ok: Gewichte der einseitigen Bedingungen ×0.1
+    251  penalty          0.4450  0.241   0  -        max_iterations       500  3.927203e-03  3.919594e-03  0.09375   2.918e-05  10  ok: Gewichte der einseitigen Bedingungen ×1
+    252  smoothing        0.4450  0.241   0  -        max_iterations       500  4.097825e-03  4.088066e-03  0.09114   1.888e-05  10  ok: ε ×0.1
+    253  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.09073 Wellen (Ziel 0.07143)
+    254  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.714594e-03  4.603178e-03  0.09699   1.465e-06  10  ok: μ ×10
+    255  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.09701 Wellen (Ziel 0.07143)
+    256  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.695955e-03  4.590019e-03  0.09710   1.381e-07  10  ok: μ ×100
+    257  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            10  -: Ziel verfehlt: größter RMS 0.09710 Wellen (Ziel 0.07143)
+    258  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            10  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 12.1253 mm, c0 = 0.0654959/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+    259  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.910730e-03  3.903010e-03  0.09298   2.934e-05  10  ok, Zweig 0, Stufe 0.03125
+    260  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.892482e-03  3.884631e-03  0.09227   2.953e-05  10  ok, Zweig 0, Stufe 0.0625
+    261  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.887109e-03  3.879061e-03  0.09134   2.976e-05  10  ok, Zweig 0, Stufe 0.125
+    262  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.904773e-03  3.896226e-03  0.08978   3.014e-05  10  ok, Zweig 0, Stufe 0.25
+    263  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.952467e-03  3.942989e-03  0.08811   3.111e-05  10  ok, Zweig 0, Stufe 0.5
+    264  penalty          0.4450  0.241   0  -        max_iterations       500  3.871722e-03  3.858502e-03  0.08874   3.071e-05  12  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    265  penalty          0.4450  0.241   0  -        max_iterations       500  3.857468e-03  3.847862e-03  0.08905   3.078e-05  12  ok: Gewichte der einseitigen Bedingungen ×0.1
+    266  penalty          0.4450  0.241   0  -        max_iterations       500  3.809749e-03  3.800882e-03  0.08864   3.077e-05  12  ok: Gewichte der einseitigen Bedingungen ×1
+    267  smoothing        0.4450  0.241   0  -        max_iterations       500  3.986024e-03  3.975568e-03  0.08772   2.031e-05  12  ok: ε ×0.1
+    268  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.08624 Wellen (Ziel 0.07143)
+    269  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.664284e-03  4.545720e-03  0.09561   1.481e-06  12  ok: μ ×10
+    270  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.09563 Wellen (Ziel 0.07143)
+    271  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.663628e-03  4.545220e-03  0.09596   1.422e-07  12  ok: μ ×100
+    272  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            12  -: Ziel verfehlt: größter RMS 0.09596 Wellen (Ziel 0.07143)
+    273  insertion        0.4450  0.241   0  -        -                      -  -             -             -         -            12  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 0 bei 6.45339 mm, c0 = 0.0650832/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+    274  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.783611e-03  3.774778e-03  0.08786   3.082e-05  12  ok, Zweig 0, Stufe 0.03125
+    275  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.768487e-03  3.759666e-03  0.08722   3.085e-05  12  ok, Zweig 0, Stufe 0.0625
+    276  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.758417e-03  3.749492e-03  0.08633   3.087e-05  12  ok, Zweig 0, Stufe 0.125
+    277  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.784244e-03  3.774892e-03  0.08531   3.107e-05  12  ok, Zweig 0, Stufe 0.25
+    278  insertion_stage  0.4450  0.241   0  -        max_iterations       500  3.818252e-03  3.808146e-03  0.08546   3.194e-05  12  ok, Zweig 0, Stufe 0.5
+    279  penalty          0.4450  0.241   0  -        max_iterations       500  3.723411e-03  3.710269e-03  0.08513   3.116e-05  14  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    280  penalty          0.4450  0.241   0  -        converged_step       131  3.685655e-03  3.675980e-03  0.08511   3.114e-05  14  ok: Gewichte der einseitigen Bedingungen ×0.1
+    281  penalty          0.4450  0.241   0  -        max_iterations       500  3.639368e-03  3.630297e-03  0.08470   3.101e-05  14  ok: Gewichte der einseitigen Bedingungen ×1
+    282  smoothing        0.4450  0.241   0  -        max_iterations       500  3.814668e-03  3.803943e-03  0.08615   2.037e-05  14  ok: ε ×0.1
+    283  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.08438 Wellen (Ziel 0.07143)
+    284  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.463620e-03  4.350117e-03  0.09371   1.436e-06  14  ok: μ ×10
+    285  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.09373 Wellen (Ziel 0.07143)
+    286  ghost_weight     0.4450  0.241   0  -        max_iterations       500  4.465785e-03  4.350158e-03  0.09410   1.405e-07  14  ok: μ ×100
+    287  goal             0.4450  0.241   0  -        -                      -  -             -             -         -            14  -: Ziel verfehlt: größter RMS 0.09411 Wellen (Ziel 0.07143)
+
+Status: max_elements (Ziel am Endpunkt verfehlt (größter RMS 0.09411 Wellen); Bedarf (Operator B), aber höchste Elementzahl 14 erreicht)
+Endpunkt: NA 0.4450, Feldanteil 0.241, Spektrumstufe 0, mu x100, eps x0.1 (Ziel NA 0.4450)
+Glaselemente: 11 -> 14 (7 Einfügungen, 6 Rückbauten in 14 Versuchen), Optimierungen: 246, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 435.83 nm: RMS 0.03514 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 486.13 nm: RMS 0.03543 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.03694 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 587.56 nm: RMS 0.03064 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 656.27 nm: RMS 0.04068 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 435.83 nm: RMS 0.09150 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 486.13 nm: RMS 0.06018 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 546.07 nm: RMS 0.06534 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 587.56 nm: RMS 0.06992 Wellen, versagt 0
+  Feld 1 (0.7326 deg), 656.27 nm: RMS 0.09411 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 435.83 nm: RMS 0.06294 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 486.13 nm: RMS 0.08039 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 546.07 nm: RMS 0.08121 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 587.56 nm: RMS 0.06766 Wellen, versagt 0
+  Feld 2 (1.0456 deg), 656.27 nm: RMS 0.07493 Wellen, versagt 0
+  Laufzeit [s]                                5205.2
+Ergebnis geschrieben: docs\ergebnisse\m6-t12\A1W4_farbe\c0_farbe_voll_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t12\A1W4_farbe\c0_farbe_voll_r3_log.json

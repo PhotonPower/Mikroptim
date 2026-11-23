@@ -295,6 +295,9 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
             args += ["--augmented-lagrangian", int(a["augmented_lagrangian"])]
         if "sine_condition" in a:
             args += ["--sine-condition", float(a["sine_condition"])]
+        if a.get("ghost_dictionary_extra"):
+            # M6-T12: Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern
+            args += ["--ghost-dictionary-extra", int(a["ghost_dictionary_extra"])]
         if SHRINK_SHORT_GAPS:
             args += ["--shrink-short-gaps"]
         rep = cli_json(args)
