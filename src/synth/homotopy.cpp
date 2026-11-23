@@ -504,12 +504,23 @@ private:
             const State backup = s;
             const int elements = elements_;
             const double good = good_fb_;
-            insert_once(s, option, no_need_status, no_need_message, choose_at);
-            const HomotopySolve& last = r_.steps.back().solve;
-            const double after = last.wavefront + last.ghost_penalty;
-            if (std::isfinite(after) && last.failed_rays == 0 &&
-                (after < *before_fb || (start && after <= threshold_))) {
-                return;
+            // M6-T13: wirft die Optimierung nach dem Einfügen (z. B. freie Glasvariable mit
+            // n <= 0, „SystemBatch: index muss > 0 sein“, Lauf H1G8), gilt die Variante als
+            // verworfen statt den Lauf abzubrechen (vorher Fehler-Exit von synth)
+            std::string error;
+            double after = std::numeric_limits<double>::infinity();
+            try {
+                insert_once(s, option, no_need_status, no_need_message, choose_at);
+                const HomotopySolve& last = r_.steps.back().solve;
+                after = last.wavefront + last.ghost_penalty;
+                if (std::isfinite(after) && last.failed_rays == 0 &&
+                    (after < *before_fb || (start && after <= threshold_))) {
+                    return;
+                }
+            } catch (const Stop&) {
+                throw;
+            } catch (const std::exception& e) {
+                error = e.what();
             }
             s = backup;
             elements_ = elements;
@@ -518,11 +529,12 @@ private:
             note.kind = HomotopyStepKind::Insertion;
             note.point = s.point;
             note.recommendation = option.recommendation;
-            note.operation = "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
-                             number(*before_fb) + " davor" +
-                             (start ? " und > F_max = " + number(threshold_) : std::string()) +
-                             " (Einfügen nur mit Verbesserung" +
-                             (start ? ", Startphase" : "") + ")";
+            note.operation =
+                (error.empty() ? "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
+                                     number(*before_fb) + " davor"
+                               : "Einfügen verworfen: Fehler der Optimierung (" + error + ")") +
+                (start ? " und > F_max = " + number(threshold_) : std::string()) +
+                " (Einfügen nur mit Verbesserung" + (start ? ", Startphase" : "") + ")";
             emit(note);
             tried += (tried.empty() ? "" : ", ") + number(after);
         }

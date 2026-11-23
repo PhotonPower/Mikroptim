@@ -143,6 +143,21 @@ TEST(HomotopyControl, ThrowingBranchIsDiscarded) {
     MockModel mb(both);
     EXPECT_THROW((void)run_homotopy(mb, MockModel::start(0.3), mock_point(0.3), mock_options(0.6)),
                  std::runtime_error);
+    // M6-T13: mit Einfügen nur mit Verbesserung gilt eine werfende Variante als verworfen (Vermerk
+    // mit dem Fehler), der Lauf endet geordnet am Zustand vor dem Einfügen
+    MockModel mi(both);
+    HomotopyOptions oi = mock_options(0.6);
+    oi.insertion_must_improve = true;
+    const HomotopyResult ri = run_homotopy(mi, MockModel::start(0.3), mock_point(0.3), oi);
+    EXPECT_EQ(ri.status, HomotopyStatus::StepTooSmall) << ri.message;
+    EXPECT_EQ(ri.elements, 1);
+    bool rejected = false;
+    for (const HomotopyStep& s : ri.steps) {
+        rejected = rejected ||
+                   s.operation.find("verworfen: Fehler der Optimierung (Brechzahl") !=
+                       std::string::npos;
+    }
+    EXPECT_TRUE(rejected);
 }
 
 // Stetige Spektrumbreite (M11-T5f): eigene Phase mit Schrittweitensteuerung von 0 bis 1.
