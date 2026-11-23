@@ -463,3 +463,5 @@ def test_synth_options_color_variants(tool):
                               sinusbedingung=None, feldregel=False, synth_arg=[],
                               farb_varianten=True)
     assert tool.synth_options(a) == ["--color-rule", "--color-variants"]
+    a.wachsen_marge = 0.5
+    assert tool.synth_options(a) == ["--color-rule", "--color-variants", "--grow-margin", "0.5"]

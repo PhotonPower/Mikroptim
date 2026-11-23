@@ -35,6 +35,12 @@ Erweitertes Glas-Wörterbuch der Geisterplatten (M6-T12, Bericht
 docs/ergebnisse/m6-t12-glaswoerterbuch.md): --woerterbuch-extra [N] (synth --ghost-dictionary-extra,
 ohne Zahl 4), --woerterbuch-glas GLAS.
 
+Ablauf der Farbe im Hauptlauf (M6-T13, Bericht docs/ergebnisse/m6-t13-farbe-frueh.md): --farbe
+apertur (Standard: „Farbe früh“, stetige Farbstufe am Ende der Aperturstufe, Feld und Apertur danach
+polychromatisch, mit Farbregel, Feldregel und Einfügen nur mit Verbesserung), anfang, frueh oder
+spaet (monochromatische Stufen zuerst, Standard bis M6-T12; Läufe aus älteren Berichten mit
+--farbe spaet nachrechnen). --farb-varianten: Varianten der Farbregel (synth --color-variants).
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -377,6 +383,8 @@ def synth_options(args):
             opts.append('--color-module-anomalous')
     if getattr(args, 'farb_varianten', False):
         opts.append('--color-variants')  # M6-T13
+    if getattr(args, 'wachsen_marge', None):
+        opts += ['--grow-margin', repr(args.wachsen_marge)]  # M6-T13
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
     # M6-T12: Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern (jeder
@@ -1707,6 +1715,9 @@ def main():
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
+    ap.add_argument('--wachsen-marge', type=float, default=None, metavar='Q',
+                    help='M6-T13: Schrittweite der stetigen Phasen auch nach langsamen Schritten '
+                         'vergrößern, wenn F_B <= Q x F_max (synth --grow-margin Q)')
     ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default=None,
                     help='M6-T11: Farbstufe über zwei Wellenlängen zum vollen Spektrum (Standard, '
                          'wie M6-T10) oder direkt zum vollen Spektrum')

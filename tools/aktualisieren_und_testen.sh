@@ -27,11 +27,11 @@
 #   --no-tests       ctest überspringen
 #   --no-bench       Messläufe überspringen
 #   --python         zusätzlich Python-Paket in einer venv bauen und pytest ausführen
-#   --m6t6           zusätzlich den langen Lauf der Zielspezifikation mit aktuellen Standards und
-#                    Farbregel (tools/m6t6_zielspezifikation.py --aktuell --farbregel)
+#   --m6t6           zusätzlich den langen Lauf der Zielspezifikation mit den Standards des
+#                    Skripts (seit M6-T13 „Farbe früh“, --farbe apertur, mit Farbregel)
 #   --m6t6-dokumentiert  ebenso, aber wie im dokumentierten Lauf M6-T6 (synth --stall 0, ohne
-#                    Farbregel, alte Referenzsphäre last_surface; Standard des Skripts seit M6-T6b:
-#                    image_infinite)
+#                    Farbregel, monochromatische Stufen zuerst --farbe spaet, alte Referenzsphäre
+#                    last_surface; Standard des Skripts seit M6-T6b: image_infinite)
 #   --force          lokale Änderungen im Klon verwerfen (git reset --hard; sonst Abbruch)
 #   --no-pull        Klon nicht aktualisieren (vorhandenen Stand testen)
 #
@@ -71,7 +71,7 @@ while [[ $# -gt 0 ]]; do
         --no-bench) DO_BENCH=0; shift ;;
         --python) DO_PYTHON=1; shift ;;
         --m6t6) DO_M6T6=1; shift ;;
-        --m6t6-dokumentiert) DO_M6T6=1; M6T6_ARGS=(--referenzsphaere last_surface); shift ;;
+        --m6t6-dokumentiert) DO_M6T6=1; M6T6_ARGS=(--referenzsphaere last_surface --farbe spaet); shift ;;
         --force) FORCE=1; shift ;;
         --no-pull) DO_PULL=0; shift ;;
         -h|--help) sed -n '2,43p' "$0"; exit 0 ;;

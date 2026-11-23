@@ -340,6 +340,12 @@ struct HomotopyOptions {
     double merit_factor = 1.0;
     // Schnell: konvergiert (lm_converged) nach höchstens fast_iterations Zyklen.
     int fast_iterations = 50;
+    // Vergrößern mit Abstand zur Schwelle (M6-T13): > 0 vergrößert Δ in den stetigen Phasen auch
+    // nach einem annehmbaren, langsamen Schritt (Keep), wenn F_B ≤ grow_margin · F_max. Anlass:
+    // Die LM-Läufe enden fast immer mit max_iterations (F10), kein Schritt gilt als schnell; die
+    // stetige Spektrumbreite kroch so mit Δ_min = 1/1024 weiter, obwohl F_B auf ein Drittel von
+    // F_max sank (Bericht M6-T13). 0 (Standard): aus, bitgleich.
+    double grow_margin = 0.0;
     HomotopyStepControl aperture_step{};
     HomotopyStepControl field_step{0.125, 1.0 / 64.0, 0.5, 2.0, 0.5};
     // Stetige Spektrumbreite (M11-T5f): kleiner Anfangsschritt, weil die Merit etwa quadratisch

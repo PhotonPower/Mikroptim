@@ -65,6 +65,43 @@ TEST(HomotopyControl, StepGrowsAfterFastConvergence) {
     EXPECT_EQ(r.insertions, 0);
 }
 
+// Vergrößern mit Abstand zur Schwelle (M6-T13, grow_margin): Die langsamen Schritte des Mocks
+// haben F_B = 0,5 F_max. Mit grow_margin = 0,5 wachsen auch sie (Δ bis Δ_max = 0,1), mit 0,4
+// bleibt die Folge wie ohne Option; ungültige Werte werfen.
+TEST(HomotopyControl, GrowMarginGrowsAfterSlowStepsBelowThreshold) {
+    MockModel m({});
+    HomotopyOptions o = mock_options(0.6);
+    o.grow_margin = 0.5;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    const auto a = steps_of(r, HomotopyStepKind::Aperture);
+    const std::vector<double> deltas{0.02, 0.04, 0.08, 0.1, 0.1};
+    const std::vector<double> points{0.32, 0.36, 0.44, 0.54, 0.6};
+    ASSERT_EQ(a.size(), deltas.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        EXPECT_DOUBLE_EQ(a[i]->delta, deltas[i]) << i;
+        EXPECT_NEAR(a[i]->point.aperture, points[i], 1e-12) << i;
+        EXPECT_EQ(a[i]->action, HomotopyAction::Grow) << i;
+    }
+    MockModel plain({});
+    MockModel below({});
+    HomotopyOptions ob = mock_options(0.6);
+    ob.grow_margin = 0.4;
+    const HomotopyResult rp =
+        run_homotopy(plain, MockModel::start(0.3), mock_point(0.3), mock_options(0.6));
+    const HomotopyResult rb = run_homotopy(below, MockModel::start(0.3), mock_point(0.3), ob);
+    ASSERT_EQ(rp.steps.size(), rb.steps.size());
+    for (std::size_t i = 0; i < rp.steps.size(); ++i) {
+        EXPECT_EQ(rp.steps[i].action, rb.steps[i].action) << i;
+        EXPECT_EQ(rp.steps[i].delta, rb.steps[i].delta) << i;
+    }
+    HomotopyOptions bad = mock_options(0.6);
+    bad.grow_margin = 1.5;
+    MockModel mb({});
+    EXPECT_THROW((void)run_homotopy(mb, MockModel::start(0.3), mock_point(0.3), bad),
+                 std::invalid_argument);
+}
+
 // Lehnt das Modell ein Einfügen ab (std::invalid_argument), endet der Lauf geordnet mit dem
 // Status ohne Bedarf und dem Grund, statt abzustürzen (M6-T6: p4_r3, p3_r0).
 TEST(HomotopyControl, RefusedInsertionStopsCleanly) {

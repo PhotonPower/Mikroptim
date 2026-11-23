@@ -714,6 +714,16 @@ TEST(CliSynth, ColorStageOptions) {
     const SynthCliResult vtext = synth({achromat, "--color-variants", "--max-elements", "1"});
     ASSERT_EQ(vtext.code, cli::kExitOk) << vtext.err;
     EXPECT_NE(vtext.out.find("Varianten: teilbare Linsen"), std::string::npos) << vtext.out;
+
+    // M6-T13: --grow-margin Q in (0, 1], nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--grow-margin", "1.5"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--grow-margin", "0"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--grow-margin"), std::string::npos);
+    EXPECT_FALSE(jn["options"].contains("grow_margin"));
+    const SynthCliResult grow =
+        synth({achromat, "--color-rule", "--grow-margin", "0.5", "--max-elements", "3", "--json"});
+    ASSERT_EQ(grow.code, cli::kExitOk) << grow.err;
+    EXPECT_EQ(nlohmann::json::parse(grow.out)["options"]["grow_margin"], 0.5);
 }
 
 // M6-T12: erweitertes Glas-Wörterbuch. Ohne Option kein Eintrag ghost_dictionary; mit

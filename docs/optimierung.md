@@ -958,6 +958,37 @@ $$\sigma_\mathrm{col}^2 = \Big(\frac{W_L}{4\sqrt3}\Big)^2 + \Big(\frac{\Delta W_
 
 Tests (`tests/test_color_stage.cpp`, `tests/test_glass_preselection.cpp`, `tests/test_cli_synth.cpp`, Python `test_tool_m6t6.py`): `ColorStage.SplitForColorRanksBySpectralResidual` (Orakel Glasvorauswahl direkt), `…MemberStartIsThinAchromatAndCorrectsLongitudinalColor` (Krümmungen = `thin_member_shape`, dünne Brechkraft erhalten; Orakel: paraxiale Längsfarbe der N-BK7-Einzellinse 0,778 mm → 0,018 mm schon beim Einfügen, ohne Option ein Zweig wie bisher), `…ChromaticCriterionThreshold` (Schwelle exakt bei σ_col/RMS, Orakel aus Bericht und Wellenfront), `…NullDoubletModuleKeepsMeritAndGrows`, `…ModuleOnlyWhenNoLensCanBeSplit` (ohne Modul-Option bitgleiche Empfehlung), `…AnomalousModuleGlass`, `…StrongDoubletIncidence` (Orakel sin I = |y c|); `GlassPreselection.MemberShapeWithIncomingSlope` (Seidel-Summen des Glieds hinter einer dünnen Linse gegen den Aberrationsbericht); `CliSynth.ColorStageOptions`; `test_synth_options_color_stage`, `test_prune_point`, `test_reopen_after_prune`.
 
+### Varianten der Farbregel (M6-T13)
+
+Anlass: In den Öffnungsstufen ab den polychromatischen Systemen (Lauf F3 aus M6-T11) endeten die Läufe mit `--insertion-improve 4` mehrmals mit „kein Einfügen verbessert F_B (4 Varianten, F_B 0.00502288, 0.00502288, 0.00502288, 0.00502288 …)“: Die Varianten der Farbregel (Operator B an den übrigen Linsen der Kandidatenliste) ließen sich am Zustand nicht teilen (Linsen an der unteren Dickenschranke), und `insert` fiel auf die nächste teilbare Kandidatin zurück – die empfohlene Linse selbst. Viermal dieselbe Einfügung, je drei Optimierungen. Umgekehrt brach ein Lauf ab, wenn die Empfehlung am verworfenen Versuch (andere Dicken) entstanden war und sich am guten Zustand keine Linse teilen ließ („zu dünn für zwei Teile“), bevor eine andere Variante versucht wurde. Messung: [Bericht M6-T13](ergebnisse/m6-t13-farbe-frueh.md).
+
+Option `OpticalHomotopyOptions::color_variants` (CLI `synth --color-variants`, setzt `--color-rule`; Skript `--farb-varianten`; Standard aus, ohne sie bitgleich). `insertion_options` liefert für eine Empfehlung der Farbregel:
+
+1. die Empfehlung selbst, wenn sie am Zustand einfügbar ist (Modul, oder eine Linse der Kandidatenliste lässt sich teilen); sonst entfällt sie;
+2. Operator B an jeder weiteren Linse der Kandidatenliste, die sich am Zustand teilen lässt und nicht die Linse der Empfehlung ist – genau diese Linse, ohne Rückfall auf andere Kandidaten (bei einem empfohlenen Modul zuerst die übrigen Spalte des Moduls, dann die Linsen);
+3. die übrigen Spalte des Kittglied-Moduls;
+4. die Empfehlung der Geisterdiagnose am Zustand (ohne Farbregel; „Variante (Geisterdiagnose)“), wenn eine Platte Bedarf meldet;
+5. mit `--field-rule` die Empfehlung der Feldregel am Zustand („Variante (Feldregel)“),
+
+höchstens `insertion_attempts` (bzw. `--alternatives` in der Strahlsuche). Jede Variante fügt an einer anderen Stelle oder mit einem anderen Operator ein. Im JSON `options.color_rule_ext.variants`, im Textkopf unter „Farbregel (M6-T11)“.
+
+Tests: `ColorStage.ColorVariantsAreDistinctInsertions` (Dreilinser mit nicht teilbarer Mittellinse; Orakel: Fläche, an der `insert` tatsächlich einfügt – ohne Option mindestens eine Variante gleich der Empfehlung, mit Option alle verschieden, keine nicht teilbare Linse, Empfehlung einer nicht teilbaren Linse wirft bei `insert` und entfällt als Variante; mit aktiver Geisterplatte ist die letzte Variante gleich `diagnose` ohne Farbregel), `CliSynth.ColorStageOptions` (JSON und Text nur mit Option, Einzellinse gleiches Ergebnis).
+
+### Farbe früh im Hauptlauf (M6-T13)
+
+Skript `tools/m6t6_zielspezifikation.py --farbe MODUS` (Ablauf der Farbe im Hauptlauf ab der Einzellinse):
+
+| Modus | Ablauf | Werkzeuge |
+|---|---|---|
+| `spaet` | Stufen 1–3 monochromatisch (Apertur bei 10 % Feld, Feld, Apertur), Farbe (p4 480/644 nm, p5 436–656 nm) danach – Standard bis M6-T12, bitgleich | wie angegeben (`synth --stall 0` ohne `--farbregel`/`--aktuell`) |
+| `frueh` | wie `--farbe-frueh`: Farbstufen nach der Feldstufe, dann Apertur polychromatisch | wie angegeben |
+| `apertur` (**Standard**) | Stufe 1 monochromatisch (NA 0,3 → `--na-feld` bei 10 % Feld), dann **Farbstufe p1f** am erreichten Punkt bei 10 % Feld mit stetiger Spektrum-Homotopie ab λ_ref direkt zu 436–656 nm, dann Feld- und Aperturstufe am polychromatischen System; Z2 am Spektrum der Feldstufe | `COLOR_TOOLS` |
+| `anfang` | 436–656 nm ab dem Start (wie `--farbe-von-anfang voll`), Z2 polychromatisch | `COLOR_TOOLS` |
+
+`COLOR_TOOLS` (wo nicht anders angegeben): `--farbregel`, `--farb-stetig`, `--farb-ziel voll`, `--farb-modul doublet`, `--farb-chromatisch 0.5`, `--feldregel`, `--einfuegen-verbessern 4`, `--farb-budget 4` – die Einstellungen der Läufe F3 (M6-T11) und A1W4_farbe (M6-T12). Die Farbstufe p1f schreibt beim Neustart einer Runde wieder das Zielspektrum (wie der Zyklus), ihr Fortschritt ist die erreichte Spektrumbreite. Die alten Schalter `--farbe-frueh` und `--farbe-von-anfang` laufen allein unverändert; zusammen mit `--farbe` sind sie ein Fehler, ebenso `--farbe apertur` mit `--gemeinsam`. Läufe aus Berichten vor M6-T13 ohne diese Schalter rechnen mit `--farbe spaet` nach. Begründung der Wahl und Messung: [Bericht M6-T13](ergebnisse/m6-t13-farbe-frueh.md).
+
+Tests (Python, `test_tool_m6t6.py`): `test_color_mode_default_is_color_early` (Folge p1 → p1f → p2 → p3 mit aufgezeichneten Aufrufen, Spektrum und Optionen der Farbstufe, Werkzeuge, Z2), `test_color_mode_late_and_legacy_unchanged` (`spaet`: p1, p2, p3, p4, p5 mit `--stall 0` wie bisher; `--farbe-frueh`; `anfang`), `test_apply_color_mode`, `test_synth_options_color_variants`.
+
 ## 8. Kandidatenverwaltung
 
 Die Synthese ist eine Strahlsuche (beam search) über Zweige: Jede Einfügung und jeder Sattelpunkt-Abstieg erzeugt neue Kandidaten. Behalten werden die besten B Kandidaten nach Merit, Elementzahl und (ab M8) Empfindlichkeit. Alle Kandidaten einer Topologie laufen gemeinsam in einem Batch.

@@ -82,6 +82,7 @@ struct SynthArgs {
     double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
     std::string field_glass;
     int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
+    double grow_margin = 0.0;  // M6-T13: Δ auch nach langsamen Schritten mit F_B ≤ Q·F_max
     // Rückbau (M6-T9): nach den Phasen bzw. am Elementbudget
     bool prune = false;
     std::optional<int> element_budget;
@@ -303,6 +304,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--joint-step") {
             a.joint = true;
             a.joint_step = parse_step_control(arg, next_value(args, i, arg));
+        } else if (arg == "--grow-margin") {
+            a.grow_margin = positive(arg, next_value(args, i, arg));
+            if (!(a.grow_margin <= 1.0)) {
+                throw UsageError("--grow-margin muss in (0, 1] liegen");
+            }
         } else if (arg == "--insertion-improve") {
             a.insertion_improve = parse_int(arg, next_value(args, i, arg));
             if (a.insertion_improve < 1) {
@@ -643,6 +649,9 @@ void print_synth_usage(std::ostream& out) {
            "                            nicht mit --beam; Standard aus)\n"
            "  --joint-field-exponent P  Exponent P des Feldes (Standard 1: Diagonale)\n"
            "  --joint-step D0,DMIN,DMAX Schrittweite in t (Standard 0.03125,0.00390625,0.25)\n"
+           "  --grow-margin Q           Schrittweite der stetigen Phasen auch nach langsamen\n"
+           "                            Schritten vergrößern, wenn F_B <= Q x F_max (M6-T13;\n"
+           "                            Standard aus)\n"
            "  --insertion-improve N     Einfügen in den stetigen Phasen nur übernehmen, wenn F_B\n"
            "                            danach kleiner ist; sonst bis zu N Varianten (M6-T8;\n"
            "                            nicht mit --beam; Standard aus)\n"
@@ -997,6 +1006,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.joint_aperture_field = a.joint;
         h.joint_field_exponent = a.joint_exponent;
         h.joint_step = a.joint_step;
+        h.grow_margin = a.grow_margin;
         if (a.insertion_improve > 0) {
             h.insertion_must_improve = true;
             h.insertion_attempts = a.insertion_improve;
@@ -1223,6 +1233,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+        }
+        if (a.grow_margin > 0.0) {
+            options["grow_margin"] = a.grow_margin; // M6-T13, nur mit Option
         }
         // M6-T11: Rang und Startradien von Operator B (seit M6-T11b Standard, daher immer im
         // Protokoll; spectrum_rank null: Rang nach dem Koeffizienten, auch monochromatisch)

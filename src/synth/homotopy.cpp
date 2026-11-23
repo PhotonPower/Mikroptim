@@ -129,6 +129,9 @@ void check_options_impl(const HomotopyOptions& o) {
         (o.merit_threshold <= 0.0 && !finite_positive(o.merit_factor))) {
         invalid("Schwelle der Merit ungültig");
     }
+    if (!(o.grow_margin >= 0.0 && o.grow_margin <= 1.0)) {
+        invalid("grow_margin muss in [0, 1] liegen");
+    }
     if (o.fast_iterations < 0 || o.penalty_stages < 1 || o.smoothing_stages < 0 ||
         o.ghost_weight_stages < 0 || o.max_elements < 0 || o.max_steps < 1) {
         invalid("Zahl der Stufen, Elemente oder Schritte ungültig");
@@ -840,7 +843,10 @@ private:
             }
             if (acceptable(step.solve)) {
                 step.accepted = true;
-                if (fast(step.solve)) {
+                if (fast(step.solve) ||
+                    (o_.grow_margin > 0.0 &&
+                     step.solve.wavefront + step.solve.ghost_penalty <=
+                         o_.grow_margin * threshold_)) {
                     delta = std::min(delta * c.grow, c.max);
                     step.action = HomotopyAction::Grow;
                 } else {
