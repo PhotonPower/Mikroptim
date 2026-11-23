@@ -125,6 +125,7 @@ struct SynthArgs {
     bool color_module_always = false;
     bool color_module_anomalous = false;
     std::optional<double> color_module_incidence;
+    bool color_variants = false; // M6-T13
     bool color_rule = false;          // M11-T5c
     int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
     bool spectrum_continuous = false; // M11-T5f: stetige Spektrumbreite
@@ -281,6 +282,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.color_module_always = true;
         } else if (arg == "--color-module-anomalous") {
             a.color_module_anomalous = true;
+        } else if (arg == "--color-variants") {
+            a.color_rule = true; // M6-T13: Varianten der Farbregel
+            a.color_variants = true;
         } else if (arg == "--color-module-incidence") {
             a.color_module_incidence = positive(arg, next_value(args, i, arg));
             if (!(*a.color_module_incidence < 90.0)) {
@@ -723,6 +727,9 @@ void print_synth_usage(std::ostream& out) {
            "  --color-module-always     Modul statt Teilen\n"
            "  --color-module-anomalous  Modul mit einem anomalen Glas (|ΔP_g,F| >= 0,01)\n"
            "  --color-module-incidence W  Einfallswinkel an der Kittfläche (strong, Standard 40)\n"
+           "  --color-variants          Varianten der Farbregel (--insertion-improve, --beam):\n"
+           "                            nur teilbare Linsen ohne Rückfall, Modul-Spalte,\n"
+           "                            Geisterdiagnose und Feldregel (M6-T13)\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
            "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
@@ -914,6 +921,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         o.color_module = a.color_module;
         o.color_module_always = a.color_module_always;
         o.color_module_anomalous = a.color_module_anomalous;
+        o.color_variants = a.color_variants;
         if (a.color_module_incidence) {
             o.color_module_incidence_deg = *a.color_module_incidence;
         }
@@ -1096,6 +1104,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                         (a.color_module_always ? " statt Teilen" : " ohne teilbare Linse") +
                         (a.color_module_anomalous ? ", anomales Glas" : ""));
                 }
+                if (a.color_variants) {
+                    add("Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel");
+                }
                 if (split_used && a.split_spectrum) {
                     add("Vorauswahl nach dem spektralen Rest");
                 }
@@ -1220,7 +1231,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                                                 : Json(o.split.preselect_wavelengths_nm);
         options["split"]["member_start"] = a.split_member;
         if (a.color_chromatic > 0.0 ||
-            a.color_module != OpticalHomotopyOptions::ColorModule::None) {
+            a.color_module != OpticalHomotopyOptions::ColorModule::None || a.color_variants) {
             options["color_rule_ext"] = Json{
                 {"chromatic_share",
                  a.color_chromatic > 0.0 ? Json(a.color_chromatic) : Json(nullptr)},
@@ -1231,6 +1242,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 {"always", a.color_module_always},
                 {"anomalous", a.color_module_anomalous},
                 {"incidence_deg", o.color_module_incidence_deg}};
+            if (a.color_variants) {
+                options["color_rule_ext"]["variants"] = true; // M6-T13, nur mit Option
+            }
         }
         if (a.prune || a.element_budget) {
             // M6-T9: nur mit der Option

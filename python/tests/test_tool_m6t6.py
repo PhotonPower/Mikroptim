@@ -331,3 +331,135 @@ def test_reopen_after_prune(tool, tmp_path, monkeypatch):
     assert out is None and not info["reached"]
     out, info = tool.reopen_after_prune(r, "c2_farbe", str(pruned), "farbe", 0.6, 1.0, {}, [], [])
     assert out == str(pruned) and info == {"reached": True, "via": "z2"}
+
+
+def _fake_main_path(tool, tmp_path, monkeypatch, argv):
+    """Hauptlauf ohne Programmaufrufe: synth_loop, polish und evaluate aufgezeichnet; liefert die
+    Liste (Stufe, Startdatei, Optionen, Fortschritt) und die Zusatzoptionen der synth-Aufrufe."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(s), encoding="utf-8")
+    points = {"p1": (0.5, 0.1), "p1f": (0.5, 0.1), "p2": (0.5, 0.4), "p3": (0.6, 0.4),
+              "p4": (0.6, 0.4), "p5": (0.6, 0.4)}
+    calls, runner = [], {}
+
+    def fake_loop(r, tag, start_file, synth_options, relax, progress, done, **kw):
+        runner["r"] = r
+        opts = synth_options(None) if callable(synth_options) else synth_options
+        x = tool.load(start_file)
+        na, f = points[tag]
+        pt = {"aperture": na, "field": f, "spectrum_width": 1.0}
+        calls.append({"tag": tag, "start": os.path.basename(start_file),
+                      "spectrum": list(x["spectrum"]["wavelengths_nm"]), "opts": opts,
+                      "progress": progress(pt), "kw": kw})
+        out = r.path(tag + "_final.json")
+        tool.save(x, out)
+        tool.save({"result": {"point": pt}}, r.path(tag + "_r0_log.json"))
+        return out, [{"synth": tag + "_r0", "point": pt}]
+
+    polished = []
+
+    def fake_polish(r, name, src, relax, spectrum="erweitert"):
+        polished.append((name, spectrum))
+        return src
+
+    monkeypatch.setattr(tool, "synth_loop", fake_loop)
+    monkeypatch.setattr(tool, "polish", fake_polish)
+    monkeypatch.setattr(tool, "evaluate", lambda r, name, src, grid=256: {})
+    monkeypatch.setattr(tool, "has_glass_variables", lambda s: False)
+    monkeypatch.setattr(tool.sys, "argv", ["m6t6", "--exe", "mikroptim", "--out",
+                                           str(tmp_path / "out"), "--start", str(start)] + argv)
+    assert tool.main() == 0
+    return calls, runner["r"].synth_options, polished
+
+
+def test_color_mode_default_is_color_early(tool, tmp_path, monkeypatch):
+    """M6-T13: Standard „Farbe früh“ (--farbe apertur): stetige Farbstufe p1f am Ende der
+    Aperturstufe bei 10 % Feld direkt zu 436–656 nm, danach Feld- und Aperturstufe am
+    polychromatischen System; Farbwerkzeuge an; Z2 am Spektrum der Feldstufe."""
+    calls, opts, polished = _fake_main_path(tool, tmp_path, monkeypatch, [])
+    assert [c["tag"] for c in calls] == ["p1", "p1f", "p2", "p3"]
+    assert calls[0]["spectrum"] == [546.07]
+    p1f = calls[1]
+    assert p1f["start"] == "p1f_in.json" and p1f["spectrum"] == tool.SPECTRA["voll"][0]
+    assert "--spectrum-continuous" in p1f["opts"]
+    i = p1f["opts"].index("--start-field")
+    assert p1f["opts"][i + 1] == "0.1" and p1f["opts"][i + 3] == "0.1"
+    assert p1f["progress"] == 1.0  # Fortschritt = Spektrumbreite
+    assert p1f["kw"]["stage_budget"] == 4
+    assert calls[2]["start"] == "p1f_final.json"  # Feldstufe ab dem polychromatischen System
+    assert calls[2]["spectrum"] == tool.SPECTRA["voll"][0]
+    assert calls[3]["start"] == "p2_final.json"
+    for c in calls[2:]:
+        assert "--spectrum-continuous" not in c["opts"]
+    for o in ["--color-rule", "--color-chromatic", "--color-module", "--field-rule",
+              "--insertion-improve"]:
+        assert o in opts
+    assert "--stall" not in opts
+    assert ("z2", None) in polished
+    summary = json.loads((tmp_path / "out" / "m6t6_lauf.json").read_text(encoding="utf-8"))
+    assert summary["color_mode"] == "apertur"
+
+
+def test_color_mode_late_and_legacy_unchanged(tool, tmp_path, monkeypatch):
+    """M6-T13: --farbe spaet läuft wie der Standard bis M6-T12 (monochromatische Stufen 1–3,
+    Farbstufen p4/p5 danach, synth --stall 0, Z2 monochromatisch); --farbe-frueh allein wie
+    bisher; --farbe anfang mit dem vollen Spektrum ab dem Start."""
+    calls, opts, polished = _fake_main_path(tool, tmp_path / "a", monkeypatch, ["--farbe", "spaet"])
+    assert [c["tag"] for c in calls] == ["p1", "p2", "p3", "p4", "p5"]
+    assert opts == ["--stall", "0"]
+    assert ("z2", "mono") in polished
+    assert calls[3]["progress"] == 0.0 and calls[3]["kw"]["stage_budget"] == 1
+    assert "--spectrum-continuous" not in calls[3]["opts"]
+    summary = json.loads((tmp_path / "a" / "out" / "m6t6_lauf.json").read_text(encoding="utf-8"))
+    assert "color_mode" not in summary
+
+    calls, opts, _ = _fake_main_path(tool, tmp_path / "b", monkeypatch, ["--farbe-frueh"])
+    assert [c["tag"] for c in calls] == ["p1", "p2", "p4", "p5", "p3"]
+    assert opts == ["--stall", "0"]
+
+    calls, opts, polished = _fake_main_path(tool, tmp_path / "c", monkeypatch,
+                                            ["--farbe", "anfang"])
+    assert [c["tag"] for c in calls] == ["p1", "p2", "p3"]
+    assert calls[0]["spectrum"] == tool.SPECTRA["voll"][0]
+    assert "--color-rule" in opts and ("z2", None) in polished
+
+
+def test_apply_color_mode(tool):
+    """M6-T13: Ablauf und Werkzeuge; angegebene Optionen bleiben, Widersprüche sind Fehler."""
+    def args(**kw):
+        base = dict(farbe=None, farbe_frueh=False, farbe_von_anfang=None, gemeinsam=False,
+                    farbregel=False, farb_stetig=False, farb_ziel=None, farb_modul=None,
+                    farb_chromatisch=None, feldregel=False, einfuegen_verbessern=None,
+                    farb_budget=None)
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    a = args()
+    assert tool.apply_color_mode(a) == tool.FARBE_STANDARD == "apertur"
+    for k, v in tool.COLOR_TOOLS.items():
+        assert getattr(a, k) == v
+    a = args(farb_chromatisch=0.3, farb_budget=2, einfuegen_verbessern=6)
+    tool.apply_color_mode(a)
+    assert (a.farb_chromatisch, a.farb_budget, a.einfuegen_verbessern) == (0.3, 2, 6)
+    a = args(farbe="spaet")
+    assert tool.apply_color_mode(a) == "spaet" and not a.farbregel and a.farb_budget is None
+    a = args(farbe_von_anfang="zwei")
+    assert tool.apply_color_mode(a) == "spaet" and not a.farbregel
+    a = args(farbe="frueh")
+    assert tool.apply_color_mode(a) == "frueh" and a.farbe_frueh and not a.farbregel
+    with pytest.raises(SystemExit):
+        tool.apply_color_mode(args(farbe="apertur", farbe_frueh=True))
+    with pytest.raises(SystemExit):
+        tool.apply_color_mode(args(farbe="apertur", gemeinsam=True))
+    assert tool.farb_budget(types.SimpleNamespace()) == 1
+
+
+def test_synth_options_color_variants(tool):
+    """M6-T13: --farb-varianten reicht synth --color-variants durch."""
+    a = types.SimpleNamespace(aktuell=False, farbregel=True, farb_achromat=False,
+                              sinusbedingung=None, feldregel=False, synth_arg=[],
+                              farb_varianten=True)
+    assert tool.synth_options(a) == ["--color-rule", "--color-variants"]
