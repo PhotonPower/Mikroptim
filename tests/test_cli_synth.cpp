@@ -724,6 +724,16 @@ TEST(CliSynth, ColorStageOptions) {
         synth({achromat, "--color-rule", "--grow-margin", "0.5", "--max-elements", "3", "--json"});
     ASSERT_EQ(grow.code, cli::kExitOk) << grow.err;
     EXPECT_EQ(nlohmann::json::parse(grow.out)["options"]["grow_margin"], 0.5);
+
+    // M6-T13: --insertion-improve-finish nur mit --insertion-improve, nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--insertion-improve-finish"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--insertion-improve-finish"), std::string::npos);
+    EXPECT_FALSE(jn["options"]["insertion_improve"].contains("finish"));
+    const SynthCliResult fin =
+        synth({achromat, "--color-rule", "--insertion-improve", "4", "--insertion-improve-finish",
+               "--max-elements", "3", "--json"});
+    ASSERT_EQ(fin.code, cli::kExitOk) << fin.err;
+    EXPECT_EQ(nlohmann::json::parse(fin.out)["options"]["insertion_improve"]["finish"], true);
 }
 
 // M6-T12: erweitertes Glas-Wörterbuch. Ohne Option kein Eintrag ghost_dictionary; mit

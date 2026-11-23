@@ -438,6 +438,39 @@ TEST(HomotopyControl, GoalMissedInsertsAtEndThenStops) {
     EXPECT_EQ(steps_of(r, HomotopyStepKind::Goal).size(), 6U);
 }
 
+// Einfügen nur mit Verbesserung auch im Abschluss (M6-T13, insertion_improve_finish; Lauf H2):
+// Ziel verfehlt, alle Varianten verschlechtern F_B (× 4) → verworfen, Abbruch GoalNotReached am
+// Zustand vor dem Abschluss (ein Element). Ohne die Teiloption (nur insertion_must_improve) wird
+// wie bisher eingefügt bis zur Elementzahl; mit einer besseren Variante wird sie übernommen.
+TEST(HomotopyControl, InsertionMustImproveInFinishPhase) {
+    const auto run = [](bool finish, int bad) {
+        MockSpec spec;
+        spec.goal_never = true;
+        spec.alternatives = 2;
+        spec.bad_options = bad;
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.32);
+        o.max_elements = 2;
+        o.insertion_must_improve = true;
+        o.insertion_attempts = 2;
+        o.insertion_improve_finish = finish;
+        return run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    };
+    const HomotopyResult old = run(false, 2);
+    EXPECT_EQ(old.status, HomotopyStatus::MaxElements) << old.message;
+    EXPECT_EQ(old.insertions, 1);
+    const HomotopyResult rej = run(true, 2);
+    EXPECT_EQ(rej.status, HomotopyStatus::GoalNotReached) << rej.message;
+    EXPECT_NE(rej.message.find("kein Einfügen verbessert F_B (2 Varianten"), std::string::npos)
+        << rej.message;
+    EXPECT_EQ(rej.elements, 1);
+    EXPECT_EQ(rej.point.ghost_weight, 1.0); // Zustand vor dem Abschluss (ohne μ-Fortsetzung)
+    const HomotopyResult acc = run(true, 1);
+    EXPECT_EQ(acc.status, HomotopyStatus::MaxElements) << acc.message;
+    EXPECT_EQ(acc.elements, 2);
+    EXPECT_EQ(acc.system.surfaces.back().semi_diameter, 1.0); // Variante 1
+}
+
 // Startpunkt nicht annehmbar: Einfügen; ohne Bedarf Abbruch.
 TEST(HomotopyControl, StartRejected) {
     MockSpec spec;

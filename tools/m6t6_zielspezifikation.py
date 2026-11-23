@@ -383,6 +383,8 @@ def synth_options(args):
             opts.append('--color-module-anomalous')
     if getattr(args, 'farb_varianten', False):
         opts.append('--color-variants')  # M6-T13
+    if getattr(args, 'einfuegen_abschluss', False):
+        opts.append('--insertion-improve-finish')  # M6-T13
     if getattr(args, 'wachsen_marge', None):
         opts += ['--grow-margin', repr(args.wachsen_marge)]  # M6-T13
     if getattr(args, 'sinusbedingung', None):
@@ -1715,6 +1717,9 @@ def main():
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
+    ap.add_argument('--einfuegen-abschluss', action='store_true',
+                    help='M6-T13: mit --einfuegen-verbessern auch Einfügungen im Abschluss (Ziel '
+                         'verfehlt) nur mit Verbesserung (synth --insertion-improve-finish)')
     ap.add_argument('--wachsen-marge', type=float, default=None, metavar='Q',
                     help='M6-T13: Schrittweite der stetigen Phasen auch nach langsamen Schritten '
                          'vergrößern, wenn F_B <= Q x F_max (synth --grow-margin Q)')

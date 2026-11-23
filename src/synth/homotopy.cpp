@@ -957,6 +957,7 @@ private:
         for (;;) {
             extrema_phase(s);
             const State saved = s;
+            const double saved_fb = good_fb_;
             for (int j = 0; j < o_.smoothing_stages; ++j) {
                 s.point.ghost_smoothing *= o_.smoothing_factor;
                 HomotopyStep step = solve(s.system, s.point, HomotopyStepKind::Smoothing);
@@ -984,7 +985,19 @@ private:
             const std::string why = "Ziel am Endpunkt verfehlt (größter RMS " +
                                     number(r_.goal.max_rms, "%.5f") + " Wellen)";
             State next = saved;
-            insert(next, need, HomotopyStatus::GoalNotReached, why);
+            if (o_.insertion_must_improve && o_.insertion_improve_finish &&
+                std::isfinite(saved_fb)) {
+                // M6-T13: auch im Abschluss nur mit Verbesserung von F_B; verbessert keine
+                // Variante, endet der Lauf am Zustand vor dem Abschluss
+                try {
+                    insert(next, need, HomotopyStatus::GoalNotReached, why, nullptr, &saved_fb);
+                } catch (const Stop&) {
+                    s = saved;
+                    throw;
+                }
+            } else {
+                insert(next, need, HomotopyStatus::GoalNotReached, why);
+            }
             s = std::move(next);
         }
     }

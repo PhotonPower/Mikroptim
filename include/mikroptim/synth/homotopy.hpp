@@ -371,6 +371,13 @@ struct HomotopyOptions {
     // keine, Abbruch StartRejected.
     bool insertion_must_improve = false;
     int insertion_attempts = 4;
+    // Abschluss (M6-T13): mit insertion_must_improve auch die Einfügungen nach verfehltem Ziel
+    // am Endpunkt nur übernehmen, wenn F_B kleiner wird als am Zustand vor dem Abschluss;
+    // verbessert keine Variante, endet der Lauf mit GoalNotReached an diesem Zustand. Anlass:
+    // Lauf H2 (Bericht M6-T13) – das Ziel pro Tupel war verfehlt (größter RMS 0,126 Wellen bei
+    // F_B < F_max), jedes Einfügen im Abschluss machte das System schlechter (F_B bis 300 Wellen²),
+    // bis die Elementzahl erreicht war. Standard aus.
+    bool insertion_improve_finish = false;
     // Rückbau (M6-T9, Befund F16): Elemente versuchsweise über die Rückbau-Homotopie entfernen
     // (HomotopyModel::removal_candidates, collapse, remove). Ein Kandidat: prune_stages Stufen
     // mit Anteil 1/K, 1/(K − 1), …, 1, nach jeder Stufe eine Optimierung am Punkt; übernommen,

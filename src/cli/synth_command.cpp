@@ -82,6 +82,7 @@ struct SynthArgs {
     double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
     std::string field_glass;
     int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
+    bool insertion_improve_finish = false; // M6-T13: auch im Abschluss
     double grow_margin = 0.0;  // M6-T13: Δ auch nach langsamen Schritten mit F_B ≤ Q·F_max
     // Rückbau (M6-T9): nach den Phasen bzw. am Elementbudget
     bool prune = false;
@@ -304,6 +305,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--joint-step") {
             a.joint = true;
             a.joint_step = parse_step_control(arg, next_value(args, i, arg));
+        } else if (arg == "--insertion-improve-finish") {
+            a.insertion_improve_finish = true;
         } else if (arg == "--grow-margin") {
             a.grow_margin = positive(arg, next_value(args, i, arg));
             if (!(a.grow_margin <= 1.0)) {
@@ -571,6 +574,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.joint) {
         throw UsageError("--joint-aperture-field gibt es nur ohne --beam");
     }
+    if (a.insertion_improve_finish && a.insertion_improve == 0) {
+        throw UsageError("--insertion-improve-finish verlangt --insertion-improve");
+    }
     if (a.beam && a.insertion_improve > 0) {
         throw UsageError("--insertion-improve gibt es nur ohne --beam");
     }
@@ -649,6 +655,8 @@ void print_synth_usage(std::ostream& out) {
            "                            nicht mit --beam; Standard aus)\n"
            "  --joint-field-exponent P  Exponent P des Feldes (Standard 1: Diagonale)\n"
            "  --joint-step D0,DMIN,DMAX Schrittweite in t (Standard 0.03125,0.00390625,0.25)\n"
+           "  --insertion-improve-finish  mit --insertion-improve auch Einfügungen im Abschluss\n"
+           "                            (Ziel verfehlt) nur mit Verbesserung (M6-T13)\n"
            "  --grow-margin Q           Schrittweite der stetigen Phasen auch nach langsamen\n"
            "                            Schritten vergrößern, wenn F_B <= Q x F_max (M6-T13;\n"
            "                            Standard aus)\n"
@@ -1010,6 +1018,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.insertion_improve > 0) {
             h.insertion_must_improve = true;
             h.insertion_attempts = a.insertion_improve;
+            h.insertion_improve_finish = a.insertion_improve_finish;
         }
         h.prune = a.prune;
         h.prune_at_limit = a.element_budget.has_value();
@@ -1233,6 +1242,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+            if (a.insertion_improve_finish) {
+                options["insertion_improve"]["finish"] = true; // M6-T13, nur mit Option
+            }
         }
         if (a.grow_margin > 0.0) {
             options["grow_margin"] = a.grow_margin; // M6-T13, nur mit Option
