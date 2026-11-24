@@ -35,6 +35,12 @@ Erweitertes Glas-Wörterbuch der Geisterplatten (M6-T12, Bericht
 docs/ergebnisse/m6-t12-glaswoerterbuch.md): --woerterbuch-extra [N] (synth --ghost-dictionary-extra,
 ohne Zahl 4), --woerterbuch-glas GLAS.
 
+Ablauf der Farbe im Hauptlauf (M6-T13, Bericht docs/ergebnisse/m6-t13-farbe-frueh.md): --farbe
+apertur (Standard: „Farbe früh“, stetige Farbstufe am Ende der Aperturstufe, Feld und Apertur danach
+polychromatisch, mit Farbregel, Feldregel und Einfügen nur mit Verbesserung), anfang, frueh oder
+spaet (monochromatische Stufen zuerst, Standard bis M6-T12; Läufe aus älteren Berichten mit
+--farbe spaet nachrechnen). --farb-varianten: Varianten der Farbregel (synth --color-variants).
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -375,6 +381,14 @@ def synth_options(args):
             opts.append('--color-module-always')
         if getattr(args, 'farb_anomal', False):
             opts.append('--color-module-anomalous')
+        if getattr(args, 'farb_querfarbe', False):
+            opts.append('--color-module-lateral')  # M6-T13
+    if getattr(args, 'farb_varianten', False):
+        opts.append('--color-variants')  # M6-T13
+    if getattr(args, 'einfuegen_abschluss', False):
+        opts.append('--insertion-improve-finish')  # M6-T13
+    if getattr(args, 'wachsen_marge', None):
+        opts += ['--grow-margin', repr(args.wachsen_marge)]  # M6-T13
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
     # M6-T12: Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern (jeder
@@ -1258,7 +1272,7 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
                                   '--target-field', repr(f)] + stufen + common, relax,
                                  (lambda p: p.get('spectrum_width', 0.0)) if args.farb_stetig
                                  else (lambda p: 0.0), 1.0, restart=restart, max_rounds=4, forced=1,
-                                 forced_kind='split', stage_budget=args.farb_budget, log=log)
+                                 forced_kind='split', stage_budget=farb_budget(args), log=log)
             rounds += rr
     pt = rounds[-1]['point']
     fk, nak = pt['field'], pt['aperture']
@@ -1356,7 +1370,7 @@ def cycle_run(args):
     # M6-T11: nur mit den Optionen (Zusammenfassungen von M6-T10 bleiben gleich)
     if getattr(args, 'rueckbau_punkt', None):
         summary['prune_point'] = args.rueckbau_punkt
-    if getattr(args, 'farb_ziel', 'zwei') != 'zwei':
+    if getattr(args, 'farb_ziel', None) not in (None, 'zwei'):
         summary['color_target'] = args.farb_ziel
     path = r.path('m6t10_zyklus.json')
 
@@ -1397,6 +1411,61 @@ def cycle_run(args):
     write()
     print('fertig:', cur)
     return 0
+
+
+# ---------------------------------------------------------------------------------------------
+# M6-T13: „Farbe früh“ als Standardpfad des Hauptlaufs
+# ---------------------------------------------------------------------------------------------
+
+# Ablauf der Farbe im Hauptlauf (--farbe): spaet = monochromatische Stufen 1–3, Farbe danach
+# (Standard bis M6-T12, bitgleich); frueh = Farbstufen nach der Feldstufe (wie --farbe-frueh);
+# apertur = stetige Farbstufe am Ende der Aperturstufe bei 10 % Feld, Feld- und Aperturstufe
+# danach polychromatisch; anfang = 436–656 nm ab dem Start (wie --farbe-von-anfang voll, mit den
+# Farbwerkzeugen)
+COLOR_MODES = ('spaet', 'frueh', 'apertur', 'anfang')
+NEW_COLOR_MODES = ('apertur', 'anfang')
+FARBE_STANDARD = 'apertur'
+# Werkzeuge der neuen Abläufe (Standard, wo nicht anders angegeben): Farbregel mit Kriterium (d)
+# und Kittglied-Modul, stetige Farbstufe direkt zum vollen Spektrum (M6-T11), Feldregel und
+# Einfügen nur mit Verbesserung (M6-T8) – die Einstellungen der Läufe F3 (M6-T11) und A1W4_farbe
+# (M6-T12), dazu aus M6-T13 die Varianten der Farbregel, Vergrößern mit Abstand zur Schwelle
+# (0,8 F_max; ohne kroch die stetige Farbstufe mit Δ = 1/1024, Lauf H1) und Einfügen nur mit
+# Verbesserung auch im Abschluss (Lauf H2)
+COLOR_TOOLS = {'farbregel': True, 'farb_stetig': True, 'farb_ziel': 'voll',
+               'farb_modul': 'doublet', 'farb_chromatisch': 0.5, 'feldregel': True,
+               'einfuegen_verbessern': 4, 'farb_budget': 4, 'farb_varianten': True,
+               'wachsen_marge': 0.8, 'einfuegen_abschluss': True}
+
+
+def farb_budget(args):
+    """Zusätzliche Elemente je Farbstufe (--farb-budget, ohne Angabe 1)."""
+    b = getattr(args, 'farb_budget', None)
+    return 1 if b is None else b
+
+
+def apply_color_mode(args, error=None):
+    """Ablauf der Farbe aus --farbe bzw. den alten Schaltern bestimmen (M6-T13). Ohne --farbe gilt
+    FARBE_STANDARD; --farbe-frueh und --farbe-von-anfang allein laufen wie bisher (bitgleich), ebenso
+    --farbe spaet wie der Standard bis M6-T12. Die neuen Abläufe setzen COLOR_TOOLS, soweit die
+    Optionen nicht angegeben sind. Ändert args; liefert den Ablauf."""
+    def fail(msg):
+        if error is None:
+            raise SystemExit(msg)
+        error(msg)
+    legacy = bool(getattr(args, 'farbe_frueh', False) or getattr(args, 'farbe_von_anfang', None))
+    if args.farbe is None:
+        args.farbe = ('frueh' if args.farbe_frueh else 'spaet') if legacy else FARBE_STANDARD
+    elif legacy:
+        fail('--farbe nicht zusammen mit --farbe-frueh oder --farbe-von-anfang')
+    if args.farbe == 'frueh':
+        args.farbe_frueh = True
+    if args.farbe in NEW_COLOR_MODES:
+        if getattr(args, 'gemeinsam', False) and args.farbe == 'apertur':
+            fail('--farbe apertur braucht getrennte Apertur- und Feldstufe (ohne --gemeinsam)')
+        for key, value in COLOR_TOOLS.items():
+            if getattr(args, key, None) in (None, False):
+                setattr(args, key, value)
+    return args.farbe
 
 
 def rooted(path):
@@ -1458,7 +1527,7 @@ def archive(out_dir):
     zum Wurzelverzeichnis geschrieben. Die übrigen Zwischenstände (Nachoptimierungen, Kandidaten
     der erzwungenen Einfügungen) entstehen beim Wiederholen des Laufs neu."""
     import re
-    keep = re.compile(r'^(m6t6_.*\.json|[pa]\d+_r\d+_log\.json|[pa]\d+_r\d+\.txt|'
+    keep = re.compile(r'^(m6t6_.*\.json|[pa]\d+f?_r\d+_log\.json|[pa]\d+f?_r\d+\.txt|'
                       r'p0_start\.json|a0_start\.json|p6_s\d\.txt|p6_s2\.json|'
                       r'p7\.(json|txt)|z2_s0\.(json|txt)|a2\.(json|txt)|lauf\.log|'
                       r'(m\d)_s0\.(json|txt)|.*_na\.txt|'
@@ -1525,14 +1594,21 @@ def main():
                     help='Operator B mit Achromat-Start (synth --split-achromat); setzt --farbregel')
     ap.add_argument('--farbe-von-anfang', choices=['zwei', 'voll'], default=None,
                     help='Spektrum ab dem Start (ohne eigene Farbstufen); mit --farbregel')
+    ap.add_argument('--farbe', choices=COLOR_MODES, default=None,
+                    help='M6-T13: Ablauf der Farbe im Hauptlauf (Standard ' + FARBE_STANDARD +
+                         '): spaet = monochromatische Stufen, Farbe danach (Standard bis M6-T12); '
+                         'frueh = wie --farbe-frueh; apertur = stetige Farbstufe am Ende der '
+                         'Aperturstufe, Feld und Apertur danach polychromatisch; anfang = 436–656 nm '
+                         'ab dem Start; apertur und anfang mit den Farbwerkzeugen (COLOR_TOOLS)')
     ap.add_argument('--farbe-frueh', action='store_true',
                     help='Farbstufen vor der Aperturstufe 3 (bei NA 0,5), dann polychromatisch weiter')
     ap.add_argument('--farb-stetig', action='store_true',
                     help='stetige Spektrum-Homotopie in den Farbstufen (synth --spectrum-continuous)')
     ap.add_argument('--farb-stufen', type=int, default=0,
                     help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
-    ap.add_argument('--farb-budget', type=int, default=1,
-                    help='zusätzliche Elemente je Farbstufe über alle Runden (Standard 1)')
+    ap.add_argument('--farb-budget', type=int, default=None,
+                    help='zusätzliche Elemente je Farbstufe über alle Runden (Standard 1, mit '
+                         '--farbe apertur/anfang 4)')
     ap.add_argument('--synth-arg', action='append', default=[],
                     help='weitere Option für jeden synth-Aufruf (mehrfach möglich)')
     ap.add_argument('--start', default=os.path.join(ROOT, 'data', 'systems',
@@ -1643,7 +1719,19 @@ def main():
     ap.add_argument('--farb-anomal', action='store_true',
                     help='M6-T11: Modul mit mindestens einem anomalen Glas, |ΔP_g,F| >= 0,01 '
                          '(anomalous_pgf; synth --color-module-anomalous)')
-    ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default='zwei',
+    ap.add_argument('--farb-querfarbe', action='store_true',
+                    help='M6-T13: überwiegt die Querfarbe, Kittglied-Modul zuerst im Spalt mit dem '
+                         'größten |y·ȳ| (synth --color-module-lateral; mit --farb-modul)')
+    ap.add_argument('--farb-varianten', action='store_true',
+                    help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
+                         'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
+    ap.add_argument('--einfuegen-abschluss', action='store_true',
+                    help='M6-T13: mit --einfuegen-verbessern auch Einfügungen im Abschluss (Ziel '
+                         'verfehlt) nur mit Verbesserung (synth --insertion-improve-finish)')
+    ap.add_argument('--wachsen-marge', type=float, default=None, metavar='Q',
+                    help='M6-T13: Schrittweite der stetigen Phasen auch nach langsamen Schritten '
+                         'vergrößern, wenn F_B <= Q x F_max (synth --grow-margin Q)')
+    ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default=None,
                     help='M6-T11: Farbstufe über zwei Wellenlängen zum vollen Spektrum (Standard, '
                          'wie M6-T10) oder direkt zum vollen Spektrum')
     ap.add_argument('--woerterbuch-extra', type=int, nargs='?', const=WOERTERBUCH_STANDARD,
@@ -1662,7 +1750,7 @@ def main():
     if args.rueckbau_punkt is not None and not 0.0 < args.rueckbau_punkt < 1.0:
         ap.error('--rueckbau-punkt muss in (0, 1) liegen')
     if (args.farb_spektrum_rang or args.farb_startradien or args.farb_chromatisch or
-            args.farb_modul):
+            args.farb_modul or args.farb_varianten):
         args.farbregel = True
     if args.zyklus:
         return cycle_run(args)
@@ -1674,6 +1762,11 @@ def main():
         if os.path.abspath(args.out) == os.path.join(ROOT, 'docs', 'ergebnisse', 'm6-t6'):
             args.out = os.path.join(ROOT, 'docs', 'ergebnisse', 'm11-t4')
         return osc_branch(args)
+    # M6-T13: Ablauf der Farbe im Hauptlauf (apply_color_mode)
+    apply_color_mode(args, ap.error)
+    new_mode = args.farbe in NEW_COLOR_MODES
+    if args.farb_ziel is None:
+        args.farb_ziel = 'zwei'
     FORCED['min_gap'] = args.erzwungen_min_spalt
     FORCED['stop_gap'] = args.erzwungen_blende
     extra = args.erzwungen_mehr
@@ -1686,6 +1779,8 @@ def main():
     summary = {'start': args.start, 'reference_sphere': args.referenzsphaere,
                'synth_options': r.synth_options, 'na_field': args.na_feld,
                'forced': dict(FORCED, extra=extra), 'stages': {}}
+    if new_mode:
+        summary['color_mode'] = args.farbe  # M6-T13
 
     def full_field(system, point):
         set_field(system, FIELD_ANGLES, FIELD_WEIGHTS)
@@ -1696,16 +1791,43 @@ def main():
         with open(r.path('m6t6_lauf.json'), 'w', encoding='utf-8') as f:
             json.dump(summary, f, indent=1, ensure_ascii=False)
 
+    def color_stages(cur, na, fld=None, keys=(('p4', 'zwei'), ('p5', 'voll'))):
+        # Stufen 4 und 5: zwei Wellenlängen, dann 436–656 nm am Punkt (na, field)
+        fld = field if fld is None else fld
+        for key, spec in keys:
+            s = load(cur)
+            wl, w = SPECTRA[spec]
+            set_spectrum(s, wl, w)
+            inp = r.path(f'{key}_in.json')
+            save(s, inp)
+            stufen = (['--spectrum-continuous'] if args.farb_stetig else
+                      ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
+            restart, progress = full_field, (lambda p: 0.0)
+            if new_mode and args.farb_stetig:
+                # M6-T13 wie der Zyklus (M6-T11): Neustart mit dem Zielspektrum, Fortschritt =
+                # erreichte Spektrumbreite
+                def restart(system, point, wl=wl, w=w):
+                    set_field(system, FIELD_ANGLES, FIELD_WEIGHTS)
+                    set_spectrum(system, wl, w)
+                progress = lambda p: p.get('spectrum_width', 0.0)  # noqa: E731
+            cur, rr = synth_loop(r, key, inp,
+                                 ['--target-na', repr(na), '--start-field', repr(fld),
+                                  '--target-field', repr(fld)] + stufen + common, relax,
+                                 progress, 1.0, restart=restart, max_rounds=4, forced=1,
+                                 forced_kind='split', stage_budget=farb_budget(args))
+            stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec, 'aperture': na})
+        return cur
+
     t0 = time.time()
     # Stufe 1: monochromatisch, Apertur 0,3 -> na_feld bei 10 % Feld (Petzval aktiv)
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
     set_reference_sphere(s, args.referenzsphaere)  # M6-T6b (ADR-0017)
-    if args.farbe_von_anfang:
+    if args.farbe_von_anfang or args.farbe == 'anfang':
         # polychromatisch ab dem Start (Zhang: Farbe früh im Entwurf); die Gläser werden so nicht
         # erst monochromatisch gewählt (Lauf v9: F_B ≈ 0,0017 + 48·w² über der Spektrumbreite w,
         # also mehrere Wellen Farbe am Ende der monochromatischen Stufen)
-        wl, w = SPECTRA[args.farbe_von_anfang]
+        wl, w = SPECTRA[args.farbe_von_anfang or 'voll']
         set_spectrum(s, wl, w)
     start = r.path('p0_start.json')
     save(s, start)
@@ -1759,6 +1881,10 @@ def main():
                                 restart=full_field, max_rounds=12 + 2 * extra, forced=2 + extra)
             stage('p1', {'result': p1, 'rounds': r1})
             pt = last_point(r, r1)
+        if args.farbe == 'apertur':
+            # M6-T13 „Farbe früh“: Farbstufe (stetig ab λ_ref) am Ende der Aperturstufe bei 10 %
+            # Feld, solange das System klein ist; Feld- und Aperturstufe danach polychromatisch
+            p1 = color_stages(p1, pt['aperture'], fld=0.1, keys=(('p1f', args.farb_ziel),))
 
         # Stufe 2: Feld 10 % -> 100 % bei dieser NA
         def opts2(point):
@@ -1780,7 +1906,9 @@ def main():
         set_field(s, [a * field for a in FIELD_ANGLES], FIELD_WEIGHTS)
         z2_in = r.path('z2_punkt.json')
         save(s, z2_in)
-        z2 = polish(r, 'z2', z2_in, ['--max-iterations', '2000', '-q'] + rings, spectrum='mono')
+        # M6-T13: mit Farbe vor der Feldstufe am Spektrum der Feldstufe
+        z2 = polish(r, 'z2', z2_in, ['--max-iterations', '2000', '-q'] + rings,
+                    spectrum=None if new_mode else 'mono')
         stage('z2', {'result': z2, 'eval': evaluate(r, 'z2', z2), 'aperture': pt['aperture'],
                      'field': field})
         if field < 1.0:
@@ -1798,26 +1926,10 @@ def main():
         return 0
 
     # Stufe 3: Apertur -> 0,95 beim erreichten Feld
-    def color_stages(cur, na):
-        # Stufen 4 und 5: zwei Wellenlängen, dann 436–656 nm am Punkt (na, field)
-        for key, spec in [('p4', 'zwei'), ('p5', 'voll')]:
-            s = load(cur)
-            wl, w = SPECTRA[spec]
-            set_spectrum(s, wl, w)
-            inp = r.path(f'{key}_in.json')
-            save(s, inp)
-            stufen = (['--spectrum-continuous'] if args.farb_stetig else
-                      ['--spectrum-stages', str(args.farb_stufen)] if args.farb_stufen > 0 else [])
-            cur, rr = synth_loop(r, key, inp,
-                                 ['--target-na', repr(na), '--start-field', repr(field),
-                                  '--target-field', repr(field)] + stufen + common, relax,
-                                 lambda p: 0.0, 1.0, restart=full_field, max_rounds=4, forced=1,
-                                 forced_kind='split', stage_budget=args.farb_budget)
-            stage(key, {'result': cur, 'rounds': rr, 'spectrum': spec, 'aperture': na})
-        return cur
-
     p3_in = p2
-    if args.farbe_frueh and not args.farbe_von_anfang:
+    if new_mode:
+        pass  # M6-T13: Farbe schon vor bzw. ab Stufe 1
+    elif args.farbe_frueh and not args.farbe_von_anfang:
         # Farbe vor der Aperturstufe (bei NA und Feld des Endes von Stufe 2): Bei NA 0,605 hat
         # das monochromatische System keinen Abstand zur Schwelle mehr (Lauf v8: F_B 0,0051 schon
         # bei Spektrumbreite 1/1024), bei NA 0,5 schon
@@ -1830,7 +1942,7 @@ def main():
     stage('p3', {'result': p3, 'rounds': r3})
     pt = last_point(r, r3)
     na = pt['aperture']
-    cur = p3 if (args.farbe_frueh or args.farbe_von_anfang) else color_stages(p3, na)
+    cur = p3 if (new_mode or args.farbe_frueh or args.farbe_von_anfang) else color_stages(p3, na)
 
     # Stufe 6: Feinoptimierung ohne Geisterplatten, 405/700 nm schwach dazu, am erreichten Punkt
     s = load(cur)

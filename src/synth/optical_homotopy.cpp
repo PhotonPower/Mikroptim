@@ -485,9 +485,10 @@ std::optional<double> module_curvature(const SystemDescription& realized,
 
 // Luftspalte für das Kittglied-Modul (M6-T11): innere Spalte (nicht der Arbeitsabstand) mit
 // Dicke ≥ 2·min_air_gap, in denen module_curvature eine Krümmung liefert, nach der mittleren
-// Randstrahlhöhe |y| der Spaltflächen absteigend (Längsfarbe eines dünnen Elements ∝ y² φ/ν).
+// Randstrahlhöhe |y| der Spaltflächen absteigend (Längsfarbe eines dünnen Elements ∝ y² φ/ν);
+// mit `lateral` (M6-T13) nach |y·ȳ| (Querfarbe eines dünnen Elements ∝ y ȳ φ/ν).
 std::vector<int> module_gaps(const SystemDescription& realized, const AberrationReport& rep,
-                             const OpticalHomotopyOptions& o) {
+                             const OpticalHomotopyOptions& o, bool lateral = false) {
     const auto& surf = realized.surfaces;
     // untere Schranken der Dickenvariablen pro Spalt: beide Teilstücke (je die halbe Dicke)
     // müssen sie einhalten, sonst lehnt der Lader das System ab (Lauf F7, M6-T11)
@@ -510,8 +511,10 @@ std::vector<int> module_gaps(const SystemDescription& realized, const Aberration
         if (!module_curvature(realized, rep, static_cast<int>(s), o, incidence)) {
             continue;
         }
-        const double y =
-            0.5 * (std::abs(rep.surfaces.at(s).y) + std::abs(rep.surfaces.at(s + 1).y));
+        const SurfaceAberration& a0 = rep.surfaces.at(s);
+        const SurfaceAberration& a1 = rep.surfaces.at(s + 1);
+        const double y = lateral ? 0.5 * (std::abs(a0.y * a0.ybar) + std::abs(a1.y * a1.ybar))
+                                 : 0.5 * (std::abs(a0.y) + std::abs(a1.y));
         if (std::isfinite(y)) {
             gaps.emplace_back(y, static_cast<int>(s));
         }
@@ -908,9 +911,13 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     // Kittglied-Modul (M6-T11): keine Linse teilbar bzw. immer
     std::vector<int> gaps;
     std::string module_text;
+    // M6-T13: Querfarbe überwiegt die Längsfarbe (RMS der Seidel-Terme ΔW111/4 gegen
+    // ΔW020/(2√3)): Modul zuerst, Spalt nach |y·ȳ|
+    const bool lateral = options_.color_module_lateral &&
+                         std::abs(w.dW111) / 4.0 > std::abs(w.dW020) / (2.0 * std::sqrt(3.0));
     if (options_.color_module != OpticalHomotopyOptions::ColorModule::None) {
         if (const std::optional<ModuleGlasses> mg = module_glasses(like_.catalog, options_)) {
-            gaps = module_gaps(realized, rep, options_);
+            gaps = module_gaps(realized, rep, options_, lateral);
             module_text = mg->text;
         }
     }
@@ -933,7 +940,7 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
                ", ΔW040 = " + number(w.dW040);
     }
     n.module_candidates = gaps; // Varianten (insertion_options)
-    if (!gaps.empty() && (best < 0 || options_.color_module_always)) {
+    if (!gaps.empty() && (best < 0 || options_.color_module_always || lateral)) {
         n.module_gap = gaps.front();
         n.split_lens = -1; // Modul zuerst; Teilen bleibt Variante (insertion_options)
         n.text = why + "): " +
@@ -942,7 +949,9 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
                       : "Null-Kittglied") +
                  " im Luftspalt nach Fläche " + std::to_string(n.module_gap) + ", Gläser " +
                  module_text +
-                 (best < 0 ? " (keine Linse teilbar)" : std::string(" (Modul statt Teilen)"));
+                 (lateral    ? std::string(" (Querfarbe, Spalt nach |y·ȳ|)")
+                  : best < 0 ? " (keine Linse teilbar)"
+                             : std::string(" (Modul statt Teilen)"));
         return n;
     }
     n.text = why + "): Operator B an der Linse ab Fläche " + std::to_string(best);
@@ -1559,11 +1568,104 @@ bool OpticalHomotopyModel::one_sided_constraints(const SystemDescription& system
 // Strahlsuche (M6-T4)
 // ---------------------------------------------------------------------------------------------
 
-std::vector<HomotopyNeed> OpticalHomotopyModel::insertion_options(const SystemDescription&,
-                                                                  const HomotopyPoint&,
+// Varianten der Farbregel (M6-T13, OpticalHomotopyOptions::color_variants): Linsen, die sich am
+// Zustand teilen lassen und nicht schon die Empfehlung sind, Spalte des Kittglied-Moduls, die
+// Empfehlung der Geisterdiagnose und der Feldregel am Zustand; jede Variante fügt an einer
+// anderen Stelle bzw. mit einem anderen Operator ein. Lässt sich am Zustand keine Linse der
+// Empfehlung teilen (sie entstand am verworfenen Versuch mit anderen Dicken), entfällt sie;
+// insert würde dort mit „zu dünn“ abbrechen und die übrigen Varianten nie versuchen.
+std::vector<HomotopyNeed> OpticalHomotopyModel::color_variants(const SystemDescription& system,
+                                                               const HomotopyPoint& point,
+                                                               const HomotopyNeed& need,
+                                                               int max) const {
+    std::vector<HomotopyNeed> out;
+    const auto full = [&] { return static_cast<int>(out.size()) >= max; };
+    const SystemDescription realized = realize(system, point);
+    const auto splittable = [&](int lens) {
+        try {
+            (void)split_for_color(realized, like_.catalog, lens, options_.split);
+            return true;
+        } catch (const std::exception&) {
+            return false;
+        }
+    };
+    // Linse, die die Empfehlung am Zustand tatsächlich teilt (insert: Empfehlung, sonst die
+    // nächste teilbare Kandidatin)
+    int used = -1;
+    if (need.module_gap < 0) {
+        std::vector<int> order{need.split_lens};
+        order.insert(order.end(), need.split_candidates.begin(), need.split_candidates.end());
+        for (const int lens : order) {
+            if (lens >= 0 && splittable(lens)) {
+                used = lens;
+                break;
+            }
+        }
+    }
+    if (need.module_gap >= 0 || used >= 0) {
+        out.push_back(need);
+    }
+    std::vector<HomotopyNeed> splits;
+    std::vector<int> seen{used};
+    for (const int lens : need.split_candidates) {
+        if (std::find(seen.begin(), seen.end(), lens) != seen.end() || !splittable(lens)) {
+            continue;
+        }
+        seen.push_back(lens);
+        HomotopyNeed n = need;
+        n.module_gap = -1;
+        n.split_lens = lens;
+        n.split_candidates.clear(); // genau diese Linse, kein Rückfall
+        n.text = "Variante der Farbregel: Operator B an der Linse ab Fläche " + std::to_string(lens);
+        splits.push_back(std::move(n));
+    }
+    std::vector<HomotopyNeed> modules;
+    for (const int g : need.module_candidates) {
+        if (g == need.module_gap) {
+            continue;
+        }
+        HomotopyNeed n = need;
+        n.module_gap = g;
+        n.split_lens = -1;
+        n.text = "Variante der Farbregel: Kittglied-Modul im Luftspalt nach Fläche " +
+                 std::to_string(g);
+        modules.push_back(std::move(n));
+    }
+    auto& first = need.module_gap >= 0 ? modules : splits;
+    auto& second = need.module_gap >= 0 ? splits : modules;
+    for (auto* list : {&first, &second}) {
+        for (HomotopyNeed& n : *list) {
+            if (full()) {
+                return out;
+            }
+            out.push_back(std::move(n));
+        }
+    }
+    // Empfehlung der Geisterdiagnose und der Feldregel am Zustand (ohne die Farbregel)
+    if (!full()) {
+        HomotopyNeed g = ghost_need(system, point);
+        if (g.recommendation != GhostOperator::None) {
+            g.text = "Variante (Geisterdiagnose): " + g.text;
+            out.push_back(std::move(g));
+        }
+    }
+    if (!full() && options_.field_rule) {
+        if (std::optional<HomotopyNeed> f = field_need(system, point)) {
+            f->text = "Variante (Feldregel): " + f->text;
+            out.push_back(std::move(*f));
+        }
+    }
+    return out;
+}
+
+std::vector<HomotopyNeed> OpticalHomotopyModel::insertion_options(const SystemDescription& system,
+                                                                  const HomotopyPoint& point,
                                                                   const HomotopyNeed& need,
                                                                   int max) {
     std::vector<HomotopyNeed> out{need};
+    if (options_.color_variants && (need.module_gap >= 0 || need.split_lens >= 0)) {
+        return color_variants(system, point, need, max);
+    }
     if (need.module_gap >= 0 || (!need.module_candidates.empty() && need.split_lens >= 0)) {
         // Farbregel mit Kittglied-Modul (M6-T11): weitere Spalte des Moduls und die teilbaren
         // Linsen, die Art der Empfehlung zuerst

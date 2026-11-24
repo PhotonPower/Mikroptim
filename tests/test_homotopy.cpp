@@ -65,6 +65,43 @@ TEST(HomotopyControl, StepGrowsAfterFastConvergence) {
     EXPECT_EQ(r.insertions, 0);
 }
 
+// Vergrößern mit Abstand zur Schwelle (M6-T13, grow_margin): Die langsamen Schritte des Mocks
+// haben F_B = 0,5 F_max. Mit grow_margin = 0,5 wachsen auch sie (Δ bis Δ_max = 0,1), mit 0,4
+// bleibt die Folge wie ohne Option; ungültige Werte werfen.
+TEST(HomotopyControl, GrowMarginGrowsAfterSlowStepsBelowThreshold) {
+    MockModel m({});
+    HomotopyOptions o = mock_options(0.6);
+    o.grow_margin = 0.5;
+    const HomotopyResult r = run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    EXPECT_EQ(r.status, HomotopyStatus::GoalReached) << r.message;
+    const auto a = steps_of(r, HomotopyStepKind::Aperture);
+    const std::vector<double> deltas{0.02, 0.04, 0.08, 0.1, 0.1};
+    const std::vector<double> points{0.32, 0.36, 0.44, 0.54, 0.6};
+    ASSERT_EQ(a.size(), deltas.size());
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        EXPECT_DOUBLE_EQ(a[i]->delta, deltas[i]) << i;
+        EXPECT_NEAR(a[i]->point.aperture, points[i], 1e-12) << i;
+        EXPECT_EQ(a[i]->action, HomotopyAction::Grow) << i;
+    }
+    MockModel plain({});
+    MockModel below({});
+    HomotopyOptions ob = mock_options(0.6);
+    ob.grow_margin = 0.4;
+    const HomotopyResult rp =
+        run_homotopy(plain, MockModel::start(0.3), mock_point(0.3), mock_options(0.6));
+    const HomotopyResult rb = run_homotopy(below, MockModel::start(0.3), mock_point(0.3), ob);
+    ASSERT_EQ(rp.steps.size(), rb.steps.size());
+    for (std::size_t i = 0; i < rp.steps.size(); ++i) {
+        EXPECT_EQ(rp.steps[i].action, rb.steps[i].action) << i;
+        EXPECT_EQ(rp.steps[i].delta, rb.steps[i].delta) << i;
+    }
+    HomotopyOptions bad = mock_options(0.6);
+    bad.grow_margin = 1.5;
+    MockModel mb({});
+    EXPECT_THROW((void)run_homotopy(mb, MockModel::start(0.3), mock_point(0.3), bad),
+                 std::invalid_argument);
+}
+
 // Lehnt das Modell ein Einfügen ab (std::invalid_argument), endet der Lauf geordnet mit dem
 // Status ohne Bedarf und dem Grund, statt abzustürzen (M6-T6: p4_r3, p3_r0).
 TEST(HomotopyControl, RefusedInsertionStopsCleanly) {
@@ -106,6 +143,21 @@ TEST(HomotopyControl, ThrowingBranchIsDiscarded) {
     MockModel mb(both);
     EXPECT_THROW((void)run_homotopy(mb, MockModel::start(0.3), mock_point(0.3), mock_options(0.6)),
                  std::runtime_error);
+    // M6-T13: mit Einfügen nur mit Verbesserung gilt eine werfende Variante als verworfen (Vermerk
+    // mit dem Fehler), der Lauf endet geordnet am Zustand vor dem Einfügen
+    MockModel mi(both);
+    HomotopyOptions oi = mock_options(0.6);
+    oi.insertion_must_improve = true;
+    const HomotopyResult ri = run_homotopy(mi, MockModel::start(0.3), mock_point(0.3), oi);
+    EXPECT_EQ(ri.status, HomotopyStatus::StepTooSmall) << ri.message;
+    EXPECT_EQ(ri.elements, 1);
+    bool rejected = false;
+    for (const HomotopyStep& s : ri.steps) {
+        rejected = rejected ||
+                   s.operation.find("verworfen: Fehler der Optimierung (Brechzahl") !=
+                       std::string::npos;
+    }
+    EXPECT_TRUE(rejected);
 }
 
 // Stetige Spektrumbreite (M11-T5f): eigene Phase mit Schrittweitensteuerung von 0 bis 1.
@@ -399,6 +451,39 @@ TEST(HomotopyControl, GoalMissedInsertsAtEndThenStops) {
     EXPECT_EQ(ins[0]->point.ghost_weight, 1.0);
     EXPECT_EQ(ins[0]->point.ghost_smoothing, 1.0);
     EXPECT_EQ(steps_of(r, HomotopyStepKind::Goal).size(), 6U);
+}
+
+// Einfügen nur mit Verbesserung auch im Abschluss (M6-T13, insertion_improve_finish; Lauf H2):
+// Ziel verfehlt, alle Varianten verschlechtern F_B (× 4) → verworfen, Abbruch GoalNotReached am
+// Zustand vor dem Abschluss (ein Element). Ohne die Teiloption (nur insertion_must_improve) wird
+// wie bisher eingefügt bis zur Elementzahl; mit einer besseren Variante wird sie übernommen.
+TEST(HomotopyControl, InsertionMustImproveInFinishPhase) {
+    const auto run = [](bool finish, int bad) {
+        MockSpec spec;
+        spec.goal_never = true;
+        spec.alternatives = 2;
+        spec.bad_options = bad;
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.32);
+        o.max_elements = 2;
+        o.insertion_must_improve = true;
+        o.insertion_attempts = 2;
+        o.insertion_improve_finish = finish;
+        return run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    };
+    const HomotopyResult old = run(false, 2);
+    EXPECT_EQ(old.status, HomotopyStatus::MaxElements) << old.message;
+    EXPECT_EQ(old.insertions, 1);
+    const HomotopyResult rej = run(true, 2);
+    EXPECT_EQ(rej.status, HomotopyStatus::GoalNotReached) << rej.message;
+    EXPECT_NE(rej.message.find("kein Einfügen verbessert F_B (2 Varianten"), std::string::npos)
+        << rej.message;
+    EXPECT_EQ(rej.elements, 1);
+    EXPECT_EQ(rej.point.ghost_weight, 1.0); // Zustand vor dem Abschluss (ohne μ-Fortsetzung)
+    const HomotopyResult acc = run(true, 1);
+    EXPECT_EQ(acc.status, HomotopyStatus::MaxElements) << acc.message;
+    EXPECT_EQ(acc.elements, 2);
+    EXPECT_EQ(acc.system.surfaces.back().semi_diameter, 1.0); // Variante 1
 }
 
 // Startpunkt nicht annehmbar: Einfügen; ohne Bedarf Abbruch.

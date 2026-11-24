@@ -82,6 +82,8 @@ struct SynthArgs {
     double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
     std::string field_glass;
     int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
+    bool insertion_improve_finish = false; // M6-T13: auch im Abschluss
+    double grow_margin = 0.0;  // M6-T13: Δ auch nach langsamen Schritten mit F_B ≤ Q·F_max
     // Rückbau (M6-T9): nach den Phasen bzw. am Elementbudget
     bool prune = false;
     std::optional<int> element_budget;
@@ -125,6 +127,8 @@ struct SynthArgs {
     bool color_module_always = false;
     bool color_module_anomalous = false;
     std::optional<double> color_module_incidence;
+    bool color_variants = false; // M6-T13
+    bool color_module_lateral = false; // M6-T13
     bool color_rule = false;          // M11-T5c
     int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
     bool spectrum_continuous = false; // M11-T5f: stetige Spektrumbreite
@@ -281,6 +285,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.color_module_always = true;
         } else if (arg == "--color-module-anomalous") {
             a.color_module_anomalous = true;
+        } else if (arg == "--color-module-lateral") {
+            a.color_module_lateral = true;
+        } else if (arg == "--color-variants") {
+            a.color_rule = true; // M6-T13: Varianten der Farbregel
+            a.color_variants = true;
         } else if (arg == "--color-module-incidence") {
             a.color_module_incidence = positive(arg, next_value(args, i, arg));
             if (!(*a.color_module_incidence < 90.0)) {
@@ -299,6 +308,13 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--joint-step") {
             a.joint = true;
             a.joint_step = parse_step_control(arg, next_value(args, i, arg));
+        } else if (arg == "--insertion-improve-finish") {
+            a.insertion_improve_finish = true;
+        } else if (arg == "--grow-margin") {
+            a.grow_margin = positive(arg, next_value(args, i, arg));
+            if (!(a.grow_margin <= 1.0)) {
+                throw UsageError("--grow-margin muss in (0, 1] liegen");
+            }
         } else if (arg == "--insertion-improve") {
             a.insertion_improve = parse_int(arg, next_value(args, i, arg));
             if (a.insertion_improve < 1) {
@@ -550,7 +566,8 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.spectrum_continuous && a.spectrum_stages > 0) {
         throw UsageError("--spectrum-continuous und --spectrum-stages schließen sich aus");
     }
-    if ((a.color_module_always || a.color_module_anomalous || a.color_module_incidence) &&
+    if ((a.color_module_always || a.color_module_anomalous || a.color_module_incidence ||
+         a.color_module_lateral) &&
         a.color_module == OpticalHomotopyOptions::ColorModule::None) {
         throw UsageError("--color-module-always, --color-module-anomalous und "
                          "--color-module-incidence verlangen --color-module");
@@ -560,6 +577,9 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     }
     if (a.beam && a.joint) {
         throw UsageError("--joint-aperture-field gibt es nur ohne --beam");
+    }
+    if (a.insertion_improve_finish && a.insertion_improve == 0) {
+        throw UsageError("--insertion-improve-finish verlangt --insertion-improve");
     }
     if (a.beam && a.insertion_improve > 0) {
         throw UsageError("--insertion-improve gibt es nur ohne --beam");
@@ -639,6 +659,11 @@ void print_synth_usage(std::ostream& out) {
            "                            nicht mit --beam; Standard aus)\n"
            "  --joint-field-exponent P  Exponent P des Feldes (Standard 1: Diagonale)\n"
            "  --joint-step D0,DMIN,DMAX Schrittweite in t (Standard 0.03125,0.00390625,0.25)\n"
+           "  --insertion-improve-finish  mit --insertion-improve auch Einfügungen im Abschluss\n"
+           "                            (Ziel verfehlt) nur mit Verbesserung (M6-T13)\n"
+           "  --grow-margin Q           Schrittweite der stetigen Phasen auch nach langsamen\n"
+           "                            Schritten vergrößern, wenn F_B <= Q x F_max (M6-T13;\n"
+           "                            Standard aus)\n"
            "  --insertion-improve N     Einfügen in den stetigen Phasen nur übernehmen, wenn F_B\n"
            "                            danach kleiner ist; sonst bis zu N Varianten (M6-T8;\n"
            "                            nicht mit --beam; Standard aus)\n"
@@ -723,6 +748,11 @@ void print_synth_usage(std::ostream& out) {
            "  --color-module-always     Modul statt Teilen\n"
            "  --color-module-anomalous  Modul mit einem anomalen Glas (|ΔP_g,F| >= 0,01)\n"
            "  --color-module-incidence W  Einfallswinkel an der Kittfläche (strong, Standard 40)\n"
+           "  --color-module-lateral    Querfarbe überwiegt: Modul zuerst, Spalt nach |y ybar|\n"
+           "                            (M6-T13)\n"
+           "  --color-variants          Varianten der Farbregel (--insertion-improve, --beam):\n"
+           "                            nur teilbare Linsen ohne Rückfall, Modul-Spalte,\n"
+           "                            Geisterdiagnose und Feldregel (M6-T13)\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
            "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
@@ -914,6 +944,8 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         o.color_module = a.color_module;
         o.color_module_always = a.color_module_always;
         o.color_module_anomalous = a.color_module_anomalous;
+        o.color_variants = a.color_variants;
+        o.color_module_lateral = a.color_module_lateral;
         if (a.color_module_incidence) {
             o.color_module_incidence_deg = *a.color_module_incidence;
         }
@@ -989,9 +1021,11 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.joint_aperture_field = a.joint;
         h.joint_field_exponent = a.joint_exponent;
         h.joint_step = a.joint_step;
+        h.grow_margin = a.grow_margin;
         if (a.insertion_improve > 0) {
             h.insertion_must_improve = true;
             h.insertion_attempts = a.insertion_improve;
+            h.insertion_improve_finish = a.insertion_improve_finish;
         }
         h.prune = a.prune;
         h.prune_at_limit = a.element_budget.has_value();
@@ -1095,6 +1129,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                                    "°)") +
                         (a.color_module_always ? " statt Teilen" : " ohne teilbare Linse") +
                         (a.color_module_anomalous ? ", anomales Glas" : ""));
+                }
+                if (a.color_module_lateral) {
+                    add("Querfarbe: Modul nach |y·ȳ|");
+                }
+                if (a.color_variants) {
+                    add("Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel");
                 }
                 if (split_used && a.split_spectrum) {
                     add("Vorauswahl nach dem spektralen Rest");
@@ -1212,6 +1252,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
+            if (a.insertion_improve_finish) {
+                options["insertion_improve"]["finish"] = true; // M6-T13, nur mit Option
+            }
+        }
+        if (a.grow_margin > 0.0) {
+            options["grow_margin"] = a.grow_margin; // M6-T13, nur mit Option
         }
         // M6-T11: Rang und Startradien von Operator B (seit M6-T11b Standard, daher immer im
         // Protokoll; spectrum_rank null: Rang nach dem Koeffizienten, auch monochromatisch)
@@ -1220,7 +1266,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                                                 : Json(o.split.preselect_wavelengths_nm);
         options["split"]["member_start"] = a.split_member;
         if (a.color_chromatic > 0.0 ||
-            a.color_module != OpticalHomotopyOptions::ColorModule::None) {
+            a.color_module != OpticalHomotopyOptions::ColorModule::None || a.color_variants) {
             options["color_rule_ext"] = Json{
                 {"chromatic_share",
                  a.color_chromatic > 0.0 ? Json(a.color_chromatic) : Json(nullptr)},
@@ -1231,6 +1277,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 {"always", a.color_module_always},
                 {"anomalous", a.color_module_anomalous},
                 {"incidence_deg", o.color_module_incidence_deg}};
+            if (a.color_variants) {
+                options["color_rule_ext"]["variants"] = true; // M6-T13, nur mit Option
+            }
+            if (a.color_module_lateral) {
+                options["color_rule_ext"]["lateral"] = true; // M6-T13, nur mit Option
+            }
         }
         if (a.prune || a.element_budget) {
             // M6-T9: nur mit der Option

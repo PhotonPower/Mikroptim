@@ -129,6 +129,9 @@ void check_options_impl(const HomotopyOptions& o) {
         (o.merit_threshold <= 0.0 && !finite_positive(o.merit_factor))) {
         invalid("Schwelle der Merit ungültig");
     }
+    if (!(o.grow_margin >= 0.0 && o.grow_margin <= 1.0)) {
+        invalid("grow_margin muss in [0, 1] liegen");
+    }
     if (o.fast_iterations < 0 || o.penalty_stages < 1 || o.smoothing_stages < 0 ||
         o.ghost_weight_stages < 0 || o.max_elements < 0 || o.max_steps < 1) {
         invalid("Zahl der Stufen, Elemente oder Schritte ungültig");
@@ -501,12 +504,23 @@ private:
             const State backup = s;
             const int elements = elements_;
             const double good = good_fb_;
-            insert_once(s, option, no_need_status, no_need_message, choose_at);
-            const HomotopySolve& last = r_.steps.back().solve;
-            const double after = last.wavefront + last.ghost_penalty;
-            if (std::isfinite(after) && last.failed_rays == 0 &&
-                (after < *before_fb || (start && after <= threshold_))) {
-                return;
+            // M6-T13: wirft die Optimierung nach dem Einfügen (z. B. freie Glasvariable mit
+            // n <= 0, „SystemBatch: index muss > 0 sein“, Lauf H1G8), gilt die Variante als
+            // verworfen statt den Lauf abzubrechen (vorher Fehler-Exit von synth)
+            std::string error;
+            double after = std::numeric_limits<double>::infinity();
+            try {
+                insert_once(s, option, no_need_status, no_need_message, choose_at);
+                const HomotopySolve& last = r_.steps.back().solve;
+                after = last.wavefront + last.ghost_penalty;
+                if (std::isfinite(after) && last.failed_rays == 0 &&
+                    (after < *before_fb || (start && after <= threshold_))) {
+                    return;
+                }
+            } catch (const Stop&) {
+                throw;
+            } catch (const std::exception& e) {
+                error = e.what();
             }
             s = backup;
             elements_ = elements;
@@ -515,11 +529,12 @@ private:
             note.kind = HomotopyStepKind::Insertion;
             note.point = s.point;
             note.recommendation = option.recommendation;
-            note.operation = "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
-                             number(*before_fb) + " davor" +
-                             (start ? " und > F_max = " + number(threshold_) : std::string()) +
-                             " (Einfügen nur mit Verbesserung" +
-                             (start ? ", Startphase" : "") + ")";
+            note.operation =
+                (error.empty() ? "Einfügen verworfen: F_B danach " + number(after) + " ≥ " +
+                                     number(*before_fb) + " davor"
+                               : "Einfügen verworfen: Fehler der Optimierung (" + error + ")") +
+                (start ? " und > F_max = " + number(threshold_) : std::string()) +
+                " (Einfügen nur mit Verbesserung" + (start ? ", Startphase" : "") + ")";
             emit(note);
             tried += (tried.empty() ? "" : ", ") + number(after);
         }
@@ -840,7 +855,10 @@ private:
             }
             if (acceptable(step.solve)) {
                 step.accepted = true;
-                if (fast(step.solve)) {
+                if (fast(step.solve) ||
+                    (o_.grow_margin > 0.0 &&
+                     step.solve.wavefront + step.solve.ghost_penalty <=
+                         o_.grow_margin * threshold_)) {
                     delta = std::min(delta * c.grow, c.max);
                     step.action = HomotopyAction::Grow;
                 } else {
@@ -951,6 +969,7 @@ private:
         for (;;) {
             extrema_phase(s);
             const State saved = s;
+            const double saved_fb = good_fb_;
             for (int j = 0; j < o_.smoothing_stages; ++j) {
                 s.point.ghost_smoothing *= o_.smoothing_factor;
                 HomotopyStep step = solve(s.system, s.point, HomotopyStepKind::Smoothing);
@@ -978,7 +997,19 @@ private:
             const std::string why = "Ziel am Endpunkt verfehlt (größter RMS " +
                                     number(r_.goal.max_rms, "%.5f") + " Wellen)";
             State next = saved;
-            insert(next, need, HomotopyStatus::GoalNotReached, why);
+            if (o_.insertion_must_improve && o_.insertion_improve_finish &&
+                std::isfinite(saved_fb)) {
+                // M6-T13: auch im Abschluss nur mit Verbesserung von F_B; verbessert keine
+                // Variante, endet der Lauf am Zustand vor dem Abschluss
+                try {
+                    insert(next, need, HomotopyStatus::GoalNotReached, why, nullptr, &saved_fb);
+                } catch (const Stop&) {
+                    s = saved;
+                    throw;
+                }
+            } else {
+                insert(next, need, HomotopyStatus::GoalNotReached, why);
+            }
             s = std::move(next);
         }
     }

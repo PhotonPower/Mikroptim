@@ -1,0 +1,43 @@
+mikroptim synth: Hinweis (--ghost-dictionary-*): System ohne Geisterplatten, Wörterbuch nicht erweitert
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\A1ZW\c0_feld_rueckbau.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.351, 16 Glaselement(e)
+  Ziel                                        NA 0.4450, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Glas-Wörterbuch (M6-T12)                    +0 Platten an 0 Lage(n): SYN-32 (Flint, n_d 1.7688, v_d 48.42, dP_gF -0.0037, Partner CAF2, Rest 1.840e-04), CAF2 (anomal, n_d 1.4338, v_d 95.00, dP_gF 0.0546, Partner SYN-11, Rest 3.114e-05), SYN-13 (Flint, n_d 1.5733, v_d 47.80, dP_gF 0.0004, Partner CAF2, Rest 2.290e-04), SYN-04 (anomal, n_d 1.4736, v_d 88.47, dP_gF 0.0373, Partner SYN-12, Rest 3.404e-05)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.351   0  -        max_iterations       500  1.385614e-04  1.368648e-04  0.01979   0.000e+00  16  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.351   0  -        max_iterations       500  1.089948e-04  1.088298e-04  0.01580   0.000e+00  16  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.351   0  -        max_iterations       500  1.030509e-04  1.029746e-04  0.01537   0.000e+00  16  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.4450  0.412   0  0.12500  max_iterations       500  1.338548e-04  1.338429e-04  0.01700   0.000e+00  16  keep (Delta 0.12500)
+      4  smoothing        0.4450  0.412   0  -        max_iterations       500  1.277428e-04  1.277101e-04  0.01668   0.000e+00  16  ok: ε ×0.1
+      5  goal             0.4450  0.412   0  -        -                      -  -             -             -         -            16  ok: Ziel erreicht: größter RMS 0.01668 Wellen (Ziel 0.07143)
+
+Status: goal_reached (Ziel erreicht)
+Endpunkt: NA 0.4450, Feldanteil 0.412, Spektrumstufe 0, mu x1, eps x0.1 (Ziel NA 0.4450)
+Glaselemente: 16 -> 16 (0 Einfügungen), Optimierungen: 5, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 435.83 nm: RMS 0.00633 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 486.13 nm: RMS 0.01077 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.00380 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 587.56 nm: RMS 0.00390 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 656.27 nm: RMS 0.00566 Wellen, versagt 0
+  Feld 1 (0.4404 deg), 435.83 nm: RMS 0.01668 Wellen, versagt 0
+  Feld 1 (0.4404 deg), 486.13 nm: RMS 0.01049 Wellen, versagt 0
+  Feld 1 (0.4404 deg), 546.07 nm: RMS 0.00591 Wellen, versagt 0
+  Feld 1 (0.4404 deg), 587.56 nm: RMS 0.00620 Wellen, versagt 0
+  Feld 1 (0.4404 deg), 656.27 nm: RMS 0.01473 Wellen, versagt 0
+  Feld 2 (0.6285 deg), 435.83 nm: RMS 0.01655 Wellen, versagt 0
+  Feld 2 (0.6285 deg), 486.13 nm: RMS 0.01515 Wellen, versagt 0
+  Feld 2 (0.6285 deg), 546.07 nm: RMS 0.01565 Wellen, versagt 0
+  Feld 2 (0.6285 deg), 587.56 nm: RMS 0.01174 Wellen, versagt 0
+  Feld 2 (0.6285 deg), 656.27 nm: RMS 0.01445 Wellen, versagt 0
+  Laufzeit [s]                                82.4
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\A1ZW\c0_feld_wieder.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\A1ZW\c0_feld_wieder_log.json

@@ -695,6 +695,54 @@ TEST(CliSynth, ColorStageOptions) {
     EXPECT_NE(text.out.find("Farbregel (M6-T11)"), std::string::npos) << text.out;
     EXPECT_NE(text.out.find("starkes Kittglied (40.0°) statt Teilen"), std::string::npos)
         << text.out;
+
+    // M6-T13: --color-variants setzt --color-rule, nur mit Option im JSON und im Textkopf; an der
+    // Einzellinse (keine weitere Variante) Ergebnis wie ohne Option
+    EXPECT_NE(help.find("--color-variants"), std::string::npos);
+    const SynthCliResult var = synth(
+        {achromat, "--color-variants", "--insertion-improve", "4", "--max-elements", "3", "--json"});
+    ASSERT_EQ(var.code, cli::kExitOk) << var.err;
+    const nlohmann::json jv = nlohmann::json::parse(var.out);
+    EXPECT_EQ(jv["options"]["color_rule_ext"]["variants"], true);
+    const SynthCliResult novar =
+        synth({achromat, "--color-rule", "--insertion-improve", "4", "--max-elements", "3", "--json"});
+    ASSERT_EQ(novar.code, cli::kExitOk) << novar.err;
+    const nlohmann::json jn = nlohmann::json::parse(novar.out);
+    EXPECT_FALSE(jn["options"].contains("color_rule_ext"));
+    EXPECT_EQ(jv["result"]["status"], jn["result"]["status"]);
+    EXPECT_EQ(jv["result"]["goal"]["max_rms_waves"], jn["result"]["goal"]["max_rms_waves"]);
+    const SynthCliResult vtext = synth({achromat, "--color-variants", "--max-elements", "1"});
+    ASSERT_EQ(vtext.code, cli::kExitOk) << vtext.err;
+    EXPECT_NE(vtext.out.find("Varianten: teilbare Linsen"), std::string::npos) << vtext.out;
+
+    // M6-T13: --grow-margin Q in (0, 1], nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--grow-margin", "1.5"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--grow-margin", "0"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--grow-margin"), std::string::npos);
+    EXPECT_FALSE(jn["options"].contains("grow_margin"));
+    const SynthCliResult grow =
+        synth({achromat, "--color-rule", "--grow-margin", "0.5", "--max-elements", "3", "--json"});
+    ASSERT_EQ(grow.code, cli::kExitOk) << grow.err;
+    EXPECT_EQ(nlohmann::json::parse(grow.out)["options"]["grow_margin"], 0.5);
+
+    // M6-T13: --color-module-lateral nur mit --color-module, nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--color-module-lateral"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--color-module-lateral"), std::string::npos);
+    EXPECT_FALSE(jw["options"]["color_rule_ext"].contains("lateral"));
+    const SynthCliResult lat = synth({achromat, "--color-module", "doublet",
+                                      "--color-module-lateral", "--max-elements", "3", "--json"});
+    ASSERT_EQ(lat.code, cli::kExitOk) << lat.err;
+    EXPECT_EQ(nlohmann::json::parse(lat.out)["options"]["color_rule_ext"]["lateral"], true);
+
+    // M6-T13: --insertion-improve-finish nur mit --insertion-improve, nur mit Option im JSON
+    EXPECT_EQ(synth({achromat, "--insertion-improve-finish"}).code, cli::kExitUsage);
+    EXPECT_NE(help.find("--insertion-improve-finish"), std::string::npos);
+    EXPECT_FALSE(jn["options"]["insertion_improve"].contains("finish"));
+    const SynthCliResult fin =
+        synth({achromat, "--color-rule", "--insertion-improve", "4", "--insertion-improve-finish",
+               "--max-elements", "3", "--json"});
+    ASSERT_EQ(fin.code, cli::kExitOk) << fin.err;
+    EXPECT_EQ(nlohmann::json::parse(fin.out)["options"]["insertion_improve"]["finish"], true);
 }
 
 // M6-T12: erweitertes Glas-Wörterbuch. Ohne Option kein Eintrag ghost_dictionary; mit

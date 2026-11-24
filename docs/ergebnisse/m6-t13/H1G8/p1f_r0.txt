@@ -1,0 +1,241 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\H1G8\p1f_in.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 0.100, 5 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 9; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  0.100   0  -        converged_step       220  2.106339e-04  2.102130e-04  0.02004   2.907e-07   5  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  0.100   0  -        converged_step        63  2.128921e-04  2.102404e-04  0.02004   2.726e-07   5  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  0.100   0  -        max_iterations       500  2.342315e-04  2.090125e-04  0.01996   2.777e-07   5  ok: Gewichte der einseitigen Bedingungen ×1
+      3  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  2.269494e-03  2.244285e-03  0.07900   7.010e-08   5  grow (Delta 0.06250)
+      4  spectrum_width   0.5000  0.100   0  0.06250  max_iterations       500  1.644972e-02  1.642439e-02  0.19817   3.825e-07   5  shrink (Delta 0.03125)
+      5  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  6.581656e-03  6.534700e-03  0.13507   2.172e-07   5  shrink (Delta 0.01562)
+      6  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  3.506019e-03  3.480500e-03  0.09794   2.587e-07   5  grow (Delta 0.03125)
+      7  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  8.740989e-03  8.715645e-03  0.14921   2.215e-07   5  shrink (Delta 0.01562)
+      8  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  5.781062e-03  5.754455e-03  0.12308   3.082e-07   5  shrink (Delta 0.00781)
+      9  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.558475e-03  4.533057e-03  0.11041   2.045e-07   5  keep (Delta 0.00781)
+     10  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  5.639196e-03  5.613676e-03  0.12177   2.954e-07   5  shrink (Delta 0.00391)
+     11  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.040356e-03  5.014875e-03  0.11568   2.605e-07   5  keep (Delta 0.00391)
+     12  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.513814e-03  5.488250e-03  0.12066   2.436e-07   5  shrink (Delta 0.00195)
+     13  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.206274e-03  5.171834e-03  0.11748   2.380e-07   5  shrink (Delta 0.00098)
+     14  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.127041e-03  5.101547e-03  0.11667   2.239e-07   5  keep (Delta 0.00098)
+     15  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.639145e-03  4.610808e-03  0.11196   2.338e-07   5  keep (Delta 0.00098)
+     16  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  3.946985e-03  3.921516e-03  0.10436   1.914e-07   5  grow (Delta 0.00195)
+     17  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  3.984230e-03  3.958854e-03  0.10486   1.892e-07   5  grow (Delta 0.00391)
+     18  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.204490e-03  4.179133e-03  0.10747   1.569e-07   5  keep (Delta 0.00391)
+     19  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.444049e-03  4.418733e-03  0.11023   1.621e-07   5  keep (Delta 0.00391)
+     20  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.677002e-03  4.651708e-03  0.11283   1.523e-07   5  keep (Delta 0.00391)
+     21  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.913110e-03  4.887840e-03  0.11541   1.401e-07   5  keep (Delta 0.00391)
+     22  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.150432e-03  5.125189e-03  0.11794   1.498e-07   5  shrink (Delta 0.00195)
+     23  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.937939e-03  4.912696e-03  0.11566   1.453e-07   5  keep (Delta 0.00195)
+     24  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.987855e-03  4.962605e-03  0.11619   1.147e-07   5  keep (Delta 0.00195)
+     25  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.038377e-03  5.013170e-03  0.11673   1.232e-07   5  keep (Delta 0.00195)
+     26  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.079860e-03  5.054672e-03  0.11715   1.350e-07   5  keep (Delta 0.00195)
+     27  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.130585e-03  5.105401e-03  0.11768   1.191e-07   5  shrink (Delta 0.00098)
+     28  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.010669e-03  4.985495e-03  0.11641   1.284e-07   5  keep (Delta 0.00098)
+     29  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.957610e-03  4.932434e-03  0.11583   1.066e-07   5  keep (Delta 0.00098)
+     30  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.900150e-03  4.875002e-03  0.11521   1.225e-07   5  keep (Delta 0.00098)
+     31  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.842196e-03  4.817052e-03  0.11458   1.027e-07   5  keep (Delta 0.00098)
+     32  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.762377e-03  4.737231e-03  0.11370   1.001e-07   5  keep (Delta 0.00098)
+     33  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.689780e-03  4.664658e-03  0.11290   1.035e-07   5  keep (Delta 0.00098)
+     34  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.619158e-03  4.594033e-03  0.11211   9.880e-08   5  keep (Delta 0.00098)
+     35  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.540783e-03  4.515675e-03  0.11124   1.004e-07   5  keep (Delta 0.00098)
+     36  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.477520e-03  4.452421e-03  0.11053   1.055e-07   5  keep (Delta 0.00098)
+     37  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.419495e-03  4.394386e-03  0.10988   9.959e-08   5  keep (Delta 0.00098)
+     38  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.367981e-03  4.342861e-03  0.10930   9.578e-08   5  keep (Delta 0.00098)
+     39  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.299914e-03  4.274824e-03  0.10854   9.185e-08   5  keep (Delta 0.00098)
+     40  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.236214e-03  4.211097e-03  0.10781   9.586e-08   5  keep (Delta 0.00098)
+     41  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.176003e-03  4.150918e-03  0.10714   9.855e-08   5  keep (Delta 0.00098)
+     42  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.127742e-03  4.102658e-03  0.10659   9.959e-08   5  keep (Delta 0.00098)
+     43  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.076742e-03  4.051663e-03  0.10601   1.074e-07   5  grow (Delta 0.00195)
+     44  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.061601e-03  4.036507e-03  0.10585   1.058e-07   5  grow (Delta 0.00391)
+     45  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.192393e-03  4.167303e-03  0.10749   1.108e-07   5  keep (Delta 0.00391)
+     46  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.270887e-03  4.245789e-03  0.10851   1.146e-07   5  keep (Delta 0.00391)
+     47  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.369510e-03  4.344404e-03  0.10975   1.227e-07   5  keep (Delta 0.00391)
+     48  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.455903e-03  4.430741e-03  0.11087   1.172e-07   5  keep (Delta 0.00391)
+     49  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.503187e-03  4.478086e-03  0.11154   1.190e-07   5  keep (Delta 0.00391)
+     50  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.572016e-03  4.546911e-03  0.11245   1.312e-07   5  keep (Delta 0.00391)
+     51  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.657147e-03  4.632021e-03  0.11351   1.402e-07   5  keep (Delta 0.00391)
+     52  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.713114e-03  4.687978e-03  0.11426   1.448e-07   5  keep (Delta 0.00391)
+     53  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.710608e-03  4.685477e-03  0.11441   1.380e-07   5  keep (Delta 0.00391)
+     54  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.749587e-03  4.724307e-03  0.11538   2.231e-07   5  keep (Delta 0.00391)
+     55  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.865771e-03  4.840755e-03  0.11683   2.420e-07   5  keep (Delta 0.00391)
+     56  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.969334e-03  4.944316e-03  0.11810   2.497e-07   5  keep (Delta 0.00391)
+     57  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.074080e-03  5.049061e-03  0.11938   2.579e-07   5  keep (Delta 0.00391)
+     58  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.175746e-03  5.150725e-03  0.12060   2.656e-07   5  shrink (Delta 0.00195)
+     59  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.060828e-03  5.035809e-03  0.11932   2.605e-07   5  keep (Delta 0.00195)
+     60  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.021081e-03  4.996061e-03  0.11899   2.634e-07   5  keep (Delta 0.00195)
+     61  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.997974e-03  4.972920e-03  0.11884   2.621e-07   5  keep (Delta 0.00195)
+     62  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.928770e-03  4.903750e-03  0.11820   2.681e-07   5  keep (Delta 0.00195)
+     63  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.901240e-03  4.876221e-03  0.11799   2.701e-07   5  keep (Delta 0.00195)
+     64  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.873551e-03  4.848492e-03  0.11778   2.699e-07   5  keep (Delta 0.00195)
+     65  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.812511e-03  4.787488e-03  0.11720   2.749e-07   5  keep (Delta 0.00195)
+     66  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.775302e-03  4.750280e-03  0.11690   2.798e-07   5  keep (Delta 0.00195)
+     67  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.734616e-03  4.709594e-03  0.11653   2.804e-07   5  keep (Delta 0.00195)
+     68  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.686518e-03  4.661474e-03  0.11609   2.788e-07   5  keep (Delta 0.00195)
+     69  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.603042e-03  4.578018e-03  0.11525   2.841e-07   5  keep (Delta 0.00195)
+     70  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.565200e-03  4.540179e-03  0.11493   2.863e-07   5  keep (Delta 0.00195)
+     71  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.504305e-03  4.479283e-03  0.11433   2.876e-07   5  keep (Delta 0.00195)
+     72  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.458393e-03  4.433371e-03  0.11389   2.893e-07   5  keep (Delta 0.00195)
+     73  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.402515e-03  4.377468e-03  0.11335   2.876e-07   5  keep (Delta 0.00195)
+     74  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.325513e-03  4.300489e-03  0.11255   2.933e-07   5  keep (Delta 0.00195)
+     75  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.263519e-03  4.238496e-03  0.11191   2.945e-07   5  keep (Delta 0.00195)
+     76  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.216175e-03  4.191152e-03  0.11144   2.955e-07   5  keep (Delta 0.00195)
+     77  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.157840e-03  4.132815e-03  0.11084   2.971e-07   5  keep (Delta 0.00195)
+     78  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.110613e-03  4.085588e-03  0.11037   2.981e-07   5  keep (Delta 0.00195)
+     79  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.059766e-03  4.034741e-03  0.10984   2.999e-07   5  grow (Delta 0.00391)
+     80  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.068050e-03  4.043018e-03  0.11010   3.074e-07   5  grow (Delta 0.00781)
+     81  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.207747e-03  4.182707e-03  0.11210   3.204e-07   5  keep (Delta 0.00781)
+     82  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.364947e-03  4.339878e-03  0.11427   3.302e-07   5  keep (Delta 0.00781)
+     83  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.421030e-03  4.395954e-03  0.11527   3.420e-07   5  keep (Delta 0.00781)
+     84  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.471735e-03  4.446678e-03  0.11617   3.534e-07   5  keep (Delta 0.00781)
+     85  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.538363e-03  4.512591e-03  0.11728   3.618e-07   5  keep (Delta 0.00781)
+     86  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.539091e-03  4.514023e-03  0.11766   3.702e-07   5  keep (Delta 0.00781)
+     87  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.536175e-03  4.511102e-03  0.11799   3.781e-07   5  keep (Delta 0.00781)
+     88  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.566698e-03  4.541543e-03  0.11901   4.142e-07   5  keep (Delta 0.00781)
+     89  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.534405e-03  4.509198e-03  0.11907   4.436e-07   5  keep (Delta 0.00781)
+     90  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.557845e-03  4.532633e-03  0.11974   4.335e-07   5  keep (Delta 0.00781)
+     91  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.492450e-03  4.467237e-03  0.11939   4.414e-07   5  keep (Delta 0.00781)
+     92  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.487592e-03  4.462369e-03  0.11971   4.587e-07   5  keep (Delta 0.00781)
+     93  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.476464e-03  4.451215e-03  0.12000   4.559e-07   5  keep (Delta 0.00781)
+     94  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.350188e-03  4.324932e-03  0.11895   4.638e-07   5  keep (Delta 0.00781)
+     95  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.323505e-03  4.298223e-03  0.11908   4.537e-07   5  keep (Delta 0.00781)
+     96  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.220397e-03  4.195116e-03  0.11828   4.521e-07   5  keep (Delta 0.00781)
+     97  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.174879e-03  4.149568e-03  0.11820   4.524e-07   5  keep (Delta 0.00781)
+     98  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.120560e-03  4.095246e-03  0.11801   4.630e-07   5  keep (Delta 0.00781)
+     99  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.068199e-03  4.042854e-03  0.11787   4.488e-07   5  grow (Delta 0.01562)
+    100  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.059798e-03  4.034431e-03  0.11870   4.590e-07   5  grow (Delta 0.03125)
+    101  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  4.388394e-03  4.362838e-03  0.12482   4.962e-07   5  keep (Delta 0.03125)
+    102  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  4.717451e-03  4.691686e-03  0.13089   5.024e-07   5  keep (Delta 0.03125)
+    103  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  4.777796e-03  4.751959e-03  0.13376   4.858e-07   5  keep (Delta 0.03125)
+    104  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  5.030489e-03  5.004403e-03  0.13925   5.029e-07   5  keep (Delta 0.03125)
+    105  spectrum_width   0.5000  0.100   0  0.03125  max_iterations       500  5.212801e-03  5.185434e-03  0.14390   4.747e-07   5  shrink (Delta 0.01562)
+    106  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.998404e-03  4.972280e-03  0.14008   4.678e-07   5  keep (Delta 0.01562)
+    107  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.793320e-03  4.767192e-03  0.13904   4.201e-07   5  keep (Delta 0.01562)
+    108  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.549577e-03  4.523283e-03  0.13738   3.858e-07   5  keep (Delta 0.01562)
+    109  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.354671e-03  4.328282e-03  0.13628   3.255e-07   5  keep (Delta 0.01562)
+    110  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.341832e-03  4.315293e-03  0.13747   3.274e-07   5  keep (Delta 0.01562)
+    111  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.300928e-03  4.274311e-03  0.13809   3.015e-07   5  keep (Delta 0.01562)
+    112  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.223671e-03  4.196841e-03  0.13785   3.083e-07   5  keep (Delta 0.01562)
+    113  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.232751e-03  4.205730e-03  0.13897   2.904e-07   5  keep (Delta 0.01562)
+    114  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.237222e-03  4.209987e-03  0.13990   2.927e-07   5  keep (Delta 0.01562)
+    115  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.246317e-03  4.218599e-03  0.14067   3.205e-07   5  keep (Delta 0.01562)
+    116  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.231931e-03  4.204377e-03  0.14061   3.242e-07   5  keep (Delta 0.01562)
+    117  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.201998e-03  4.174196e-03  0.13983   3.435e-07   5  keep (Delta 0.01562)
+    118  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.289208e-03  4.262374e-03  0.14049   3.693e-07   5  keep (Delta 0.01562)
+    119  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.398838e-03  4.373360e-03  0.13987   2.868e-07   5  keep (Delta 0.01562)
+    120  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.552298e-03  4.527235e-03  0.14132   2.799e-07   5  keep (Delta 0.01562)
+    121  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.729364e-03  4.704339e-03  0.14347   2.787e-07   5  keep (Delta 0.01562)
+    122  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.922887e-03  4.897668e-03  0.14643   2.870e-07   5  keep (Delta 0.01562)
+    123  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  5.126370e-03  5.101206e-03  0.14964   2.988e-07   5  keep (Delta 0.01562)
+    124  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  5.341558e-03  5.316379e-03  0.15315   3.007e-07   5  shrink (Delta 0.00781)
+    125  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  5.220979e-03  5.195637e-03  0.15116   2.916e-07   5  shrink (Delta 0.00391)
+    126  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.162575e-03  5.137424e-03  0.15022   2.984e-07   5  shrink (Delta 0.00195)
+    127  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.132870e-03  5.107705e-03  0.14970   2.906e-07   5  shrink (Delta 0.00098)
+    128  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.118926e-03  5.093779e-03  0.14948   3.001e-07   5  keep (Delta 0.00098)
+    129  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.110703e-03  5.085538e-03  0.14921   2.931e-07   5  keep (Delta 0.00098)
+    130  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.103788e-03  5.078602e-03  0.14902   2.899e-07   5  keep (Delta 0.00098)
+    131  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.096444e-03  5.071313e-03  0.14880   2.950e-07   5  keep (Delta 0.00098)
+    132  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.089583e-03  5.064449e-03  0.14859   2.927e-07   5  keep (Delta 0.00098)
+    133  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.083600e-03  5.058370e-03  0.14842   2.853e-07   5  keep (Delta 0.00098)
+    134  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.077532e-03  5.052406e-03  0.14823   2.909e-07   5  keep (Delta 0.00098)
+    135  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.071750e-03  5.046620e-03  0.14805   2.892e-07   5  keep (Delta 0.00098)
+    136  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.065609e-03  5.040428e-03  0.14785   2.842e-07   5  keep (Delta 0.00098)
+    137  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.059129e-03  5.033956e-03  0.14765   2.845e-07   5  keep (Delta 0.00098)
+    138  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.053081e-03  5.027941e-03  0.14746   2.849e-07   5  keep (Delta 0.00098)
+    139  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.047353e-03  5.022262e-03  0.14728   2.893e-07   5  keep (Delta 0.00098)
+    140  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.041711e-03  5.016612e-03  0.14709   2.856e-07   5  keep (Delta 0.00098)
+    141  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.034788e-03  5.009702e-03  0.14688   2.860e-07   5  keep (Delta 0.00098)
+    142  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.028679e-03  5.003596e-03  0.14668   2.857e-07   5  keep (Delta 0.00098)
+    143  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.022468e-03  4.997398e-03  0.14653   2.883e-07   5  keep (Delta 0.00098)
+    144  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.012781e-03  4.987706e-03  0.14623   2.793e-07   5  keep (Delta 0.00098)
+    145  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.003633e-03  4.978568e-03  0.14594   2.831e-07   5  keep (Delta 0.00098)
+    146  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.995848e-03  4.970786e-03  0.14572   2.806e-07   5  keep (Delta 0.00098)
+    147  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.986380e-03  4.961316e-03  0.14544   2.791e-07   5  keep (Delta 0.00098)
+    148  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.975401e-03  4.950335e-03  0.14510   2.766e-07   5  keep (Delta 0.00098)
+    149  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.965748e-03  4.940638e-03  0.14481   2.770e-07   5  keep (Delta 0.00098)
+    150  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.955317e-03  4.930220e-03  0.14450   2.758e-07   5  keep (Delta 0.00098)
+    151  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.939714e-03  4.914626e-03  0.14410   2.737e-07   5  keep (Delta 0.00098)
+    152  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.925133e-03  4.900091e-03  0.14369   2.747e-07   5  keep (Delta 0.00098)
+    153  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.912119e-03  4.887079e-03  0.14332   2.739e-07   5  keep (Delta 0.00098)
+    154  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.898862e-03  4.873823e-03  0.14303   2.683e-07   5  keep (Delta 0.00098)
+    155  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.844487e-03  4.819407e-03  0.14189   2.689e-07   5  keep (Delta 0.00098)
+    156  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.816497e-03  4.791444e-03  0.14123   2.573e-07   5  keep (Delta 0.00098)
+    157  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.771376e-03  4.746186e-03  0.14027   2.531e-07   5  keep (Delta 0.00098)
+    158  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.691817e-03  4.666809e-03  0.13859   3.130e-07   5  keep (Delta 0.00098)
+    159  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.639277e-03  4.614126e-03  0.13750   2.550e-07   5  keep (Delta 0.00098)
+    160  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.593138e-03  4.568119e-03  0.13643   2.361e-07   5  keep (Delta 0.00098)
+    161  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.544645e-03  4.519641e-03  0.13530   2.374e-07   5  keep (Delta 0.00098)
+    162  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  4.019188e-03  3.994175e-03  0.12293   2.348e-07   5  grow (Delta 0.00195)
+    163  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  4.005636e-03  3.980632e-03  0.12246   2.218e-07   5  grow (Delta 0.00391)
+    164  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  4.005137e-03  3.980114e-03  0.12201   2.294e-07   5  grow (Delta 0.00781)
+    165  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  4.061537e-03  4.036524e-03  0.12265   2.323e-07   5  grow (Delta 0.01562)
+    166  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.225790e-03  4.200754e-03  0.12507   2.244e-07   5  keep (Delta 0.01562)
+    167  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.399472e-03  4.374465e-03  0.12752   2.297e-07   5  keep (Delta 0.01562)
+    168  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.586675e-03  4.561580e-03  0.13003   2.216e-07   5  keep (Delta 0.01562)
+    169  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.788693e-03  4.763686e-03  0.13281   2.313e-07   5  keep (Delta 0.01562)
+    170  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  4.984671e-03  4.959666e-03  0.13518   2.345e-07   5  keep (Delta 0.01562)
+    171  spectrum_width   0.5000  0.100   0  0.01562  max_iterations       500  5.205593e-03  5.180587e-03  0.13803   2.301e-07   5  shrink (Delta 0.00781)
+    172  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  5.079095e-03  5.054087e-03  0.13639   2.294e-07   5  keep (Delta 0.00781)
+    173  spectrum_width   0.5000  0.100   0  0.00781  max_iterations       500  5.167714e-03  5.142679e-03  0.13717   2.299e-07   5  shrink (Delta 0.00391)
+    174  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.098080e-03  5.073067e-03  0.13611   2.312e-07   5  keep (Delta 0.00391)
+    175  spectrum_width   0.5000  0.100   0  0.00391  max_iterations       500  5.129868e-03  5.104857e-03  0.13640   2.285e-07   5  shrink (Delta 0.00195)
+    176  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.108401e-03  5.083360e-03  0.13620   2.297e-07   5  keep (Delta 0.00195)
+    177  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.107069e-03  5.082022e-03  0.13573   2.325e-07   5  keep (Delta 0.00195)
+    178  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.113053e-03  5.088044e-03  0.13563   2.271e-07   5  keep (Delta 0.00195)
+    179  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.123420e-03  5.098409e-03  0.13560   2.240e-07   5  keep (Delta 0.00195)
+    180  spectrum_width   0.5000  0.100   0  0.00195  max_iterations       500  5.130879e-03  5.105870e-03  0.13546   2.141e-07   5  shrink (Delta 0.00098)
+    181  spectrum_width   0.5000  0.100   0  0.00098  max_iterations       500  5.127472e-03  5.102458e-03  0.13568   2.272e-07   5  insert (Delta 0.00049): Farbregel (Spektrumstufe 2.16621, größter RMS 0.110561 Wellen, ΔW020 = -0.135902, W040 = 1.33549, sigma_col = 0.0851791 Wellen, ΔW111 = 0.333748, ΔW040 = 0.194065): Operator B an der Linse ab Fläche 8
+    182  insertion        0.5000  0.100   0  -        -                      -  -             -             -         -             5  ok: Operator B: Linse an Fläche 8 geteilt, c_s = -0.263359/mm, Glas nach Fläche 9 frei, Zielglas CAF2 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+    183  insertion_stage  0.5000  0.100   0  -        max_iterations       500  4.913017e-03  4.887950e-03  0.13342   2.103e-07   5  ok, Zweig 0, Stufe 0
+    184  insertion_stage  0.5000  0.100   0  -        max_iterations       500  4.785353e-03  4.760248e-03  0.13074   2.159e-07   5  ok, Zweig 0, Stufe 0: Bewertung des Zweigs an der verworfenen Spektrumstufe
+    185  insertion_stage  0.5000  0.100   0  -        max_iterations      1059  7.627094e+00  7.627052e+00  0.96099   1.499e-01   5  ok, Zweig 1, Stufe 0
+    186  insertion_stage  0.5000  0.100   0  -        max_iterations       500  7.555287e+00  7.555240e+00  0.94285   1.486e-01   5  ok, Zweig 1, Stufe 0: Bewertung des Zweigs an der verworfenen Spektrumstufe
+    187  penalty          0.5000  0.100   0  -        max_iterations       500  1.912072e-03  1.911176e-03  0.07114   1.041e-07   6  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    188  penalty          0.5000  0.100   0  -        converged_step       267  1.914432e-03  1.911731e-03  0.07135   9.666e-08   6  ok: Gewichte der einseitigen Bedingungen ×0.1
+    189  penalty          0.5000  0.100   0  -        converged_step        41  1.936954e-03  1.911781e-03  0.07138   9.133e-08   6  ok: Gewichte der einseitigen Bedingungen ×1
+    190  spectrum_width   0.5000  0.100   0  0.03125  converged_step       131  2.159706e-03  2.134506e-03  0.07582   1.062e-07   6  grow (Delta 0.06250)
+    191  spectrum_width   0.5000  0.100   0  0.06250  converged_step       152  2.600351e-03  2.575136e-03  0.08288   1.114e-07   6  grow (Delta 0.12500)
+    192  smoothing        0.5000  0.100   0  -        converged_step       121  2.600393e-03  2.575168e-03  0.08285   1.147e-08   6  ok: ε ×0.1
+    193  goal             0.5000  0.100   0  -        -                      -  -             -             -         -             6  -: Ziel verfehlt: größter RMS 0.08285 Wellen (Ziel 0.07143)
+    194  ghost_weight     0.5000  0.100   0  -        converged_step       113  2.600341e-03  2.575119e-03  0.08287   1.139e-09   6  ok: μ ×10
+    195  goal             0.5000  0.100   0  -        -                      -  -             -             -         -             6  -: Ziel verfehlt: größter RMS 0.08287 Wellen (Ziel 0.07143)
+    196  ghost_weight     0.5000  0.100   0  -        converged_step       124  2.600309e-03  2.575089e-03  0.08287   1.131e-10   6  ok: μ ×100
+    197  goal             0.5000  0.100   0  -        -                      -  -             -             -         -             6  -: Ziel verfehlt: größter RMS 0.08287 Wellen (Ziel 0.07143)
+    198  insertion        0.5000  0.100   0  -        -                      -  -             -             -         -             6  ok: Operator B: Linse an Fläche 2 geteilt, c_s = 0.10342/mm, Glas nach Fläche 3 frei, Zielglas SYN-11 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+    199  insertion_stage  0.5000  0.100   0  -        max_iterations       500  1.886151e-03  1.860804e-03  0.07364   2.412e-07   6  ok, Zweig 0, Stufe 0
+    200  insertion_stage  0.5000  0.100   0  -        max_iterations       500  1.234249e-02  1.231601e-02  0.16277   1.266e-06   6  ok, Zweig 1, Stufe 0
+    201  penalty          0.5000  0.100   0  -        max_iterations       500  1.477922e-03  1.476812e-03  0.06356   8.796e-08   7  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+    202  penalty          0.5000  0.100   0  -        converged_step       401  1.462580e-03  1.459897e-03  0.06316   8.553e-08   7  ok: Gewichte der einseitigen Bedingungen ×0.1
+    203  penalty          0.5000  0.100   0  -        max_iterations       500  1.479540e-03  1.454411e-03  0.06292   8.376e-08   7  ok: Gewichte der einseitigen Bedingungen ×1
+    204  smoothing        0.5000  0.100   0  -        max_iterations       500  1.474213e-03  1.449075e-03  0.06287   9.343e-09   7  ok: ε ×0.1
+    205  goal             0.5000  0.100   0  -        -                      -  -             -             -         -             7  ok: Ziel erreicht: größter RMS 0.06287 Wellen (Ziel 0.07143)
+
+Status: goal_reached (Ziel erreicht)
+Endpunkt: NA 0.5000, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x0.1 (Ziel NA 0.5000)
+Glaselemente: 5 -> 7 (2 Einfügungen), Optimierungen: 200, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 435.83 nm: RMS 0.06287 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 486.13 nm: RMS 0.01641 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.00713 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 587.56 nm: RMS 0.01413 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 656.27 nm: RMS 0.04236 Wellen, versagt 0
+  Feld 1 (0.3045 deg), 435.83 nm: RMS 0.05045 Wellen, versagt 0
+  Feld 1 (0.3045 deg), 486.13 nm: RMS 0.03667 Wellen, versagt 0
+  Feld 1 (0.3045 deg), 546.07 nm: RMS 0.02663 Wellen, versagt 0
+  Feld 1 (0.3045 deg), 587.56 nm: RMS 0.01898 Wellen, versagt 0
+  Feld 1 (0.3045 deg), 656.27 nm: RMS 0.03695 Wellen, versagt 0
+  Feld 2 (0.4345 deg), 435.83 nm: RMS 0.05376 Wellen, versagt 0
+  Feld 2 (0.4345 deg), 486.13 nm: RMS 0.06110 Wellen, versagt 0
+  Feld 2 (0.4345 deg), 546.07 nm: RMS 0.04733 Wellen, versagt 0
+  Feld 2 (0.4345 deg), 587.56 nm: RMS 0.03429 Wellen, versagt 0
+  Feld 2 (0.4345 deg), 656.27 nm: RMS 0.03671 Wellen, versagt 0
+  Laufzeit [s]                                4999.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\H1G8\p1f_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\H1G8\p1f_r0_log.json

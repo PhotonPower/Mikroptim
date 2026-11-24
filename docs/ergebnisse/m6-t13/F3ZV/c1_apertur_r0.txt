@@ -1,0 +1,62 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\F3ZV\c1_apertur_start.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6075, Feldanteil 0.428, 19 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 20; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6075  0.428   0  -        max_iterations       500  4.428195e-03  4.424679e-03  0.26588   9.643e-06  19  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6075  0.428   0  -        max_iterations       500  4.387130e-03  4.384847e-03  0.26483   9.515e-06  19  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6075  0.428   0  -        max_iterations       500  4.380374e-03  4.378264e-03  0.26499   9.461e-06  19  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.6275  0.428   0  0.02000  max_iterations       500  7.528400e-02  7.523366e-02  0.19976   1.408e-03  19  shrink (Delta 0.01000)
+      4  aperture         0.6175  0.428   0  0.01000  max_iterations       500  5.793538e-03  5.791309e-03  0.24614   8.706e-06  19  shrink (Delta 0.00500)
+      5  aperture         0.6125  0.428   0  0.00500  max_iterations       500  4.731587e-03  4.730071e-03  0.25460   7.905e-06  19  keep (Delta 0.00500)
+      6  aperture         0.6175  0.428   0  0.00500  max_iterations       500  4.931057e-03  4.928828e-03  0.25851   8.094e-06  19  keep (Delta 0.00500)
+      7  aperture         0.6225  0.428   0  0.00500  max_iterations       500  5.643912e-03  5.642035e-03  0.25188   7.041e-06  19  shrink (Delta 0.00250)
+      8  aperture         0.6200  0.428   0  0.00250  max_iterations       500  5.062075e-03  5.060810e-03  0.26071   8.628e-06  19  keep (Delta 0.00250)
+      9  aperture         0.6225  0.428   0  0.00250  max_iterations       500  4.993716e-03  4.991537e-03  0.27261   1.008e-05  19  keep (Delta 0.00250)
+     10  aperture         0.6250  0.428   0  0.00250  max_iterations       500  5.088996e-03  5.086678e-03  0.27595   1.031e-05  19  keep (Delta 0.00250)
+     11  aperture         0.6275  0.428   0  0.00250  max_iterations       500  5.188922e-03  5.186601e-03  0.27831   1.050e-05  19  insert (Delta 0.00125): Farbregel (RMS-Verhältnis 5.08608, größter RMS 0.206242 Wellen, ΔW020 = -0.667959, W040 = 0.0242913, sigma_col = 0.102306 Wellen, ΔW111 = 0.189473, ΔW040 = 0.671509): Operator B an der Linse ab Fläche 18
+     12  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  ok: Operator B: Linse an Fläche 18 geteilt, c_s = -0.151364/mm, Glas nach Fläche 19 frei, Zielglas CAF2 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+     13  insertion_stage  0.6250  0.428   0  -        max_iterations       500  1.182133e+00  1.175396e+00  0.92329   1.599e-02  19  ok, Zweig 0, Stufe 0
+     14  insertion_stage  0.6250  0.428   0  -        converged_step      2485  1.913804e+11  7.573542e+03  109.43290   1.040e-01  19  ok, Zweig 1, Stufe 0
+     15  penalty          0.6250  0.428   0  -        max_iterations       500  1.374139e-02  1.367791e-02  0.30051   9.932e-05  20  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     16  penalty          0.6250  0.428   0  -        max_iterations       500  8.138566e-03  8.132500e-03  0.30266   1.388e-05  20  ok: Gewichte der einseitigen Bedingungen ×0.1
+     17  penalty          0.6250  0.428   0  -        max_iterations       500  7.268908e-03  7.267382e-03  0.29629   1.107e-05  20  ok: Gewichte der einseitigen Bedingungen ×1
+     18  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  -: Einfügen verworfen: F_B danach 0.00726738 ≥ 0.00508668 davor (Einfügen nur mit Verbesserung)
+     19  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  ok: Operator B: Linse an Fläche 11 geteilt, c_s = -0.166197/mm, Glas nach Fläche 12 frei, Zielglas CAF2 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+     20  insertion_stage  0.6250  0.428   0  -        max_iterations       500  1.963395e-02  1.959539e-02  0.23406   2.880e-04  19  ok, Zweig 0, Stufe 0
+     21  insertion_stage  0.6250  0.428   0  -        max_iterations      1000  7.511656e+00  7.477312e+00  3.86820   3.354e-02  19  ok, Zweig 1, Stufe 0
+     22  penalty          0.6250  0.428   0  -        max_iterations       500  5.228158e-03  5.222478e-03  0.28510   1.165e-05  20  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     23  penalty          0.6250  0.428   0  -        converged_step       455  5.218721e-03  5.215795e-03  0.28528   1.160e-05  20  ok: Gewichte der einseitigen Bedingungen ×0.1
+     24  penalty          0.6250  0.428   0  -        max_iterations       500  5.211442e-03  5.208726e-03  0.28583   1.156e-05  20  ok: Gewichte der einseitigen Bedingungen ×1
+     25  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  -: Einfügen verworfen: F_B danach 0.00520873 ≥ 0.00508668 davor (Einfügen nur mit Verbesserung)
+     26  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  ok: Operator B: Linse an Fläche 12 geteilt, c_s = -0.337288/mm, Glas nach Fläche 13 frei, Zielglas CAF2 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+     27  insertion_stage  0.6250  0.428   0  -        max_iterations       500  4.576326e-02  4.570691e-02  0.25150   8.198e-04  19  ok, Zweig 0, Stufe 0
+     28  insertion_stage  0.6250  0.428   0  -        converged_step       157  7.442360e+55  7.442360e+47  1173.01305   4.843e-05  19  ok, Zweig 1, Stufe 0
+     29  penalty          0.6250  0.428   0  -        max_iterations       500  5.663415e-03  5.658542e-03  0.29156   1.200e-05  20  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     30  penalty          0.6250  0.428   0  -        max_iterations       500  5.637810e-03  5.634963e-03  0.29176   1.187e-05  20  ok: Gewichte der einseitigen Bedingungen ×0.1
+     31  penalty          0.6250  0.428   0  -        max_iterations       500  5.588106e-03  5.585583e-03  0.29209   1.173e-05  20  ok: Gewichte der einseitigen Bedingungen ×1
+     32  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  -: Einfügen verworfen: F_B danach 0.00558558 ≥ 0.00508668 davor (Einfügen nur mit Verbesserung)
+     33  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 2 bei 0.325043 mm, c0 = 0.0733857/mm, Gläser CAF2 + SYN-11 (spektraler Rest 4.90222e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+     34  insertion_stage  0.6250  0.428   0  -        max_iterations       500  5.079703e-03  5.077327e-03  0.27772   1.042e-05  19  ok, Zweig 0, Stufe 0.03125
+     35  insertion_stage  0.6250  0.428   0  -        max_iterations       500  5.076524e-03  5.074148e-03  0.27833   1.044e-05  19  ok, Zweig 0, Stufe 0.0625
+     36  insertion_stage  0.6250  0.428   0  -        max_iterations       500  5.131313e-03  5.103931e-03  0.27718   1.026e-05  19  ok, Zweig 0, Stufe 0.125
+     37  insertion_stage  0.6250  0.428   0  -        max_iterations       500  6.720276e-03  6.693142e-03  0.26279   9.312e-06  19  ok, Zweig 0, Stufe 0.25
+     38  insertion_stage  0.6250  0.428   0  -        max_iterations       500  3.558132e-02  3.553697e-02  0.22200   5.272e-04  19  ok, Zweig 0, Stufe 0.5
+     39  penalty          0.6250  0.428   0  -        max_iterations       500  5.570289e-03  5.564329e-03  0.29435   1.122e-05  21  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     40  penalty          0.6250  0.428   0  -        converged_step       373  5.547647e-03  5.542652e-03  0.29512   1.116e-05  21  ok: Gewichte der einseitigen Bedingungen ×0.1
+     41  penalty          0.6250  0.428   0  -        max_iterations       500  5.560353e-03  5.533181e-03  0.29499   1.114e-05  21  ok: Gewichte der einseitigen Bedingungen ×1
+     42  insertion        0.6250  0.428   0  -        -                      -  -             -             -         -            19  -: Einfügen verworfen: F_B danach 0.00553318 ≥ 0.00508668 davor (Einfügen nur mit Verbesserung)
+
+Status: step_too_small (Apertur 0.625: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.0051866); kein Einfügen verbessert F_B (4 Varianten, F_B 0.00726738, 0.00520873, 0.00558558, 0.00553318 ≥ 0.00508668))
+Endpunkt: NA 0.6250, Feldanteil 0.428, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 19 -> 19 (4 Einfügungen), Optimierungen: 35, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                1375.6
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\F3ZV\c1_apertur_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\F3ZV\c1_apertur_r0_log.json

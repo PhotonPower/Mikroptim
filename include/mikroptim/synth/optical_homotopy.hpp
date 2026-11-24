@@ -135,6 +135,24 @@ struct OpticalHomotopyOptions {
     bool color_module_always = false;
     bool color_module_anomalous = false;
     double color_module_incidence_deg = 40.0;
+    // Varianten der Farbregel (M6-T13, insertion_options für Einfügen nur mit Verbesserung und
+    // die Strahlsuche): ohne Option sind die Linsen-Varianten Operator B an den übrigen
+    // Kandidaten der Empfehlung; lässt sich eine davon am Zustand nicht teilen, nimmt insert die
+    // nächste teilbare Kandidatin, oft dieselbe Linse wie die Empfehlung (gemessen: vier gleiche
+    // Varianten, Bericht M6-T13). Mit color_variants nur Linsen, die sich am Zustand teilen lassen
+    // und die die Empfehlung nicht schon teilt (ohne Rückfall auf andere Kandidaten), dann die
+    // Spalte des Kittglied-Moduls, dann die Empfehlung der Geisterdiagnose und (mit field_rule)
+    // der Feldregel am Zustand, jeweils als eigene Variante. Lässt sich keine Linse der
+    // Empfehlung am Zustand teilen, entfällt die Empfehlung selbst (insert bräche sonst mit „zu
+    // dünn“ ab, bevor die übrigen Varianten versucht werden). Standard aus.
+    bool color_variants = false;
+    // Querfarbe (M6-T13): Überwiegt im Aberrationsbericht der Querfarbfehler die Längsfarbe
+    // (|ΔW111|/4 > |ΔW020|/(2√3), RMS von Kippung bzw. Defokus), empfiehlt die Farbregel das
+    // Kittglied-Modul zuerst (auch wenn eine Linse teilbar ist) und ordnet die Spalte nach dem
+    // mittleren |y·ȳ| der Spaltflächen (Querfarbe eines dünnen Elements ∝ y ȳ φ/ν) statt nach
+    // |y|. Anlass: In den Öffnungsstufen ab F3 begrenzen Querfarbe und Verzeichnung am Feldrand
+    // (Bericht M6-T13). Wirkt nur mit color_module. Standard aus.
+    bool color_module_lateral = false;
     // Feldregel (M6-T8, Befund F14 aus M6-T6b): Meldet die Geisterdiagnose keinen Bedarf (die
     // Platten sehen Feldfehler kaum: blendennah bzw. mit zu großem Normierungsradius) und
     // dominieren Feldfehler, empfiehlt diagnose Operator A im Luftspalt mit dem größten
@@ -250,6 +268,9 @@ private:
     std::optional<HomotopyNeed> field_need(const SystemDescription& system,
                                            const HomotopyPoint& point) const;
     HomotopyNeed ghost_need(const SystemDescription& system, const HomotopyPoint& point) const;
+    std::vector<HomotopyNeed> color_variants(const SystemDescription& system,
+                                             const HomotopyPoint& point, const HomotopyNeed& need,
+                                             int max) const;
     HomotopyInsertion insert_module(const SystemDescription& system,
                                     const SystemDescription& realized, const HomotopyPoint& point,
                                     const HomotopyNeed& need, HomotopyInsertion ins) const;

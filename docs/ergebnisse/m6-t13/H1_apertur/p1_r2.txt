@@ -1,0 +1,50 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\H1_apertur\p1_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4325, Feldanteil 0.100, 3 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4325  0.100   0  -        converged_step        32  4.523681e-03  4.478392e-03  0.06728   5.146e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4325  0.100   0  -        converged_step        50  4.509386e-03  4.473882e-03  0.06565   5.871e-05   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4325  0.100   0  -        converged_step       141  4.531601e-03  4.474451e-03  0.06554   5.933e-05   3  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4525  0.100   0  0.02000  converged_step       105  6.165318e-03  6.120317e-03  0.06202   1.443e-04   3  shrink (Delta 0.01000)
+      4  aperture         0.4425  0.100   0  0.01000  max_iterations       500  7.516556e-03  7.435395e-03  0.10227   7.197e-05   3  shrink (Delta 0.00500)
+      5  aperture         0.4375  0.100   0  0.00500  converged_step        70  5.023274e-03  4.960115e-03  0.06886   6.968e-05   3  keep (Delta 0.00500)
+      6  aperture         0.4425  0.100   0  0.00500  converged_step       121  5.398548e-03  5.345755e-03  0.06415   1.026e-04   3  shrink (Delta 0.00250)
+      7  aperture         0.4400  0.100   0  0.00250  converged_step       319  5.236218e-03  5.176395e-03  0.06751   8.456e-05   3  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 1 im Abstand 0.1 mm, Glas wie Platte 1 (CAF2), dominante Ordnung 2, 9; Biegung aus dem Vorzeichen der Korrektur
+      8  insertion        0.4375  0.100   0  -        -                      -  -             -             -         -             3  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.0822646/mm, Glas CAF2 (Platte 1, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      9  insertion_stage  0.4375  0.100   0  -        converged_step       182  7.794920e-03  7.659716e-03  0.09881   1.004e-05   3  ok, Zweig 0, Stufe 0.03125
+     10  insertion_stage  0.4375  0.100   0  -        converged_step        52  7.800080e-03  7.663900e-03  0.09886   1.010e-05   3  ok, Zweig 0, Stufe 0.0625
+     11  insertion_stage  0.4375  0.100   0  -        converged_step        70  7.811773e-03  7.674981e-03  0.09899   1.019e-05   3  ok, Zweig 0, Stufe 0.125
+     12  insertion_stage  0.4375  0.100   0  -        converged_step        34  7.836184e-03  7.697507e-03  0.09926   1.027e-05   3  ok, Zweig 0, Stufe 0.25
+     13  insertion_stage  0.4375  0.100   0  -        converged_step        41  7.877057e-03  7.736008e-03  0.09989   1.011e-05   3  ok, Zweig 0, Stufe 0.5
+     14  insertion_stage  0.4375  0.100   0  -        max_iterations       500  1.071229e-02  1.053850e-02  0.10498   7.498e-05   3  ok, Zweig 1, Stufe 0.03125
+     15  insertion_stage  0.4375  0.100   0  -        max_iterations       500  6.165864e-03  6.056698e-03  0.08466   8.116e-06   3  ok, Zweig 1, Stufe 0.0625
+     16  insertion_stage  0.4375  0.100   0  -        max_iterations       500  6.093941e-03  5.985904e-03  0.08428   7.723e-06   3  ok, Zweig 1, Stufe 0.125
+     17  insertion_stage  0.4375  0.100   0  -        max_iterations       500  5.971426e-03  5.865496e-03  0.08378   7.006e-06   3  ok, Zweig 1, Stufe 0.25
+     18  insertion_stage  0.4375  0.100   0  -        converged_step       375  5.908036e-03  5.802900e-03  0.08367   6.575e-06   3  ok, Zweig 1, Stufe 0.5
+     19  penalty          0.4375  0.100   0  -        converged_step       149  2.212856e-03  2.189551e-03  0.05096   2.366e-06   4  ok: Zweig 1 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     20  penalty          0.4375  0.100   0  -        converged_step        17  2.221021e-03  2.196098e-03  0.05108   2.306e-06   4  ok: Gewichte der einseitigen Bedingungen ×0.1
+     21  penalty          0.4375  0.100   0  -        converged_step        11  2.266334e-03  2.197382e-03  0.05111   2.306e-06   4  ok: Gewichte der einseitigen Bedingungen ×1
+     22  aperture         0.4575  0.100   0  0.02000  converged_step        44  3.619083e-03  3.528760e-03  0.06752   3.580e-06   4  grow (Delta 0.04000)
+     23  aperture         0.4975  0.100   0  0.04000  converged_step       105  8.579876e-03  8.410298e-03  0.10842   5.055e-06   4  shrink (Delta 0.02000)
+     24  aperture         0.4775  0.100   0  0.02000  converged_step       203  5.667164e-03  5.544778e-03  0.08590   4.386e-06   4  shrink (Delta 0.01000)
+     25  aperture         0.4675  0.100   0  0.01000  converged_step        75  4.516619e-03  4.412245e-03  0.07581   4.169e-06   4  keep (Delta 0.01000)
+     26  aperture         0.4775  0.100   0  0.01000  converged_step        44  5.618613e-03  5.500007e-03  0.08553   4.350e-06   4  shrink (Delta 0.00500)
+     27  aperture         0.4725  0.100   0  0.00500  converged_step        50  5.014757e-03  4.902432e-03  0.07990   4.280e-06   4  grow (Delta 0.01000)
+     28  aperture         0.4825  0.100   0  0.01000  converged_step       488  6.235414e-03  6.093611e-03  0.09006   7.665e-06   4  shrink (Delta 0.00500)
+     29  aperture         0.4775  0.100   0  0.00500  converged_step       116  5.592788e-03  5.471109e-03  0.08488   4.457e-06   4  shrink (Delta 0.00250)
+     30  aperture         0.4750  0.100   0  0.00250  converged_step        77  5.313817e-03  5.198435e-03  0.08297   4.099e-06   4  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.4725: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00519844); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4725, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 3 -> 4 (1 Einfügungen), Optimierungen: 30, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                283.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\H1_apertur\p1_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\H1_apertur\p1_r2_log.json

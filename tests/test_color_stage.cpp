@@ -9,6 +9,7 @@
 #include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/glass/index_table.hpp"
 #include "mikroptim/merit/wavefront.hpp"
+#include "mikroptim/optim/design_operators.hpp"
 #include "mikroptim/paraxial/aberrations.hpp"
 #include "mikroptim/synth/optical_homotopy.hpp"
 
@@ -17,6 +18,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -389,6 +392,182 @@ TEST(ColorStage, StrongDoubletIncidence) {
     EXPECT_NE(ins.text.find("merte_pair"), std::string::npos) << ins.text;
     const double rel = relative_change(system_merit(m.start_system()), system_merit(sys));
     EXPECT_LE(rel, kInsertionMeritRelative);
+}
+
+// Dreilinser N-BK7 (frei erfunden, Kataloge wie die Einzellinse, 480/644 nm): Linsen ab den
+// Flächen 1, 3 und 5; die mittlere hat eine Dickenschranke über der halben Dicke und lässt sich
+// nicht teilen. Mit `plates` das Wörterbuch der Zielspezifikation (SYN-36, CaF₂, SYN-30, K = 4)
+// 1 mm hinter der Blende, die SYN-36-Platte mit einem Koeffizienten vierter Ordnung (Bedarf an
+// monochromatischer Korrektur für die Geisterdiagnose).
+LoadedSystem three_lenses(bool plates) {
+    SystemDescription d = achromat_start().system;
+    Surface lens = d.surfaces[1];
+    Surface back = d.surfaces[2];
+    back.thickness = 2.0;
+    std::vector<Surface> s{d.surfaces[0]};
+    for (const double c : {0.0193, 0.012, 0.008}) {
+        lens.curvature = c;
+        back.curvature = -c;
+        s.push_back(lens);
+        s.push_back(back);
+    }
+    s.back().thickness = 30.0;
+    d.surfaces = s;
+    VariableSpec t;
+    t.type = VariableType::Thickness;
+    t.selection = SurfaceSelection::One;
+    t.surfaces = {3};
+    t.min = 3.0; // Dicke 4 < 2 · 3: nicht teilbar
+    t.max = 10.0;
+    d.variables->items.push_back(t);
+    if (plates) {
+        GhostDictionaryPlacement p;
+        p.after_surface = 0;
+        p.distance = 1.0;
+        p.glasses = {catalog_glass("SYN-36"), catalog_glass("CAF2"), catalog_glass("SYN-30")};
+        p.order = 4;
+        p.norm_radius = 2.5;
+        p.penalty_weight = 47.2;
+        d = place_ghost_dictionary(d, p).system;
+        d.ghost_plates[0].coefficients[1] = 2e-3;
+    }
+    return prepare_test_system(d);
+}
+
+// Varianten der Farbregel (M6-T13, color_variants). Orakel: die Fläche, an der eine Variante
+// tatsächlich einfügt (insert). Ohne Option fällt die Variante „Linse 3“ (nicht teilbar) auf die
+// Empfehlung zurück – dieselbe Einfügung zweimal (Befund der Läufe F3, M6-T11). Mit der Option
+// nur teilbare Linsen ohne Rückfall, jede Variante an einer anderen Stelle, dann die Spalte des
+// Moduls und die Empfehlung der Geisterdiagnose (= diagnose ohne Farbregel). Ohne die Option
+// bleiben die Varianten wie bisher.
+TEST(ColorStage, ColorVariantsAreDistinctInsertions) {
+    OpticalHomotopyOptions o;
+    o.color_rule = true;
+    o.color_module = ColorModule::Doublet;
+    const LoadedSystem l = three_lenses(false);
+    OpticalHomotopyModel m(l, o);
+    const HomotopyPoint p = m.start_point();
+    const HomotopyNeed need = m.diagnose(m.start_system(), p);
+    ASSERT_EQ(need.recommendation, GhostOperator::B) << need.text;
+    ASSERT_GE(need.split_lens, 0) << need.text;
+    ASSERT_NE(std::find(need.split_candidates.begin(), need.split_candidates.end(), 3),
+              need.split_candidates.end());
+    const auto where = [&](OpticalHomotopyModel& model, const HomotopyNeed& n) {
+        const HomotopyInsertion ins = model.insert(model.start_system(), p, n);
+        return std::to_string(ins.doublet ? 1 : 0) + ":" + std::to_string(ins.first_surface);
+    };
+    // ohne Option: Variante „Linse 3“ fügt an der empfohlenen Linse ein
+    const std::vector<HomotopyNeed> old = m.insertion_options(m.start_system(), p, need, 8);
+    const std::string rec = where(m, need);
+    int duplicates = 0;
+    for (std::size_t k = 1; k < old.size(); ++k) {
+        duplicates += where(m, old[k]) == rec ? 1 : 0;
+    }
+    EXPECT_GE(duplicates, 1);
+
+    OpticalHomotopyOptions ov = o;
+    ov.color_variants = true;
+    OpticalHomotopyModel mv(l, ov);
+    const HomotopyNeed nv = mv.diagnose(mv.start_system(), p);
+    EXPECT_EQ(nv.text, need.text); // die Empfehlung selbst bleibt
+    const std::vector<HomotopyNeed> v = mv.insertion_options(mv.start_system(), p, nv, 8);
+    std::vector<std::string> places;
+    int lenses = 0;
+    int modules = 0;
+    for (const HomotopyNeed& n : v) {
+        places.push_back(where(mv, n));
+        std::printf("Variante %s: %s\n", places.back().c_str(), n.text.c_str());
+        EXPECT_NE(n.split_lens, 3);
+        lenses += n.split_lens >= 0 ? 1 : 0;
+        modules += n.module_gap >= 0 ? 1 : 0;
+    }
+    EXPECT_EQ(lenses, 2);                        // Linsen 1 und 5
+    EXPECT_EQ(modules, static_cast<int>(nv.module_candidates.size()));
+    std::vector<std::string> sorted = places;
+    std::sort(sorted.begin(), sorted.end());
+    EXPECT_EQ(std::unique(sorted.begin(), sorted.end()), sorted.end()) << "doppelte Einfügung";
+    // höchstens max
+    EXPECT_EQ(mv.insertion_options(mv.start_system(), p, nv, 2).size(), 2U);
+    // Empfehlung einer am Zustand nicht teilbaren Linse (am verworfenen Versuch entstanden):
+    // insert bricht ab (Orakel); als Variante entfällt sie, die übrigen bleiben
+    HomotopyNeed thin = nv;
+    thin.split_lens = 3;
+    thin.split_candidates = {3};
+    EXPECT_THROW((void)mv.insert(mv.start_system(), p, thin), std::invalid_argument);
+    const std::vector<HomotopyNeed> vt = mv.insertion_options(mv.start_system(), p, thin, 8);
+    EXPECT_TRUE(vt.empty() || vt.front().split_lens != 3);
+    for (const HomotopyNeed& n : vt) {
+        EXPECT_NE(n.split_lens, 3);
+    }
+    EXPECT_EQ(vt.size(), static_cast<std::size_t>(nv.module_candidates.size()));
+
+    // mit aktiver Geisterplatte: Empfehlung der Geisterdiagnose als weitere Variante (Orakel:
+    // diagnose desselben Systems ohne Farbregel)
+    const LoadedSystem lp = three_lenses(true);
+    OpticalHomotopyModel mp(lp, ov);
+    const HomotopyNeed np = mp.diagnose(mp.start_system(), p);
+    ASSERT_GE(np.split_lens, 0) << np.text;
+    OpticalHomotopyOptions og;
+    og.color_module = ColorModule::Doublet;
+    OpticalHomotopyModel mg(lp, og);
+    const HomotopyNeed ghost = mg.diagnose(mg.start_system(), p);
+    ASSERT_NE(ghost.recommendation, GhostOperator::None) << ghost.text;
+    const std::vector<HomotopyNeed> vp = mp.insertion_options(mp.start_system(), p, np, 8);
+    ASSERT_FALSE(vp.empty());
+    EXPECT_EQ(vp.back().recommendation, ghost.recommendation);
+    EXPECT_EQ(vp.back().text, "Variante (Geisterdiagnose): " + ghost.text);
+    EXPECT_EQ(vp.back().split_lens, -1);
+    EXPECT_EQ(vp.back().module_gap, -1);
+}
+
+// Querfarbe (M6-T13, color_module_lateral): Dreilinser mit Feld, Querfarbe überwiegt die
+// Längsfarbe (Orakel: Seidel-Terme des Aberrationsberichts, |ΔW111|/4 > |ΔW020|/(2√3)). Dann
+// empfiehlt die Farbregel das Modul zuerst, Spalte absteigend nach dem mittleren |y·ȳ| der
+// Spaltflächen (Orakel: Strahldaten des Berichts); ohne Option Operator B wie bisher.
+TEST(ColorStage, LateralColorModuleOrderedByChiefRayHeight) {
+    SystemDescription d = three_lenses(false).system;
+    d.source.field_angles_deg = {0.0, 20.0};
+    d.source.field_weights = {1.0, 1.0};
+    const LoadedSystem l = prepare_test_system(d);
+    OpticalHomotopyOptions o;
+    o.color_rule = true;
+    o.color_module = ColorModule::Doublet;
+    OpticalHomotopyModel plain(l, o);
+    const HomotopyPoint p = plain.start_point();
+    const HomotopyNeed np = plain.diagnose(plain.start_system(), p);
+    ASSERT_EQ(np.recommendation, GhostOperator::B) << np.text;
+    EXPECT_GE(np.split_lens, 0);
+    EXPECT_EQ(np.module_gap, -1);
+
+    const SystemDescription realized = plain.realize(plain.start_system(), p);
+    AberrationOptions ao;
+    ao.real_rays = false;
+    ao.focal_shift = false;
+    const AberrationReport rep = compute_aberrations(realized, l.catalog, ao);
+    const SeidelWaves w = rep.waves();
+    std::printf("dW111/4 = %.4f, dW020/(2 sqrt 3) = %.4f\n", std::abs(w.dW111) / 4.0,
+                std::abs(w.dW020) / (2.0 * std::sqrt(3.0)));
+    ASSERT_GT(std::abs(w.dW111) / 4.0, std::abs(w.dW020) / (2.0 * std::sqrt(3.0)));
+
+    OpticalHomotopyOptions ol = o;
+    ol.color_module_lateral = true;
+    OpticalHomotopyModel lat(l, ol);
+    const HomotopyNeed nl = lat.diagnose(lat.start_system(), p);
+    ASSERT_GE(nl.module_gap, 0) << nl.text;
+    EXPECT_EQ(nl.split_lens, -1);
+    EXPECT_NE(nl.text.find("Querfarbe"), std::string::npos) << nl.text;
+    // Orakel der Reihenfolge: dieselben Spalte wie ohne Option, nach |y·ȳ| absteigend
+    std::vector<int> expected = np.module_candidates;
+    const auto key = [&](int s) {
+        const SurfaceAberration& a = rep.surfaces.at(static_cast<std::size_t>(s));
+        const SurfaceAberration& b = rep.surfaces.at(static_cast<std::size_t>(s + 1));
+        return 0.5 * (std::abs(a.y * a.ybar) + std::abs(b.y * b.ybar));
+    };
+    std::stable_sort(expected.begin(), expected.end(),
+                     [&](int a, int b) { return key(a) > key(b); });
+    EXPECT_EQ(nl.module_candidates, expected);
+    EXPECT_EQ(nl.module_gap, expected.front());
+    EXPECT_NE(np.module_candidates, expected); // Reihenfolge nach |y| ist eine andere
 }
 
 } // namespace
