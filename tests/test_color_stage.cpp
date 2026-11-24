@@ -636,6 +636,8 @@ TEST(ColorStage, LateralColorFromRealChiefRays) {
             EXPECT_EQ(nr.split_lens, np.split_lens) << nr.text;
         }
     }
+    std::printf("Querfarbe überwiegt in %d Fällen, davon %d nur nach den realen Hauptstrahlen\n",
+                lateral_cases, real_only);
     EXPECT_GT(lateral_cases, 0);
 }
 
