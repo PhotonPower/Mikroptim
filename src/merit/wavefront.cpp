@@ -187,15 +187,21 @@ WavefrontResult evaluate_wavefront(const LoadedSystem& system, const WavefrontOp
     if (system.system.source.type == SourceType::Collimated) {
         f = target_focal_length(system.system, system.catalog);
     }
-    const std::vector<Vec3<double>> points = ideal_image_points(system.system, system.table, f);
+    std::vector<Vec3<double>> points = ideal_image_points(system.system, system.table, f);
     const ReferenceSphereKind kind =
         system.system.reference_sphere.value_or(ReferenceSphereKind::LastSurface);
     std::vector<ReferenceSphere<double>> refs;
     std::vector<double> kappa(points.size(), 0.0);
-    if (kind == ReferenceSphereKind::ImageExitPupil) {
+    const bool chief =
+        is_traced_reference_point(system.system.reference_point.value_or(ReferencePointKind::Ideal));
+    if (kind == ReferenceSphereKind::ImageExitPupil || chief) {
         const SystemBatchHost batch = make_system_batch(system, 1);
         for (std::size_t i = 0; i < points.size(); ++i) {
             kappa[i] = batch.reference_curvature(0, static_cast<int>(i));
+            if (chief) {
+                // Bildpunkt am Hauptstrahl bei λ_ref (ADR-0019), wie die Merit
+                points[i].y = batch.reference_height(0, static_cast<int>(i));
+            }
         }
     }
     for (std::size_t i = 0; i < points.size(); ++i) {

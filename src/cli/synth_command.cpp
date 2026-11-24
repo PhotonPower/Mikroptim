@@ -138,6 +138,10 @@ struct SynthArgs {
     std::optional<double> color_module_incidence;
     bool color_variants = true; // M6-T13, seit M6-T13b Standard; wirkt nur mit der Farbregel
     bool color_module_lateral = false; // M6-T13
+    bool color_lateral_rays = false;   // M6-T14: Querfarbe aus realen Hauptstrahlen
+    // ADR-0019: Bildpunkt der Referenzsphäre (setzt reference_point) und Verzeichnung
+    std::optional<ReferencePointKind> reference_point;
+    std::optional<DistortionOption> distortion;
     bool color_rule = false;          // M11-T5c
     int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
     bool spectrum_continuous = false; // M11-T5f: stetige Spektrumbreite
@@ -296,6 +300,12 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.color_module_anomalous = true;
         } else if (arg == "--color-module-lateral") {
             a.color_module_lateral = true;
+        } else if (arg == "--color-lateral-rays") {
+            a.color_lateral_rays = true; // M6-T14
+        } else if (arg == "--reference-point") {
+            a.reference_point = parse_reference_point(arg, next_value(args, i, arg));
+        } else if (arg == "--distortion") {
+            a.distortion = parse_distortion_option(arg, next_value(args, i, arg));
         } else if (arg == "--color-variants") {
             a.color_rule = true; // M6-T13: Varianten der Farbregel (seit M6-T13b Standard)
             a.color_variants = true;
@@ -583,10 +593,11 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         throw UsageError("--spectrum-continuous und --spectrum-stages schließen sich aus");
     }
     if ((a.color_module_always || a.color_module_anomalous || a.color_module_incidence ||
-         a.color_module_lateral) &&
+         a.color_module_lateral || a.color_lateral_rays) &&
         a.color_module == OpticalHomotopyOptions::ColorModule::None) {
-        throw UsageError("--color-module-always, --color-module-anomalous und "
-                         "--color-module-incidence verlangen --color-module");
+        throw UsageError("--color-module-always, --color-module-anomalous, "
+                         "--color-module-incidence, --color-module-lateral und "
+                         "--color-lateral-rays verlangen --color-module");
     }
     if (a.beam && a.predictor) {
         throw UsageError("--predictor gibt es nur ohne --beam");
@@ -743,6 +754,11 @@ void print_synth_usage(std::ostream& out) {
            "                            für Geisterplatten empfohlen: image_infinite)\n"
            "  --no-reference-warning    keine Warnung auf stderr, wenn die Datei kein Feld\n"
            "                            reference_sphere hat (dann gilt last_surface)\n"
+           "  --reference-point P       Bildpunkt der Referenzsphäre: ideal (Standard), chief_ray\n"
+           "                            oder centroid (Hauptstrahl bzw. Schwerpunkt bei\n"
+           "                            lambda_ref, ADR-0019; empfohlen: centroid)\n"
+           "  --distortion D[,W]        Verzeichnung |D_f| <= D (Anteil) als Nebenbedingung,\n"
+           "                            Gewicht W (Standard 1e4; Eintrag distortion)\n"
            "  --spectrum-continuous     stetige Spektrum-Homotopie: Spektrumbreite von 0 (λ_ref) "
            "bis 1\n"
            "                            mit adaptiver Schrittweite (M11-T5f)\n"
@@ -773,6 +789,8 @@ void print_synth_usage(std::ostream& out) {
            "  --color-module-incidence W  Einfallswinkel an der Kittfläche (strong, Standard 40)\n"
            "  --color-module-lateral    Querfarbe überwiegt: Modul zuerst, Spalt nach |y ybar|\n"
            "                            (M6-T13)\n"
+           "  --color-lateral-rays      wie --color-module-lateral, Querfarbe zusätzlich aus\n"
+           "                            realen Hauptstrahlen am größten Feld (M6-T14)\n"
            "  --color-variants          Varianten der Farbregel (--insertion-improve, --beam):\n"
            "                            nur teilbare Linsen ohne Rückfall, Modul-Spalte,\n"
            "                            Geisterdiagnose und Feldregel (M6-T13; setzt\n"
@@ -884,6 +902,12 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.reference_sphere) {
             start.system.reference_sphere = *a.reference_sphere;
         }
+        if (a.reference_point) {
+            start.system.reference_point = *a.reference_point; // ADR-0019
+        }
+        if (a.distortion) {
+            apply_distortion_option(start.system, *a.distortion);
+        }
         for (const std::string& w : start.warnings) {
             err << "mikroptim synth: Warnung: " << w << '\n';
         }
@@ -971,6 +995,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         o.color_module_anomalous = a.color_module_anomalous;
         o.color_variants = a.color_variants;
         o.color_module_lateral = a.color_module_lateral;
+        o.color_lateral_rays = a.color_lateral_rays;
         if (a.color_module_incidence) {
             o.color_module_incidence_deg = *a.color_module_incidence;
         }
@@ -1155,8 +1180,10 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                         (a.color_module_always ? " statt Teilen" : " ohne teilbare Linse") +
                         (a.color_module_anomalous ? ", anomales Glas" : ""));
                 }
-                if (a.color_module_lateral) {
-                    add("Querfarbe: Modul nach |y·ȳ|");
+                if (a.color_module_lateral || a.color_lateral_rays) {
+                    add(a.color_lateral_rays
+                            ? "Querfarbe (Seidel oder reale Hauptstrahlen): Modul nach |y·ȳ|"
+                            : "Querfarbe: Modul nach |y·ȳ|");
                 }
                 if (a.color_variants) {
                     add("Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel");
@@ -1307,6 +1334,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
             }
             if (a.color_module_lateral) {
                 options["color_rule_ext"]["lateral"] = true; // M6-T13, nur mit Option
+            }
+            if (a.color_lateral_rays) {
+                options["color_rule_ext"]["lateral_rays"] = true; // M6-T14, nur mit Option
             }
         }
         if (a.prune || a.element_budget) {

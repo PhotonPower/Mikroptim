@@ -521,6 +521,54 @@ TEST(CliOptimize, SineConditionOption) {
     EXPECT_NE(t.out.find("sine rho=1.0000"), std::string::npos) << t.out;
 }
 
+// M6-T14 (ADR-0019): --reference-point setzt den Bildpunkt am Hauptstrahl (Ergebnisdatei),
+// --distortion hängt die Nebenbedingung distortion an (ein Eintrag pro Feld, Ist = D_f, Achse
+// NaN), adjungierte Jacobi mit chief_ray abgelehnt, Fehlbedienung Exit 2.
+TEST(CliOptimize, ReferencePointAndDistortionOptions) {
+    const TempDir dir("chief");
+    mko::SystemDescription d = mko::read_system_file(fs::path(kBiegung));
+    d.source.field_angles_deg = {0.0, 3.0};
+    d.source.field_weights = {1.0, 1.0};
+    d.reference_sphere = mko::ReferenceSphereKind::ImageInfinite;
+    d.glass_catalogs = {kBasisGlas};
+    const std::string in = dir.file("feld.json");
+    write_file(in, mko::write_system_json(d));
+    const std::string out = dir.file("ergebnis.json");
+    const RunResult r =
+        optimize({in, "--json", "--max-iterations", "5", "--reference-point", "chief_ray",
+                  "--distortion", "0,100", "-o", out, "--rings", "4", "--spokes", "4"});
+    ASSERT_EQ(r.code, mko::cli::kExitOk) << r.err;
+    const json j = json::parse(r.out);
+    const json& c = j["constraints"];
+    ASSERT_EQ(c.size(), 3U);
+    EXPECT_EQ(c[1]["type"], "distortion");
+    EXPECT_EQ(c[1]["field"], 0);
+    EXPECT_TRUE(c[1]["value_start"].is_null());
+    EXPECT_EQ(c[2]["field"], 1);
+    EXPECT_EQ(c[2]["mode"], "max");
+    const double dist = c[2]["value_start"].get<double>();
+    EXPECT_NE(dist, 0.0);
+    EXPECT_NEAR(c[2]["residual_start"].get<double>(), 10.0 * std::abs(dist), 1e-12);
+    const mko::SystemDescription s = mko::read_system_file(out);
+    EXPECT_EQ(s.reference_point, mko::ReferencePointKind::ChiefRay);
+    ASSERT_TRUE(s.constraints.has_value());
+    EXPECT_EQ(s.constraints->items.back().type, mko::ConstraintType::Distortion);
+    EXPECT_EQ(s.constraints->items.back().max_distortion, 0.0);
+    EXPECT_EQ(s.constraints->items.back().weight, 100.0);
+    // Text
+    const RunResult t = optimize({in, "-q", "--max-iterations", "0", "--distortion", "0.01"});
+    ASSERT_EQ(t.code, mko::cli::kExitOk) << t.err;
+    EXPECT_NE(t.out.find("distortion f=1"), std::string::npos) << t.out;
+    // adjungiert nicht mit chief_ray
+    const RunResult a = optimize({in, "-q", "--max-iterations", "1", "--reference-point",
+                                  "chief_ray", "--jacobian", "adjoint"});
+    EXPECT_NE(a.code, mko::cli::kExitOk);
+    // Fehlbedienung
+    EXPECT_EQ(optimize({in, "--reference-point", "hauptstrahl"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(optimize({in, "--distortion", "-0.1"}).code, mko::cli::kExitUsage);
+    EXPECT_EQ(optimize({in, "--distortion", "0.1,x"}).code, mko::cli::kExitUsage);
+}
+
 // Mit Geisterplatten: Die Dicke des geteilten Spalts wird als Dateidicke geschrieben; das
 // erneute Laden ergibt dasselbe letzte Teilstück fl(x − d) und damit bitgleich dieselbe Merit.
 TEST(CliOptimize, GhostPlateResultReproducesMerit) {

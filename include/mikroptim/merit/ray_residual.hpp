@@ -19,15 +19,19 @@
 namespace mko {
 
 // Mittelpunkt der Referenzsphäre M_f = (0, h_f, w) der Variante v für Feld f in lokalen
-// Koordinaten der letzten Fläche: h_f = field_target[v][f], w = thickness[S−1] aus `table`
-// (Flächentabelle derselben Variante; im Kernel die Kopie im Shared Memory). Der Rechentyp ist
-// der Zahlentyp der Tabelle; der Batch darf einen anderen Speichertyp haben (M7-T1).
+// Koordinaten der letzten Fläche: h_f = field_target[v][f] (idealer Bildpunkt) bzw. bei
+// ReferencePointKind::ChiefRay bzw. Centroid die Höhe ȳ_f = reference_height[v][f] des realen
+// Hauptstrahls bzw. des Strahlschwerpunkts bei λ_ref (ADR-0019), w = thickness[S−1] aus `table` (Flächentabelle derselben Variante; im Kernel
+// die Kopie im Shared Memory). Der Rechentyp ist der Zahlentyp der Tabelle; der Batch darf einen
+// anderen Speichertyp haben (M7-T1).
 template <class B, class SurfaceTable>
 MKO_HD inline auto batch_image_point(const SystemBatchView<B>& b, const SurfaceTable& table, int v,
                                      int f) {
     using R = std::remove_cv_t<std::remove_reference_t<decltype(table.thickness[0])>>;
-    return Vec3<R>{R(0), R(b.field_target[b.shape.field_at(v, f)]),
-                   table.thickness[table.surfaces - 1]};
+    const auto i = b.shape.field_at(v, f);
+    const B h = is_traced_reference_point(b.reference_point) ? b.reference_height[i]
+                                                             : b.field_target[i];
+    return Vec3<R>{R(0), R(h), table.thickness[table.surfaces - 1]};
 }
 
 // Referenzsphäre der Variante v für Feld f (ADR-0017): Mittelpunkt batch_image_point, Art aus

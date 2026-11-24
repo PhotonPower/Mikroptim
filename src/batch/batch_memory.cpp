@@ -82,6 +82,9 @@ SystemBatchLayout make_batch_layout(const BatchTopology& t, int variants) {
     // Danach, damit Batches mit der Sphäre durch die letzte Fläche ihre Ablage behalten.
     b.reference_curvature =
         place(end, is_image_reference(t.reference_sphere) ? mul_sat(V, F * d) : 0);
+    // Zuletzt, damit Batches mit idealem Bildpunkt ihre Ablage behalten (ADR-0019).
+    b.reference_height =
+        place(end, is_traced_reference_point(t.reference_point) ? mul_sat(V, F * d) : 0);
     b.total_bytes = end;
     return b;
 }

@@ -317,6 +317,18 @@ void validate_system(const SystemDescription& system) {
     if (system.target) {
         check_target(*system.target);
     }
+    if (system.reference_point && is_traced_reference_point(*system.reference_point)) {
+        // ADR-0019: Hauptstrahl als Bildpunkt nur mit Sphäre am Bildpunkt (ADR-0017) und
+        // kollimierter Quelle (Feldwinkel, Blende als erste Fläche)
+        if (!is_image_reference(
+                system.reference_sphere.value_or(ReferenceSphereKind::LastSurface))) {
+            fail("reference_point", "chief_ray und centroid verlangen reference_sphere "
+                                    "image_exit_pupil oder image_infinite (ADR-0019)");
+        }
+        if (system.source.type != SourceType::Collimated) {
+            fail("reference_point", "chief_ray und centroid nur mit kollimierter Quelle (ADR-0019)");
+        }
+    }
     check_surfaces(system.surfaces);
     check_ghost_plates(system.ghost_plates, system.surfaces);
     (void)resolve_variables(system);  // wirft FormatError unter variables.items[i]…

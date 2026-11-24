@@ -115,7 +115,8 @@ struct AdjointJacobian {
 // Batch mit einer Variante pro Lauf am Punkt x₀ des Laufs (Vorlage: eine Variante für alle Läufe
 // oder eine pro Lauf, wie make_fd_jacobian_batch; Variante i = Vorlage + apply(x₀_i), bitgleich
 // zur Variante x₀ des FD-Batches). Wirft std::invalid_argument bei P = 0, leerem x0, Länge kein
-// Vielfaches von P oder falscher Variantenzahl der Vorlage, sonst wie VariableSet::apply.
+// Vielfaches von P oder falscher Variantenzahl der Vorlage oder einer Vorlage mit Bildpunkt am
+// Hauptstrahl (ADR-0019: ∂ȳ/∂x fehlt im Rückwärtsdurchlauf), sonst wie VariableSet::apply.
 SystemBatchHost make_adjoint_batch(const VariableSet& set, const SystemBatchHost& base,
                                    std::span<const double> x0);
 

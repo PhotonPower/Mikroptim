@@ -52,6 +52,8 @@ struct EvalArgs {
     EvalSettings settings{};
     std::string map_file;        // leer: keine OPD-Karte
     bool have_reference = false; // --reference angegeben (sonst folgt EVAL der Datei)
+    // ADR-0019: Bildpunkt der Referenzsphäre (überschreibt reference_point der Datei)
+    std::optional<ReferencePointKind> reference_point;
     bool have_map = false;       // --map angegeben
     int map_field = 0;           // Tupel der Karte
     int map_wavelength = 0;
@@ -124,6 +126,8 @@ EvalArgs parse_args(std::span<const std::string_view> args) {
                 throw UsageError("--reference erwartet exit-pupil, vertex oder infinite, nicht '" +
                                  std::string(v) + "'");
             }
+        } else if (arg == "--reference-point") {
+            a.reference_point = parse_reference_point(arg, next_value(args, i, arg));
         } else if (arg == "--map") {
             parse_tuple(arg, next_value(args, i, arg), a.map_field, a.map_wavelength);
             a.have_map = true;
@@ -367,6 +371,10 @@ void write_json(const EvalReport& r, std::ostream& out) {
     j["half_pupil"] = r.result.settings.half_pupil;
     j["grid_points"] = r.result.samples();
     j["reference_sphere"] = reference_name(r.result.settings.reference);
+    if (is_traced_reference_point(r.batch.topology().reference_point)) {
+        // ADR-0019, nur bei Bildpunkt am Hauptstrahl bzw. Schwerpunkt
+        j["reference_point"] = reference_point_name(r.batch.topology().reference_point);
+    }
     j["exit_pupil_position"] = number(r.result.exit_pupil_position[0]);
     if (r.psf) {
         j["psf"] =
@@ -665,6 +673,9 @@ void print_eval_usage(std::ostream& out) {
            "                  oder um den Bildpunkt mit unendlichem Radius (infinite);\n"
            "                  ohne Angabe infinite, wenn die Datei reference_sphere =\n"
            "                  image_infinite setzt, sonst exit-pupil (ADR-0017)\n"
+           "  --reference-point P  Mittelpunkt der Sphäre: ideal (h_f), chief_ray (Hauptstrahl)\n"
+           "                  oder centroid (Schwerpunkt) bei lambda_ref (ADR-0019); ohne\n"
+           "                  Angabe wie die Datei\n"
            "  --json          maschinenlesbare Ausgabe (Format mikroptim.eval/1)\n"
            "  --map F,L       OPD-Karte von Feld F und Wellenlänge L (ab 0) schreiben ...\n"
            "  --map-file D    ... als CSV nach D (Wellen bei der Referenzwellenlänge)\n"
@@ -738,6 +749,9 @@ int run_eval_command(std::span<const std::string_view> args, std::ostream& out, 
         r.loaded = load_system(std::filesystem::path(a.file));
         for (const std::string& w : r.loaded.warnings) {
             err << "mikroptim eval: Warnung: " << w << '\n';
+        }
+        if (a.reference_point) {
+            r.loaded.system.reference_point = *a.reference_point; // ADR-0019
         }
         r.batch = make_system_batch(r.loaded, 1);
         // Ohne --reference folgt EVAL der Datei (ADR-0017): image_infinite → infinite, sonst

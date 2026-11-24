@@ -111,6 +111,22 @@ public:
                                              "' (last_surface, image_exit_pupil, image_infinite)");
             }
         }
+        if (const Json* r = member(root, "reference_point")) {
+            const std::string v = as_string(*r, "reference_point");
+            bool found = false;
+            for (const ReferencePointKind k :
+                 {ReferencePointKind::Ideal, ReferencePointKind::ChiefRay,
+                  ReferencePointKind::Centroid}) {
+                if (v == reference_point_name(k)) {
+                    sys.reference_point = k;
+                    found = true;
+                }
+            }
+            if (!found) {
+                fail("reference_point",
+                     "unbekannter Bildpunkt der Referenzsphäre '" + v + "' (ideal, chief_ray, centroid)");
+            }
+        }
         sys.surfaces = read_surfaces(required(root, "", "surfaces"), "surfaces");
 
         if (const Json* g = member(root, "ghost_plates")) {
@@ -127,7 +143,7 @@ public:
         }
         warn_unknown(root, "",
                      {"format", "name", "description", "units", "glass_catalogs", "spectrum",
-                      "source", "target", "reference_sphere", "surfaces", "ghost_plates",
+                      "source", "target", "reference_sphere", "reference_point", "surfaces", "ghost_plates",
                       "variables", "constraints", "tolerances"});
 
         validate_system(sys);
@@ -596,7 +612,7 @@ private:
                                 "paraxial_focus, petzval, ghost_penalty, glass_hull, "
                                 "max_semi_diameter, min_center_thickness, "
                                 "max_center_thickness, min_edge_thickness, "
-                                "max_incidence_angle, sine_condition)");
+                                "max_incidence_angle, sine_condition, distortion)");
         }
         c.type = *t;
         if (const Json* m = member(j, "mode")) {
@@ -619,6 +635,9 @@ private:
         }
         if (const Json* k = member(j, "max_curvature")) {
             c.max_curvature = as_number(*k, join(path, "max_curvature"));
+        }
+        if (const Json* k = member(j, "max_distortion")) {
+            c.max_distortion = as_number(*k, join(path, "max_distortion"));
         }
         c.plate_selection =
             read_selection(j, path, "plate", "plates", "Geisterplatten-Indizes", c.plates);
@@ -685,7 +704,7 @@ private:
                       "max_curvature", "plate",     "plates",  "order_weight",      "order_factor",
                       "smoothing",     "margin",    "surface", "surfaces",          "medium",
                       "semi_diameter", "thickness", "angle",   "clearance",         "height",
-                      "zones",         "comment"});
+                      "zones",         "max_distortion", "comment"});
         return c;
     }
 
@@ -925,6 +944,9 @@ Json constraints_to_json(const Constraints& cons) {
         if (c.max_curvature) {
             j["max_curvature"] = *c.max_curvature;
         }
+        if (c.max_distortion) {
+            j["max_distortion"] = *c.max_distortion;
+        }
         selection_to_json(j, c.plate_selection, c.plates, "plate", "plates");
         if (c.order_weight) {
             j["order_weight"] = *c.order_weight;
@@ -1094,6 +1116,9 @@ Json to_json(const SystemDescription& sys) {
     }
     if (sys.reference_sphere) {
         root["reference_sphere"] = std::string(reference_sphere_name(*sys.reference_sphere));
+    }
+    if (sys.reference_point) {
+        root["reference_point"] = std::string(reference_point_name(*sys.reference_point));
     }
 
     Json surfaces = Json::array();

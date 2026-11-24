@@ -48,6 +48,7 @@ struct TraceArgs {
     int rings = kDefaultRings;
     int spokes = kDefaultSpokes;
     std::optional<ReferenceSphereKind> reference_sphere; // ADR-0017: überschreibt die Datei
+    std::optional<ReferencePointKind> reference_point;   // ADR-0019: überschreibt die Datei
     bool no_reference_warning = false;                   // --no-reference-warning
 };
 
@@ -67,6 +68,11 @@ TraceArgs parse_args(std::span<const std::string_view> args) {
                 throw UsageError("--reference-sphere erwartet einen Wert");
             }
             a.reference_sphere = parse_reference_sphere(arg, args[++i]);
+        } else if (arg == "--reference-point") {
+            if (i + 1 >= args.size()) {
+                throw UsageError("--reference-point erwartet einen Wert");
+            }
+            a.reference_point = parse_reference_point(arg, args[++i]);
         } else if (arg == "--gpu") {
             a.gpu = true;
         } else if (arg == "--device") {
@@ -482,6 +488,8 @@ void print_trace_usage(std::ostream& out) {
            "               Datei), image_exit_pupil oder image_infinite (ADR-0017)\n"
            "  --no-reference-warning  keine Warnung auf stderr, wenn die Datei kein Feld\n"
            "               reference_sphere hat (dann gilt last_surface)\n"
+           "  --reference-point P  Bildpunkt der Referenzsphäre: ideal (Standard), chief_ray oder\n"
+           "               centroid (Hauptstrahl bzw. Schwerpunkt bei lambda_ref, ADR-0019)\n"
            "  --rings N    radiale Ringe der Pupillenquadratur, 1 bis "
         << kMaxPupilRings << " (Standard " << kDefaultRings
         << ")\n"
@@ -554,6 +562,9 @@ int run_trace_command(std::span<const std::string_view> args, std::ostream& out,
         }
         if (a.reference_sphere) {
             r.loaded.system.reference_sphere = *a.reference_sphere;
+        }
+        if (a.reference_point) {
+            r.loaded.system.reference_point = *a.reference_point;
         }
         warn_missing_reference_sphere(err, "trace", r.loaded.system, a.no_reference_warning);
         r.paraxial = compute_paraxial(r.loaded.system, r.loaded.catalog);

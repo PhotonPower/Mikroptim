@@ -95,7 +95,8 @@ public:
     // wie material_index; ν₃ = buchdahl_coeff[v][s][3] bleibt). Wirft std::invalid_argument bei
     // falscher Länge, nicht endlichen Werten, anderer Topologie oder (mit Glasvariablen) einer
     // Wellenlänge, bei der die Buchdahl-Koordinate nicht definiert ist (≤ 146,074 nm),
-    // std::out_of_range bei ungültigem v.
+    // std::out_of_range bei ungültigem v. Bei einem Batch mit Bildpunkt am Hauptstrahl
+    // (ADR-0019) danach reference_height der Variante neu (update_reference_height).
     void apply(SystemBatchHost& batch, int v, std::span<const double> x) const;
 
     // Dasselbe für die Systembeschreibung (Dateiflächen, Koeffizienten der Geisterplatten,

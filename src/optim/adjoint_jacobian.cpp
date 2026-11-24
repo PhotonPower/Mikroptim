@@ -158,6 +158,12 @@ std::size_t AdjointJacobian::hard_failed_count() const {
 SystemBatchHost make_adjoint_batch(const VariableSet& set, const SystemBatchHost& base,
                                    std::span<const double> x0) {
     const int runs = run_count(set, x0);
+    if (is_traced_reference_point(base.topology().reference_point)) {
+        // ADR-0019: Der Bildpunkt hängt über den Hauptstrahl von x ab; der Rückwärtsdurchlauf
+        // kennt ∂ȳ/∂x nicht (Folgeaufgabe). FD-Jacobi verwenden.
+        invalid("Bildpunkt aus realen Strahlen (reference_point chief_ray/centroid, ADR-0019) wird nicht "
+                "unterstützt; finite Differenzen verwenden");
+    }
     if (base.variants() != 1 && base.variants() != runs) {
         invalid("die Vorlage hat " + std::to_string(base.variants()) +
                 " Varianten, erwartet 1 oder " + std::to_string(runs) + " (eine pro Lauf)");

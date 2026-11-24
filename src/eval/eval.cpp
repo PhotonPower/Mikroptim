@@ -241,7 +241,8 @@ EvalReferenceGeometry eval_reference_geometry(const SystemBatchHost& batch,
             }
         }
         for (int f = 0; f < F; ++f) {
-            const double h = batch.field_target(v, f);
+            // Mittelpunkt der Sphäre (ADR-0019: bei ChiefRay die Höhe des Hauptstrahls)
+            const double h = batch.reference_height(v, f);
             double kappa = 0.0;
             if (!infinite) {
                 const double dz = w - z_ap;
@@ -286,9 +287,12 @@ void prepare_eval_result(EvalResult& out, const SystemBatchHost& batch,
     out.grid = std::move(grid);
     out.reference_nm = batch.reference_wavelength_nm;
     out.image_height.resize(to_size(V) * to_size(F));
+    out.center_height.resize(to_size(V) * to_size(F));
     for (int v = 0; v < V; ++v) {
         for (int f = 0; f < F; ++f) {
             out.image_height[to_size(v) * to_size(F) + to_size(f)] = batch.field_target(v, f);
+            out.center_height[to_size(v) * to_size(F) + to_size(f)] =
+                batch.reference_height(v, f);
         }
     }
     out.reference_curvature = std::move(geometry.curvature);
@@ -389,6 +393,14 @@ std::vector<EvalTupleStats> eval_statistics(const EvalResult& r, int v) {
             s.wavelength = l;
             s.rays = n;
             s.image_height = r.image_height[to_size(v) * to_size(r.fields) + to_size(f)];
+            // Spot und Feldstrahlen liegen relativ zum Mittelpunkt der Sphäre; Schwerpunkt und
+            // Hauptstrahl der Kennzahlen relativ zum idealen Bildpunkt (ADR-0019; 0 ohne
+            // Bildpunkt am Hauptstrahl, dann bitgleich wie bisher)
+            const double center_offset =
+                r.center_height.empty()
+                    ? 0.0
+                    : r.center_height[to_size(v) * to_size(r.fields) + to_size(f)] -
+                          s.image_height;
             // Durchlauf 1: Gewicht, Momente der OPD und des Spots
             double w_ok = 0.0;
             double sum_opd2 = 0.0;
@@ -455,6 +467,9 @@ std::vector<EvalTupleStats> eval_statistics(const EvalResult& r, int v) {
                 if (fits.defocus_ok) {
                     s.rms_opd_defocus = std::sqrt(sum_defocus / w_ok);
                 }
+                if (center_offset != 0.0) {
+                    s.centroid_y += center_offset;
+                }
                 if (s.image_height != 0.0) {
                     s.distortion_centroid = 100.0 * s.centroid_y / s.image_height;
                 }
@@ -466,6 +481,9 @@ std::vector<EvalTupleStats> eval_statistics(const EvalResult& r, int v) {
             if (fr_ok(kEvalChiefRay)) {
                 s.chief_x = r.field_ray(v, f, l, kEvalChiefRay, 0);
                 s.chief_y = r.field_ray(v, f, l, kEvalChiefRay, 1);
+                if (center_offset != 0.0) {
+                    s.chief_y += center_offset;
+                }
                 if (s.image_height != 0.0) {
                     s.distortion_chief = 100.0 * s.chief_y / s.image_height;
                 }

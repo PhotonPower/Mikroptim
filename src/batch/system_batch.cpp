@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -61,6 +62,11 @@ std::size_t transform_stride(const BatchTopology& t) {
 // Elemente der Krümmungen der Referenzsphäre pro Variante (0 bei LastSurface, ADR-0017).
 std::size_t reference_stride(const BatchTopology& t) {
     return is_image_reference(t.reference_sphere) ? to_size(t.fields) : 0;
+}
+
+// Elemente der Höhen des Bildpunkts pro Variante (0 außer bei ChiefRay, ADR-0019).
+std::size_t height_stride(const BatchTopology& t) {
+    return is_traced_reference_point(t.reference_point) ? to_size(t.fields) : 0;
 }
 
 // Ablage der Buchdahl-Koeffizienten [V][S][4] (nur Host).
@@ -126,6 +132,20 @@ void validate_topology(const BatchTopology& t) {
         fail_topology(std::to_string(ghosts) +
                       " Flächen vom Typ GhostPlate, aber G = " + std::to_string(t.ghost_plates));
     }
+    if (t.reference_point != ReferencePointKind::Ideal &&
+        t.reference_point != ReferencePointKind::ChiefRay &&
+        t.reference_point != ReferencePointKind::Centroid) {
+        fail_topology("unbekannte Art des Bildpunkts der Referenzsphäre");
+    }
+    if (is_traced_reference_point(t.reference_point)) {
+        if (!is_image_reference(t.reference_sphere)) {
+            fail_topology("Bildpunkt am Hauptstrahl verlangt eine Referenzsphäre am Bildpunkt "
+                          "(image_exit_pupil oder image_infinite, ADR-0019)");
+        }
+        if (t.source != SourceKind::Collimated) {
+            fail_topology("Bildpunkt am Hauptstrahl nur mit kollimierter Quelle (ADR-0019)");
+        }
+    }
     if (!t.pupil_mode.empty() && t.pupil_mode.size() != to_size(t.fields)) {
         fail_topology("Pupillenarten für " + std::to_string(t.pupil_mode.size()) +
                       " Felder, erwartet " + std::to_string(t.fields) + " oder keine");
@@ -185,6 +205,7 @@ void SystemBatchHost::resize(int variants) {
     buchdahl_coeff_.resize(v * buchdahl_stride(sh), 0.0);
     decenter_tilt_.resize(v * transform_stride(topology_), 0.0);
     reference_curvature_.resize(v * reference_stride(topology_), 0.0);
+    reference_height_.resize(v * height_stride(topology_), 0.0);
 }
 
 int SystemBatchHost::add_variant_copy(int from) {
@@ -220,6 +241,7 @@ void SystemBatchHost::copy_variant_from(const SystemBatchHost& other, int from, 
     copy_slice(other.decenter_tilt_, from, decenter_tilt_, to, transform_stride(topology_));
     copy_slice(other.reference_curvature_, from, reference_curvature_, to,
                reference_stride(topology_));
+    copy_slice(other.reference_height_, from, reference_height_, to, height_stride(topology_));
 }
 
 void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, int count) {
@@ -262,6 +284,7 @@ void SystemBatchHost::assign_variants(const SystemBatchHost& other, int first, i
     range(other.buchdahl_coeff_, buchdahl_coeff_, buchdahl_stride(sh));
     range(other.decenter_tilt_, decenter_tilt_, transform_stride(topology_));
     range(other.reference_curvature_, reference_curvature_, reference_stride(topology_));
+    range(other.reference_height_, reference_height_, height_stride(topology_));
 }
 
 void SystemBatchHost::check(int i, int count, const char* what) {
@@ -460,6 +483,23 @@ double SystemBatchHost::reference_curvature(int v, int f) const {
                : 0.0;
 }
 
+double& SystemBatchHost::reference_height(int v, int f) {
+    if (!is_traced_reference_point(topology_.reference_point)) {
+        throw std::invalid_argument("SystemBatch: Höhe des Bildpunkts nur bei der Referenzsphäre "
+                                    "am Hauptstrahl (ADR-0019)");
+    }
+    check(v, variants_, "Variante");
+    check(f, topology_.fields, "Feld");
+    return reference_height_[shape().field_at(v, f)];
+}
+double SystemBatchHost::reference_height(int v, int f) const {
+    check(v, variants_, "Variante");
+    check(f, topology_.fields, "Feld");
+    return is_traced_reference_point(topology_.reference_point)
+               ? reference_height_[shape().field_at(v, f)]
+               : field_target_[shape().field_at(v, f)];
+}
+
 double SystemBatchHost::decenter_tilt(int v, int s, int k) const {
     check(v, variants_, "Variante");
     check(s, topology_.surfaces, "Fläche");
@@ -503,6 +543,10 @@ SystemBatchView<double> SystemBatchHost::view() const {
     b.reference_sphere = topology_.reference_sphere;
     b.reference_curvature =
         is_image_reference(topology_.reference_sphere) ? reference_curvature_.data() : nullptr;
+    b.reference_point = topology_.reference_point;
+    b.reference_height = is_traced_reference_point(topology_.reference_point)
+                             ? reference_height_.data()
+                             : nullptr;
     return b;
 }
 
@@ -550,6 +594,7 @@ void SystemBatchHost::validate_values() const {
     finite(buchdahl_coeff_, "buchdahl_coeff");
     finite(decenter_tilt_, "decenter_tilt");
     finite(reference_curvature_, "reference_curvature");
+    finite(reference_height_, "reference_height");
     for (std::size_t i = 2; i < decenter_tilt_.size(); i += 4) {
         for (std::size_t k = i; k < i + 2; ++k) {
             if (!(std::abs(decenter_tilt_[k]) < std::numbers::pi / 2)) {
@@ -673,7 +718,8 @@ bool operator==(const SystemBatchHost& a, const SystemBatchHost& b) {
            same_bits(a.paraxial_ghost_index_, b.paraxial_ghost_index_) &&
            same_bits(a.buchdahl_coeff_, b.buchdahl_coeff_) &&
            same_bits(a.decenter_tilt_, b.decenter_tilt_) &&
-           same_bits(a.reference_curvature_, b.reference_curvature_);
+           same_bits(a.reference_curvature_, b.reference_curvature_) &&
+           same_bits(a.reference_height_, b.reference_height_);
 }
 
 // ---- Aufbau aus einem System -------------------------------------------------------------
@@ -690,6 +736,7 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
     t.ghost_terms = table.ghost_terms;
     t.non_coaxial = !table.coaxial();
     t.reference_sphere = system.reference_sphere.value_or(ReferenceSphereKind::LastSurface);
+    t.reference_point = system.reference_point.value_or(ReferencePointKind::Ideal);
     // Pupillenart pro Feld, gleiche Regel wie wavefront_pupil_mode (merit/wavefront.cpp)
     for (int f = 0; f < t.fields; ++f) {
         if (t.non_coaxial) {
@@ -877,6 +924,7 @@ SystemBatchHost build_batch(const SystemDescription& system, const IndexTable& i
         std::copy(table.decenter_tilt.begin(), table.decenter_tilt.end(),
                   b.decenter_tilt_data().begin());
     }
+    update_reference_height(b);
     update_reference_curvature(b);
     b.resize(variants);
     for (int v = 1; v < variants; ++v) {
@@ -948,6 +996,98 @@ ParaxialData batch_paraxial(const SystemBatchHost& batch, int v) {
                             std::span<const double>(petzval.data(), count));
 }
 
+double batch_chief_ray_height(const SystemBatchHost& batch, int v, int f, int l) {
+    if (v < 0 || v >= batch.variants() || f < 0 || f >= batch.fields() ||
+        l >= batch.wavelengths()) {
+        throw std::out_of_range("Hauptstrahl: Variante " + std::to_string(v) + ", Feld " +
+                                std::to_string(f) + " bzw. Wellenlänge " + std::to_string(l) +
+                                " außerhalb des Batches");
+    }
+    if (batch.topology().source != SourceKind::Collimated) {
+        throw std::invalid_argument("Hauptstrahl: nur für kollimierte Quelle definiert");
+    }
+    const SystemBatchView<double> b = batch.view();
+    const BatchShape& sh = b.shape;
+    SurfaceTableView<double> table = b.surface_table(v);
+    int column = l;
+    if (l < 0) {
+        // Tabelle der Variante mit einer Wellenlänge (λ_ref), wie batch_sine_condition
+        table.wavelengths = 1;
+        table.index = b.paraxial_index + sh.surface_at(v, 0);
+        table.ghost_index =
+            sh.ghost_plates > 0 ? b.paraxial_ghost_index + sh.ghost_at(v, 0) : nullptr;
+        column = 0;
+    }
+    table.decenter_tilt = nullptr;
+    table.tilt_trig = nullptr;
+    Ray<double> ray =
+        collimated_ray<double>(b.pupil_radius[v], b.field_angle[sh.field_at(v, f)], 0.0, 0.0);
+    if (trace_ray(table, column, ray, nullptr) != TraceStatus::Ok || !(ray.d.z > 0.0)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const double w = b.thickness[sh.surface_at(v, sh.surfaces - 1)];
+    return ray.p.y + ray.d.y * ((w - ray.p.z) / ray.d.z);
+}
+
+double batch_centroid_height(const SystemBatchHost& batch, int v, int f) {
+    if (v < 0 || v >= batch.variants() || f < 0 || f >= batch.fields()) {
+        throw std::out_of_range("Schwerpunkt: Variante " + std::to_string(v) + " bzw. Feld " +
+                                std::to_string(f) + " außerhalb des Batches");
+    }
+    if (batch.topology().source != SourceKind::Collimated) {
+        throw std::invalid_argument("Schwerpunkt: nur für kollimierte Quelle definiert");
+    }
+    const SystemBatchView<double> b = batch.view();
+    const BatchShape& sh = b.shape;
+    const double theta = b.field_angle[sh.field_at(v, f)];
+    if (theta == 0.0) {
+        return 0.0; // Achse: Schwerpunkt auf der Achse (Symmetrie)
+    }
+    SurfaceTableView<double> table = b.surface_table(v);
+    table.wavelengths = 1;
+    table.index = b.paraxial_index + sh.surface_at(v, 0);
+    table.ghost_index = sh.ghost_plates > 0 ? b.paraxial_ghost_index + sh.ghost_at(v, 0) : nullptr;
+    table.decenter_tilt = nullptr;
+    table.tilt_trig = nullptr;
+    const double w = b.thickness[sh.surface_at(v, sh.surfaces - 1)];
+    const PupilQuadrature<double> q = make_pupil_quadrature<double>(
+        kReferenceCentroidRings, kReferenceCentroidSpokes, PupilMode::Half);
+    double weight = 0.0;
+    double sum = 0.0;
+    const int n = sample_count(q);
+    for (int k = 0; k < n; ++k) {
+        const PupilSample<double> s = sample(q, k);
+        Ray<double> ray = collimated_ray<double>(b.pupil_radius[v], theta, s.rho, s.phi);
+        if (trace_ray(table, 0, ray, nullptr) != TraceStatus::Ok || !(ray.d.z > 0.0)) {
+            continue;
+        }
+        weight += s.weight;
+        sum += s.weight * (ray.p.y + ray.d.y * ((w - ray.p.z) / ray.d.z));
+    }
+    return weight > 0.0 ? sum / weight : std::numeric_limits<double>::quiet_NaN();
+}
+
+void update_reference_height(SystemBatchHost& batch, int first, int count) {
+    const ReferencePointKind kind = batch.topology().reference_point;
+    if (!is_traced_reference_point(kind)) {
+        return;
+    }
+    if (count < 0) {
+        count = batch.variants() - first;
+    }
+    if (first < 0 || count < 0 || first > batch.variants() - count) {
+        throw std::out_of_range("update_reference_height: ungültiger Variantenbereich");
+    }
+    for (int v = first; v < first + count; ++v) {
+        for (int f = 0; f < batch.fields(); ++f) {
+            const double h = kind == ReferencePointKind::Centroid
+                                 ? batch_centroid_height(batch, v, f)
+                                 : batch_chief_ray_height(batch, v, f);
+            batch.reference_height(v, f) = std::isfinite(h) ? h : batch.field_target(v, f);
+        }
+    }
+}
+
 void update_reference_curvature(SystemBatchHost& batch, int first, int count) {
     const BatchTopology& top = batch.topology();
     if (!is_image_reference(top.reference_sphere)) {
@@ -980,7 +1120,8 @@ void update_reference_curvature(SystemBatchHost& batch, int first, int count) {
             double kappa = 0.0;
             if (!infinite) {
                 const double dz = w - z_ap;
-                const double radius = std::hypot(batch.field_target(v, f), dz);
+                // Mittelpunkt der Sphäre (ADR-0019: bei ChiefRay die Höhe des Hauptstrahls)
+                const double radius = std::hypot(std::as_const(batch).reference_height(v, f), dz);
                 if (!(radius > 0.0) || !std::isfinite(radius)) {
                     throw std::invalid_argument(
                         "Referenzsphäre: Bildpunkt liegt in der Austrittspupille (Variante " +
@@ -1025,6 +1166,7 @@ SystemBatchHost make_non_coaxial(const SystemBatchHost& batch) {
     copy(batch.paraxial_ghost_index_data(), out.paraxial_ghost_index_data());
     copy(batch.buchdahl_coeff_data(), out.buchdahl_coeff_data());
     copy(batch.reference_curvature_data(), out.reference_curvature_data());
+    copy(batch.reference_height_data(), out.reference_height_data());
     return out;
 }
 

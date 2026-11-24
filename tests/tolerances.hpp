@@ -572,4 +572,12 @@ inline constexpr double kToleranceAwareVsTolerancing = 1e-12;
 // (gemessen: siehe PR).
 inline constexpr double kToleranceAwareShiftOnly = 1e-3;
 
+// M6-T14 Bildpunkt am Hauptstrahl (ADR-0019). Hauptstrahlhöhe gegen analytische Orakel
+// (Planplatten, zur Blende konzentrisches System), relativ zur Länge; nur Rundung (gemessen:
+// siehe PR).
+inline constexpr double kChiefRayAnalytic = 1e-12;
+// FD-Jacobi mit Bildpunkt am Hauptstrahl gegen die Kettenregel aus drei eigenen zentralen
+// Differenzen, relativ zum größten Eintrag; Abbruchfehler O(h²) der gemischten Terme und Rundung.
+inline constexpr double kChiefRayChainRule = 1e-5;
+
 } // namespace mko::test

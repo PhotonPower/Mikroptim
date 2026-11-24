@@ -116,6 +116,9 @@ struct OptimizeArgs {
     // Referenzsphäre (ADR-0017): überschreibt das Feld reference_sphere der Datei
     std::optional<ReferenceSphereKind> reference_sphere;
     bool no_reference_warning = false; // --no-reference-warning
+    // ADR-0019: Bildpunkt der Referenzsphäre (überschreibt reference_point) und Verzeichnung
+    std::optional<ReferencePointKind> reference_point;
+    std::optional<DistortionOption> distortion;
 };
 
 // --global METHODE[,population=N][,generations=G][,iterations=L][,budget=B][,sigma=s][,seed=n]
@@ -289,6 +292,10 @@ OptimizeArgs parse_args(std::span<const std::string_view> args) {
             a.reference_sphere = parse_reference_sphere(arg, next_value(args, i, arg));
         } else if (arg == kNoReferenceWarningOption) {
             a.no_reference_warning = true;
+        } else if (arg == "--reference-point") {
+            a.reference_point = parse_reference_point(arg, next_value(args, i, arg));
+        } else if (arg == "--distortion") {
+            a.distortion = parse_distortion_option(arg, next_value(args, i, arg));
         } else if (arg == "--fail-weight") {
             a.fail_weight = parse_double(arg, next_value(args, i, arg));
             if (!(a.fail_weight > 0.0) || !std::isfinite(a.fail_weight)) {
@@ -520,6 +527,14 @@ double constraint_value(const ParaxialConstraint& c, const SystemBatchHost& batc
     }
     case ConstraintType::SineCondition:
         return batch_sine_condition(batch, 0, p, c.zone); // OSC (dimensionslos)
+    case ConstraintType::Distortion: {
+        // Verzeichnung D_f (Anteil) aus dem Hauptstrahl bei λ_ref (ADR-0019); NaN auf der Achse
+        if (c.field >= batch.fields() || batch.field_target(0, c.field) == 0.0) {
+            return std::nan("");
+        }
+        const double h = batch.field_target(0, c.field);
+        return (batch_chief_ray_height(batch, 0, c.field) - h) / h;
+    }
     default:
         break;
     }
@@ -845,8 +860,8 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
 
     if (!r.constraint_reports.empty()) {
         out << '\n'
-            << "Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho; "
-               "Residuum r = Wurzel(w) q)\n";
+            << "Nebenbedingungen (Istwerte in mm, bei sine_condition die OSC der Zone rho, bei "
+               "distortion D des Feldes f; Residuum r = Wurzel(w) q)\n";
         out << "  " << pad_left("Nr", 3) << "  " << pad_right("Typ", 17) << pad_right("Modus", 6)
             << pad_left("Gewicht", 11) << pad_left("Soll", 13) << pad_left("Ist vorher", 13)
             << pad_left("Ist nachher", 13) << pad_left("r vorher", 14) << pad_left("r nachher", 14)
@@ -854,9 +869,12 @@ void write_text_summary(const OptimizeReport& r, std::ostream& out) {
         for (std::size_t i = 0; i < r.constraint_reports.size(); ++i) {
             const ConstraintReport& c = r.constraint_reports[i];
             const int nr = c.constraint.item >= 0 ? c.constraint.item : static_cast<int>(i);
-            const std::string type = c.constraint.type == ConstraintType::SineCondition
-                                         ? "sine rho=" + fixed(c.constraint.zone, 4)
-                                         : std::string(to_string(c.constraint.type));
+            const std::string type =
+                c.constraint.type == ConstraintType::SineCondition
+                    ? "sine rho=" + fixed(c.constraint.zone, 4)
+                : c.constraint.type == ConstraintType::Distortion
+                    ? "distortion f=" + std::to_string(c.constraint.field)
+                    : std::string(to_string(c.constraint.type));
             out << "  " << pad_left(std::to_string(nr), 3) << "  " << pad_right(type, 17)
                 << pad_right(to_string(c.constraint.mode), 6)
                 << pad_left(sci(c.constraint.weight, 3), 11)
@@ -1100,6 +1118,9 @@ void write_json(const OptimizeReport& r, std::ostream& out) {
         e["target"] = number(c.constraint.target);
         if (c.constraint.type == ConstraintType::SineCondition) {
             e["zone"] = number(c.constraint.zone);
+        }
+        if (c.constraint.type == ConstraintType::Distortion) {
+            e["field"] = c.constraint.field; // ADR-0019
         }
         e["value_start"] = number(c.value_before);
         e["value_result"] = number(c.value_after);
@@ -1363,6 +1384,11 @@ void print_optimize_usage(std::ostream& out) {
            "  --no-reference-warning\n"
            "                     keine Warnung auf stderr, wenn die Datei kein Feld\n"
            "                     reference_sphere hat (dann gilt last_surface)\n"
+           "  --reference-point P Bildpunkt der Referenzsphäre: ideal (Standard), chief_ray oder\n"
+           "                     centroid (Hauptstrahl/Schwerpunkt, setzt reference_point,\n"
+           "                     ADR-0019; nur mit image_exit_pupil/image_infinite, FD-Jacobi)\n"
+           "  --distortion D[,W] Verzeichnung |D_f| <= D (Anteil) als Nebenbedingung mit\n"
+           "                     Gewicht W (Standard 1e4; Eintrag distortion, ADR-0019)\n"
            "  --jacobian V      Jacobi-Matrix: fd (finite Differenzen, Standard) oder\n"
            "                     adjoint (adjungiert; Zusatzzeilen weiter per FD)\n"
            "  --tolerance-aware A\n"
@@ -1459,6 +1485,12 @@ int run_optimize_command(std::span<const std::string_view> args, std::ostream& o
         }
         if (a.reference_sphere) {
             r.loaded.system.reference_sphere = *a.reference_sphere;
+        }
+        if (a.reference_point) {
+            r.loaded.system.reference_point = *a.reference_point;
+        }
+        if (a.distortion) {
+            apply_distortion_option(r.loaded.system, *a.distortion);
         }
         warn_missing_reference_sphere(err, "optimize", r.loaded.system, a.no_reference_warning);
         std::error_code ec;

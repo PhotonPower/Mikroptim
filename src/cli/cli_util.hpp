@@ -108,6 +108,25 @@ inline constexpr std::string_view kReferenceSphereWarning =
 bool warn_missing_reference_sphere(std::ostream& err, std::string_view command,
                                    const SystemDescription& system, bool suppressed);
 
+// ---- Bildpunkt der Referenzsphäre und Verzeichnung (ADR-0019) -----------------------------
+
+// Wert der Option --reference-point: ideal oder chief_ray, sonst UsageError. Die Option setzt das
+// Feld reference_point der geladenen Systemdatei (auch in der Ergebnisdatei).
+ReferencePointKind parse_reference_point(std::string_view option, std::string_view text);
+
+// Option --distortion D_MAX[,W]: Grenze |D_f| ≤ D_MAX (Anteil) und Gewicht W [Wellen²]
+// (Standard 10⁴: 1 % über der Grenze kostet eine Welle²).
+inline constexpr double kDefaultDistortionWeight = 1e4;
+struct DistortionOption {
+    double max_distortion = 0.0;
+    double weight = kDefaultDistortionWeight;
+};
+// Liest D_MAX[,W]; UsageError bei nicht endlichen oder negativen Werten.
+DistortionOption parse_distortion_option(std::string_view option, std::string_view text);
+// Setzt Grenze und Gewicht des Eintrags distortion in system.constraints (angehängt, wenn er
+// fehlt) und prüft die Nebenbedingungen (FormatError, z. B. bei einer Punktquelle).
+void apply_distortion_option(SystemDescription& system, const DistortionOption& option);
+
 // ---- Dateien (optimize, snap) ------------------------------------------------------------
 
 // Dieselbe Datei? Existieren beide, entscheidet das Dateisystem (auch Verknüpfungen), sonst
