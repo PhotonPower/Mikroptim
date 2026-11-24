@@ -1,0 +1,36 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13b\H1S\p3_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5225, Feldanteil 0.147, 15 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5225  0.147   0  -        converged_step       234  5.045671e-03  5.030770e-03  0.12461   8.463e-07  15  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5225  0.147   0  -        max_iterations       500  5.028229e-03  5.012582e-03  0.12432   8.494e-07  15  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5225  0.147   0  -        max_iterations       500  5.043346e-03  5.005561e-03  0.12420   6.064e-07  15  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.5425  0.147   0  0.02000  max_iterations       500  1.905407e-02  1.858989e-02  0.15683   1.466e-04  15  shrink (Delta 0.01000)
+      4  aperture         0.5325  0.147   0  0.01000  max_iterations       500  5.615653e-03  5.569313e-03  0.12958   1.668e-06  15  shrink (Delta 0.00500)
+      5  aperture         0.5275  0.147   0  0.00500  max_iterations       500  5.299778e-03  5.257218e-03  0.12658   1.434e-06  15  shrink (Delta 0.00250)
+      6  aperture         0.5250  0.147   0  0.00250  max_iterations       500  5.169535e-03  5.128123e-03  0.12514   7.756e-07  15  insert (Delta 0.00125): Farbregel (RMS-Verhältnis 4.68309, größter RMS 0.111407 Wellen, ΔW020 = 0.607702, W040 = -0.451101, sigma_col = 0.0995725 Wellen, ΔW111 = 0.0916606, ΔW040 = -0.574673): Null-Kittglied im Luftspalt nach Fläche 14, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059) (keine Linse teilbar)
+      7  insertion        0.5225  0.147   0  -        -                      -  -             -             -         -            15  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 14 bei 0.106429 mm, c0 = -0.0947384/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+      8  insertion_stage  0.5225  0.147   0  -        max_iterations       500  6.913321e-01  6.814001e-01  0.87408   3.310e-03  15  ok, Zweig 0, Stufe 0.03125
+      9  insertion_stage  0.5225  0.147   0  -        max_iterations       500  6.610709e-01  6.524742e-01  0.85005   3.197e-03  15  ok, Zweig 0, Stufe 0.0625
+     10  insertion_stage  0.5225  0.147   0  -        max_iterations       500  3.117345e-01  3.107157e-01  0.41827   1.967e-03  15  ok, Zweig 0, Stufe 0.125
+     11  insertion_stage  0.5225  0.147   0  -        max_iterations       500  5.341925e-01  5.317825e-01  0.69225   2.792e-03  15  ok, Zweig 0, Stufe 0.25
+     12  insertion_stage  0.5225  0.147   0  -        max_iterations       500  3.103677e-01  3.095628e-01  0.33277   2.408e-03  15  ok, Zweig 0, Stufe 0.5
+     13  penalty          0.5225  0.147   0  -        max_iterations       500  4.243287e-02  3.879177e-02  0.22590   4.473e-04  17  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     14  penalty          0.5225  0.147   0  -        max_iterations       500  4.319955e-02  4.262263e-02  0.24208   5.994e-04  17  ok: Gewichte der einseitigen Bedingungen ×0.1
+     15  penalty          0.5225  0.147   0  -        max_iterations       500  4.186124e-02  4.166324e-02  0.24498   5.987e-04  17  ok: Gewichte der einseitigen Bedingungen ×1
+     16  insertion        0.5225  0.147   0  -        -                      -  -             -             -         -            15  -: Einfügen verworfen: F_B danach 0.0416632 ≥ 0.00500556 davor (Einfügen nur mit Verbesserung)
+
+Status: step_too_small (Apertur 0.5225: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00512812); kein Einfügen verbessert F_B (1 Varianten, F_B 0.0416632 ≥ 0.00500556))
+Endpunkt: NA 0.5225, Feldanteil 0.147, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 15 -> 15 (1 Einfügungen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                64.0
+Ergebnis geschrieben: docs\ergebnisse\m6-t13b\H1S\p3_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13b\H1S\p3_r3_log.json
