@@ -1428,10 +1428,13 @@ FARBE_STANDARD = 'apertur'
 # Werkzeuge der neuen Abläufe (Standard, wo nicht anders angegeben): Farbregel mit Kriterium (d)
 # und Kittglied-Modul, stetige Farbstufe direkt zum vollen Spektrum (M6-T11), Feldregel und
 # Einfügen nur mit Verbesserung (M6-T8) – die Einstellungen der Läufe F3 (M6-T11) und A1W4_farbe
-# (M6-T12)
+# (M6-T12), dazu aus M6-T13 die Varianten der Farbregel, Vergrößern mit Abstand zur Schwelle
+# (0,8 F_max; ohne kroch die stetige Farbstufe mit Δ = 1/1024, Lauf H1) und Einfügen nur mit
+# Verbesserung auch im Abschluss (Lauf H2)
 COLOR_TOOLS = {'farbregel': True, 'farb_stetig': True, 'farb_ziel': 'voll',
                'farb_modul': 'doublet', 'farb_chromatisch': 0.5, 'feldregel': True,
-               'einfuegen_verbessern': 4, 'farb_budget': 4}
+               'einfuegen_verbessern': 4, 'farb_budget': 4, 'farb_varianten': True,
+               'wachsen_marge': 0.8, 'einfuegen_abschluss': True}
 
 
 def farb_budget(args):

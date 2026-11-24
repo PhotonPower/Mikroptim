@@ -1,0 +1,21 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\F3ZV\c2_feld_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6375, Feldanteil 0.428, 19 Glaselement(e)
+  Ziel                                        NA 0.6375, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 20; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6375  0.428   0  -        max_iterations       500  4.279838e-03  4.277275e-03  0.25724   1.299e-05  19  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6375  0.428   0  -        max_iterations       500  4.259027e-03  4.258010e-03  0.25675   1.297e-05  19  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6375  0.428   0  -        max_iterations       500  4.248678e-03  4.247832e-03  0.25683   1.298e-05  19  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.6375  0.553   0  0.12500  max_iterations       500  2.523261e-02  2.522787e-02  0.29760   4.199e-04  19  shrink (Delta 0.06250)
+      4  field            0.6375  0.491   0  0.06250  max_iterations       500  9.875376e-03  9.870559e-03  0.28398   6.209e-05  19  shrink (Delta 0.03125)
+      5  field            0.6375  0.459   0  0.03125  max_iterations       500  7.245186e-03  7.243484e-03  0.25881   5.417e-05  19  shrink (Delta 0.01562)
+      6  field            0.6375  0.444   0  0.01562  max_iterations       500  5.185194e-03  5.184224e-03  0.25779   1.623e-05  19  insert (Delta 0.00781): Farbregel (RMS-Verhältnis 4.23561, größter RMS 0.191033 Wellen, ΔW020 = -0.569844, W040 = -0.0202149, sigma_col = 0.0985614 Wellen, ΔW111 = 0.266979, ΔW040 = 0.557637): Operator B an der Linse ab Fläche 17
+      7  insertion        0.6375  0.428   0  -        -                      -  -             -             -         -            19  ok: Operator B: Linse an Fläche 17 geteilt, c_s = -0.159073/mm, Glas nach Fläche 18 frei, Zielglas CAF2 (2 Zweige: wie bisher, Startradien des Glieds) (Farbregel)
+      8  insertion_stage  0.6375  0.428   0  -        max_iterations       500  7.677764e-02  7.674879e-02  0.20683   2.607e-03  19  ok, Zweig 0, Stufe 0

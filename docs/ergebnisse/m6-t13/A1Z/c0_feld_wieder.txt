@@ -1,0 +1,41 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\A1Z\c0_feld_rueckbau.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.337, 18 Glaselement(e)
+  Ziel                                        NA 0.4450, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 18; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.337   0  -        max_iterations       500  7.327348e-04  7.118477e-04  0.04710   0.000e+00  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.337   0  -        max_iterations       500  6.840678e-04  6.635728e-04  0.04492   0.000e+00  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.337   0  -        max_iterations       500  5.677936e-04  5.499219e-04  0.04000   0.000e+00  18  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.4450  0.397   0  0.12500  max_iterations       500  3.755511e-04  3.648251e-04  0.03334   0.000e+00  18  keep (Delta 0.12500)
+      4  smoothing        0.4450  0.397   0  -        max_iterations       500  3.302179e-04  3.216776e-04  0.03114   0.000e+00  18  ok: ε ×0.1
+      5  goal             0.4450  0.397   0  -        -                      -  -             -             -         -            18  ok: Ziel erreicht: größter RMS 0.03114 Wellen (Ziel 0.07143)
+
+Status: goal_reached (Ziel erreicht)
+Endpunkt: NA 0.4450, Feldanteil 0.397, Spektrumstufe 0, mu x1, eps x0.1 (Ziel NA 0.4450)
+Glaselemente: 18 -> 18 (0 Einfügungen), Optimierungen: 5, F_max = 5.102041e-03 Wellen^2
+Reales System (Geisterkoeffizienten 0), RMS-Wellenfront pro Feld und Wellenlänge (Ziel 0.07143 Wellen):
+  Feld 0 (0.0000 deg), 435.83 nm: RMS 0.00422 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 486.13 nm: RMS 0.00451 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 546.07 nm: RMS 0.00900 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 587.56 nm: RMS 0.01062 Wellen, versagt 0
+  Feld 0 (0.0000 deg), 656.27 nm: RMS 0.01039 Wellen, versagt 0
+  Feld 1 (0.4076 deg), 435.83 nm: RMS 0.02000 Wellen, versagt 0
+  Feld 1 (0.4076 deg), 486.13 nm: RMS 0.01175 Wellen, versagt 0
+  Feld 1 (0.4076 deg), 546.07 nm: RMS 0.01301 Wellen, versagt 0
+  Feld 1 (0.4076 deg), 587.56 nm: RMS 0.01758 Wellen, versagt 0
+  Feld 1 (0.4076 deg), 656.27 nm: RMS 0.02731 Wellen, versagt 0
+  Feld 2 (0.5818 deg), 435.83 nm: RMS 0.02384 Wellen, versagt 0
+  Feld 2 (0.5818 deg), 486.13 nm: RMS 0.01413 Wellen, versagt 0
+  Feld 2 (0.5818 deg), 546.07 nm: RMS 0.01329 Wellen, versagt 0
+  Feld 2 (0.5818 deg), 587.56 nm: RMS 0.01773 Wellen, versagt 0
+  Feld 2 (0.5818 deg), 656.27 nm: RMS 0.03114 Wellen, versagt 0
+  Laufzeit [s]                                103.1
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\A1Z\c0_feld_wieder.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\A1Z\c0_feld_wieder_log.json

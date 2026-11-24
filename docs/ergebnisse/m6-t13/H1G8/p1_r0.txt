@@ -1,0 +1,70 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\H1_apertur\p0_start.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.3000, Feldanteil 0.100, 1 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.3000  0.100   0  -        converged_merit      241  2.686269e-02  2.685505e-02  0.05698   5.324e-04   1  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.3000  0.100   0  -        converged_merit        6  2.686880e-02  2.686726e-02  0.05699   5.326e-04   1  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.3000  0.100   0  -        converged_merit        4  2.686941e-02  2.686848e-02  0.05699   5.327e-04   1  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.3000  0.100   0  -        -                      -  -             -             -         -             1  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = 0.415131/mm, Glas buchdahl(n0=1.80668, nu=-0.106159/0.0448234/0.0236138) (Platte 0, mu x10), Dicke bis 0.5 mm, 2 Zweige
+      4  insertion_stage  0.3000  0.100   0  -        max_iterations       500  4.896964e-03  4.864987e-03  0.03719   7.881e-05   1  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.784925e-03  3.759888e-03  0.03737   5.415e-05   1  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.351993e-03  3.326944e-03  0.03661   4.701e-05   1  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.022331e-03  2.995740e-03  0.03670   4.031e-05   1  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.3000  0.100   0  -        max_iterations       500  2.694115e-03  2.668912e-03  0.03701   3.422e-05   1  ok, Zweig 0, Stufe 0.5
+      9  insertion_stage  0.3000  0.100   0  -        max_iterations       500  5.521487e-03  5.494965e-03  0.03703   9.292e-05   1  ok, Zweig 1, Stufe 0.03125
+     10  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.978345e-03  3.953300e-03  0.03738   5.843e-05   1  ok, Zweig 1, Stufe 0.0625
+     11  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.441907e-03  3.416854e-03  0.03657   4.892e-05   1  ok, Zweig 1, Stufe 0.125
+     12  insertion_stage  0.3000  0.100   0  -        max_iterations       500  3.100877e-03  3.075835e-03  0.03671   4.178e-05   1  ok, Zweig 1, Stufe 0.25
+     13  insertion_stage  0.3000  0.100   0  -        max_iterations       500  2.758951e-03  2.733883e-03  0.03687   3.573e-05   1  ok, Zweig 1, Stufe 0.5
+     14  penalty          0.3000  0.100   0  -        converged_step       183  1.648636e-03  1.648367e-03  0.03871   9.106e-06   2  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     15  penalty          0.3000  0.100   0  -        converged_step         8  1.650896e-03  1.648387e-03  0.03871   9.109e-06   2  ok: Gewichte der einseitigen Bedingungen ×0.1
+     16  penalty          0.3000  0.100   0  -        converged_step        16  1.673397e-03  1.648389e-03  0.03871   9.126e-06   2  ok: Gewichte der einseitigen Bedingungen ×1
+     17  aperture         0.3200  0.100   0  0.02000  converged_step        43  2.643774e-03  2.618646e-03  0.04104   2.558e-05   2  grow (Delta 0.04000)
+     18  aperture         0.3600  0.100   0  0.04000  max_iterations       500  5.381018e-03  5.354395e-03  0.04537   7.590e-05   2  shrink (Delta 0.02000)
+     19  aperture         0.3400  0.100   0  0.02000  converged_step        68  3.866144e-03  3.840522e-03  0.04333   4.783e-05   2  keep (Delta 0.02000)
+     20  aperture         0.3600  0.100   0  0.02000  max_iterations       500  5.381063e-03  5.354426e-03  0.04537   7.592e-05   2  shrink (Delta 0.01000)
+     21  aperture         0.3500  0.100   0  0.01000  max_iterations       500  4.583152e-03  4.557125e-03  0.04437   6.113e-05   2  keep (Delta 0.01000)
+     22  aperture         0.3600  0.100   0  0.01000  max_iterations       500  5.377152e-03  5.350580e-03  0.04527   7.603e-05   2  shrink (Delta 0.00500)
+     23  aperture         0.3550  0.100   0  0.00500  converged_step       252  4.970262e-03  4.943989e-03  0.04485   6.831e-05   2  keep (Delta 0.00500)
+     24  aperture         0.3600  0.100   0  0.00500  max_iterations       500  5.376153e-03  5.349620e-03  0.04524   7.607e-05   2  shrink (Delta 0.00250)
+     25  aperture         0.3575  0.100   0  0.00250  converged_step       395  5.170253e-03  5.143860e-03  0.04504   7.213e-05   2  insert (Delta 0.00125): Operator A (Meniskus ohne Brechkraft) nach Fläche 1 im Abstand 0.1 mm, Glas wie Platte 2 (buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657)), dominante Ordnung 2; Biegung aus dem Vorzeichen der Korrektur
+     26  insertion        0.3550  0.100   0  -        -                      -  -             -             -         -             2  ok: Operator A: Meniskus nach Fläche 1 bei 0.1 mm, c0 = -0.142056/mm, Glas buchdahl(n0=1.79232, nu=-0.226601/0.206876/-0.148657) (Platte 2, mu x10), Dicke bis 0.5 mm, 2 Zweige
+     27  insertion_stage  0.3550  0.100   0  -        max_iterations       500  4.776510e-03  4.720243e-03  0.06766   8.545e-06   2  ok, Zweig 0, Stufe 0.03125
+     28  insertion_stage  0.3550  0.100   0  -        max_iterations       500  4.235704e-03  4.179850e-03  0.06391   7.641e-06   2  ok, Zweig 0, Stufe 0.0625
+     29  insertion_stage  0.3550  0.100   0  -        max_iterations       500  3.935547e-03  3.880375e-03  0.06159   6.871e-06   2  ok, Zweig 0, Stufe 0.125
+     30  insertion_stage  0.3550  0.100   0  -        max_iterations       500  3.000208e-03  2.945538e-03  0.05390   5.850e-06   2  ok, Zweig 0, Stufe 0.25
+     31  insertion_stage  0.3550  0.100   0  -        max_iterations       500  2.750234e-03  2.695402e-03  0.05179   5.517e-06   2  ok, Zweig 0, Stufe 0.5
+     32  insertion_stage  0.3550  0.100   0  -        max_iterations       500  7.665130e-03  7.609050e-03  0.08566   2.482e-05   2  ok, Zweig 1, Stufe 0.03125
+     33  insertion_stage  0.3550  0.100   0  -        max_iterations       500  6.590423e-03  6.534448e-03  0.08091   1.678e-05   2  ok, Zweig 1, Stufe 0.0625
+     34  insertion_stage  0.3550  0.100   0  -        max_iterations       500  5.927705e-03  5.872004e-03  0.07660   1.530e-05   2  ok, Zweig 1, Stufe 0.125
+     35  insertion_stage  0.3550  0.100   0  -        max_iterations       500  5.343001e-03  5.287734e-03  0.07243   1.450e-05   2  ok, Zweig 1, Stufe 0.25
+     36  insertion_stage  0.3550  0.100   0  -        max_iterations       500  4.908863e-03  4.854006e-03  0.06891   1.431e-05   2  ok, Zweig 1, Stufe 0.5
+     37  penalty          0.3550  0.100   0  -        converged_step       295  7.169013e-04  7.134392e-04  0.02726   2.988e-06   3  ok: Zweig 0 von 2 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     38  penalty          0.3550  0.100   0  -        converged_step       159  7.199625e-04  7.119766e-04  0.02727   2.768e-06   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+     39  penalty          0.3550  0.100   0  -        max_iterations       500  7.622744e-04  7.092001e-04  0.02727   2.784e-06   3  ok: Gewichte der einseitigen Bedingungen ×1
+     40  aperture         0.3750  0.100   0  0.02000  converged_step        61  1.288295e-03  1.228984e-03  0.03884   3.367e-06   3  keep (Delta 0.02000)
+     41  aperture         0.3950  0.100   0  0.02000  converged_step        52  2.202956e-03  2.134592e-03  0.05389   4.359e-06   3  keep (Delta 0.02000)
+     42  aperture         0.4150  0.100   0  0.02000  converged_step       135  3.428364e-03  3.347170e-03  0.06669   4.242e-06   3  keep (Delta 0.02000)
+     43  aperture         0.4350  0.100   0  0.02000  converged_step        51  5.281124e-03  5.181570e-03  0.08179   8.328e-06   3  shrink (Delta 0.01000)
+     44  aperture         0.4250  0.100   0  0.01000  converged_step        72  4.227350e-03  4.140620e-03  0.07355   6.240e-06   3  keep (Delta 0.01000)
+     45  aperture         0.4350  0.100   0  0.01000  converged_step        69  5.349990e-03  5.245943e-03  0.08301   7.568e-06   3  shrink (Delta 0.00500)
+     46  aperture         0.4300  0.100   0  0.00500  converged_step        30  4.741394e-03  4.647557e-03  0.07796   6.975e-06   3  grow (Delta 0.01000)
+     47  aperture         0.4400  0.100   0  0.01000  converged_step        39  6.005768e-03  5.890496e-03  0.08787   8.892e-06   3  shrink (Delta 0.00500)
+     48  aperture         0.4350  0.100   0  0.00500  converged_step        73  5.319274e-03  5.216913e-03  0.08248   7.846e-06   3  shrink (Delta 0.00250)
+     49  aperture         0.4325  0.100   0  0.00250  converged_step        58  5.012575e-03  4.915459e-03  0.08002   7.515e-06   3  keep (Delta 0.00250)
+     50  aperture         0.4350  0.100   0  0.00250  converged_step        48  5.319257e-03  5.216917e-03  0.08243   7.908e-06   3  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.4325: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00521692); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4325, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 1 -> 3 (2 Einfügungen), Optimierungen: 49, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                655.6
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\H1_apertur\p1_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\H1_apertur\p1_r0_log.json

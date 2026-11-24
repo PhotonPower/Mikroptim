@@ -1,0 +1,38 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13\A1Z\c1_apertur_start.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4450, Feldanteil 0.397, 18 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 18; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4450  0.397   0  -        converged_step        92  5.524737e-03  5.516074e-03  0.14527   5.186e-06  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4450  0.397   0  -        converged_step      1762  5.074094e-03  5.073201e-03  0.12832   6.061e-06  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4450  0.397   0  -        converged_step       100  5.075542e-03  5.073187e-03  0.12834   6.057e-06  18  ok: Gewichte der einseitigen Bedingungen ×1
+      3  removal_stage    0.4450  0.397   0  -        converged_step      3633  2.241315e-02  1.779017e-02  0.13618   2.753e-04  18  -: Element ab Fläche 7 (CAF2, Kittglied, Seidel-Beitrag 0.3974 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      4  removal_stage    0.4450  0.397   0  -        max_iterations      1509  1.449600e-02  1.448353e-02  0.17968   1.594e-04  18  -: Element ab Fläche 7 (CAF2, Kittglied, Seidel-Beitrag 0.3974 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      5  removal_stage    0.4450  0.397   0  -        max_iterations       500  5.403717e-03  5.394494e-03  0.11968   1.160e-05  18  -: Element ab Fläche 7 (CAF2, Kittglied, Seidel-Beitrag 0.3974 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+      6  removal          0.4450  0.397   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 7 (CAF2, Kittglied, Seidel-Beitrag 0.3974 Wellen): F_B 0.00539449 > 0.00510204
+      7  removal_stage    0.4450  0.397   0  -        max_iterations      2546  9.269412e-03  9.266432e-03  0.12221   9.758e-05  18  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.8283 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.4450  0.397   0  -        converged_step      1314  4.674495e-02  1.377598e-02  0.21405   1.561e-04  18  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.8283 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.4450  0.397   0  -        max_iterations       632  7.754137e-03  7.743084e-03  0.11715   6.911e-05  18  -: Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.8283 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.4450  0.397   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 4 (CAF2, Kittglied, Seidel-Beitrag 0.8283 Wellen): F_B 0.00774308 > 0.00510204
+     11  removal_stage    0.4450  0.397   0  -        max_iterations       500  5.279405e-03  5.279073e-03  0.11878   3.983e-06  18  -: Element ab Fläche 10 (CAF2, Kittglied, Seidel-Beitrag 2.901 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.4450  0.397   0  -        max_iterations       500  1.429425e-02  1.419067e-02  0.12784   1.875e-04  18  -: Element ab Fläche 10 (CAF2, Kittglied, Seidel-Beitrag 2.901 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.4450  0.397   0  -        max_iterations       500  6.277649e-03  6.276932e-03  0.12950   9.474e-06  18  -: Element ab Fläche 10 (CAF2, Kittglied, Seidel-Beitrag 2.901 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.4450  0.397   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 10 (CAF2, Kittglied, Seidel-Beitrag 2.901 Wellen): F_B 0.00627693 > 0.00510204
+     15  removal_stage    0.4450  0.397   0  -        max_iterations      2500  7.540397e-03  7.531370e-03  0.14705   2.000e-05  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.975 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.4450  0.397   0  -        max_iterations       500  8.777626e-03  8.769996e-03  0.15931   2.343e-05  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.975 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.4450  0.397   0  -        max_iterations       500  9.584469e-03  9.577543e-03  0.16791   2.199e-05  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.975 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.4450  0.397   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 2.975 Wellen): F_B 0.00957754 > 0.00510204
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.00507319 > F_max = 0.00510204); Bedarf (Operator B), aber höchste Elementzahl 18 erreicht)
+Endpunkt: NA 0.4450, Feldanteil 0.397, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 18 -> 18 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                1165.5
+Ergebnis geschrieben: docs\ergebnisse\m6-t13\A1Z\c1_apertur_r0.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13\A1Z\c1_apertur_r0_log.json
