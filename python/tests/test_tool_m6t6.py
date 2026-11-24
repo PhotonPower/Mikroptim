@@ -9,6 +9,10 @@ import pytest
 
 from conftest import ROOT
 
+#: synth-Optionen ohne --aktuell/--farbregel: wie im dokumentierten Lauf (ohne Stagnationsabbruch,
+#: seit M6-T13b auch ohne Vergrößern mit Abstand zur Schwelle)
+LEGACY = ["--stall", "0", "--grow-margin", "0"]
+
 
 @pytest.fixture(scope="module")
 def tool():
@@ -98,8 +102,8 @@ def test_synth_options_field_rule(tool):
         base.update(kw)
         return types.SimpleNamespace(**base)
 
-    assert tool.synth_options(args()) == ["--stall", "0"]
-    assert tool.synth_options(args(feldregel=True)) == ["--stall", "0", "--field-rule"]
+    assert tool.synth_options(args()) == LEGACY
+    assert tool.synth_options(args(feldregel=True)) == LEGACY + ["--field-rule"]
     assert tool.synth_options(args(feldregel=True, farbregel=True)) == [
         "--color-rule", "--field-rule"]
 
@@ -113,15 +117,15 @@ def test_synth_options_prune(tool):
         base.update(kw)
         return types.SimpleNamespace(**base)
 
-    assert tool.synth_options(args(rueckbau=False, elementbudget=None)) == ["--stall", "0"]
-    assert tool.synth_options(args(rueckbau=True)) == ["--stall", "0", "--prune"]
+    assert tool.synth_options(args(rueckbau=False, elementbudget=None)) == LEGACY
+    assert tool.synth_options(args(rueckbau=True)) == LEGACY + ["--prune"]
     assert tool.synth_options(args(rueckbau=True, rueckbau_faktor=0.5, rueckbau_versuche=6,
-                                   rueckbau_stufen=4)) == [
-        "--stall", "0", "--prune", "--prune-factor", "0.5", "--prune-attempts", "6",
+                                   rueckbau_stufen=4)) == LEGACY + [
+        "--prune", "--prune-factor", "0.5", "--prune-attempts", "6",
         "--prune-stages", "4"]
-    assert tool.synth_options(args(elementbudget=9, rueckbau_versuche=2)) == [
-        "--stall", "0", "--prune-attempts", "2"]
-    assert tool.synth_options(args(nur_rueckbau=True)) == ["--stall", "0", "--prune"]
+    assert tool.synth_options(args(elementbudget=9, rueckbau_versuche=2)) == LEGACY + [
+        "--prune-attempts", "2"]
+    assert tool.synth_options(args(nur_rueckbau=True)) == LEGACY + ["--prune"]
     assert tool.limit_elements(["--rings", "16"], 7) == ["--rings", "16", "--max-elements", "7"]
     assert tool.limit_elements(["--element-budget", "9"], 7) == ["--element-budget", "7"]
     assert tool.limit_elements(["--element-budget", "5"], 7) == ["--element-budget", "5"]
@@ -270,10 +274,10 @@ def test_synth_options_ghost_dictionary(tool):
         base.update(kw)
         return types.SimpleNamespace(**base)
 
-    assert tool.synth_options(args()) == ["--stall", "0"]
-    assert tool.synth_options(args(woerterbuch_extra=2, woerterbuch_glas=["SYN-21"])) == [
-        "--stall", "0", "--ghost-dictionary-extra", "2", "--ghost-dictionary-glass", "SYN-21"]
-    assert tool.synth_options(args(woerterbuch_extra=0)) == ["--stall", "0"]
+    assert tool.synth_options(args()) == LEGACY
+    assert tool.synth_options(args(woerterbuch_extra=2, woerterbuch_glas=["SYN-21"])) == LEGACY + [
+        "--ghost-dictionary-extra", "2", "--ghost-dictionary-glass", "SYN-21"]
+    assert tool.synth_options(args(woerterbuch_extra=0)) == LEGACY
     assert isinstance(tool.WOERTERBUCH_STANDARD, int) and 2 <= tool.WOERTERBUCH_STANDARD <= 4
 
 
@@ -409,7 +413,7 @@ def test_color_mode_late_and_legacy_unchanged(tool, tmp_path, monkeypatch):
     bisher; --farbe anfang mit dem vollen Spektrum ab dem Start."""
     calls, opts, polished = _fake_main_path(tool, tmp_path / "a", monkeypatch, ["--farbe", "spaet"])
     assert [c["tag"] for c in calls] == ["p1", "p2", "p3", "p4", "p5"]
-    assert opts == ["--stall", "0"]
+    assert opts == LEGACY
     assert ("z2", "mono") in polished
     assert calls[3]["progress"] == 0.0 and calls[3]["kw"]["stage_budget"] == 1
     assert "--spectrum-continuous" not in calls[3]["opts"]
@@ -418,7 +422,7 @@ def test_color_mode_late_and_legacy_unchanged(tool, tmp_path, monkeypatch):
 
     calls, opts, _ = _fake_main_path(tool, tmp_path / "b", monkeypatch, ["--farbe-frueh"])
     assert [c["tag"] for c in calls] == ["p1", "p2", "p4", "p5", "p3"]
-    assert opts == ["--stall", "0"]
+    assert opts == LEGACY
 
     calls, opts, polished = _fake_main_path(tool, tmp_path / "c", monkeypatch,
                                             ["--farbe", "anfang"])
@@ -468,3 +472,36 @@ def test_synth_options_color_variants(tool):
     a.einfuegen_abschluss = True
     assert tool.synth_options(a) == ["--color-rule", "--color-variants",
                                      "--insertion-improve-finish", "--grow-margin", "0.5"]
+
+
+def test_synth_options_m6t13b_switches(tool):
+    """M6-T13b: Varianten, Einfügen im Abschluss und Wachsen sind Standard von synth; die Schalter
+    --ohne-farb-varianten, --ohne-einfuegen-abschluss und --wachsen-marge 0 reichen die Abschalter
+    durch (vor den positiven Optionen, auch wenn COLOR_TOOLS diese setzt); ohne --aktuell bzw.
+    --farbregel rechnet synth wie vor M6-T13b (--grow-margin 0, mit --einfuegen-verbessern
+    --no-insertion-improve-finish)."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=True, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[])
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.synth_options(args(farb_varianten=True, ohne_farb_varianten=True,
+                                   einfuegen_abschluss=True, ohne_einfuegen_abschluss=True,
+                                   wachsen_marge=0.0)) == [
+        "--color-rule", "--no-color-variants", "--no-insertion-improve-finish",
+        "--grow-margin", "0.0"]
+    # ohne --aktuell/--farbregel: alte Standards
+    legacy = args(farbregel=False, einfuegen_verbessern=4)
+    assert tool.synth_options(legacy) == LEGACY + [
+        "--insertion-improve", "4", "--no-insertion-improve-finish"]
+    assert tool.synth_options(args(farbregel=False, wachsen_marge=0.8)) == [
+        "--stall", "0", "--grow-margin", "0.8"]
+    assert tool.synth_options(args(farbregel=False, einfuegen_verbessern=2,
+                                   einfuegen_abschluss=True)) == LEGACY + [
+        "--insertion-improve-finish", "--insertion-improve", "2"]
+    # COLOR_TOOLS überschreibt eine ausdrückliche 0 nicht
+    a = types.SimpleNamespace(farbe="apertur", farbe_frueh=False, farbe_von_anfang=None,
+                              gemeinsam=False, wachsen_marge=0.0)
+    tool.apply_color_mode(a)
+    assert a.wachsen_marge == 0.0 and a.farb_varianten is True

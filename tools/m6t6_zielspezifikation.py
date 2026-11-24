@@ -41,6 +41,13 @@ polychromatisch, mit Farbregel, Feldregel und Einfügen nur mit Verbesserung), a
 spaet (monochromatische Stufen zuerst, Standard bis M6-T12; Läufe aus älteren Berichten mit
 --farbe spaet nachrechnen). --farb-varianten: Varianten der Farbregel (synth --color-variants).
 
+Standards von synth seit M6-T13b (Bericht m6-t13-farbe-frueh.md, Abschnitt „M6-T13b“): Varianten
+der Farbregel, Einfügen nur mit Verbesserung auch im Abschluss und Vergrößern mit Abstand zur
+Schwelle (0,8) gelten mit --aktuell bzw. --farbregel; abschalten mit --ohne-farb-varianten,
+--ohne-einfuegen-abschluss, --wachsen-marge 0 (Läufe ab F3/A1W4 aus M6-T13 so nachrechnen). Ohne
+--aktuell/--farbregel übergibt das Skript wie bisher die Standards der dokumentierten Läufe
+(--stall 0, dazu --grow-margin 0 und mit --einfuegen-verbessern --no-insertion-improve-finish).
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -355,9 +362,15 @@ def prepare_field(system, petzval_weight=1e4, parfocal_weight=1.0, diameter_weig
 # Programmaufrufe
 # ---------------------------------------------------------------------------------------------
 
+# Ohne --aktuell/--farbregel rechnet synth wie im dokumentierten Lauf: ohne Stagnationsabbruch
+# (vor M11-T1c) und ohne Vergrößern mit Abstand zur Schwelle (Standard von synth seit M6-T13b)
+LEGACY_SYNTH = ['--stall', '0', '--grow-margin', '0']
+
+
 def synth_options(args):
     """Zusatzoptionen der synth-Aufrufe aus --aktuell, --farbregel und --synth-arg."""
-    opts = [] if (args.aktuell or args.farbregel or args.farb_achromat) else ['--stall', '0']
+    legacy = not (args.aktuell or args.farbregel or args.farb_achromat)
+    opts = list(LEGACY_SYNTH) if legacy else []
     if args.farbregel or args.farb_achromat:
         opts.append('--color-rule')
     if args.farb_achromat:
@@ -383,12 +396,20 @@ def synth_options(args):
             opts.append('--color-module-anomalous')
         if getattr(args, 'farb_querfarbe', False):
             opts.append('--color-module-lateral')  # M6-T13
-    if getattr(args, 'farb_varianten', False):
-        opts.append('--color-variants')  # M6-T13
-    if getattr(args, 'einfuegen_abschluss', False):
-        opts.append('--insertion-improve-finish')  # M6-T13
-    if getattr(args, 'wachsen_marge', None):
-        opts += ['--grow-margin', repr(args.wachsen_marge)]  # M6-T13
+    # M6-T13: Varianten der Farbregel, Einfügen nur mit Verbesserung auch im Abschluss, Vergrößern
+    # mit Abstand zur Schwelle; seit M6-T13b Standard von synth, abschaltbar
+    if getattr(args, 'ohne_farb_varianten', False):
+        opts.append('--no-color-variants')
+    elif getattr(args, 'farb_varianten', False):
+        opts.append('--color-variants')
+    if getattr(args, 'ohne_einfuegen_abschluss', False):
+        opts.append('--no-insertion-improve-finish')
+    elif getattr(args, 'einfuegen_abschluss', False):
+        opts.append('--insertion-improve-finish')
+    if getattr(args, 'wachsen_marge', None) is not None and not legacy:
+        opts += ['--grow-margin', repr(args.wachsen_marge)]
+    elif getattr(args, 'wachsen_marge', None) is not None:
+        opts[opts.index('--grow-margin') + 1] = repr(args.wachsen_marge)
     if getattr(args, 'sinusbedingung', None):
         opts += ['--sine-condition', repr(args.sinusbedingung)]
     # M6-T12: Glas-Wörterbuch der Geisterplatten um Flint- und anomale Gläser erweitern (jeder
@@ -401,6 +422,9 @@ def synth_options(args):
         opts.append('--field-rule')  # M6-T8
     if getattr(args, 'einfuegen_verbessern', None):
         opts += ['--insertion-improve', str(args.einfuegen_verbessern)]  # M6-T8
+        if legacy and not (getattr(args, 'einfuegen_abschluss', False) or
+                           getattr(args, 'ohne_einfuegen_abschluss', False)):
+            opts.append('--no-insertion-improve-finish')  # wie vor M6-T13b
     # M6-T9: Rückbau (nach den Phasen) und Einstellungen (auch für das Elementbudget)
     if getattr(args, 'rueckbau', False) or getattr(args, 'nur_rueckbau', False):
         opts.append('--prune')
@@ -422,7 +446,7 @@ class Runner:
         self.out = out
         self.gpu = gpu
         # Zusatzoptionen für jeden synth-Aufruf; Standard wie im dokumentierten Lauf
-        self.synth_options = ['--stall', '0'] if synth_options is None else list(synth_options)
+        self.synth_options = list(LEGACY_SYNTH) if synth_options is None else list(synth_options)
         os.makedirs(out, exist_ok=True)
         # Laufzeiten aller Programmaufrufe, auch über Fortsetzungen hinweg
         self.times_file = os.path.join(out, 'm6t6_zeiten.json')
@@ -1463,7 +1487,8 @@ def apply_color_mode(args, error=None):
         if getattr(args, 'gemeinsam', False) and args.farbe == 'apertur':
             fail('--farbe apertur braucht getrennte Apertur- und Feldstufe (ohne --gemeinsam)')
         for key, value in COLOR_TOOLS.items():
-            if getattr(args, key, None) in (None, False):
+            # 0 (z. B. --wachsen-marge 0) ist eine Angabe, kein fehlender Wert
+            if getattr(args, key, None) is None or getattr(args, key, None) is False:
                 setattr(args, key, value)
     return args.farbe
 
@@ -1730,7 +1755,14 @@ def main():
                          'verfehlt) nur mit Verbesserung (synth --insertion-improve-finish)')
     ap.add_argument('--wachsen-marge', type=float, default=None, metavar='Q',
                     help='M6-T13: Schrittweite der stetigen Phasen auch nach langsamen Schritten '
-                         'vergrößern, wenn F_B <= Q x F_max (synth --grow-margin Q)')
+                         'vergrößern, wenn F_B <= Q x F_max (synth --grow-margin Q; seit M6-T13b '
+                         'Standard 0,8 von synth mit --aktuell/--farbregel, 0: aus)')
+    ap.add_argument('--ohne-farb-varianten', action='store_true',
+                    help='M6-T13b: ohne Varianten der Farbregel wie vor M6-T13b '
+                         '(synth --no-color-variants; die Varianten sind Standard)')
+    ap.add_argument('--ohne-einfuegen-abschluss', action='store_true',
+                    help='M6-T13b: Einfügungen im Abschluss ohne Prüfung wie vor M6-T13b '
+                         '(synth --no-insertion-improve-finish; die Prüfung ist Standard)')
     ap.add_argument('--farb-ziel', choices=['zwei', 'voll'], default=None,
                     help='M6-T11: Farbstufe über zwei Wellenlängen zum vollen Spektrum (Standard, '
                          'wie M6-T10) oder direkt zum vollen Spektrum')

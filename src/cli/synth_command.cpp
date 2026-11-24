@@ -55,6 +55,10 @@ constexpr int kDefaultMaxIterations = 500;
 constexpr int kDefaultStallWindow = 0;
 constexpr double kDefaultStallTolerance = 1e-3;
 
+// Vergrößern mit Abstand zur Schwelle (M6-T13): seit M6-T13b Standard von synth (Freigabe
+// Maintainer 2026-11-24); in der Bibliothek (HomotopyOptions::grow_margin) weiter 0
+constexpr double kDefaultGrowMargin = 0.8;
+
 struct SynthArgs {
     std::string file;
     std::string output;
@@ -82,8 +86,13 @@ struct SynthArgs {
     double field_min_rms = OpticalHomotopyOptions{}.field_min_rms;
     std::string field_glass;
     int insertion_improve = 0; // M6-T8: Einfügen nur mit Verbesserung, höchstens N Varianten
-    bool insertion_improve_finish = false; // M6-T13: auch im Abschluss
-    double grow_margin = 0.0;  // M6-T13: Δ auch nach langsamen Schritten mit F_B ≤ Q·F_max
+    // M6-T13, seit M6-T13b Standard (--no-insertion-improve-finish): Einfügen nur mit
+    // Verbesserung auch im Abschluss; wirkt nur mit --insertion-improve
+    bool insertion_improve_finish = true;
+    bool have_finish_flag = false; // --insertion-improve-finish ausdrücklich angegeben
+    // M6-T13, seit M6-T13b Standard 0,8 (--grow-margin 0, --no-grow-margin: aus): Δ auch nach
+    // langsamen Schritten mit F_B ≤ Q·F_max vergrößern
+    double grow_margin = kDefaultGrowMargin;
     // Rückbau (M6-T9): nach den Phasen bzw. am Elementbudget
     bool prune = false;
     std::optional<int> element_budget;
@@ -127,7 +136,7 @@ struct SynthArgs {
     bool color_module_always = false;
     bool color_module_anomalous = false;
     std::optional<double> color_module_incidence;
-    bool color_variants = false; // M6-T13
+    bool color_variants = true; // M6-T13, seit M6-T13b Standard; wirkt nur mit der Farbregel
     bool color_module_lateral = false; // M6-T13
     bool color_rule = false;          // M11-T5c
     int spectrum_stages = 0;          // M11-T5d: Spektrum-Homotopie (0: aus)
@@ -288,8 +297,10 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--color-module-lateral") {
             a.color_module_lateral = true;
         } else if (arg == "--color-variants") {
-            a.color_rule = true; // M6-T13: Varianten der Farbregel
+            a.color_rule = true; // M6-T13: Varianten der Farbregel (seit M6-T13b Standard)
             a.color_variants = true;
+        } else if (arg == "--no-color-variants") {
+            a.color_variants = false; // M6-T13b: wie vor M6-T13b
         } else if (arg == "--color-module-incidence") {
             a.color_module_incidence = positive(arg, next_value(args, i, arg));
             if (!(*a.color_module_incidence < 90.0)) {
@@ -310,11 +321,16 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
             a.joint_step = parse_step_control(arg, next_value(args, i, arg));
         } else if (arg == "--insertion-improve-finish") {
             a.insertion_improve_finish = true;
+            a.have_finish_flag = true;
+        } else if (arg == "--no-insertion-improve-finish") {
+            a.insertion_improve_finish = false; // M6-T13b: wie vor M6-T13b
         } else if (arg == "--grow-margin") {
-            a.grow_margin = positive(arg, next_value(args, i, arg));
+            a.grow_margin = non_negative(arg, next_value(args, i, arg));
             if (!(a.grow_margin <= 1.0)) {
-                throw UsageError("--grow-margin muss in (0, 1] liegen");
+                throw UsageError("--grow-margin muss in [0, 1] liegen");
             }
+        } else if (arg == "--no-grow-margin") {
+            a.grow_margin = 0.0; // M6-T13b: wie vor M6-T13b
         } else if (arg == "--insertion-improve") {
             a.insertion_improve = parse_int(arg, next_value(args, i, arg));
             if (a.insertion_improve < 1) {
@@ -578,9 +594,13 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
     if (a.beam && a.joint) {
         throw UsageError("--joint-aperture-field gibt es nur ohne --beam");
     }
-    if (a.insertion_improve_finish && a.insertion_improve == 0) {
+    if (a.have_finish_flag && a.insertion_improve_finish && a.insertion_improve == 0) {
         throw UsageError("--insertion-improve-finish verlangt --insertion-improve");
     }
+    // M6-T13b: Die Standards wirken nur, wo die Option wirkt (Varianten nur mit der Farbregel,
+    // Abschluss nur mit --insertion-improve); sonst wie vor M6-T13b, auch im Protokoll
+    a.color_variants = a.color_variants && a.color_rule;
+    a.insertion_improve_finish = a.insertion_improve_finish && a.insertion_improve > 0;
     if (a.beam && a.insertion_improve > 0) {
         throw UsageError("--insertion-improve gibt es nur ohne --beam");
     }
@@ -660,10 +680,13 @@ void print_synth_usage(std::ostream& out) {
            "  --joint-field-exponent P  Exponent P des Feldes (Standard 1: Diagonale)\n"
            "  --joint-step D0,DMIN,DMAX Schrittweite in t (Standard 0.03125,0.00390625,0.25)\n"
            "  --insertion-improve-finish  mit --insertion-improve auch Einfügungen im Abschluss\n"
-           "                            (Ziel verfehlt) nur mit Verbesserung (M6-T13)\n"
+           "                            (Ziel verfehlt) nur mit Verbesserung (M6-T13; seit\n"
+           "                            M6-T13b Standard mit --insertion-improve)\n"
+           "  --no-insertion-improve-finish  Abschluss ohne diese Prüfung (vor M6-T13b)\n"
            "  --grow-margin Q           Schrittweite der stetigen Phasen auch nach langsamen\n"
            "                            Schritten vergrößern, wenn F_B <= Q x F_max (M6-T13;\n"
-           "                            Standard aus)\n"
+           "                            0 <= Q <= 1, Standard 0.8 seit M6-T13b, 0: aus)\n"
+           "  --no-grow-margin          wie --grow-margin 0 (vor M6-T13b)\n"
            "  --insertion-improve N     Einfügen in den stetigen Phasen nur übernehmen, wenn F_B\n"
            "                            danach kleiner ist; sonst bis zu N Varianten (M6-T8;\n"
            "                            nicht mit --beam; Standard aus)\n"
@@ -752,7 +775,9 @@ void print_synth_usage(std::ostream& out) {
            "                            (M6-T13)\n"
            "  --color-variants          Varianten der Farbregel (--insertion-improve, --beam):\n"
            "                            nur teilbare Linsen ohne Rückfall, Modul-Spalte,\n"
-           "                            Geisterdiagnose und Feldregel (M6-T13)\n"
+           "                            Geisterdiagnose und Feldregel (M6-T13; setzt\n"
+           "                            --color-rule; seit M6-T13b Standard mit der Farbregel)\n"
+           "  --no-color-variants       Varianten der Farbregel wie vor M6-T13b\n"
            "  --extrema-beta B          geglättete Strahl-Extrema mit β = B [1/mm] (0: hart, "
            "Standard);\n"
            "                            am Ende --extrema-stages Stufen (2) mit Faktor\n"
@@ -1253,11 +1278,11 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         if (a.insertion_improve > 0) {
             options["insertion_improve"] = Json{{"attempts", a.insertion_improve}};
             if (a.insertion_improve_finish) {
-                options["insertion_improve"]["finish"] = true; // M6-T13, nur mit Option
+                options["insertion_improve"]["finish"] = true; // M6-T13, nur wenn wirksam
             }
         }
         if (a.grow_margin > 0.0) {
-            options["grow_margin"] = a.grow_margin; // M6-T13, nur mit Option
+            options["grow_margin"] = a.grow_margin; // M6-T13, nur mit Q > 0
         }
         // M6-T11: Rang und Startradien von Operator B (seit M6-T11b Standard, daher immer im
         // Protokoll; spectrum_rank null: Rang nach dem Koeffizienten, auch monochromatisch)
@@ -1278,7 +1303,7 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 {"anomalous", a.color_module_anomalous},
                 {"incidence_deg", o.color_module_incidence_deg}};
             if (a.color_variants) {
-                options["color_rule_ext"]["variants"] = true; // M6-T13, nur mit Option
+                options["color_rule_ext"]["variants"] = true; // M6-T13, nur wenn wirksam
             }
             if (a.color_module_lateral) {
                 options["color_rule_ext"]["lateral"] = true; // M6-T13, nur mit Option

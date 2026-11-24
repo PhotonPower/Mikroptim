@@ -654,7 +654,9 @@ TEST(CliSynth, ColorStageOptions) {
     const SynthCliResult plain = synth({achromat, "--color-rule", "--max-elements", "3", "--json"});
     ASSERT_EQ(plain.code, cli::kExitOk) << plain.err;
     const nlohmann::json jp = nlohmann::json::parse(plain.out);
-    EXPECT_FALSE(jp["options"].contains("color_rule_ext"));
+    // M6-T13b: Varianten der Farbregel sind Standard, mit der Farbregel im Protokoll
+    EXPECT_EQ(jp["options"]["color_rule_ext"]["variants"], true);
+    EXPECT_TRUE(jp["options"]["color_rule_ext"]["module"].is_null());
     // M6-T11b: Standard
     EXPECT_EQ(jp["options"]["split"]["preselect"], false); // die Farbregel wählt selbst vor
     EXPECT_EQ(jp["options"]["split"]["spectrum_rank"], nlohmann::json::array({480.0, 644.0}));
@@ -696,16 +698,19 @@ TEST(CliSynth, ColorStageOptions) {
     EXPECT_NE(text.out.find("starkes Kittglied (40.0°) statt Teilen"), std::string::npos)
         << text.out;
 
-    // M6-T13: --color-variants setzt --color-rule, nur mit Option im JSON und im Textkopf; an der
-    // Einzellinse (keine weitere Variante) Ergebnis wie ohne Option
+    // M6-T13: --color-variants setzt --color-rule, im JSON und im Textkopf nur, wenn wirksam
+    // (seit M6-T13b Standard mit der Farbregel, --no-color-variants schaltet ab); an der
+    // Einzellinse (keine weitere Variante) Ergebnis wie ohne
     EXPECT_NE(help.find("--color-variants"), std::string::npos);
+    EXPECT_NE(help.find("--no-color-variants"), std::string::npos);
     const SynthCliResult var = synth(
         {achromat, "--color-variants", "--insertion-improve", "4", "--max-elements", "3", "--json"});
     ASSERT_EQ(var.code, cli::kExitOk) << var.err;
     const nlohmann::json jv = nlohmann::json::parse(var.out);
     EXPECT_EQ(jv["options"]["color_rule_ext"]["variants"], true);
     const SynthCliResult novar =
-        synth({achromat, "--color-rule", "--insertion-improve", "4", "--max-elements", "3", "--json"});
+        synth({achromat, "--color-rule", "--no-color-variants", "--insertion-improve", "4",
+               "--max-elements", "3", "--json"});
     ASSERT_EQ(novar.code, cli::kExitOk) << novar.err;
     const nlohmann::json jn = nlohmann::json::parse(novar.out);
     EXPECT_FALSE(jn["options"].contains("color_rule_ext"));
@@ -715,11 +720,13 @@ TEST(CliSynth, ColorStageOptions) {
     ASSERT_EQ(vtext.code, cli::kExitOk) << vtext.err;
     EXPECT_NE(vtext.out.find("Varianten: teilbare Linsen"), std::string::npos) << vtext.out;
 
-    // M6-T13: --grow-margin Q in (0, 1], nur mit Option im JSON
+    // M6-T13: --grow-margin Q in [0, 1] (seit M6-T13b Standard 0,8, 0: aus), im JSON nur mit
+    // Q > 0
     EXPECT_EQ(synth({achromat, "--grow-margin", "1.5"}).code, cli::kExitUsage);
-    EXPECT_EQ(synth({achromat, "--grow-margin", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({achromat, "--grow-margin", "-0.5"}).code, cli::kExitUsage);
     EXPECT_NE(help.find("--grow-margin"), std::string::npos);
-    EXPECT_FALSE(jn["options"].contains("grow_margin"));
+    EXPECT_NE(help.find("--no-grow-margin"), std::string::npos);
+    EXPECT_EQ(jn["options"]["grow_margin"], 0.8);
     const SynthCliResult grow =
         synth({achromat, "--color-rule", "--grow-margin", "0.5", "--max-elements", "3", "--json"});
     ASSERT_EQ(grow.code, cli::kExitOk) << grow.err;
@@ -734,15 +741,98 @@ TEST(CliSynth, ColorStageOptions) {
     ASSERT_EQ(lat.code, cli::kExitOk) << lat.err;
     EXPECT_EQ(nlohmann::json::parse(lat.out)["options"]["color_rule_ext"]["lateral"], true);
 
-    // M6-T13: --insertion-improve-finish nur mit --insertion-improve, nur mit Option im JSON
+    // M6-T13: --insertion-improve-finish ausdrücklich nur mit --insertion-improve; seit M6-T13b
+    // Standard mit --insertion-improve, im JSON nur, wenn wirksam
     EXPECT_EQ(synth({achromat, "--insertion-improve-finish"}).code, cli::kExitUsage);
     EXPECT_NE(help.find("--insertion-improve-finish"), std::string::npos);
-    EXPECT_FALSE(jn["options"]["insertion_improve"].contains("finish"));
+    EXPECT_NE(help.find("--no-insertion-improve-finish"), std::string::npos);
+    EXPECT_EQ(jn["options"]["insertion_improve"]["finish"], true);
+    EXPECT_FALSE(jp["options"].contains("insertion_improve"));
     const SynthCliResult fin =
         synth({achromat, "--color-rule", "--insertion-improve", "4", "--insertion-improve-finish",
                "--max-elements", "3", "--json"});
     ASSERT_EQ(fin.code, cli::kExitOk) << fin.err;
     EXPECT_EQ(nlohmann::json::parse(fin.out)["options"]["insertion_improve"]["finish"], true);
+}
+
+// M6-T13b: Vergrößern mit Abstand zur Schwelle (0,8), Einfügen nur mit Verbesserung im Abschluss
+// und Varianten der Farbregel sind Standard von synth. Orakel für den Standard: Mit höchstens
+// 10 LM-Zyklen ist kein Schritt schnell (F10); ohne Abstand bleibt Δ nach jedem langsamen
+// Schritt, mit Q = 0,8 wächst es, sobald F_B <= 0,8 F_max. Die Abschalter (--grow-margin 0 bzw.
+// --no-grow-margin, --no-insertion-improve-finish, --no-color-variants) setzen die Bibliothek auf
+// ihre Standards (alle aus) und ergeben das Protokoll in der alten Form; beide Schreibweisen sind
+// bitgleich. Der Vergleich mit der Binärdatei von main vor M6-T13b steht im PR.
+TEST(CliSynth, M6T13bDefaultsAndSwitches) {
+    SynthTempDir dir("m6t13b");
+    const std::vector<std::string> base{kStart,     "--target-na",      "0.4", "--merit-factor",
+                                        "10",       "--max-elements",   "1",   "--max-iterations",
+                                        "10",       "--element-stages", "2",   "--json"};
+    const auto run = [&](std::vector<std::string> extra, const std::string& name) {
+        std::vector<std::string> a = base;
+        a.insert(a.end(), extra.begin(), extra.end());
+        a.insert(a.end(), {"-o", dir.file(name)});
+        const SynthCliResult r = synth(a);
+        EXPECT_EQ(r.code, cli::kExitOk) << r.err;
+        nlohmann::json j = nlohmann::json::parse(r.out);
+        for (nlohmann::json& st : j["result"]["steps"]) {
+            st.erase("seconds");
+        }
+        j.erase("output");
+        j.erase("seconds");
+        j["result"].erase("seconds");
+        return j;
+    };
+    // angenommene Aperturschritte, die nach einem langsamen LM-Lauf vergrößern
+    const auto slow_grows = [](const nlohmann::json& j) {
+        int n = 0;
+        for (const auto& st : j["result"]["steps"]) {
+            if (st["kind"] == "aperture" && st["accepted"] == true && st["action"] == "grow" &&
+                st["lm"]["status"] == "max_iterations") {
+                ++n;
+            }
+        }
+        return n;
+    };
+    const nlohmann::json def = run({}, "standard.json");
+    EXPECT_EQ(def["options"]["grow_margin"], 0.8);
+    EXPECT_GT(slow_grows(def), 0);
+
+    const nlohmann::json off = run({"--grow-margin", "0"}, "aus.json");
+    const nlohmann::json off2 =
+        run({"--no-grow-margin", "--no-insertion-improve-finish", "--no-color-variants"},
+            "aus2.json");
+    EXPECT_FALSE(off["options"].contains("grow_margin"));
+    EXPECT_EQ(slow_grows(off), 0);
+    EXPECT_EQ(off, off2);
+    EXPECT_EQ(read_file(dir.file("aus.json")), read_file(dir.file("aus2.json")));
+    EXPECT_LT(def["result"]["steps"].size(), off["result"]["steps"].size());
+    // ohne Farbregel bzw. ohne --insertion-improve wirken Varianten und Abschluss nicht
+    EXPECT_FALSE(def["options"].contains("color_rule_ext"));
+    EXPECT_FALSE(def["options"].contains("insertion_improve"));
+
+    // Farbregel mit --insertion-improve: Standards im Protokoll, Abschalter in der alten Form
+    const std::string achromat = MKO_SOURCE_DIR "/data/systems/einzellinse_achromat_start.json";
+    const SynthCliResult c = synth({achromat, "--color-rule", "--insertion-improve", "4",
+                                    "--max-elements", "3", "--json"});
+    ASSERT_EQ(c.code, cli::kExitOk) << c.err;
+    const nlohmann::json jc = nlohmann::json::parse(c.out);
+    EXPECT_EQ(jc["options"]["color_rule_ext"]["variants"], true);
+    EXPECT_EQ(jc["options"]["insertion_improve"]["finish"], true);
+    EXPECT_EQ(jc["options"]["grow_margin"], 0.8);
+    const SynthCliResult co =
+        synth({achromat, "--color-rule", "--insertion-improve", "4", "--max-elements", "3",
+               "--no-color-variants", "--no-insertion-improve-finish", "--grow-margin", "0",
+               "--json"});
+    ASSERT_EQ(co.code, cli::kExitOk) << co.err;
+    const nlohmann::json jo = nlohmann::json::parse(co.out);
+    EXPECT_FALSE(jo["options"].contains("color_rule_ext"));
+    EXPECT_FALSE(jo["options"]["insertion_improve"].contains("finish"));
+    EXPECT_FALSE(jo["options"].contains("grow_margin"));
+    // ausdrücklich angegeben, durch den Abschalter danach aus: kein Fehler
+    EXPECT_EQ(synth({achromat, "--insertion-improve-finish", "--no-insertion-improve-finish",
+                     "--max-elements", "1", "--quiet"})
+                  .code,
+              cli::kExitOk);
 }
 
 // M6-T12: erweitertes Glas-Wörterbuch. Ohne Option kein Eintrag ghost_dictionary; mit

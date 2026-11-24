@@ -313,6 +313,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** Tests mit optischen Orakeln bzw. Skripttests für jede neue Option, ohne Option bitgleich; Bericht `docs/ergebnisse/m6-t13-farbe-frueh.md` mit Messtabelle und Vergleich zu M6-T11/M6-T12.
 - **Stand:** umgesetzt und gemessen ([Bericht](../ergebnisse/m6-t13-farbe-frueh.md)); Läufe am 2026-11-24 nach Überschreiten des Zeitrahmens abgebrochen, abgeschlossene Stufen ausgewertet. Skript `--farbe apertur` Standard (`spaet` bitgleich zum alten Standard); `synth --color-variants`, `--grow-margin`, `--insertion-improve-finish`, `--color-module-lateral`. Ab der Einzellinse polychromatisch beugungsbegrenzt bei NA 0,5 und 10 % Feld mit 7 El., Feldstufe danach 19 %; ab F3 NA 0,640 bei 41 % Feld (16 El., ≤ 0,136 Wellen), Feld höchstens 43 %; ab A1W4 41 % Feld bei NA 0,445. Etappenziel nicht erreicht; Grenze: Querfarbe und Verzeichnung am Feldrand (F20). Erweitertes Wörterbuch in den Öffnungsstufen ohne eindeutigen Gewinn.
 
+### M6-T13b – Standards von synth nach M6-T13
+- **Abhängig von:** M6-T13 (vom Maintainer am 2026-11-24 freigegeben)
+- **Inhalt:** (1) `synth --grow-margin 0.8`, `--insertion-improve-finish` (wirksam mit `--insertion-improve`) und `--color-variants` (wirksam mit der Farbregel) werden Standard von `synth`, abschaltbar mit `--grow-margin 0`/`--no-grow-margin`, `--no-insertion-improve-finish`, `--no-color-variants` (Skript `--wachsen-marge 0`, `--ohne-einfuegen-abschluss`, `--ohne-farb-varianten`); die Aktion `synth_segment` übernimmt Q = 0,8; (2) bestätigt ohne Änderung: `--farbe apertur` Standard des Skripts, werfende Variante unter `--insertion-improve` ohne eigene Option verworfen, `insert_module` verwirft Schalen mit Q ≤ 0; (3) unverändert aus: `--split-preselect`, `--woerterbuch-extra`, kein neues Format des Glas-Wörterbuchs; (4) Nachmessung des Standardpfads ab der Einzellinse.
+- **Abnahme:** CLI-Test der Standards mit Orakel (langsame Schritte wachsen nur mit Q > 0), Abschalter bitgleich (Test und Vergleich mit der Binärdatei vor M6-T13b), Skripttests; Nachtrag „M6-T13b“ im [Bericht M6-T13](../ergebnisse/m6-t13-farbe-frueh.md).
+- **Stand:** umgesetzt (Nachmessung im Bericht).
+
 ---
 
 ## M7 – Performance
