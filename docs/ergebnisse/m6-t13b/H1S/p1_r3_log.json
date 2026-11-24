@@ -1,0 +1,375 @@
+{
+  "format": "mikroptim.synth/1",
+  "version": "0.1.0",
+  "input": "docs/ergebnisse/m6-t13b/H1S/p1_r2_restart.json",
+  "backend": {
+    "gpu": true,
+    "device": 0,
+    "device_name": "NVIDIA GeForce RTX 3090"
+  },
+  "options": {
+    "target_na": 0.5,
+    "start": {
+      "aperture": 0.4725000000000001,
+      "field": 0.1,
+      "spectrum": 0
+    },
+    "rms_target_waves": 0.07142857142857142,
+    "merit_factor": 1.0,
+    "max_elements": 16,
+    "max_iterations": 500,
+    "stall": {
+      "window": 0,
+      "tolerance": 0.001
+    },
+    "augmented_lagrangian": null,
+    "color_rule": 2.0,
+    "sine_condition": null,
+    "spectrum_stages": 0,
+    "spectrum_continuous": false,
+    "split": {
+      "preselect": false,
+      "start_at_target": false,
+      "achromat_start": false,
+      "spectrum_rank": null,
+      "member_start": true
+    },
+    "quadrature": {
+      "rings": 16,
+      "spokes": 8
+    },
+    "jacobian": "fd",
+    "tolerance_aware": null,
+    "element_thickness": 0.5,
+    "element_max_thickness": 5.0,
+    "saddle_delta": 0.002,
+    "insertion_improve": {
+      "attempts": 4,
+      "finish": true
+    },
+    "grow_margin": 0.8,
+    "color_rule_ext": {
+      "chromatic_share": 0.5,
+      "module": "doublet",
+      "always": false,
+      "anomalous": false,
+      "incidence_deg": 40.0,
+      "variants": true
+    },
+    "prune": {
+      "after_phases": false,
+      "element_budget": 16,
+      "stages": 3,
+      "attempts": 4,
+      "merit_factor": 1.0,
+      "tolerance": null,
+      "min_elements": 1
+    },
+    "field_rule": {
+      "ratio": 1.5,
+      "min_rms_waves": 0.05,
+      "glass": null
+    }
+  },
+  "result": {
+    "status": "step_too_small",
+    "message": "Apertur 0.4725: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00527574); keine Geisterplatte aktiv (kein Bedarf)",
+    "start_point": {
+      "aperture": 0.4725000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 0.01,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "target": {
+      "aperture": 0.5,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "point": {
+      "aperture": 0.4725000000000001,
+      "field": 0.1,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "merit_threshold": 0.00510204081632653,
+    "start_elements": 4,
+    "elements": 4,
+    "insertions": 0,
+    "solves": 7,
+    "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+    },
+    "seconds": 0.7591147,
+    "steps": [
+      {
+        "index": 0,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.4725000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.01,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 50,
+          "start_merit": 0.0050458968433301655,
+          "merit": 0.004992628728550564,
+          "wavefront": 0.004816989760433222,
+          "ghost_penalty": 8.987325344001599e-05,
+          "rms_waves": 0.08042397773989889,
+          "ghost_sum_mm": 4.468924230337564e-06,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.01",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.1647937
+      },
+      {
+        "index": 1,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.4725000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.1,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 184,
+          "start_merit": 0.005208782397139044,
+          "merit": 0.005025754425814406,
+          "wavefront": 0.004879177486216092,
+          "ghost_penalty": 7.825571078867673e-05,
+          "rms_waves": 0.081363427530836,
+          "ghost_sum_mm": 4.086523465085226e-06,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.1",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.2741535
+      },
+      {
+        "index": 2,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.4725000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 28,
+          "start_merit": 0.005111330585540383,
+          "merit": 0.005051164692907136,
+          "wavefront": 0.004890580149625907,
+          "ghost_penalty": 7.670007517344326e-05,
+          "rms_waves": 0.08154253686852093,
+          "ghost_sum_mm": 3.986912393962208e-06,
+          "failed_rays": 0
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×1",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.0309641
+      },
+      {
+        "index": 3,
+        "kind": "aperture",
+        "point": {
+          "aperture": 0.4925000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.02,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 47,
+          "start_merit": 0.8409652902943948,
+          "merit": 0.007684327550708607,
+          "wavefront": 0.007447367533888657,
+          "ghost_penalty": 0.00010975775845489794,
+          "rms_waves": 0.10172960434308943,
+          "ghost_sum_mm": 5.663389691745573e-06,
+          "failed_rays": 0
+        },
+        "accepted": false,
+        "action": "shrink",
+        "next_delta": 0.01,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.0617839
+      },
+      {
+        "index": 4,
+        "kind": "aperture",
+        "point": {
+          "aperture": 0.4825000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.01,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 56,
+          "start_merit": 0.21932943491281173,
+          "merit": 0.006210584071994482,
+          "wavefront": 0.00599835220497851,
+          "ghost_penalty": 0.00010145765373011785,
+          "rms_waves": 0.09004304645312351,
+          "ghost_sum_mm": 4.967355081504165e-06,
+          "failed_rays": 0
+        },
+        "accepted": false,
+        "action": "shrink",
+        "next_delta": 0.005,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.0847358
+      },
+      {
+        "index": 5,
+        "kind": "aperture",
+        "point": {
+          "aperture": 0.4775000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.005,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 47,
+          "start_merit": 0.05967753221097077,
+          "merit": 0.005581439332980121,
+          "wavefront": 0.0053970736078822554,
+          "ghost_penalty": 8.815637009872943e-05,
+          "rms_waves": 0.08510725493409378,
+          "ghost_sum_mm": 4.500844996882136e-06,
+          "failed_rays": 0
+        },
+        "accepted": false,
+        "action": "shrink",
+        "next_delta": 0.0025,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.0709646
+      },
+      {
+        "index": 6,
+        "kind": "aperture",
+        "point": {
+          "aperture": 0.4750000000000001,
+          "field": 0.1,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0025,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "converged_step",
+          "iterations": 52,
+          "start_merit": 0.018989433451726507,
+          "merit": 0.005360308740432415,
+          "wavefront": 0.005203377076819553,
+          "ghost_penalty": 7.236470707007603e-05,
+          "rms_waves": 0.08471125809295427,
+          "ghost_sum_mm": 3.730241014806487e-06,
+          "failed_rays": 0
+        },
+        "accepted": false,
+        "action": "stop",
+        "next_delta": 0.00125,
+        "recommendation": "none",
+        "operation": "keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)",
+        "elements": 4,
+        "goal": null,
+        "seconds": 0.0672076
+      }
+    ]
+  },
+  "output": "docs/ergebnisse/m6-t13b/H1S/p1_r3.json"
+}

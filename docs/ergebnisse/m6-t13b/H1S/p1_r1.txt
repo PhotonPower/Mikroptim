@@ -1,0 +1,26 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t13b\H1S\p1_r0_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.4325, Feldanteil 0.100, 3 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 16; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.4325  0.100   0  -        converged_step        25  4.922434e-03  4.845421e-03  0.07917   7.919e-06   3  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.4325  0.100   0  -        converged_step        84  4.923462e-03  4.875218e-03  0.07921   8.259e-06   3  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.4325  0.100   0  -        max_iterations       500  4.947401e-03  4.878005e-03  0.07925   8.236e-06   3  ok: Gewichte der einseitigen Bedingungen ×1
+      3  aperture         0.4525  0.100   0  0.02000  converged_step        75  7.598597e-03  7.498516e-03  0.09765   1.151e-05   3  shrink (Delta 0.01000)
+      4  aperture         0.4425  0.100   0  0.01000  converged_step        46  6.236476e-03  6.145173e-03  0.08963   9.142e-06   3  shrink (Delta 0.00500)
+      5  aperture         0.4375  0.100   0  0.00500  converged_step        97  5.547170e-03  5.467236e-03  0.08399   8.771e-06   3  shrink (Delta 0.00250)
+      6  aperture         0.4350  0.100   0  0.00250  converged_step        62  5.246791e-03  5.171640e-03  0.08174   8.388e-06   3  stop (Delta 0.00125): keine Empfehlung: keine Geisterplatte aktiv (das reale System erreicht das Ziel ohne Geisterkorrektur)
+
+Status: step_too_small (Apertur 0.4325: Schrittweite unter Δ_min = 0.002 (letzter Versuch F_B = 0.00517164); keine Geisterplatte aktiv (kein Bedarf))
+Endpunkt: NA 0.4325, Feldanteil 0.100, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 3 -> 3 (0 Einfügungen), Optimierungen: 7, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                1.7
+Ergebnis geschrieben: docs\ergebnisse\m6-t13b\H1S\p1_r1.json
+Protokoll geschrieben: docs\ergebnisse\m6-t13b\H1S\p1_r1_log.json

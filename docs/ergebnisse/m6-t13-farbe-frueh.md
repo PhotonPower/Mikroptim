@@ -142,3 +142,30 @@ python tools/m6t6_zielspezifikation.py ... wie A1Z ... --woerterbuch-extra 4 --o
 ```
 
 mit `OPT` wie in Abschnitt 3. H1_apertur enthält den abgebrochenen Lauf H1 (bis zur kriechenden Farbstufe), H1G8 setzt ihn ab p1 fort; die Bewertung der Zwischenstände Z1f (`z1f_*`) entstand nach dem Abbruch aus `p1f_final.json` (Nachoptimierung ohne Platten, 2.000 Zyklen, Spektrum der Stufe); die Dateien von Z3 (aus `p3_r2.json`) gingen beim Verkleinern mit `--archiv` verloren, die Zahlen stammen aus der Bewertung davor. Die Verzeichnisse sind mit `--archiv` verkleinert.
+
+## M6-T13b: Nachmessung mit den neuen Standards
+
+Freigabe Maintainer 2026-11-24 (Antworten auf Abschnitt 9): Frage 1 – `--farbe apertur` bleibt Standard des Skripts; Frage 2 – `--color-variants`, `--grow-margin 0.8` und `--insertion-improve-finish` sind seit M6-T13b Standard von `synth` (Abschalter `--no-color-variants`, `--grow-margin 0`/`--no-grow-margin`, `--no-insertion-improve-finish`, bitgleich zum Stand davor; [optimierung.md](../optimierung.md#weitere-steuerung-der-öffnungsstufen-m6-t13)); Frage 3 – die werfende Variante bleibt ohne eigene Option verworfen; `insert_module` verwirft Schalen mit Q ≤ 0. `--split-preselect` und `--woerterbuch-extra` bleiben aus.
+
+**Lauf H1S:** Standardpfad des Skripts ab der Einzellinse wie H1G8, jetzt in einem Zug mit den neuen Standards (auch die monochromatische Aperturstufe p1 mit Q = 0,8; in H1G8 stammte p1 aus dem Lauf H1 ohne Wachsen):
+
+```
+python tools/m6t6_zielspezifikation.py --gpu --elementbudget 16 --out docs/ergebnisse/m6-t13b/H1S
+```
+
+| Stufe | H1G8 (M6-T13) | H1S (M6-T13b) |
+|---|---|---|
+| p1 (NA 0,3 → 0,5, 10 % Feld, mono) | 5 El., 1.119 s | 5 El., **44 s** (ein erzwungenes Einfügen) |
+| p1f (Farbe 436–656 nm) | volle Breite mit 7 El., 4.999 s; Z1f 0,060/0,047/0,057 Wellen, Strehl ≥ 0,87 | Breite **0,97** mit 9 El. (Farbbudget 4 erreicht, vier Runden), 588 s; danach mit vollem Spektrum weiter |
+| p2 (Feld) | 10 → 19,4 %, 11 El., 5.680 s | 10 → **14,7 %**, 15 El., 299 s |
+| p3 (Apertur) | 0,5 → 0,53 (abgebrochen), 3.903 s | 0,5 → **0,5275**, 15 El. (Elementbudget, kein Spalt für ein erzwungenes Einfügen), 513 s |
+| Endstand (436–656 nm, RMS 0/70/100 % des Feldanteils) | Z3: 0,103/0,078/0,118, Strehl ≥ 0,60 | Z2: **0,102/0,065/0,115**, Strehl ≥ 0,60 (486 nm am Rand; Achse 0,102 bei 436 nm) |
+| Gesamtzeit | ≈ 15.700 s (abgebrochen) | **1.473 s** (vollständig, mit Bewertung) |
+
+Bewertung: `mikroptim eval --grid 256` wie in Abschnitt 3 (Referenz Austrittspupille), Z2 = Nachoptimierung ohne Platten am Spektrum der Feldstufe. Auf 405–707 nm (p7/p8) liegt der Rand bei bis zu 0,41 Wellen (405 nm), wie in M6-T13 nicht korrigiert.
+
+- **Laufzeit:** Mit Q = 0,8 ab dem Start ist der Standardpfad etwa zehnmal so schnell und läuft ohne Abbruch durch (H1G8 brauchte allein für p1f 83 min). Die Zeiten in p1 sanken von 1.119 auf 44 s, vermutlich weil die Aperturstufe nach langsamen Schritten wieder wächst (F22 gilt auch für die Apertur).
+- **Güte:** Endstand vergleichbar mit H1G8 Z3 (gleiche NA 0,53, ähnlicher größter RMS, Strehl 0,60), aber bei weniger Feld (14,7 statt 19,4 %) und mit mehr Elementen (15 statt 11). Kein beugungsbegrenzter Zwischenstand wie Z1f: Die schnellere Aperturstufe endet bei einem anderen 5-Linser, dessen Farbstufe mit dem Farbbudget 4 (9 El.) nur 97 % der Breite erreicht – das reale System ist danach farbiger, und Feld- und Aperturstufe verbrauchen das Elementbudget 16.
+- **Folgerung:** Die neuen Standards verkürzen die Läufe stark, ändern aber den Weg; der Engpass bleibt die polychromatische Feldstufe (F14). Ein Einzellauf trennt das nicht von der Streuung der Wege (vgl. M6-T11b, Median gestörter Starts). Vorschlag (nicht umgesetzt): Farbbudget der Stufe p1f für `--farbe apertur` an der erreichten Breite messen (etwa 5 statt 4) bzw. mehrere gestörte Starts.
+
+Dateien: `docs/ergebnisse/m6-t13b/H1S` (mit `--archiv` verkleinert, Programmausgabe in `lauf.log`).

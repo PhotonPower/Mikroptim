@@ -317,7 +317,7 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abhängig von:** M6-T13 (vom Maintainer am 2026-11-24 freigegeben)
 - **Inhalt:** (1) `synth --grow-margin 0.8`, `--insertion-improve-finish` (wirksam mit `--insertion-improve`) und `--color-variants` (wirksam mit der Farbregel) werden Standard von `synth`, abschaltbar mit `--grow-margin 0`/`--no-grow-margin`, `--no-insertion-improve-finish`, `--no-color-variants` (Skript `--wachsen-marge 0`, `--ohne-einfuegen-abschluss`, `--ohne-farb-varianten`); die Aktion `synth_segment` übernimmt Q = 0,8; (2) bestätigt ohne Änderung: `--farbe apertur` Standard des Skripts, werfende Variante unter `--insertion-improve` ohne eigene Option verworfen, `insert_module` verwirft Schalen mit Q ≤ 0; (3) unverändert aus: `--split-preselect`, `--woerterbuch-extra`, kein neues Format des Glas-Wörterbuchs; (4) Nachmessung des Standardpfads ab der Einzellinse.
 - **Abnahme:** CLI-Test der Standards mit Orakel (langsame Schritte wachsen nur mit Q > 0), Abschalter bitgleich (Test und Vergleich mit der Binärdatei vor M6-T13b), Skripttests; Nachtrag „M6-T13b“ im [Bericht M6-T13](../ergebnisse/m6-t13-farbe-frueh.md).
-- **Stand:** umgesetzt (Nachmessung im Bericht).
+- **Stand:** umgesetzt und nachgemessen ([Bericht, Abschnitt „M6-T13b“](../ergebnisse/m6-t13-farbe-frueh.md#m6-t13b-nachmessung-mit-den-neuen-standards)). Abschalter bitgleich zum Stand davor (6 Vergleichsläufe gegen main ae3c8be). Standardpfad ab der Einzellinse (H1S) in 1.473 s statt ≈ 15.700 s, Endstand NA 0,5275 bei 14,7 % Feld, 15 El., 0,102/0,065/0,115 Wellen (Strehl ≥ 0,60) – vergleichbar mit H1G8 Z3, aber weniger Feld; die Farbstufe p1f erreicht mit Farbbudget 4 nur 97 % der Breite.
 
 ---
 
