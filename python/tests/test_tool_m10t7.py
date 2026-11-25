@@ -74,7 +74,7 @@ def test_main_runs_each_variant_in_its_convention(tool, tmp_path, monkeypatch):
     """Der Ablauf gibt jeder Variante die Startkopie ihrer Konvention (Rechnung ersetzt)."""
     seen = {}
 
-    def fake_synth(bench, work, beam=False):
+    def fake_synth(bench, work, beam=False, before_m6t13b=False):
         d = json.loads(bench["start"].read_text(encoding="utf-8"))
         seen[work.name] = (bench["start"].name, d.get("reference_sphere"))
         return {"seconds": 0.0, "best": {}}
@@ -180,7 +180,7 @@ def test_repetitions_get_own_tags_and_summary(tool, tmp_path, monkeypatch):
             tool.repetitions(bad)
     calls = []
 
-    def fake_synth(bench, work, beam=False):
+    def fake_synth(bench, work, beam=False, before_m6t13b=False):
         calls.append(work.name)
         k = len(calls)
         return {"seconds": 1.0, "best": {"goal": k == 2, "na": 0.3 * k, "rms_max_waves": 0.1 / k,
@@ -271,7 +271,7 @@ def test_perturbed_starts_within_bounds_and_summary(tool, tmp_path, monkeypatch)
     # Ablauf und Zusammenfassung (Rechnung ersetzt)
     calls = []
 
-    def fake_synth(bench, work, beam=False):
+    def fake_synth(bench, work, beam=False, before_m6t13b=False):
         calls.append((work.name, bench["start"].name))
         k = len(calls)
         return {"seconds": 1.0, "best": {"goal": k != 2, "na": 0.3 * k, "rms_max_waves": 0.01,
@@ -320,7 +320,7 @@ def test_rule_reference_is_median_of_perturbed_starts(tool, tmp_path, monkeypatc
         return {"seconds": 1.0, "best": {"goal": False, "na": nas[k], "rms_max_waves": 0.08,
                                          "failed_rays": 0, "elements": 4 + (k or 0) % 2}}
 
-    def fake_synth(bench, work, beam=False):
+    def fake_synth(bench, work, beam=False, before_m6t13b=False):
         calls.append(work.name)
         return {"seconds": 1.0, "best": {"goal": False, "na": 0.5, "rms_max_waves": 0.1,
                                          "failed_rays": 0, "elements": 3}}
@@ -352,3 +352,48 @@ def test_rule_reference_is_median_of_perturbed_starts(tool, tmp_path, monkeypatc
     assert calls == ["V3RS"]
     assert tool.rule_reference(out2) == {}
     assert "| B2 | V3RS | 0/1 |" in tool.summary(out2)
+
+
+def test_synth_before_m6t13b_switch(tool, tmp_path, monkeypatch):
+    """M6-T14b: --synth-vor-m6t13b rechnet V0/V1 und synth_segment mit den Standards von synth vor
+    M6-T13b (--no-grow-margin u. a.), damit die Referenzen aus M10-T7 bis M6-T11b reproduzierbar
+    bleiben; ohne den Schalter unverändert."""
+    from mikroptim.design import actions
+
+    seen = []
+
+    def fake_cli(args):
+        seen.append([str(a) for a in args])
+        raise RuntimeError("Abbruch nach dem ersten Aufruf")
+
+    monkeypatch.setattr(tool, "cli_json", fake_cli)
+    bench = {"start": "start.json", "na": 0.6, "max_elements": 6}
+    for flag in (False, True):
+        with pytest.raises(RuntimeError):
+            tool.run_synth(bench, tmp_path, before_m6t13b=flag)
+    assert not any(a in seen[0] for a in actions.SYNTH_ARGS_BEFORE_M6T13B)
+    assert seen[1][-3:] == list(actions.SYNTH_ARGS_BEFORE_M6T13B)
+    assert actions.SYNTH_ARGS_BEFORE_M6T13B == (
+        "--no-grow-margin", "--no-insertion-improve-finish", "--no-color-variants")
+
+    # main setzt den Schalter für die Sitzungen und vermerkt ihn im Ergebnis
+    flags = []
+
+    def fake_session(bench, work, decider, fallback, steps):
+        flags.append(actions.SYNTH_DEFAULTS_BEFORE_M6T13B)
+        return {"seconds": 1.0, "best": {"goal": True, "na": 0.6, "rms_max_waves": 0.01,
+                                         "failed_rays": 0, "elements": 4}}
+
+    monkeypatch.setattr(tool, "run_session", fake_session)
+    monkeypatch.setattr(actions, "SYNTH_DEFAULTS_BEFORE_M6T13B", False)
+    out = tmp_path / "out"
+    assert tool.main(["--benchmarks", "B1", "--varianten", "V3", "--regel-einzellauf", "--out",
+                      str(out), "--work", str(tmp_path / "w"), "--synth-vor-m6t13b"]) == 0
+    assert flags == [True]
+    res = json.loads((out / "B1_V3RS.json").read_text(encoding="utf-8"))
+    assert res["synth_defaults"] == "vor M6-T13b"
+    assert tool.main(["--benchmarks", "B1", "--varianten", "V3", "--regel-einzellauf", "--out",
+                      str(tmp_path / "out2"), "--work", str(tmp_path / "w2")]) == 0
+    assert flags == [True, False]
+    res = json.loads((tmp_path / "out2" / "B1_V3RS.json").read_text(encoding="utf-8"))
+    assert "synth_defaults" not in res

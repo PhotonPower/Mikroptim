@@ -364,6 +364,39 @@ TEST(CliInsert, GhostReturnMatchesLibrary) {
     EXPECT_EQ(
         insert({out, "--ghost-return", "--ghost-glass", "CAF2", "-o", dir.file("x.json")}).code,
         cli::kExitError);
+    EXPECT_EQ(insert({in, "--ghost-no-thin-fallback", "--remove", "1", "-o", out}).code,
+              cli::kExitUsage);
+}
+
+TEST(CliInsert, GhostReturnThinGapFallbackF25) {
+    // M6-T14b (Befund F25): alle inneren Luftspalte unter 0,2 mm; mit Rückfall (Standard) Platten
+    // im Spalt mit der größten Randstrahlhöhe und Warnung, mit --ghost-no-thin-fallback Fehler
+    const InsertTempDir dir("ghost_return_thin");
+    const std::string in = dir.file("real.json");
+    write_ghost_return_real_system(fs::path(in));
+    {
+        LoadedSystem l = load_system(in);
+        SystemDescription d = l.system;
+        d.surfaces[3].thickness = 0.15;
+        d.surfaces[5].thickness = 0.12;
+        d.glass_catalogs = {std::string(MKO_SOURCE_DIR) + "/data/glass/basis.json"};
+        write_system_file(d, fs::path(in));
+    }
+    const std::string out = dir.file("geister.json");
+    CliResult r = insert({in, "--ghost-return", "--ghost-glass", "CAF2", "-o", out, "--json"});
+    ASSERT_EQ(r.code, cli::kExitOk) << r.err;
+    const nlohmann::json j = nlohmann::json::parse(r.out);
+    EXPECT_LE(j["relative_change"].get<double>(), kInsertionMeritRelative);
+    ASSERT_GE(j["details"]["positions"].size(), 1u);
+    bool note = false;
+    for (const auto& w : j["warnings"]) {
+        note = note || w.get<std::string>().find("F25") != std::string::npos;
+    }
+    EXPECT_TRUE(note) << r.out;
+    r = insert({in, "--ghost-return", "--ghost-glass", "CAF2", "--ghost-no-thin-fallback", "-o",
+                dir.file("x.json")});
+    EXPECT_EQ(r.code, cli::kExitError);
+    EXPECT_NE(r.err.find("keine Lage passt"), std::string::npos) << r.err;
 }
 
 } // namespace

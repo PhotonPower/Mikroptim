@@ -77,6 +77,7 @@ struct InsertArgs {
     bool ghost_return = false;
     std::optional<std::vector<GhostReturnLocation>> ghost_locations; // --ghost-positions
     std::optional<double> norm_field;                                // --norm-field
+    bool ghost_no_thin_fallback = false; // M6-T14b: --ghost-no-thin-fallback (Fehler wie vorher)
     bool refocus = true;
     bool json = false;
     Op op = Op::Meniscus;
@@ -182,6 +183,8 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
             } catch (const std::invalid_argument& e) {
                 throw UsageError(std::string("--ghost-positions: ") + e.what());
             }
+        } else if (arg == "--ghost-no-thin-fallback") {
+            a.ghost_no_thin_fallback = true;
         } else if (arg == "--norm-field") {
             a.norm_field = parse_double(arg, next_value(args, i, arg));
             if (!(*a.norm_field >= 0.0)) {
@@ -285,8 +288,9 @@ InsertArgs parse_args(std::span<const std::string_view> args) {
     if (a.norm_radius && !a.ghost) {
         throw UsageError("--norm-radius nur mit --ghost-dictionary");
     }
-    if ((a.ghost_locations || a.norm_field) && !a.ghost_return) {
-        throw UsageError("--ghost-positions und --norm-field nur mit --ghost-return");
+    if ((a.ghost_locations || a.norm_field || a.ghost_no_thin_fallback) && !a.ghost_return) {
+        throw UsageError("--ghost-positions, --norm-field und --ghost-no-thin-fallback nur mit "
+                         "--ghost-return");
     }
     if (a.ghost_return && a.ghost_glasses.empty()) {
         throw UsageError("--ghost-return braucht mindestens ein --ghost-glass");
@@ -376,6 +380,8 @@ void print_insert_usage(std::ostream& out) {
            "    --ghost-positions LISTE Lagen aus stop, aperture, field, front (Standard\n"
            "                            aperture,field)\n"
            "    --norm-field F          Feldwinkel x F für die Strahlhöhen (Standard 1)\n"
+           "    --ghost-no-thin-fallback  kein Rückfall auf innere Luftspalte unter 0,2 mm,\n"
+           "                            wenn sonst keine Lage passt (Fehler wie vor M6-T14b)\n"
            "  --no-variables            keine Krümmungsvariablen für die neuen Flächen\n"
            "  --json                    Bericht als JSON (mikroptim.insert/1)\n"
            "  --no-reference-warning    keine Warnung auf stderr, wenn die Datei kein Feld\n"
@@ -565,6 +571,7 @@ int run_insert_command(std::span<const std::string_view> args, std::ostream& out
                 o.locations = *a.ghost_locations;
             }
             o.norm_field_scale = a.norm_field.value_or(1.0);
+            o.thin_gap_fallback = !a.ghost_no_thin_fallback;
             GhostReturnResult r = return_to_ghost_plates(before, o);
             details = Json::parse(ghost_return_json_text(r));
             for (const std::string& n : r.notes) {

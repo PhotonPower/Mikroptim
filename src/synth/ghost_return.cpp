@@ -224,8 +224,9 @@ GhostReturnResult return_to_ghost_plates(const LoadedSystem& real,
                d0.surfaces[sz(s)].thickness > 0.0;
     };
 
-    // Innere Luftspalte (nach Fläche 1 … S − 2) mit paraxialen Strahlhöhen
-    std::vector<GapCandidate> inner;
+    // Innere Luftspalte (nach Fläche 1 … S − 2) mit paraxialen Strahlhöhen; `all_inner` auch die
+    // dünneren als min_gap (Rückfall, Befund F25 aus M6-T14)
+    std::vector<GapCandidate> all_inner;
     std::string aberration_error;
     if (d0.source.type == SourceType::Collimated) {
         AberrationOptions ao;
@@ -239,7 +240,7 @@ GhostReturnResult return_to_ghost_plates(const LoadedSystem& real,
                                            : std::numeric_limits<double>::infinity();
             };
             for (int s = 1; s + 1 < S; ++s) {
-                if (!air_gap(s) || !(d0.surfaces[sz(s)].thickness >= options.min_gap)) {
+                if (!air_gap(s)) {
                     continue;
                 }
                 GapCandidate c;
@@ -247,7 +248,7 @@ GhostReturnResult return_to_ghost_plates(const LoadedSystem& real,
                 c.height = 0.5 * (std::abs(rep.surfaces.at(sz(s)).y) +
                                   std::abs(rep.surfaces.at(sz(s + 1)).y));
                 c.ratio = 0.5 * (ratio(s) + ratio(s + 1));
-                inner.push_back(c);
+                all_inner.push_back(c);
             }
         } catch (const std::invalid_argument& e) {
             aberration_error = e.what();
@@ -255,69 +256,114 @@ GhostReturnResult return_to_ghost_plates(const LoadedSystem& real,
     } else {
         aberration_error = "Punktquelle (kein Aberrationsbericht)";
     }
+    const auto thickness = [&](int s) { return d0.surfaces[sz(s)].thickness; };
+    std::vector<GapCandidate> inner;
+    for (const GapCandidate& c : all_inner) {
+        if (thickness(c.gap) >= options.min_gap) {
+            inner.push_back(c);
+        }
+    }
 
-    GhostReturnResult r;
-    std::vector<GhostReturnPosition> chosen;
-    for (const GhostReturnLocation loc : options.locations) {
-        std::optional<GapCandidate> pick;
-        if (loc == GhostReturnLocation::Stop) {
-            if (S >= 2 && air_gap(0)) {
-                GapCandidate c;
-                c.gap = 0; // Blendenspalt: |ȳ/y| = 0 an der Blende
-                pick = c;
-            }
-        } else {
-            for (const GapCandidate& c : inner) {
-                bool better = !pick;
-                if (pick) {
-                    switch (loc) {
-                    case GhostReturnLocation::Aperture:
-                        better = c.height > pick->height;
-                        break;
-                    case GhostReturnLocation::Field:
-                        better = std::isfinite(c.ratio) &&
-                                 (!std::isfinite(pick->ratio) || c.ratio > pick->ratio);
-                        break;
-                    case GhostReturnLocation::Front:
-                        better = c.gap > pick->gap;
-                        break;
-                    case GhostReturnLocation::Stop:
-                        break;
-                    }
-                } else if (loc == GhostReturnLocation::Field) {
-                    better = std::isfinite(c.ratio);
-                }
-                if (better) {
+    // Lagen unter den Spalten `candidates` wählen (Doppelungen und fehlende Lagen als Notiz)
+    const auto choose = [&](const std::vector<GapCandidate>& candidates,
+                            std::vector<std::string>& notes) {
+        std::vector<GhostReturnPosition> chosen;
+        for (const GhostReturnLocation loc : options.locations) {
+            std::optional<GapCandidate> pick;
+            if (loc == GhostReturnLocation::Stop) {
+                if (S >= 2 && air_gap(0)) {
+                    GapCandidate c;
+                    c.gap = 0; // Blendenspalt: |ȳ/y| = 0 an der Blende
                     pick = c;
                 }
+            } else {
+                for (const GapCandidate& c : candidates) {
+                    bool better = !pick;
+                    if (pick) {
+                        switch (loc) {
+                        case GhostReturnLocation::Aperture:
+                            better = c.height > pick->height;
+                            break;
+                        case GhostReturnLocation::Field:
+                            better = std::isfinite(c.ratio) &&
+                                     (!std::isfinite(pick->ratio) || c.ratio > pick->ratio);
+                            break;
+                        case GhostReturnLocation::Front:
+                            better = c.gap > pick->gap;
+                            break;
+                        case GhostReturnLocation::Stop:
+                            break;
+                        }
+                    } else if (loc == GhostReturnLocation::Field) {
+                        better = std::isfinite(c.ratio);
+                    }
+                    if (better) {
+                        pick = c;
+                    }
+                }
+            }
+            const std::string name(to_string(loc));
+            if (!pick) {
+                notes.push_back(name + ": kein passender Luftspalt" +
+                                (aberration_error.empty() || loc == GhostReturnLocation::Stop
+                                     ? std::string()
+                                     : " (" + aberration_error + ")"));
+                continue;
+            }
+            const auto same = [&](const GhostReturnPosition& p) {
+                return p.after_surface == pick->gap;
+            };
+            if (std::any_of(chosen.begin(), chosen.end(), same)) {
+                notes.push_back(name + ": Spalt nach Fläche " + std::to_string(pick->gap) +
+                                " schon belegt, übersprungen");
+                continue;
+            }
+            GhostReturnPosition p;
+            p.location = loc;
+            p.after_surface = pick->gap;
+            p.distance = 0.5 * d0.surfaces[sz(pick->gap)].thickness;
+            p.marginal_height = pick->height;
+            p.ratio = pick->ratio;
+            chosen.push_back(p);
+        }
+        return chosen;
+    };
+
+    GhostReturnResult r;
+    std::vector<GhostReturnPosition> chosen = choose(inner, r.notes);
+    if (chosen.empty() && options.thin_gap_fallback && inner.size() < all_inner.size()) {
+        // Befund F25 (M6-T14): Nach vielen Einfügungen liegen alle inneren Luftspalte an ihrer
+        // unteren Schranke (z. B. 0,1 mm) unter min_gap. Dann gelten die Lagen unter allen
+        // inneren Luftspalten (Dicke > 0); die Platten liegen in der Spaltmitte, die Merit
+        // bleibt unverändert. Ohne diesen Fall (eine Lage passt) bitgleich wie vor M6-T14b.
+        std::vector<std::string> notes;
+        chosen = choose(all_inner, notes);
+        if (!chosen.empty()) {
+            r.notes = std::move(notes);
+            for (const GhostReturnPosition& p : chosen) {
+                r.notes.push_back(std::string(to_string(p.location)) + ": kein Luftspalt >= " +
+                                  num(options.min_gap) + " mm, Rückfall auf den Spalt nach " +
+                                  "Fläche " + std::to_string(p.after_surface) + " (" +
+                                  num(thickness(p.after_surface)) + " mm, F25)");
             }
         }
-        const std::string name(to_string(loc));
-        if (!pick) {
-            r.notes.push_back(name + ": kein passender Luftspalt" +
-                              (aberration_error.empty() || loc == GhostReturnLocation::Stop
-                                   ? std::string()
-                                   : " (" + aberration_error + ")"));
-            continue;
-        }
-        const auto same = [&](const GhostReturnPosition& p) {
-            return p.after_surface == pick->gap;
-        };
-        if (std::any_of(chosen.begin(), chosen.end(), same)) {
-            r.notes.push_back(name + ": Spalt nach Fläche " + std::to_string(pick->gap) +
-                              " schon belegt, übersprungen");
-            continue;
-        }
-        GhostReturnPosition p;
-        p.location = loc;
-        p.after_surface = pick->gap;
-        p.distance = 0.5 * d0.surfaces[sz(pick->gap)].thickness;
-        p.marginal_height = pick->height;
-        p.ratio = pick->ratio;
-        chosen.push_back(p);
     }
     if (chosen.empty()) {
-        invalid("keine Lage passt");
+        // Meldung mit dem dicksten inneren Luftspalt (Diagnose)
+        std::string detail;
+        if (!all_inner.empty()) {
+            const GapCandidate& t = *std::max_element(
+                all_inner.begin(), all_inner.end(), [&](const GapCandidate& a, const GapCandidate& b) {
+                    return thickness(a.gap) < thickness(b.gap);
+                });
+            detail = " (dickster innerer Luftspalt " + num(thickness(t.gap)) + " mm nach Fläche " +
+                     std::to_string(t.gap) + ", min_gap " + num(options.min_gap) + " mm" +
+                     (options.thin_gap_fallback ? "" : ", ohne Rückfall") + ")";
+        } else {
+            detail = " (kein innerer Luftspalt" +
+                     (aberration_error.empty() ? std::string() : "; " + aberration_error) + ")";
+        }
+        invalid("keine Lage passt" + detail);
     }
 
     // Strafe vor dem Einsetzen: ein Eintrag mit "all" deckt danach alle Platten ab

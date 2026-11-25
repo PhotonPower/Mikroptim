@@ -577,3 +577,27 @@ def test_synth_segment_ghost_dictionary_extra(session, monkeypatch):
     assert "--ghost-dictionary-extra" not in calls[-1]
     with pytest.raises(jsonschema.ValidationError):
         validate(response(dict(a, ghost_dictionary_extra=5)), "design_action.schema.json")
+
+
+def test_synth_segment_synth_defaults_before_m6t13b(session, monkeypatch):
+    """M6-T14b: actions.SYNTH_DEFAULTS_BEFORE_M6T13B hängt an jeden synth von synth_segment die
+    Abschalter der Standards von M6-T13b (--no-grow-margin u. a.); ohne den Schalter nicht."""
+    import shutil
+
+    from mikroptim.design import actions
+
+    calls = []
+
+    def fake(args):
+        out = args[args.index("-o") + 1]
+        shutil.copy(args[1], out)
+        calls.append([str(a) for a in args])
+        return {"result": {"status": "goal_reached", "point": {"aperture": 0.5}, "steps": []}}
+
+    monkeypatch.setattr(actions, "cli_json", fake)
+    a = {"action": "synth_segment", "target": {"aperture": 0.5}}
+    session.apply(0, response(a), decider={})
+    assert not any(x in calls[0] for x in actions.SYNTH_ARGS_BEFORE_M6T13B)
+    monkeypatch.setattr(actions, "SYNTH_DEFAULTS_BEFORE_M6T13B", True)
+    session.apply(0, response(a), decider={})
+    assert calls[1][-3:] == list(actions.SYNTH_ARGS_BEFORE_M6T13B)

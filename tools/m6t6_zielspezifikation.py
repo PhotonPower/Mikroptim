@@ -53,6 +53,16 @@ docs/ergebnisse/m6-t14-verzeichnung-querfarbe.md): --bildpunkt schwerpunkt|haupt
 (Referenzsphäre um den Strahlschwerpunkt bzw. Hauptstrahl bei lambda_ref, Feld reference_point), --verzeichnung D[,W] (Nebenbedingung distortion),
 --farb-querfarbe-strahlen (Farbregel erkennt Querfarbe aus realen Hauptstrahlen).
 
+Standards seit M6-T14b (Entscheidung Maintainer 2026-11-25, Bericht docs/ergebnisse/m6-t14b.md): mit
+--aktuell bzw. --farbregel (also auch im Standardablauf --farbe apertur und im Zyklus mit den
+Farbwerkzeugen) gelten --bildpunkt schwerpunkt, --verzeichnung 0.01 und --farb-querfarbe-strahlen
+(M6T14_STANDARDS), soweit nicht angegeben und die Referenzsphäre nicht last_surface ist. Abschalten:
+--ohne-m6t14 (alle drei; Läufe vor M6-T14b bitgleich nachrechnen) oder einzeln --bildpunkt
+wie-start, --verzeichnung aus, --ohne-farb-querfarbe-strahlen. Ohne --aktuell/--farbregel bleibt
+alles wie vorher. Farbbudget der Stufe p1f (--farbe apertur) seit M6-T14b 5 (vorher 4: --farb-budget
+4). Rückkehr zu Geisterplatten im Zyklus: findet `mikroptim insert --ghost-return` keine Lage, wird
+die Stufe übersprungen (Eintrag `skipped` der Zusammenfassung) statt den Zyklus abzubrechen (F25).
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -68,6 +78,10 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 # M6-T14: Standardgewicht der Nebenbedingung distortion (synth/optimize --distortion)
 DISTORTION_WEIGHT = 1e4
+# M6-T14b (Entscheidung Maintainer 2026-11-25): Standards mit --aktuell/--farbregel – Bildpunkt
+# Schwerpunkt (ADR-0019), Verzeichnung |D| <= 1 %, Querfarbe aus realen Hauptstrahlen
+M6T14_STANDARDS = {'bildpunkt': 'schwerpunkt', 'verzeichnung': '0.01',
+                   'farb_querfarbe_strahlen': True}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -994,7 +1008,8 @@ def set_reference_point(system, args):
         system['reference_point'] = point
     elif getattr(args, 'bildpunkt', None) == 'ideal':
         system.pop('reference_point', None)
-    if getattr(args, 'verzeichnung', None):
+    # 'wie-start' (M6-T14b): Datei unverändert wie ohne Schalter; --verzeichnung aus: kein Eintrag
+    if getattr(args, 'verzeichnung', None) and args.verzeichnung != 'aus':
         d_max, weight = parse_distortion(args.verzeichnung)
         cons = system.setdefault('constraints', {}).setdefault('items', [])
         cons[:] = [c for c in cons if c.get('type') != 'distortion']
@@ -1009,6 +1024,28 @@ def parse_distortion(text):
     if not (d_max >= 0.0 and weight >= 0.0):
         raise ValueError('--verzeichnung erwartet D[,W] mit D >= 0 und W >= 0')
     return d_max, weight
+
+
+def apply_m6t14_standards(args):
+    """M6-T14b: Standards M6T14_STANDARDS setzen, wenn synth mit den aktuellen Standards rechnet
+    (--aktuell, --farbregel bzw. --farb-achromat; der Standardablauf --farbe apertur setzt die
+    Farbregel), die Referenzsphäre einen Bildpunkt hat (nicht last_surface) und weder --ohne-m6t14
+    noch eine einzelne Angabe es verhindert. Ändert args; liefert, ob die Standards gelten."""
+    if getattr(args, 'ohne_m6t14', False):
+        return False
+    if not (getattr(args, 'aktuell', False) or getattr(args, 'farbregel', False) or
+            getattr(args, 'farb_achromat', False)):
+        return False
+    if getattr(args, 'referenzsphaere', 'image_infinite') == 'last_surface':
+        return False
+    if getattr(args, 'bildpunkt', None) is None:
+        args.bildpunkt = M6T14_STANDARDS['bildpunkt']
+    if getattr(args, 'verzeichnung', None) is None:
+        args.verzeichnung = M6T14_STANDARDS['verzeichnung']
+    if not (getattr(args, 'farb_querfarbe_strahlen', False) or
+            getattr(args, 'ohne_farb_querfarbe_strahlen', False)):
+        args.farb_querfarbe_strahlen = M6T14_STANDARDS['farb_querfarbe_strahlen']
+    return True
 
 
 def f12_guard(args):
@@ -1189,6 +1226,11 @@ def first_json(text):
     return json.JSONDecoder().raw_decode(text[i:])[0]
 
 
+class GhostReturnError(RuntimeError):
+    """`mikroptim insert --ghost-return` ist gescheitert (z. B. keine Lage); Meldung aus dem
+    Bericht (M6-T14b, F25)."""
+
+
 def return_to_ghosts(runner, name, src, positions='aperture,field', glasses=None, order=10,
                      weight=None, norm_field=1.0):
     """Rückkehr vom realen System zu Geisterplatten (`mikroptim insert --ghost-return`, M6-T10):
@@ -1204,7 +1246,16 @@ def return_to_ghosts(runner, name, src, positions='aperture,field', glasses=None
             a += ['--ghost-glass', g]
         if weight is not None:
             a += ['--ghost-weight', repr(weight)]
-        runner.run(name, a, text_name=name + '_bericht.txt')
+        try:
+            runner.run(name, a, text_name=name + '_bericht.txt')
+        except RuntimeError as e:
+            # M6-T14b (F25): Meldung des Programms weitergeben, damit der Zyklus die Stufe
+            # überspringen kann
+            msg = str(e)
+            if os.path.exists(text):
+                with open(text, encoding='utf-8') as f:
+                    msg = f.read().strip() or msg
+            raise GhostReturnError(msg) from e
     with open(text, encoding='utf-8') as f:
         return out, first_json(f.read())
 
@@ -1453,8 +1504,19 @@ def cycle_run(args):
             st = system_state(load(cur))
             if stage_done(kind, st) or kind in stalled:
                 continue
-            info = cycle_stage(r, args, k, kind, cur, common, relax, rings,
-                               log=lambda m: print(m, flush=True))
+            try:
+                info = cycle_stage(r, args, k, kind, cur, common, relax, rings,
+                                   log=lambda m: print(m, flush=True))
+            except GhostReturnError as e:
+                # M6-T14b (F25): Rückkehr zu Geisterplatten ohne Lage – Stufe überspringen statt
+                # den Zyklus abzubrechen (erst wieder, wenn eine andere Stufe etwas öffnet)
+                print(f'Stufe c{k}_{kind} übersprungen: {e}', flush=True)
+                summary.setdefault('skipped', []).append(
+                    {'kind': kind, 'tag': f'c{k}_{kind}', 'start': cur, 'start_state': st,
+                     'reason': str(e)})
+                stalled.add(kind)
+                write()
+                continue
             summary['stages'].append(info)
             write()
             new = info['end_state']
@@ -1493,10 +1555,11 @@ FARBE_STANDARD = 'apertur'
 # Einfügen nur mit Verbesserung (M6-T8) – die Einstellungen der Läufe F3 (M6-T11) und A1W4_farbe
 # (M6-T12), dazu aus M6-T13 die Varianten der Farbregel, Vergrößern mit Abstand zur Schwelle
 # (0,8 F_max; ohne kroch die stetige Farbstufe mit Δ = 1/1024, Lauf H1) und Einfügen nur mit
-# Verbesserung auch im Abschluss (Lauf H2)
+# Verbesserung auch im Abschluss (Lauf H2). Farbbudget 5 seit M6-T14b (vorher 4: p1f erreichte in
+# H1S nur 97 % der Breite; im Ablauf apertur gilt es nur für die Stufe p1f)
 COLOR_TOOLS = {'farbregel': True, 'farb_stetig': True, 'farb_ziel': 'voll',
                'farb_modul': 'doublet', 'farb_chromatisch': 0.5, 'feldregel': True,
-               'einfuegen_verbessern': 4, 'farb_budget': 4, 'farb_varianten': True,
+               'einfuegen_verbessern': 4, 'farb_budget': 5, 'farb_varianten': True,
                'wachsen_marge': 0.8, 'einfuegen_abschluss': True}
 
 
@@ -1672,7 +1735,7 @@ def main():
                     help='Spektrum-Homotopie in den Farbstufen: synth --spectrum-stages N (0: aus)')
     ap.add_argument('--farb-budget', type=int, default=None,
                     help='zusätzliche Elemente je Farbstufe über alle Runden (Standard 1, mit '
-                         '--farbe apertur/anfang 4)')
+                         '--farbe apertur/anfang 5 seit M6-T14b, vorher 4)')
     ap.add_argument('--synth-arg', action='append', default=[],
                     help='weitere Option für jeden synth-Aufruf (mehrfach möglich)')
     ap.add_argument('--start', default=os.path.join(ROOT, 'data', 'systems',
@@ -1789,13 +1852,22 @@ def main():
     ap.add_argument('--farb-querfarbe-strahlen', action='store_true',
                     help='M6-T14: Querfarbe zusätzlich aus realen Hauptstrahlen am größten Feld '
                          'erkennen (synth --color-lateral-rays; mit --farb-modul)')
-    ap.add_argument('--bildpunkt', choices=['ideal', 'hauptstrahl', 'schwerpunkt'], default=None,
+    ap.add_argument('--bildpunkt', choices=['ideal', 'hauptstrahl', 'schwerpunkt', 'wie-start'],
+                    default=None,
                     help='M6-T14 (ADR-0019): Mittelpunkt der Referenzsphäre am Hauptstrahl bzw. '
                          'Strahlschwerpunkt bei lambda_ref (Feld reference_point = chief_ray bzw. '
-                         'centroid der Startdatei); Standard: wie die Startdatei')
+                         'centroid der Startdatei); wie-start: Datei unverändert. Standard seit '
+                         'M6-T14b mit --aktuell/--farbregel schwerpunkt, sonst wie die Startdatei')
     ap.add_argument('--verzeichnung', default=None, metavar='D[,W]',
                     help='M6-T14 (ADR-0019): Verzeichnung |D| <= D (Anteil, z. B. 0.01) als '
-                         'Nebenbedingung distortion mit Gewicht W (Standard 1e4) in der Startdatei')
+                         'Nebenbedingung distortion mit Gewicht W (Standard 1e4) in der Startdatei; '
+                         'aus: keine. Standard seit M6-T14b mit --aktuell/--farbregel 0.01')
+    ap.add_argument('--ohne-farb-querfarbe-strahlen', action='store_true',
+                    help='M6-T14b: Querfarbe nicht aus realen Hauptstrahlen (Standard mit '
+                         '--aktuell/--farbregel)')
+    ap.add_argument('--ohne-m6t14', action='store_true',
+                    help='M6-T14b: Bildpunkt, Verzeichnung und Querfarbe wie vor M6-T14b (keine '
+                         'Standards aus M6T14_STANDARDS; Läufe aus M6-T11 bis M6-T13 nachrechnen)')
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
@@ -1833,6 +1905,7 @@ def main():
     if (args.farb_spektrum_rang or args.farb_startradien or args.farb_chromatisch or
             args.farb_modul or args.farb_varianten):
         args.farbregel = True
+    apply_m6t14_standards(args)  # M6-T14b
     if args.zyklus:
         return cycle_run(args)
     if args.apertur_zweig:
@@ -1845,6 +1918,7 @@ def main():
         return osc_branch(args)
     # M6-T13: Ablauf der Farbe im Hauptlauf (apply_color_mode)
     apply_color_mode(args, ap.error)
+    apply_m6t14_standards(args)  # M6-T14b: nach der Farbregel aus --farbe
     new_mode = args.farbe in NEW_COLOR_MODES
     if args.farb_ziel is None:
         args.farb_ziel = 'zwei'
