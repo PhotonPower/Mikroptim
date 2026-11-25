@@ -1,0 +1,54 @@
+Stufe c0_feld: NA 0.5000, Feld 0.100, Spektrum voll, 7 Elemente
+c0_feld_start: Exit 0, 0 s
+  Rückkehr: 6 Platten, F 1.756688e+02 -> 1.756688e+02
+c0_feld_r0: Exit 0, 1246 s
+  c0_feld_r0: step_too_small, Punkt 0.2094, 13 Elemente
+c0_feld_r0_relax: Exit 0, 33 s
+c0_feld_r1: Exit 0, 879 s
+  c0_feld_r1: step_too_small, Punkt 0.3031, 16 Elemente
+c0_feld_r1_relax: Exit 0, 41 s
+c0_feld_r2: Exit 0, 420 s
+  c0_feld_r2: step_too_small, Punkt 0.3656, 16 Elemente
+c0_feld_r2_relax: Exit 0, 42 s
+c0_feld_r3: Exit 0, 835 s
+  c0_feld_r3: max_elements, Punkt 0.5687, 18 Elemente
+c0_feld_r3_relax: Exit 0, 45 s
+c0_feld_z2_s0: Exit 0, 38 s
+c0_feld_z2_s1: Exit 0, 36 s
+c0_feld_z2_s2: Exit 0, 39 s
+c0_feld_rueckbau: Exit 0, 878 s
+c0_feld_wieder: Exit 0, 44 s
+c0_feld_z2r_s0: Exit 0, 37 s
+c0_feld_z2r_s1: Exit 0, 36 s
+c0_feld_z2r_s2: Exit 0, 39 s
+c0_feld_z2r_pupille: Exit 0
+c0_feld_z2r_unendlich: Exit 0
+c0_feld_z2r_psf: Exit 0
+c0_feld_z2r_vektor: Exit 0
+c0_feld_z2r_vollfeld_pupille: Exit 0
+c0_feld_z2r_vollfeld_unendlich: Exit 0
+c0_feld_z2r_vollfeld_psf: Exit 0
+c0_feld_z2r_vollfeld_vektor: Exit 0
+  c0_feld: Punkt NA 0.5000, Feld 0.569; 18 Elemente, nach dem Rückbau 18
+Stufe c1_apertur: NA 0.5000, Feld 0.569, Spektrum voll, 18 Elemente
+c1_apertur_start: Exit 1, 0 s
+Traceback (most recent call last):
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 2034, in <module>
+    p6 = polish(r, 'p6', p6_in, ['--max-iterations', '2000', '-q'] + rings)
+             ^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1805, in main
+    ap.add_argument('--wachsen-marge', type=float, default=None, metavar='Q',
+               ^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1432, in cycle_run
+    'element_budget': args.elementbudget, 'stages': []}
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1261, in cycle_stage
+    r.path(tag + '_rueckbau_log.json'))['result']['point']['field']),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1183, in return_to_ghosts
+    WOERTERBUCH_STANDARD = 4
+            ^^^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 453, in run
+    def __init__(self, exe, out, gpu=False, synth_options=None):
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: c1_apertur_start: mikroptim endete mit 1, siehe C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\docs\ergebnisse\m6-t14\Z1S\c1_apertur_start_bericht.txt

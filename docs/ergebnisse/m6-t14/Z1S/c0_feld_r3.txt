@@ -1,0 +1,63 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t14\Z1S\c0_feld_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.5000, Feldanteil 0.366, 16 Glaselement(e)
+  Ziel                                        NA 0.5000, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 18; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Querfarbe (Seidel oder reale Hauptstrahlen): Modul nach |y·ȳ|, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.5000  0.366   0  -        max_iterations       500  3.205361e-03  3.193775e-03  0.08933   6.853e-06  16  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.5000  0.366   0  -        max_iterations       500  3.097606e-03  3.095813e-03  0.08805   6.632e-06  16  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.5000  0.366   0  -        max_iterations       500  3.065935e-03  3.065378e-03  0.08779   6.469e-06  16  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.5000  0.491   0  0.12500  max_iterations       500  1.023924e-02  1.022447e-02  0.14732   7.648e-05  16  shrink (Delta 0.06250)
+      4  field            0.5000  0.428   0  0.06250  max_iterations       500  5.948484e-03  5.937359e-03  0.12211   4.000e-05  16  shrink (Delta 0.03125)
+      5  field            0.5000  0.397   0  0.03125  max_iterations       500  3.896467e-03  3.894246e-03  0.10026   1.033e-05  16  grow (Delta 0.06250)
+      6  field            0.5000  0.459   0  0.06250  max_iterations       500  5.876868e-03  5.872723e-03  0.12339   1.212e-05  16  shrink (Delta 0.03125)
+      7  field            0.5000  0.428   0  0.03125  max_iterations       500  4.663266e-03  4.660366e-03  0.11050   9.822e-06  16  keep (Delta 0.03125)
+      8  field            0.5000  0.459   0  0.03125  max_iterations       500  6.692466e-03  6.686060e-03  0.14230   1.692e-05  16  shrink (Delta 0.01562)
+      9  field            0.5000  0.444   0  0.01562  max_iterations       500  5.087100e-03  5.084611e-03  0.11595   9.783e-06  16  keep (Delta 0.01562)
+     10  field            0.5000  0.459   0  0.01562  max_iterations       500  5.285891e-03  5.283801e-03  0.11809   8.780e-06  16  insert (Delta 0.00781): Farbregel (chromatischer Anteil 1.77307, größter RMS 0.116413 Wellen, ΔW020 = 0.554548, W040 = 1.56832, sigma_col = 0.140906 Wellen, ΔW111 = 0.448166, ΔW040 = -0.455984, Querfarbe Hauptstrahl Δȳ = 0.516139 µm (sigma_lat = 0.118148 Wellen, Achse 0.065359)): Null-Kittglied im Luftspalt nach Fläche 13, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059) (Querfarbe, Spalt nach |y·ȳ|)
+     11  insertion        0.5000  0.444   0  -        -                      -  -             -             -         -            16  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 13 bei 0.128955 mm, c0 = 0.301432/mm, Gläser CAF2 + SYN-11 (spektraler Rest 3.11379e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+     12  insertion_stage  0.5000  0.444   0  -        max_iterations       500  4.988484e-03  4.986816e-03  0.11487   8.808e-06  16  ok, Zweig 0, Stufe 0.03125
+     13  insertion_stage  0.5000  0.444   0  -        max_iterations       500  4.945001e-03  4.942845e-03  0.11342   9.353e-06  16  ok, Zweig 0, Stufe 0.0625
+     14  insertion_stage  0.5000  0.444   0  -        max_iterations       500  6.131937e-03  6.117518e-03  0.10422   4.287e-05  16  ok, Zweig 0, Stufe 0.125
+     15  insertion_stage  0.5000  0.444   0  -        max_iterations       500  1.224446e-02  1.219515e-02  0.11442   1.553e-04  16  ok, Zweig 0, Stufe 0.25
+     16  insertion_stage  0.5000  0.444   0  -        max_iterations       500  2.014401e-02  2.011805e-02  0.18577   2.146e-04  16  ok, Zweig 0, Stufe 0.5
+     17  penalty          0.5000  0.444   0  -        max_iterations       500  2.987733e-03  2.960976e-03  0.08454   6.813e-06  18  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     18  penalty          0.5000  0.444   0  -        max_iterations       500  2.753319e-03  2.747607e-03  0.08421   5.889e-06  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+     19  penalty          0.5000  0.444   0  -        max_iterations       500  2.731371e-03  2.730688e-03  0.08426   5.711e-06  18  ok: Gewichte der einseitigen Bedingungen ×1
+     20  field            0.5000  0.569   0  0.12500  max_iterations       500  1.469871e-02  1.464864e-02  0.15425   1.872e-04  18  shrink (Delta 0.06250)
+     21  field            0.5000  0.506   0  0.06250  max_iterations       500  4.374352e-03  4.369220e-03  0.10776   2.385e-05  18  keep (Delta 0.06250)
+     22  field            0.5000  0.569   0  0.06250  max_iterations       500  6.092731e-03  6.082198e-03  0.13956   2.459e-05  18  shrink (Delta 0.03125)
+     23  field            0.5000  0.537   0  0.03125  max_iterations       500  4.706335e-03  4.702675e-03  0.11800   1.761e-05  18  keep (Delta 0.03125)
+     24  field            0.5000  0.569   0  0.03125  max_iterations       500  5.249030e-03  5.244204e-03  0.12976   1.672e-05  18  shrink (Delta 0.01562)
+     25  field            0.5000  0.553   0  0.01562  max_iterations       500  4.716663e-03  4.712977e-03  0.11940   1.572e-05  18  keep (Delta 0.01562)
+     26  field            0.5000  0.569   0  0.01562  max_iterations       500  5.050214e-03  5.046457e-03  0.12631   1.663e-05  18  keep (Delta 0.01562)
+     27  field            0.5000  0.584   0  0.01562  max_iterations       500  5.535209e-03  5.530059e-03  0.13565   1.767e-05  18  insert (Delta 0.00781): Farbregel (RMS-Verhältnis 2.71679, größter RMS 0.163029 Wellen, ΔW020 = 0.436988, W040 = 1.29768, sigma_col = 0.172714 Wellen, ΔW111 = 0.637938, ΔW040 = -0.374568, Querfarbe Hauptstrahl Δȳ = 0.729114 µm (sigma_lat = 0.1669 Wellen, Achse 0.0479684)): Operator B an der Linse ab Fläche 1
+     28  removal_stage    0.5000  0.569   0  -        max_iterations       500  2.052108e-02  2.037682e-02  0.20943   1.929e-04  18  -: Element ab Fläche 6 (CAF2, Kittglied, Seidel-Beitrag 1.502 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     29  removal_stage    0.5000  0.569   0  -        max_iterations       500  2.259437e-02  2.255552e-02  0.20264   2.722e-04  18  -: Element ab Fläche 6 (CAF2, Kittglied, Seidel-Beitrag 1.502 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     30  removal_stage    0.5000  0.569   0  -        max_iterations       500  2.712729e-02  2.709181e-02  0.21713   3.569e-04  18  -: Element ab Fläche 6 (CAF2, Kittglied, Seidel-Beitrag 1.502 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     31  removal          0.5000  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 6 (CAF2, Kittglied, Seidel-Beitrag 1.502 Wellen): F_B 0.0270918 > 0.00510204
+     32  removal_stage    0.5000  0.569   0  -        max_iterations       500  4.982596e-03  4.969471e-03  0.11226   2.273e-05  18  -: Element ab Fläche 14 (CAF2, Kittglied, Seidel-Beitrag 1.574 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     33  removal_stage    0.5000  0.569   0  -        max_iterations       500  4.963761e-03  4.961381e-03  0.11330   2.576e-05  18  -: Element ab Fläche 14 (CAF2, Kittglied, Seidel-Beitrag 1.574 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     34  removal_stage    0.5000  0.569   0  -        max_iterations       500  5.478712e-03  5.472811e-03  0.11397   3.649e-05  18  -: Element ab Fläche 14 (CAF2, Kittglied, Seidel-Beitrag 1.574 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     35  removal          0.5000  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 14 (CAF2, Kittglied, Seidel-Beitrag 1.574 Wellen): F_B 0.00547281 > 0.00510204
+     36  removal_stage    0.5000  0.569   0  -        max_iterations       500  5.990384e-03  5.983347e-03  0.12412   2.921e-05  18  -: Element ab Fläche 11 (CAF2, Kittglied, Seidel-Beitrag 2.009 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     37  removal_stage    0.5000  0.569   0  -        max_iterations       500  5.949284e-03  5.943344e-03  0.12093   2.887e-05  18  -: Element ab Fläche 11 (CAF2, Kittglied, Seidel-Beitrag 2.009 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     38  removal_stage    0.5000  0.569   0  -        max_iterations       500  7.076328e-03  7.070197e-03  0.13599   5.200e-05  18  -: Element ab Fläche 11 (CAF2, Kittglied, Seidel-Beitrag 2.009 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     39  removal          0.5000  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 11 (CAF2, Kittglied, Seidel-Beitrag 2.009 Wellen): F_B 0.0070702 > 0.00510204
+     40  removal_stage    0.5000  0.569   0  -        max_iterations       500  2.794857e-02  2.776861e-02  0.21354   3.311e-04  18  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 5.546 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     41  removal_stage    0.5000  0.569   0  -        max_iterations       500  1.226243e-01  1.199487e-01  0.43931   1.253e-03  18  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 5.546 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     42  removal_stage    0.5000  0.569   0  -        max_iterations       500  1.177518e-01  1.165989e-01  0.37504   1.374e-03  18  -: Element ab Fläche 9 (SYN-30, Seidel-Beitrag 5.546 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     43  removal          0.5000  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 9 (SYN-30, Seidel-Beitrag 5.546 Wellen): F_B 0.116599 > 0.00510204
+
+Status: max_elements (Feldanteil 0.56875: Schrittweite unter Δ_min = 0.015625 (letzter Versuch F_B = 0.00553006); Bedarf (Operator B), aber höchste Elementzahl 18 erreicht)
+Endpunkt: NA 0.5000, Feldanteil 0.569, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.5000)
+Glaselemente: 16 -> 18 (1 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 39, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                834.6
+Ergebnis geschrieben: docs\ergebnisse\m6-t14\Z1S\c0_feld_r3.json
+Protokoll geschrieben: docs\ergebnisse\m6-t14\Z1S\c0_feld_r3_log.json
