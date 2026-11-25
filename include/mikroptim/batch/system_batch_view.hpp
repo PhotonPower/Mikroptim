@@ -115,6 +115,8 @@ struct SystemBatchView {
     R reference_wavelength_nm; // Referenzwellenlänge λ_ref (OPD in Wellen) [nm]
     // Art der Referenzsphäre (ADR-0017, aus BatchTopology::reference_sphere)
     ReferenceSphereKind reference_sphere;
+    // Höhe des Mittelpunkts der Referenzsphäre (ADR-0019, aus BatchTopology::reference_point)
+    ReferencePointKind reference_point;
 
     // Gemeinsam für den Batch
     const SurfaceKind* type;    // [S]
@@ -143,6 +145,9 @@ struct SystemBatchView {
     // Krümmung κ_f = σ/R der Referenzsphäre um den Bildpunkt (ADR-0017): [V][F] wie
     // field_target, beim Aufbau eingefroren; nullptr bei ReferenceSphereKind::LastSurface.
     const R* reference_curvature;
+    // Höhe ȳ_f des Mittelpunkts der Referenzsphäre (ADR-0019): [V][F] wie field_target, Höhe
+    // des realen Hauptstrahls bei λ_ref; nullptr außer bei ReferencePointKind::ChiefRay.
+    const R* reference_height;
 
     // Flächentabelle der Variante v für trace_ray: Zeiger um v·S, v·S·L, v·G·K, v·G·L bzw.
     // v·S·4 versetzt; type und ghost_norm_radius sind für alle Varianten dieselben. Ohne

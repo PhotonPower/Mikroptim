@@ -76,6 +76,7 @@ add_executable(mikroptim_tests
     test_prefilter.cpp
     test_psf.cpp
     test_raytatouille.cpp
+    test_reference_point.cpp
     test_reference_sphere.cpp
     test_pupil_quadrature.cpp
     test_sensitivity.cpp

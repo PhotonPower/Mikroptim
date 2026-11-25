@@ -22,3 +22,4 @@ Jede grundsätzliche Entscheidung bekommt eine nummerierte Datei nach [vorlage.m
 | [0016](0016-claude-als-entscheider.md) | Claude-API als zusätzlicher Entscheider (optionales Extra) | angenommen |
 | [0017](0017-referenzsphaere-bildpunkt.md) | Referenzsphäre unabhängig von der letzten Fläche | angenommen |
 | [0018](0018-optionale-merit-terme.md) | Optionale Merit-Terme: Augmented Lagrangian und toleranzbewusste Merit | angenommen |
+| [0019](0019-verzeichnung-hauptstrahl.md) | Verzeichnung als eigene Nebenbedingung, Bildpunkt der Merit aus realen Strahlen | angenommen |

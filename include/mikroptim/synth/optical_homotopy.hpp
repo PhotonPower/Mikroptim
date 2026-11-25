@@ -153,6 +153,13 @@ struct OpticalHomotopyOptions {
     // |y|. Anlass: In den Öffnungsstufen ab F3 begrenzen Querfarbe und Verzeichnung am Feldrand
     // (Bericht M6-T13). Wirkt nur mit color_module. Standard aus.
     bool color_module_lateral = false;
+    // Querfarbe aus realen Hauptstrahlen (M6-T14, Bericht M6-T13: das Seidel-Kriterium oben
+    // greift bei hoher NA nie, weil ΔW020 am Punkt groß, die reale Längsfarbe aber klein ist):
+    // zusätzlich gilt die Querfarbe als überwiegend, wenn σ_lat = Δȳ · NA/(4 λ_ref) aus der
+    // Spanne Δȳ der Hauptstrahlhöhen über die Wellenlängen am größten Feld (real, bei der NA des
+    // Punkts) größer ist als der größte RMS am kleinsten Feld (Achse). Wirkt wie
+    // color_module_lateral (setzt es nicht voraus) und nur mit color_module. Standard aus.
+    bool color_lateral_rays = false;
     // Feldregel (M6-T8, Befund F14 aus M6-T6b): Meldet die Geisterdiagnose keinen Bedarf (die
     // Platten sehen Feldfehler kaum: blendennah bzw. mit zu großem Normierungsradius) und
     // dominieren Feldfehler, empfiehlt diagnose Operator A im Luftspalt mit dem größten

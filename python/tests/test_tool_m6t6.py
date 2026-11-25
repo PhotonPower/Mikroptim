@@ -505,3 +505,43 @@ def test_synth_options_m6t13b_switches(tool):
                               gemeinsam=False, wachsen_marge=0.0)
     tool.apply_color_mode(a)
     assert a.wachsen_marge == 0.0 and a.farb_varianten is True
+
+
+def test_reference_point_and_distortion(tool):
+    """M6-T14 (ADR-0019): --bildpunkt hauptstrahl setzt reference_point, --verzeichnung D[,W]
+    ersetzt bzw. hängt den Eintrag distortion an; ohne Schalter bleibt die Datei unverändert."""
+    s = {"reference_sphere": "image_infinite",
+         "constraints": {"items": [{"type": "focal_length", "weight": 1.0},
+                                   {"type": "distortion", "max_distortion": 0.5}]}}
+    before = json.loads(json.dumps(s))
+    tool.set_reference_point(s, types.SimpleNamespace(bildpunkt=None, verzeichnung=None))
+    assert s == before
+    tool.set_reference_point(s, types.SimpleNamespace(bildpunkt="hauptstrahl",
+                                                      verzeichnung="0.01"))
+    assert s["reference_point"] == "chief_ray"
+    assert s["constraints"]["items"] == [
+        {"type": "focal_length", "weight": 1.0},
+        {"type": "distortion", "max_distortion": 0.01, "weight": tool.DISTORTION_WEIGHT}]
+    tool.set_reference_point(s, types.SimpleNamespace(bildpunkt="schwerpunkt", verzeichnung=None))
+    assert s["reference_point"] == "centroid"
+    tool.set_reference_point(s, types.SimpleNamespace(bildpunkt="ideal", verzeichnung="0,2e3"))
+    assert "reference_point" not in s
+    assert s["constraints"]["items"][-1] == {"type": "distortion", "max_distortion": 0.0,
+                                             "weight": 2000.0}
+    t = {}
+    tool.set_reference_point(t, types.SimpleNamespace(bildpunkt=None, verzeichnung="0.005,10"))
+    assert t == {"constraints": {"items": [{"type": "distortion", "max_distortion": 0.005,
+                                            "weight": 10.0}]}}
+    with pytest.raises(ValueError):
+        tool.parse_distortion("-0.01")
+
+
+def test_synth_options_lateral_rays(tool):
+    """M6-T14: --farb-querfarbe-strahlen reicht synth --color-lateral-rays durch (mit Modul)."""
+    a = types.SimpleNamespace(aktuell=False, farbregel=True, farb_achromat=False,
+                              sinusbedingung=None, feldregel=False, synth_arg=[],
+                              farb_modul="doublet", farb_querfarbe_strahlen=True)
+    assert tool.synth_options(a) == ["--color-rule", "--color-module", "doublet",
+                                     "--color-lateral-rays"]
+    a.farb_modul = None
+    assert tool.synth_options(a) == ["--color-rule"]

@@ -120,6 +120,10 @@ struct SystemDescription {
     // Referenzsphäre der Merit (ADR-0017). Leer: LastSurface (Konvention vor ADR-0017, alte
     // Dateien rechnen bitgleich weiter); geschrieben wird das Feld nur, wenn es gesetzt ist.
     std::optional<ReferenceSphereKind> reference_sphere;
+    // Höhe des Mittelpunkts der Referenzsphäre (ADR-0019). Leer: Ideal (idealer Bildpunkt,
+    // bitgleich zu den Ergebnissen davor); ChiefRay nur mit einer Referenzsphäre am Bildpunkt
+    // und kollimierter Quelle. Geschrieben nur, wenn gesetzt.
+    std::optional<ReferencePointKind> reference_point;
     std::vector<Surface> surfaces; // in Tracerichtung, surfaces[0] ist die Blende
     // Geisterplatten, sortiert nach (after_surface, distance); leer: keine
     std::vector<GhostPlate> ghost_plates;

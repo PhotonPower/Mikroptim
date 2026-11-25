@@ -47,6 +47,11 @@ struct BatchTopology {
     // Arten um den Bildpunkt; dann trägt der Batch pro Variante und Feld die Krümmung
     // reference_curvature (sonst keinen Speicher dafür, Kernel lesen nichts).
     ReferenceSphereKind reference_sphere = ReferenceSphereKind::LastSurface;
+    // Höhe des Mittelpunkts der Referenzsphäre (ADR-0019): Ideal (Standard, field_target) oder
+    // ChiefRay; dann trägt der Batch pro Variante und Feld die Höhe reference_height des realen
+    // Hauptstrahls bei λ_ref in der Bildebene (sonst keinen Speicher dafür, Kernel lesen nichts).
+    // ChiefRay verlangt eine Sphäre am Bildpunkt und die kollimierte Quelle (validate_topology).
+    ReferencePointKind reference_point = ReferencePointKind::Ideal;
 
     friend bool operator==(const BatchTopology&, const BatchTopology&) = default;
 };
@@ -158,6 +163,12 @@ public:
     // update_reference_curvature setzt sie, VariableSet::apply ändert sie nicht.
     double& reference_curvature(int v, int f);
     double reference_curvature(int v, int f) const;
+    // Höhe ȳ_f des Mittelpunkts der Referenzsphäre für Feld f (ADR-0019): nur bei
+    // topology().reference_point == ChiefRay (der schreibende Zugriff wirft sonst
+    // std::invalid_argument, der lesende liefert field_target). Folgt den Variablen:
+    // update_reference_height setzt sie, VariableSet::apply ruft es für die geänderte Variante.
+    double& reference_height(int v, int f);
+    double reference_height(int v, int f) const;
     // Arbeitsabstand = thickness(v, S−1) (einzige Quelle, kein eigenes Feld).
     double& image_distance(int v) { return thickness(v, surfaces() - 1); }
     double image_distance(int v) const { return thickness(v, surfaces() - 1); }
@@ -197,6 +208,8 @@ public:
     std::span<const double> decenter_tilt_data() const { return decenter_tilt_; }
     std::span<double> reference_curvature_data() { return reference_curvature_; }
     std::span<const double> reference_curvature_data() const { return reference_curvature_; }
+    std::span<double> reference_height_data() { return reference_height_; }
+    std::span<const double> reference_height_data() const { return reference_height_; }
     std::span<double> buchdahl_coeff_data() { return buchdahl_coeff_; }
     std::span<const double> buchdahl_coeff_data() const { return buchdahl_coeff_; }
 
@@ -242,6 +255,7 @@ private:
     std::vector<double> buchdahl_coeff_;      // nur Host, [V][S][4]
     std::vector<double> decenter_tilt_;       // [V][S][4], leer bei koaxialer Topologie
     std::vector<double> reference_curvature_; // [V][F], leer bei LastSurface (ADR-0017)
+    std::vector<double> reference_height_;    // [V][F], leer außer bei ChiefRay (ADR-0019)
 };
 
 // Kopie von `batch` mit nicht koaxialer Topologie (non_coaxial = true, volle Pupille für alle
@@ -258,6 +272,31 @@ SystemBatchHost make_non_coaxial(const SystemBatchHost& batch);
 // telezentrisch κ = 0. ImageInfinite: κ = 0. LastSurface: nichts. Wirft std::invalid_argument,
 // wenn die Lage der Austrittspupille nicht endlich ist oder der Bildpunkt in ihr liegt (R = 0).
 void update_reference_curvature(SystemBatchHost& batch, int first = 0, int count = -1);
+
+// Höhe des realen Hauptstrahls in der Bildebene (ADR-0019) für Variante v und Feld f: Strahl
+// durch die Mitte der Blende (Fläche 0, ADR-0006) mit dem Feldwinkel θ_f, durch die
+// Tabellenflächen der Variante, ohne Dezentrierung und Verkippung, dann geradlinig bis
+// z = w = thickness[S−1] in lokalen Koordinaten der letzten Fläche: ȳ = p_y + d_y (w − p_z)/d_z.
+// Wellenlänge: l < 0 → λ_ref mit den Brechzahlen paraxial_index bzw. paraxial_ghost_index (wie
+// batch_sine_condition), sonst die Wellenlänge l des Batches (index, ghost_index). NaN, wenn der
+// Strahl hart versagt (auch Totalreflexion) oder nach der letzten Fläche nicht vorwärts läuft
+// (d_z ≤ 0). Nur kollimierte Quelle (sonst std::invalid_argument); std::out_of_range bei
+// ungültigem v, f oder l ≥ L.
+double batch_chief_ray_height(const SystemBatchHost& batch, int v, int f, int l = -1);
+
+// Schwerpunkt der Strahlen bei λ_ref in der Bildebene (ADR-0019, ReferencePointKind::Centroid)
+// für Variante v und Feld f: Pupillenquadratur der halben Pupille mit kReferenceCentroidRings ×
+// kReferenceCentroidSpokes Stützstellen, kollimierte Strahlen wie batch_chief_ray_height (λ_ref,
+// ohne Dezentrierung), Schnitt mit z = w, Mittel der Höhen mit den Gewichten der Quadratur über die
+// Strahlen, die nicht versagen. 0 für θ_f = 0, NaN, wenn alle versagen. Nur kollimierte Quelle.
+double batch_centroid_height(const SystemBatchHost& batch, int v, int f);
+
+// Höhe ȳ_f der Referenzsphäre am Hauptstrahl bzw. Schwerpunkt (ADR-0019) für die Varianten
+// [first, first + count) (count < 0: bis zum Ende): batch_chief_ray_height; versagt der
+// Hauptstrahl (NaN), gilt der ideale Bildpunkt field_target (Rückfall, stetig nur, solange der
+// Hauptstrahl existiert). Ohne ChiefRay passiert nichts. Wirft std::out_of_range bei ungültigem
+// Bereich.
+void update_reference_height(SystemBatchHost& batch, int first = 0, int count = -1);
 
 // Paraxialdaten der Variante v bei λ_ref (Beschreibung bei der Deklaration in
 // mikroptim/optim/paraxial_residuals.hpp; definiert in der Bibliothek Mikroptim::batch).
@@ -290,7 +329,8 @@ BatchTopology topology_of(const SystemDescription& system, const IndexTable& ind
 // Buchdahl-Koeffizienten (buchdahl_coeff) aus den Materialien vom Typ Buchdahl, sonst 0.
 // Dezentrierung und Verkippung (nur nicht koaxiale Systeme) aus der Flächentabelle.
 // Referenzsphäre aus system.reference_sphere (ohne Angabe LastSurface), bei den Arten am
-// Bildpunkt κ mit update_reference_curvature (ADR-0017).
+// Bildpunkt κ mit update_reference_curvature (ADR-0017); Bildpunkt aus system.reference_point
+// (ohne Angabe Ideal), bei ChiefRay vorher ȳ_f mit update_reference_height (ADR-0019).
 // Feldziel h_f = f_soll · tan θ_f (docs/numerik.md, Abschnitt 7). f_soll ist der Reihe nach
 // `focal_length`, target.focal_length oder die paraxiale Brennweite bei λ_ref (mit den
 // Brechzahlen bei λ_ref wie paraxial_index). Ist keine Brennweite bestimmbar (afokales System)

@@ -276,6 +276,8 @@ void ToleranceModel::apply(SystemBatchHost& batch, int v, std::span<const double
         }
         batch.paraxial_index(v, ts) = n_ref + dn[s];
     }
+    // Bildpunkt am Hauptstrahl (ADR-0019): das gestörte System hat seinen eigenen Hauptstrahl
+    update_reference_height(batch, v, 1);
 }
 
 void ToleranceModel::write_samples(const SystemBatchHost& nominal, int base_variant,

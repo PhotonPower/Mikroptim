@@ -348,6 +348,7 @@ GhostDiagnosis diagnose_ghost_plates(const SystemDescription& system, const Glas
                 for (int k = 0; k < batch.ghost_terms(); ++k) {
                     probe.ghost_coeff(g + 1, g, k) = 0.0;
                 }
+                update_reference_height(probe, g + 1, 1); // ADR-0019 (sonst nichts)
             }
         }
         f = merit(probe);

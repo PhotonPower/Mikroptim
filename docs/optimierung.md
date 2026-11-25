@@ -341,6 +341,25 @@ die Verletzung der Sinusbedingung nach Conrady (Staeble–Lihotzky-Form mit dem 
 | Wirkung: Einzellinse `einzellinse_bk7_biegung.json` nur auf der Achse, w = 10⁶, 50 Zyklen | OSC am Rand 3,19·10⁻⁴ → 1,6·10⁻⁸ (Biegung ohne Koma) |
 | Nutzen: Versuch „Apertur zuerst auf der Achse“ von M6-T6 (F4) mit und ohne Residuum | [docs/ergebnisse/m11-t4-sinusbedingung.md](ergebnisse/m11-t4-sinusbedingung.md) |
 
+### 2.8 Verzeichnung (ab M6-T14, ADR-0019)
+
+API: Typ `ConstraintType::Distortion` und `batch_chief_ray_height`; Schema: Typ `distortion` mit Pflichtfeld `max_distortion` in [dateiformat.md](dateiformat.md#nebenbedingungen-ab-m3-t3); CLI `--distortion D_MAX[,W]` in `optimize` und `synth` ([cli.md](cli.md)). Begründung: [ADR-0019](adr/0019-verzeichnung-hauptstrahl.md) (Befund F20 aus M6-T13: am Feldrand begrenzt die Kippung aus Verzeichnung und Querfarbe).
+
+Pro Feld f der Quelle ein Residuum
+
+$$r_f = \sqrt{w}\;\max\big(0,\ |D_f| - D_{\max}\big),\qquad D_f = \frac{\bar y_f - h_f}{h_f},$$
+
+mit der Höhe ȳ_f des realen Hauptstrahls bei λ_ref in der Bildebene (numerik.md §7, „Bildpunkt aus realen Strahlen“; immer der Hauptstrahl, auch bei `reference_point` = `centroid`) und der idealen Höhe h_f = f_soll tan θ_f (`field_target`). Auf der Achse (h_f = 0), bei versagendem Hauptstrahl oder für ein Feld, das der Batch nicht hat, ist das Residuum 0 (q = −D_max; das Versagen bestrafen die Strahlresiduen).
+
+- **Einordnung.** Gewöhnliches Zusatzresiduum im Block der paraxialen Bedingungen (`ParaxialConstraints`, ein Eintrag pro Feld mit derselben Nummer `item`, `ParaxialConstraint::field`), also ohne weitere Verdrahtung in `optimize`, `synth`, `insert`, `snap`, FD- und adjungierter Jacobi (Zusatzzeilen per FD) und auf CPU und GPU. Ein Hauptstrahl pro Feld und Variante auf dem Host.
+- **Nur Obergrenze** (`mode` fehlt oder `max`), D_max ≥ 0 (Anteil, 0,01 = 1 %); D_max = 0 ergibt √w |D_f|, im Quadrat glatt. Höchstens ein Eintrag, nur kollimierte Quelle. Keine Verschiebung des Augmented Lagrangian (`supports_shift` falsch: ein Residuum pro Feld).
+- **Gewicht.** D ist dimensionslos, w in Wellen²; Standard der CLI 10⁴ (1 % über der Grenze kostet eine Welle², 0,1 % noch 0,01 Wellen² – mehr als die Merit eines beugungsbegrenzten Systems, F ≤ 5,1·10⁻³).
+- **Maßstab.** D_f enthält den Maßstabsfehler f/f_soll − 1 (wie die Kippung der Merit mit idealem Bildpunkt); mit der Bedingung `focal_length` bleibt die eigentliche Verzeichnung.
+- **Mit Bildpunkt aus realen Strahlen** (`reference_point` = `centroid` oder `chief_ray`) ist das die einzige Stelle, an der die Merit die Verzeichnung sieht; mit idealem Bildpunkt bestraft die Wellenfront sie zusätzlich. Die Querfarbe bleibt in beiden Fällen in der Wellenfront (Kippung relativ zu λ_ref).
+- **Glattheit.** Glatt in den Variablen außer am Knick |D_f| = D_max (wie die übrigen einseitigen Bedingungen) und beim Versagen des Hauptstrahls.
+
+**Abnahme** (`tests/test_reference_point.cpp`, `CliOptimize.ReferencePointAndDistortionOptions`): siehe [Bericht M6-T14](ergebnisse/m6-t14-verzeichnung-querfarbe.md#5-tests).
+
 ## 3. Warum L1 für Geisterplatten
 
 Mit einer quadratischen Strafe wäre der Grenznutzen bei a = 0 null; der Optimierer würde immer ein wenig Geisterkorrektur verwenden. Mit L1 gilt die Theorie der exakten Penalty: Ist μ größer als der zugehörige Lagrange-Multiplikator, bleiben die Koeffizienten exakt null, solange das reale System das Ziel alleine erreicht. Zusätzlich entsteht Sparsity: wenige, gezielte Koeffizienten statt vieler kleiner. Die Glättung mit ε (Startwert 10⁻⁶ in Einheiten des Dickenprofils) hält LM differenzierbar.
@@ -973,6 +992,16 @@ Option `OpticalHomotopyOptions::color_variants` (Bibliothek: Standard aus, ohne 
 höchstens `insertion_attempts` (bzw. `--alternatives` in der Strahlsuche). Jede Variante fügt an einer anderen Stelle oder mit einem anderen Operator ein. Im JSON `options.color_rule_ext.variants`, im Textkopf unter „Farbregel (M6-T11)“.
 
 Tests: `ColorStage.ColorVariantsAreDistinctInsertions` (Dreilinser mit nicht teilbarer Mittellinse; Orakel: Fläche, an der `insert` tatsächlich einfügt – ohne Option mindestens eine Variante gleich der Empfehlung, mit Option alle verschieden, keine nicht teilbare Linse, Empfehlung einer nicht teilbaren Linse wirft bei `insert` und entfällt als Variante; mit aktiver Geisterplatte ist die letzte Variante gleich `diagnose` ohne Farbregel), `CliSynth.ColorStageOptions` (JSON und Text nur mit Option, Einzellinse gleiches Ergebnis).
+
+### Querfarbe aus realen Hauptstrahlen (M6-T14)
+
+Anlass (Bericht M6-T13, F20): `--color-module-lateral` griff in keinem Lauf. Ursache: Das Kriterium vergleicht Seidel-Summen am Punkt, |ΔW111|/4 > |ΔW020|/(2√3); bei den Systemen hoher NA ist die Seidel-Längsfarbe ΔW020 groß (≈ −0,5 Wellen bei F3Z), wird aber im realen System von Termen höherer Ordnung ausgeglichen (Achse ≤ 0,027 Wellen), während die reale Querfarbe am Feldrand (Spanne der Hauptstrahlhöhen 0,34 µm, ≈ 0,1 Wellen Kippung) die Seidel-Querfarbe übersteigt.
+
+Option `OpticalHomotopyOptions::color_lateral_rays` (CLI `synth --color-lateral-rays`, verlangt `--color-module`; Skript `--farb-querfarbe-strahlen`; Standard aus, ohne sie bitgleich): Die Querfarbe gilt zusätzlich als überwiegend, wenn
+
+$$\sigma_{\mathrm{lat}} = \frac{\Delta\bar y\;\mathrm{NA}}{4\,\lambda_{\mathrm{ref}}} > \max_\lambda \mathrm{RMS}(\text{kleinstes Feld}, \lambda)$$
+
+mit der Spanne Δȳ = max_l ȳ_l − min_l ȳ_l der realen Hauptstrahlhöhen (`batch_chief_ray_height` bei den Wellenlängen des Spektrums mit Gewicht > 0) am größten Feldwinkel mit Gewicht > 0 und der NA des Punkts (σ_lat ist der RMS der Kippung der äußeren Wellenlängen gegen ihren mittleren Bildpunkt: Kippung mit Randwert a hat den RMS a/2, a = (Δȳ/2) NA/λ_ref). Dann wie `--color-module-lateral`: Kittglied-Modul zuerst, Spalt nach |y·ȳ|. Der Text der Empfehlung nennt Δȳ, σ_lat und den Achswert.
 
 ### Farbe früh im Hauptlauf (M6-T13)
 

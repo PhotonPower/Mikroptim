@@ -41,4 +41,46 @@ constexpr const char* reference_sphere_name(ReferenceSphereKind kind) {
     return "?";
 }
 
+// Höhe des Mittelpunkts der Referenzsphäre (ADR-0019, 1 Byte, Werte stabil). Nur bei den Arten
+// am Bildpunkt (is_image_reference) wählbar.
+enum class ReferencePointKind : std::uint8_t {
+    // Idealer Bildpunkt M_f = (0, h_f, w) mit h_f = f_soll · tan θ_f (ADR-0017, Punkt 3):
+    // Verzeichnung und Querfarbe erscheinen als Kippung der OPD. Standard (bitgleich).
+    Ideal = 0,
+    // Durchstoßpunkt des realen Hauptstrahls bei λ_ref in der Bildebene, M_f = (0, ȳ_f, w),
+    // gemeinsam für alle Wellenlängen des Feldes: Die Verzeichnung verlässt die Wellenfront
+    // (eigene Nebenbedingung `distortion`), die Querfarbe bleibt als Kippung der Wellenlängen
+    // relativ zu λ_ref. ȳ_f folgt den Variablen (update_reference_height nach jedem apply).
+    ChiefRay = 1,
+    // Schwerpunkt der Strahlen bei λ_ref in der Bildebene (Pupillenquadratur mit
+    // kReferenceCentroidRings × kReferenceCentroidSpokes, Gewichte der Quadratur), gemeinsam für
+    // alle Wellenlängen: entfernt bei λ_ref die mittlere Kippung (Lage des Bildes, wie die
+    // Bewertung „ohne Kippung“), die Querfarbe bleibt als Kippung relativ zu λ_ref. Folgt den
+    // Variablen wie ChiefRay.
+    Centroid = 2,
+};
+
+// Wird die Höhe des Mittelpunkts aus realen Strahlen gerechnet (ChiefRay, Centroid)?
+MKO_HD constexpr bool is_traced_reference_point(ReferencePointKind kind) {
+    return kind != ReferencePointKind::Ideal;
+}
+
+// Pupillenquadratur des Schwerpunkts (ReferencePointKind::Centroid): Ringe und Speichen der
+// halben Pupille (Gauß-Legendre radial, wie die Merit).
+inline constexpr int kReferenceCentroidRings = 8;
+inline constexpr int kReferenceCentroidSpokes = 8;
+
+// Name in Systemdatei und CLI: "ideal", "chief_ray", "centroid".
+constexpr const char* reference_point_name(ReferencePointKind kind) {
+    switch (kind) {
+    case ReferencePointKind::Ideal:
+        return "ideal";
+    case ReferencePointKind::ChiefRay:
+        return "chief_ray";
+    case ReferencePointKind::Centroid:
+        return "centroid";
+    }
+    return "?";
+}
+
 } // namespace mko

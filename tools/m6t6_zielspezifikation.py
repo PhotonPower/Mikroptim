@@ -48,6 +48,11 @@ Schwelle (0,8) gelten mit --aktuell bzw. --farbregel; abschalten mit --ohne-farb
 --aktuell/--farbregel übergibt das Skript wie bisher die Standards der dokumentierten Läufe
 (--stall 0, dazu --grow-margin 0 und mit --einfuegen-verbessern --no-insertion-improve-finish).
 
+Verzeichnung und Querfarbe (M6-T14, ADR-0019, Bericht
+docs/ergebnisse/m6-t14-verzeichnung-querfarbe.md): --bildpunkt schwerpunkt|hauptstrahl
+(Referenzsphäre um den Strahlschwerpunkt bzw. Hauptstrahl bei lambda_ref, Feld reference_point), --verzeichnung D[,W] (Nebenbedingung distortion),
+--farb-querfarbe-strahlen (Farbregel erkennt Querfarbe aus realen Hauptstrahlen).
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -61,6 +66,8 @@ import sys
 import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# M6-T14: Standardgewicht der Nebenbedingung distortion (synth/optimize --distortion)
+DISTORTION_WEIGHT = 1e4
 
 
 # ---------------------------------------------------------------------------------------------
@@ -396,6 +403,8 @@ def synth_options(args):
             opts.append('--color-module-anomalous')
         if getattr(args, 'farb_querfarbe', False):
             opts.append('--color-module-lateral')  # M6-T13
+        if getattr(args, 'farb_querfarbe_strahlen', False):
+            opts.append('--color-lateral-rays')  # M6-T14
     # M6-T13: Varianten der Farbregel, Einfügen nur mit Verbesserung auch im Abschluss, Vergrößern
     # mit Abstand zur Schwelle; seit M6-T13b Standard von synth, abschaltbar
     if getattr(args, 'ohne_farb_varianten', False):
@@ -974,6 +983,34 @@ def set_reference_sphere(system, kind):
     system['reference_sphere'] = kind
 
 
+def set_reference_point(system, args):
+    """M6-T14 (ADR-0019): Bildpunkt der Referenzsphäre am Hauptstrahl bzw. Schwerpunkt bei λ_ref
+    (--bildpunkt hauptstrahl|schwerpunkt, Feld reference_point) und Verzeichnung als Nebenbedingung
+    (--verzeichnung D[,W], Eintrag distortion; ersetzt einen vorhandenen). Ohne beide Schalter
+    bleibt die Datei unverändert."""
+    point = {'hauptstrahl': 'chief_ray', 'schwerpunkt': 'centroid'}.get(
+        getattr(args, 'bildpunkt', None))
+    if point:
+        system['reference_point'] = point
+    elif getattr(args, 'bildpunkt', None) == 'ideal':
+        system.pop('reference_point', None)
+    if getattr(args, 'verzeichnung', None):
+        d_max, weight = parse_distortion(args.verzeichnung)
+        cons = system.setdefault('constraints', {}).setdefault('items', [])
+        cons[:] = [c for c in cons if c.get('type') != 'distortion']
+        cons.append({'type': 'distortion', 'max_distortion': d_max, 'weight': weight})
+
+
+def parse_distortion(text):
+    """D[,W] von --verzeichnung: Grenze |D| <= D (Anteil) und Gewicht W (Standard 1e4)."""
+    parts = str(text).split(',')
+    d_max = float(parts[0])
+    weight = float(parts[1]) if len(parts) > 1 else DISTORTION_WEIGHT
+    if not (d_max >= 0.0 and weight >= 0.0):
+        raise ValueError('--verzeichnung erwartet D[,W] mit D >= 0 und W >= 0')
+    return d_max, weight
+
+
 def f12_guard(args):
     """Hilfsbedingung paraxial_focus gegen die Falle F12 im OSC-Versuch: nur bei der alten
     Konvention `last_surface` standardmäßig an (M6-T7: mit der neuen Konvention entbehrlich)."""
@@ -991,6 +1028,7 @@ def aperture_branch(args):
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
     set_reference_sphere(s, args.referenzsphaere)  # M6-T7 (ADR-0017)
+    set_reference_point(s, args)  # M6-T14 (ADR-0019)
     start = r.path('a0_start.json')
     save(s, start)
 
@@ -1382,6 +1420,7 @@ def cycle_run(args):
          ['--max-elements', '24']) + rings
     s = load(args.start)
     set_reference_sphere(s, args.referenzsphaere)
+    set_reference_point(s, args)  # M6-T14 (ADR-0019)
     cur = r.path('c_start.json')
     save(s, cur)
     kinds = args.zyklus.split(',')
@@ -1747,6 +1786,16 @@ def main():
     ap.add_argument('--farb-querfarbe', action='store_true',
                     help='M6-T13: überwiegt die Querfarbe, Kittglied-Modul zuerst im Spalt mit dem '
                          'größten |y·ȳ| (synth --color-module-lateral; mit --farb-modul)')
+    ap.add_argument('--farb-querfarbe-strahlen', action='store_true',
+                    help='M6-T14: Querfarbe zusätzlich aus realen Hauptstrahlen am größten Feld '
+                         'erkennen (synth --color-lateral-rays; mit --farb-modul)')
+    ap.add_argument('--bildpunkt', choices=['ideal', 'hauptstrahl', 'schwerpunkt'], default=None,
+                    help='M6-T14 (ADR-0019): Mittelpunkt der Referenzsphäre am Hauptstrahl bzw. '
+                         'Strahlschwerpunkt bei lambda_ref (Feld reference_point = chief_ray bzw. '
+                         'centroid der Startdatei); Standard: wie die Startdatei')
+    ap.add_argument('--verzeichnung', default=None, metavar='D[,W]',
+                    help='M6-T14 (ADR-0019): Verzeichnung |D| <= D (Anteil, z. B. 0.01) als '
+                         'Nebenbedingung distortion mit Gewicht W (Standard 1e4) in der Startdatei')
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
@@ -1855,6 +1904,7 @@ def main():
     s = load(args.start)
     set_field(s, FIELD_ANGLES, FIELD_WEIGHTS)
     set_reference_sphere(s, args.referenzsphaere)  # M6-T6b (ADR-0017)
+    set_reference_point(s, args)  # M6-T14 (ADR-0019)
     if args.farbe_von_anfang or args.farbe == 'anfang':
         # polychromatisch ab dem Start (Zhang: Farbe früh im Entwurf); die Gläser werden so nicht
         # erst monochromatisch gewählt (Lauf v9: F_B ≈ 0,0017 + 48·w² über der Spektrumbreite w,

@@ -388,6 +388,13 @@ std::optional<double> strong_curvature(double y, double u, double semi, double t
 // gefiltert nach anomalous_pgf (mindestens ein Glas mit |ΔP_g,F| ≥ 0,01) bzw. beim starken
 // Kittglied nach merte_pair (|Δn_d| 0,05 … 0,15, |Δν_d| ≥ 15, |ΔP_g,F| ≤ 0,01); Schwellen wie
 // data/design/knowledge/glass_rules.json. Leer ohne passendes Paar.
+// Querfarbe aus realen Hauptstrahlen (M6-T14, real_lateral_color).
+struct LateralColor {
+    int field = -1;
+    double span_mm = std::numeric_limits<double>::quiet_NaN();
+    double sigma = std::numeric_limits<double>::quiet_NaN();
+};
+
 struct ModuleGlasses {
     MaterialSpec front;
     MaterialSpec back;
@@ -481,6 +488,71 @@ std::optional<double> module_curvature(const SystemDescription& realized,
     }
     incidence = incidence_angle_deg(y, a.u_after, *c).value_or(90.0);
     return c;
+}
+
+// Querfarbe aus realen Hauptstrahlen (M6-T14): Höhen ȳ_l des Hauptstrahls bei den Wellenlängen
+// des Spektrums mit Gewicht > 0 (batch_chief_ray_height) am größten Feldwinkel mit Gewicht > 0,
+// Spanne Δȳ = max ȳ_l − min ȳ_l und RMS der Kippung der beiden äußeren Wellenlängen gegen ihren
+// mittleren Bildpunkt σ_lat = Δȳ · NA / (4 λ_ref) [Wellen bei λ_ref] (Kippung mit Randwert a hat
+// den RMS a/2; jede äußere Wellenlänge liegt Δȳ/2 neben der Mitte, a = (Δȳ/2) NA / λ_ref).
+// NaN, wenn es kein Feld außer der Achse gibt oder ein Hauptstrahl versagt.
+LateralColor real_lateral_color(const LoadedSystem& l, double na) {
+    LateralColor out;
+    const SystemBatchHost batch = make_system_batch(l, 1);
+    int field = -1;
+    for (int f = 0; f < batch.fields(); ++f) {
+        if (batch.field_weight(f) > 0.0 && batch.field_angle(0, f) != 0.0 &&
+            (field < 0 || std::abs(batch.field_angle(0, f)) > std::abs(batch.field_angle(0, field)))) {
+            field = f;
+        }
+    }
+    if (field < 0) {
+        return out;
+    }
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -std::numeric_limits<double>::infinity();
+    for (int k = 0; k < batch.wavelengths(); ++k) {
+        if (!(batch.wavelength_weight(k) > 0.0)) {
+            continue;
+        }
+        const double y = batch_chief_ray_height(batch, 0, field, k);
+        if (!std::isfinite(y)) {
+            return out;
+        }
+        lo = std::min(lo, y);
+        hi = std::max(hi, y);
+    }
+    if (!(hi >= lo)) {
+        return out;
+    }
+    out.field = field;
+    out.span_mm = hi - lo;
+    out.sigma = out.span_mm * na / (4.0 * batch.reference_wavelength_nm * 1e-6);
+    return out;
+}
+
+// Größter RMS [Wellen] über die Wellenlängen am kleinsten Feldwinkel mit Gewicht > 0 (M6-T14).
+double axis_worst_rms(const SystemDescription& realized, const WavefrontResult& wf) {
+    const std::vector<double>& angles = realized.source.field_angles_deg;
+    const std::vector<double>& weights = realized.source.field_weights;
+    int axis = -1;
+    for (std::size_t f = 0; f < angles.size() && static_cast<int>(f) < wf.fields; ++f) {
+        if (weights.at(f) > 0.0 &&
+            (axis < 0 || std::abs(angles[f]) < std::abs(angles[static_cast<std::size_t>(axis)]))) {
+            axis = static_cast<int>(f);
+        }
+    }
+    double worst = std::numeric_limits<double>::quiet_NaN();
+    if (axis < 0) {
+        return worst;
+    }
+    for (int k = 0; k < wf.wavelengths; ++k) {
+        const double r = wf.at(axis, k).rms_waves;
+        if (std::isfinite(r)) {
+            worst = std::isfinite(worst) ? std::max(worst, r) : r;
+        }
+    }
+    return worst;
 }
 
 // Luftspalte für das Kittglied-Modul (M6-T11): innere Spalte (nicht der Arbeitsabstand) mit
@@ -796,9 +868,16 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     // Farbe dominiert? RMS pro Feld und Wellenlänge der getracten Wellenfront
     double worst_ratio = 0.0;
     double worst_rms = 0.0;
+    // M6-T14: Querfarbe aus realen Hauptstrahlen und größter RMS auf der Achse (nur mit Option)
+    LateralColor lateral_rays;
+    double axis_rms = std::numeric_limits<double>::quiet_NaN();
     try {
         const LoadedSystem l = load(realized);
         const WavefrontResult wf = evaluate_wavefront(l);
+        if (options_.color_lateral_rays) {
+            lateral_rays = real_lateral_color(l, p.aperture);
+            axis_rms = axis_worst_rms(realized, wf);
+        }
         // Bezug: RMS bei λ_ref pro Feld. Liegt λ_ref nicht im Spektrum (z. B. Farbstufe der
         // Zielspezifikation mit 480/644 nm, λ_ref = 546 nm), wird monochromatisch bei λ_ref
         // nachgerechnet; der Vergleich mit der nächstgelegenen Wellenlänge sähe sonst keine Farbe.
@@ -913,8 +992,14 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     std::string module_text;
     // M6-T13: Querfarbe überwiegt die Längsfarbe (RMS der Seidel-Terme ΔW111/4 gegen
     // ΔW020/(2√3)): Modul zuerst, Spalt nach |y·ȳ|
-    const bool lateral = options_.color_module_lateral &&
-                         std::abs(w.dW111) / 4.0 > std::abs(w.dW020) / (2.0 * std::sqrt(3.0));
+    const bool lateral_seidel =
+        std::abs(w.dW111) / 4.0 > std::abs(w.dW020) / (2.0 * std::sqrt(3.0));
+    // M6-T14: Querfarbe aus realen Hauptstrahlen am größten Feld größer als der größte RMS auf
+    // der Achse (Seidel am Punkt sieht die Querfarbe hoher NA nicht, Bericht M6-T13)
+    const bool lateral_real = options_.color_lateral_rays && std::isfinite(lateral_rays.sigma) &&
+                              std::isfinite(axis_rms) && lateral_rays.sigma > axis_rms;
+    const bool lateral = (options_.color_module_lateral || options_.color_lateral_rays) &&
+                         (lateral_seidel || lateral_real);
     if (options_.color_module != OpticalHomotopyOptions::ColorModule::None) {
         if (const std::optional<ModuleGlasses> mg = module_glasses(like_.catalog, options_)) {
             gaps = module_gaps(realized, rep, options_, lateral);
@@ -938,6 +1023,11 @@ std::optional<HomotopyNeed> OpticalHomotopyModel::color_need(const SystemDescrip
     if (std::isfinite(chromatic)) {
         why += ", sigma_col = " + number(chromatic) + " Wellen, ΔW111 = " + number(w.dW111) +
                ", ΔW040 = " + number(w.dW040);
+    }
+    if (options_.color_lateral_rays && std::isfinite(lateral_rays.sigma)) {
+        why += ", Querfarbe Hauptstrahl Δȳ = " + number(lateral_rays.span_mm * 1e3) +
+               " µm (sigma_lat = " + number(lateral_rays.sigma) + " Wellen, Achse " +
+               number(axis_rms) + ")";
     }
     n.module_candidates = gaps; // Varianten (insertion_options)
     if (!gaps.empty() && (best < 0 || options_.color_module_always || lateral)) {

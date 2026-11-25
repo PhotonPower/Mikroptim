@@ -128,6 +128,14 @@ ParaxialConstraints make_paraxial_constraints(const SystemDescription& system) {
             }
             continue;
         }
+        if (spec.type == ConstraintType::Distortion) {
+            // ADR-0019: ein Residuum pro Feld der Quelle (Achsfelder liefern 0)
+            for (std::size_t f = 0; f < system.source.field_angles_deg.size(); ++f) {
+                c.field = static_cast<int>(f);
+                out.items.push_back(c);
+            }
+            continue;
+        }
         if (spec.type == ConstraintType::ParfocalLength) {
             c.reference_surface = map.table_surface(spec.reference_surface_or_default());
             c.offset = spec.offset_or_default();
@@ -216,6 +224,20 @@ void check_paraxial_constraints(const ParaxialConstraints& constraints,
                 fail_constraint(i, c, "verlangt eine kollimierte Quelle");
             }
             break;
+        case ConstraintType::Distortion:
+            if (c.mode != ConstraintMode::Max) {
+                fail_constraint(i, c, "nur als Obergrenze definiert (Modus max)");
+            }
+            if (c.target < 0.0) {
+                fail_constraint(i, c, "Grenze D_max muss mindestens 0 sein");
+            }
+            if (c.field < 0) {
+                fail_constraint(i, c, "Feld muss mindestens 0 sein");
+            }
+            if (topology.source != SourceKind::Collimated) {
+                fail_constraint(i, c, "verlangt eine kollimierte Quelle");
+            }
+            break;
         case ConstraintType::GhostPenalty:
         case ConstraintType::GlassHull:
         case ConstraintType::MaxSemiDiameter:
@@ -270,6 +292,22 @@ double paraxial_deviation(const ParaxialConstraint& c, const SystemBatchHost& ba
         // die Strahlresiduen (docs/optimierung.md, Abschnitt 2.7).
         const double osc = batch_sine_condition(batch, v, p, c.zone);
         q = std::isfinite(osc) ? osc : 0.0;
+        break;
+    }
+    case ConstraintType::Distortion: {
+        // |D_f| − D_max mit D_f = (ȳ_f − h_f)/h_f (ADR-0019); auf der Achse (h_f = 0), für ein
+        // Feld außerhalb des Batches oder bei versagendem Hauptstrahl inaktiv (−D_max): das
+        // Versagen bestrafen die Strahlresiduen.
+        q = -c.target;
+        if (c.field < batch.fields()) {
+            const double h = batch.field_target(v, c.field);
+            if (h != 0.0) {
+                const double y = batch_chief_ray_height(batch, v, c.field);
+                if (std::isfinite(y)) {
+                    q = std::abs((y - h) / h) - c.target;
+                }
+            }
+        }
         break;
     }
     case ConstraintType::GhostPenalty:

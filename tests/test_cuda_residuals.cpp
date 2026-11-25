@@ -366,6 +366,51 @@ TEST(CudaResiduals, MatchCpuWithImageReference) {
     }
 }
 
+// Bildpunkt am Hauptstrahl (M6-T14, ADR-0019): die Höhen ȳ_f pro Variante und Feld gehen mit dem
+// Batch auf das Gerät (reference_height); RESIDUALS gegen die CPU-Referenz für gestörte Varianten
+// mit eigenem Hauptstrahl (update_reference_height nach der Störung), auch mit Geisterplatten.
+TEST(CudaResiduals, MatchCpuWithChiefRayReference) {
+    MKO_REQUIRE_GPU();
+    struct Case {
+        const char* file;
+        mko::ReferenceSphereKind kind;
+        std::uint64_t seed;
+    };
+    const Case cases[] = {
+        {"einzellinse_bk7.json", mko::ReferenceSphereKind::ImageInfinite, 2101},
+        {"testsystem_mehrlinser.json", mko::ReferenceSphereKind::ImageExitPupil, 2202},
+        {"einzellinse_geisterplatte.json", mko::ReferenceSphereKind::ImageInfinite, 2303}};
+    for (const Case& cs : cases) {
+        SCOPED_TRACE(cs.file);
+        mko::SystemDescription d = mko::test::load_residual_system(cs.file).system;
+        d.reference_sphere = cs.kind;
+        d.reference_point = mko::ReferencePointKind::ChiefRay;
+        const mko::LoadedSystem ls =
+            mko::prepare_system(d, std::filesystem::path(mko::test::kResidualSystems));
+        SystemBatchHost batch = mko::test::perturbed_batch(ls, 500, cs.seed);
+        mko::update_reference_height(batch);
+        mko::update_reference_curvature(batch);
+        int differs = 0;
+        for (int v = 1; v < batch.variants(); ++v) {
+            for (int f = 0; f < batch.fields(); ++f) {
+                differs += batch.reference_height(v, f) != batch.field_target(v, f) ? 1 : 0;
+            }
+        }
+        if (batch.fields() > 1) {
+            EXPECT_GT(differs, 0);
+        }
+        const ResidualSettings settings{};
+        const ResidualLayout layout(batch.topology(), settings);
+        const ResidualResult gpu = gpu_residuals(batch, settings);
+        const ResidualResult cpu = mko::residuals_cpu(batch, layout);
+        const Comparison c = compare(gpu, cpu, batch, layout);
+        std::printf("[ Info     ] %s (%s, chief_ray): %zu Strahlen, %zu versagt, max |dr| = %.3e "
+                    "mm, max |dOPD| = %.3e mm\n",
+                    cs.file, mko::reference_sphere_name(cs.kind), c.rays, c.failed,
+                    c.max_residual, c.max_opd);
+    }
+}
+
 // Geisterplatten (M4-T5): Geisterdaten im Shared Memory des Kernels gegen die CPU-Referenz für
 // gestörte Varianten, auch mit gestörten Koeffizienten und Brechzahlen der virtuellen Gläser.
 // Systeme: einzellinse_geisterplatte.json (zwei Platten in einem Spalt) und der Mehrlinser mit

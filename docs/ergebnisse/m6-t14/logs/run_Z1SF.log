@@ -1,0 +1,51 @@
+Stufe c0_feld: NA 0.5000, Feld 0.100, Spektrum voll, 7 Elemente
+c0_feld_start: Exit 0, 0 s
+  Rückkehr: 6 Platten, F 1.756688e+02 -> 1.756688e+02
+c0_feld_r0: Exit 0, 1751 s
+  c0_feld_r0: step_too_small, Punkt 0.2094, 13 Elemente
+c0_feld_r0_relax: Exit 0, 42 s
+c0_feld_r1: Exit 0, 1471 s
+  c0_feld_r1: step_too_small, Punkt 0.3812, 16 Elemente
+c0_feld_r1_relax: Exit 0, 50 s
+c0_feld_r2: Exit 0, 983 s
+  c0_feld_r2: max_elements, Punkt 0.5687, 18 Elemente
+c0_feld_r2_relax: Exit 0, 55 s
+c0_feld_r3: Exit 0, 630 s
+  c0_feld_r3: max_elements, Punkt 0.6625, 18 Elemente
+c0_feld_r3_relax: Exit 0, 57 s
+c0_feld_z2_s0: Exit 0, 39 s
+c0_feld_z2_s1: Exit 0, 36 s
+c0_feld_z2_s2: Exit 0, 36 s
+c0_feld_rueckbau: Exit 0, 483 s
+c0_feld_z2r_s0: Exit 0, 40 s
+c0_feld_z2r_s1: Exit 0, 46 s
+c0_feld_z2r_s2: Exit 0, 27 s
+c0_feld_z2r_pupille: Exit 0
+c0_feld_z2r_unendlich: Exit 0
+c0_feld_z2r_psf: Exit 0
+c0_feld_z2r_vektor: Exit 0
+c0_feld_z2r_vollfeld_pupille: Exit 0
+c0_feld_z2r_vollfeld_unendlich: Exit 0
+c0_feld_z2r_vollfeld_psf: Exit 0
+c0_feld_z2r_vollfeld_vektor: Exit 0
+  c0_feld: Punkt NA 0.5000, Feld 0.662; 18 Elemente, nach dem Rückbau 18
+Stufe c1_feld: NA 0.5000, Feld 0.662, Spektrum voll, 18 Elemente
+c1_feld_start: Exit 1, 0 s
+Traceback (most recent call last):
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 2066, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1837, in main
+    return cycle_run(args)
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1456, in cycle_run
+    info = cycle_stage(r, args, k, kind, cur, common, relax, rings,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1285, in cycle_stage
+    start, report = return_to_ghosts(r, tag + '_start', real, positions=args.geister_lagen)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 1207, in return_to_ghosts
+    runner.run(name, a, text_name=name + '_bericht.txt')
+  File "C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\tools\m6t6_zielspezifikation.py", line 477, in run
+    raise RuntimeError(f'{name}: mikroptim endete mit {r.returncode}, siehe {text}')
+RuntimeError: c1_feld_start: mikroptim endete mit 1, siehe C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-afba9ee1086ae2d26\docs\ergebnisse\m6-t14\Z1SF\c1_feld_start_bericht.txt

@@ -100,6 +100,9 @@ struct EvalResult {
     EvalGrid grid;
     double reference_nm = 0.0;               // λ_ref des Batches (OPD in Wellen)
     std::vector<double> image_height;        // [V·F] ideale Bildhöhe h_f (field_target)
+    // [V·F] Höhe des Mittelpunkts M_f der Referenzsphäre: h_f, bei Bildpunkt am Hauptstrahl
+    // (ADR-0019) die Höhe ȳ_f des Hauptstrahls bei λ_ref (reference_height des Batches)
+    std::vector<double> center_height;
     std::vector<double> reference_curvature; // [V·F] κ = σ/R der Referenzsphäre
     std::vector<double> exit_pupil_position; // [V] z_AP (nur ExitPupil, sonst NaN)
     std::vector<double> opd;                 // [V·F·L·n] OPD nach Kolbenabzug [mm]
@@ -169,13 +172,14 @@ struct EvalTupleStats {
     double tilt_x = kNaN;
     double tilt_y = kNaN;
     double defocus = kNaN;
-    // Spotdiagramm in der Bildebene, relativ zum idealen Bildpunkt M_f [mm]: Schwerpunkt und
-    // RMS-Radius um den Schwerpunkt.
+    // Spotdiagramm in der Bildebene, relativ zum idealen Bildpunkt (0, h_f) [mm]: Schwerpunkt
+    // und RMS-Radius um den Schwerpunkt (auch bei Bildpunkt am Hauptstrahl, ADR-0019; spot_x/y
+    // im Ergebnis bleiben relativ zum Mittelpunkt M_f der Sphäre).
     double centroid_x = kNaN;
     double centroid_y = kNaN;
     double rms_spot = kNaN;
     // Feldgrößen aus den Feldstrahlen: ideale Bildhöhe h_f, Hauptstrahl in der Bildebene
-    // relativ zu M_f, Verzeichnung 100·(y − h_f)/h_f [%] über den Hauptstrahl bzw. den
+    // relativ zum idealen Bildpunkt (0, h_f), Verzeichnung 100·(y − h_f)/h_f [%] über den Hauptstrahl bzw. den
     // Schwerpunkt (NaN für h_f = 0), Fokuslagen tangential und sagittal als z relativ zur
     // Bildebene [mm] (> 0: Fokus hinter der Bildebene).
     double image_height = 0.0;

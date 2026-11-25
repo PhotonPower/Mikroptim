@@ -319,6 +319,12 @@ Umgesetzt mit den PRs #15, #27, #28, #33, #35, #39 (Oktober 2026).
 - **Abnahme:** CLI-Test der Standards mit Orakel (langsame Schritte wachsen nur mit Q > 0), Abschalter bitgleich (Test und Vergleich mit der Binärdatei vor M6-T13b), Skripttests; Nachtrag „M6-T13b“ im [Bericht M6-T13](../ergebnisse/m6-t13-farbe-frueh.md).
 - **Stand:** umgesetzt und nachgemessen ([Bericht, Abschnitt „M6-T13b“](../ergebnisse/m6-t13-farbe-frueh.md#m6-t13b-nachmessung-mit-den-neuen-standards)). Abschalter bitgleich zum Stand davor (6 Vergleichsläufe gegen main ae3c8be). Standardpfad ab der Einzellinse (H1S) in 1.473 s statt ≈ 15.700 s, Endstand NA 0,5275 bei 14,7 % Feld, 15 El., 0,102/0,065/0,115 Wellen (Strehl ≥ 0,60) – vergleichbar mit H1G8 Z3, aber weniger Feld; die Farbstufe p1f erreicht mit Farbbudget 4 nur 97 % der Breite.
 
+### M6-T14 – Verzeichnung als eigene Nebenbedingung, Querfarbe in der Farbregel
+- **Abhängig von:** M6-T13 (Befund F20; vom Maintainer am 2026-11-24 freigegeben)
+- **Inhalt:** ADR-0019: Verzeichnung als eigene Nebenbedingung (`distortion`), Bildpunkt der Wellenfront-Merit aus realen Strahlen bei λ_ref (`reference_point` = `chief_ray`/`centroid`, gemeinsam für alle Wellenlängen, Querfarbe bleibt), CPU und CUDA, FD-Jacobi; Farbregel erkennt Querfarbe aus realen Hauptstrahlen (`--color-lateral-rays`); Messung ab F3Z c1 und ab dem 7-Linser Z1f mit dem neuen Bildpunkt, dichtes Flint als Variante.
+- **Abnahme:** analytische Orakel (Hauptstrahl durch Planplatten, zur Blende konzentrisches System verzeichnungsfrei, D = δ/f), Merit gleich der mit verschobenem idealem Punkt (bitgleich), FD-Jacobi gegen Kettenregel, CPU gegen GPU, ohne Option bitgleich; Bericht `docs/ergebnisse/m6-t14-verzeichnung-querfarbe.md` mit Vergleich zu M6-T13.
+- **Stand:** umgesetzt und gemessen ([Bericht](../ergebnisse/m6-t14-verzeichnung-querfarbe.md)).
+
 ---
 
 ## M7 – Performance

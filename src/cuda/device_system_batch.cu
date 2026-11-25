@@ -164,6 +164,10 @@ void DeviceSystemBatch::upload(const SystemBatchHost& host, int first, int count
         to_device(base, layout.reference_curvature,
                   host.reference_curvature_data().data() + v0 * sh.field_stride());
     }
+    if (is_traced_reference_point(host.topology().reference_point)) {
+        to_device(base, layout.reference_height,
+                  host.reference_height_data().data() + v0 * sh.field_stride());
+    }
 
     topology_ = host.topology();
     variants_ = count;
@@ -228,6 +232,10 @@ void DeviceSystemBatch::download(SystemBatchHost& host, int first) const {
         to_host(base, layout_.reference_curvature,
                 host.reference_curvature_data().data() + v0 * sh.field_stride());
     }
+    if (is_traced_reference_point(topology_.reference_point)) {
+        to_host(base, layout_.reference_height,
+                host.reference_height_data().data() + v0 * sh.field_stride());
+    }
     host.reference_wavelength_nm = reference_wavelength_nm_;
     host.source_point = source_point_;
     host.source_na = source_na_;
@@ -277,6 +285,10 @@ SystemBatchView<double> DeviceSystemBatch::view() const {
     b.reference_curvature = is_image_reference(topology_.reference_sphere)
                                 ? region_ptr<double>(buffer_, layout_.reference_curvature)
                                 : nullptr;
+    b.reference_point = topology_.reference_point;
+    b.reference_height = is_traced_reference_point(topology_.reference_point)
+                             ? region_ptr<double>(buffer_, layout_.reference_height)
+                             : nullptr;
     return b;
 }
 

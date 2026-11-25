@@ -5,6 +5,7 @@
 // Merit-Invarianz des Null-Kittglieds, Einfallswinkel des starken Kittglieds.
 
 #include "insertion_optimization.hpp"
+#include "mikroptim/batch/system_batch.hpp"
 #include "mikroptim/glass/glass_preselection.hpp"
 #include "mikroptim/glass/glass_properties.hpp"
 #include "mikroptim/glass/index_table.hpp"
@@ -568,6 +569,76 @@ TEST(ColorStage, LateralColorModuleOrderedByChiefRayHeight) {
     EXPECT_EQ(nl.module_candidates, expected);
     EXPECT_EQ(nl.module_gap, expected.front());
     EXPECT_NE(np.module_candidates, expected); // Reihenfolge nach |y| ist eine andere
+}
+
+
+// M6-T14: Querfarbe aus realen Hauptstrahlen. Orakel: Spanne der Hauptstrahlhöhen über die
+// Wellenlängen am größten Feld (batch_chief_ray_height), σ_lat = Δȳ NA/(4 λ_ref), gegen den
+// größten RMS auf der Achse (evaluate_wavefront); die Empfehlung ist das Modul (Spalt nach
+// |y·ȳ|), wenn das Seidel-Kriterium oder σ_lat > Achse gilt, sonst wie ohne Option. Ohne Option
+// bitgleiche Empfehlung.
+TEST(ColorStage, LateralColorFromRealChiefRays) {
+    int lateral_cases = 0;
+    int real_only = 0;
+    for (const double field_deg : {1.0, 5.0, 12.0, 20.0}) {
+        SCOPED_TRACE(field_deg);
+        SystemDescription d = three_lenses(false).system;
+        d.source.field_angles_deg = {0.0, field_deg};
+        d.source.field_weights = {1.0, 1.0};
+        const LoadedSystem l = prepare_test_system(d);
+        OpticalHomotopyOptions o;
+        o.color_rule = true;
+        o.color_module = ColorModule::Doublet;
+        OpticalHomotopyModel plain(l, o);
+        const HomotopyPoint p = plain.start_point();
+        const HomotopyNeed np = plain.diagnose(plain.start_system(), p);
+        OpticalHomotopyOptions orays = o;
+        orays.color_lateral_rays = true;
+        OpticalHomotopyModel rays(l, orays);
+        const HomotopyNeed nr = rays.diagnose(rays.start_system(), p);
+        if (np.recommendation != GhostOperator::B) {
+            EXPECT_EQ(nr.recommendation, np.recommendation);
+            continue;
+        }
+        // Orakel
+        const SystemDescription realized = plain.realize(plain.start_system(), p);
+        const LoadedSystem lr = prepare_test_system(realized);
+        const SystemBatchHost b = make_system_batch(lr, 1);
+        double lo = 1e300;
+        double hi = -1e300;
+        for (int k = 0; k < b.wavelengths(); ++k) {
+            const double y = batch_chief_ray_height(b, 0, 1, k);
+            lo = std::min(lo, y);
+            hi = std::max(hi, y);
+        }
+        const double sigma = (hi - lo) * p.aperture / (4.0 * b.reference_wavelength_nm * 1e-6);
+        const WavefrontResult wf = evaluate_wavefront(lr);
+        double axis = 0.0;
+        for (int k = 0; k < wf.wavelengths; ++k) {
+            axis = std::max(axis, wf.at(0, k).rms_waves);
+        }
+        AberrationOptions ao;
+        ao.real_rays = false;
+        ao.focal_shift = false;
+        const SeidelWaves w = compute_aberrations(realized, l.catalog, ao).waves();
+        const bool seidel = std::abs(w.dW111) / 4.0 > std::abs(w.dW020) / (2.0 * std::sqrt(3.0));
+        const bool expected = seidel || sigma > axis;
+        std::printf("Feld %.0f°: Δȳ = %.4f µm, sigma_lat = %.4f, Achse %.4f, Seidel %d -> %d\n",
+                    field_deg, (hi - lo) * 1e3, sigma, axis, seidel ? 1 : 0, expected ? 1 : 0);
+        if (expected) {
+            ++lateral_cases;
+            real_only += seidel ? 0 : 1;
+            ASSERT_GE(nr.module_gap, 0) << nr.text;
+            EXPECT_EQ(nr.split_lens, -1);
+            EXPECT_NE(nr.text.find("Querfarbe Hauptstrahl"), std::string::npos) << nr.text;
+        } else {
+            EXPECT_EQ(nr.module_gap, np.module_gap) << nr.text;
+            EXPECT_EQ(nr.split_lens, np.split_lens) << nr.text;
+        }
+    }
+    std::printf("Querfarbe überwiegt in %d Fällen, davon %d nur nach den realen Hauptstrahlen\n",
+                lateral_cases, real_only);
+    EXPECT_GT(lateral_cases, 0);
 }
 
 } // namespace

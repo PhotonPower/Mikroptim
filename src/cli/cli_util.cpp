@@ -196,6 +196,55 @@ void apply_sine_condition_option(SystemDescription& system, double weight) {
     check_constraints(system);
 }
 
+ReferencePointKind parse_reference_point(std::string_view option, std::string_view text) {
+    for (const ReferencePointKind k : {ReferencePointKind::Ideal, ReferencePointKind::ChiefRay,
+                                       ReferencePointKind::Centroid}) {
+        if (text == reference_point_name(k)) {
+            return k;
+        }
+    }
+    throw UsageError(std::string(option) + " erwartet ideal, chief_ray oder centroid, nicht '" +
+                     std::string(text) + "'");
+}
+
+DistortionOption parse_distortion_option(std::string_view option, std::string_view text) {
+    DistortionOption o;
+    const std::size_t comma = text.find(',');
+    o.max_distortion = parse_double(option, text.substr(0, comma));
+    if (comma != std::string_view::npos) {
+        o.weight = parse_double(option, text.substr(comma + 1));
+    }
+    if (!(std::isfinite(o.max_distortion) && o.max_distortion >= 0.0) ||
+        !(std::isfinite(o.weight) && o.weight >= 0.0)) {
+        throw UsageError(std::string(option) +
+                         " erwartet D_MAX[,W] mit D_MAX >= 0 (Anteil) und Gewicht W >= 0");
+    }
+    return o;
+}
+
+void apply_distortion_option(SystemDescription& system, const DistortionOption& o) {
+    if (!system.constraints) {
+        system.constraints = Constraints{};
+    }
+    std::vector<ConstraintSpec>& items = system.constraints->items;
+    ConstraintSpec* entry = nullptr;
+    for (ConstraintSpec& c : items) {
+        if (c.type == ConstraintType::Distortion) {
+            entry = &c;
+            break;
+        }
+    }
+    if (entry == nullptr) {
+        ConstraintSpec c;
+        c.type = ConstraintType::Distortion;
+        items.push_back(std::move(c));
+        entry = &items.back();
+    }
+    entry->max_distortion = o.max_distortion;
+    entry->weight = o.weight;
+    check_constraints(system);
+}
+
 // ---- Neustart des Augmented Lagrangian ---------------------------------------------------
 
 std::vector<ShiftValue> read_shift_file(const std::filesystem::path& path) {

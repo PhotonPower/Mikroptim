@@ -57,9 +57,13 @@ double batch_sine_condition(const SystemBatchHost& batch, int v, const ParaxialD
 //   ParaxialFocus   q = a (A + t[v][S−1] C / n'_L) (Randstrahlhöhe in der Bildebene, Soll 0)
 //   Petzval         q = |κ_P| − κ_max               (κ_P = −n'_L P mit Geisterplatten, 1/mm)
 //   SineCondition   q = OSC(ρ = zone)                (batch_sine_condition; 0, wenn NaN)
+//   Distortion      q = |D_f| − D_max, D_f = (ȳ_f − h_f)/h_f (ADR-0019; ȳ_f aus
+//                   batch_chief_ray_height, h_f = field_target; −D_max, wenn h_f = 0, ȳ NaN
+//                   oder f ≥ F)
 // Modus Min: q ← min(q, 0) (aktiv nur unterhalb des Solls), Max: q ← max(q, 0). Petzval ist
 // nur mit Max definiert: r = √w · max(0, |κ_P| − κ_max), w in mm². SineCondition nur als
-// Gleichung (Soll 0), w dimensionslos [Wellen²], ein Eintrag pro Zone.
+// Gleichung (Soll 0), w dimensionslos [Wellen²], ein Eintrag pro Zone. Distortion nur mit Max,
+// w [Wellen²] pro Einheit von D, ein Eintrag pro Feld.
 struct ParaxialConstraint {
     ConstraintType type = ConstraintType::FocalLength;
     ConstraintMode mode = ConstraintMode::Equal;
@@ -72,6 +76,7 @@ struct ParaxialConstraint {
     // von q: Obergrenze √w · max(q + θ, 0), Untergrenze √w · min(q − θ, 0); 0 = reine Strafe.
     double shift = 0.0;
     double zone = 0.0; // nur SineCondition: Pupillenzone ρ ∈ (0, 1]
+    int field = 0;     // nur Distortion: Feld f (ADR-0019)
 };
 
 struct ParaxialConstraints {
@@ -88,7 +93,8 @@ struct ParaxialConstraints {
 // Felder (Petzval: Modus Max), Referenzfläche der Abgleichlänge von der Dateifläche auf die
 // Tabellenfläche abgebildet (make_surface_map), Verschiebung aus ConstraintSpec::shift (Länge 1,
 // sonst 0). Ein Eintrag sine_condition wird zu einer Bedingung pro Zone (zones_or_default, in
-// Dateireihenfolge, alle mit derselben Nummer `item`). Ohne Abschnitt leer.
+// Dateireihenfolge, alle mit derselben Nummer `item`), ein Eintrag distortion zu einer pro Feld
+// der Quelle (ADR-0019). Ohne Abschnitt leer.
 // Wirft FormatError wie check_constraints.
 ParaxialConstraints make_paraxial_constraints(const SystemDescription& system);
 

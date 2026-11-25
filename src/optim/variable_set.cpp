@@ -282,6 +282,9 @@ void VariableSet::apply(SystemBatchHost& batch, int v, std::span<const double> x
         batch.paraxial_index(v, s) =
             buchdahl_index(n0, nu1, nu2, nu3, nm_to_um(batch.reference_wavelength_nm));
     }
+    // Bildpunkt am Hauptstrahl (ADR-0019): ȳ_f folgt den Variablen (anders als κ, ADR-0017),
+    // damit die FD-Jacobi die Ableitung des Bildpunkts enthält.
+    update_reference_height(batch, v, 1);
 }
 
 std::vector<double> VariableSet::extract(const SystemDescription& system) const {

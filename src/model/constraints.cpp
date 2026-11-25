@@ -51,6 +51,7 @@ std::string_view target_field(ConstraintType type) {
     case ConstraintType::MinEdgeThickness:
     case ConstraintType::MaxIncidenceAngle:
     case ConstraintType::SineCondition:
+    case ConstraintType::Distortion:
         return {};
     }
     return {};
@@ -282,6 +283,8 @@ std::string_view to_string(ConstraintType type) {
         return "max_incidence_angle";
     case ConstraintType::SineCondition:
         return "sine_condition";
+    case ConstraintType::Distortion:
+        return "distortion";
     }
     return "?";
 }
@@ -325,7 +328,7 @@ std::optional<ConstraintType> constraint_type_from_string(std::string_view name)
           ConstraintType::GhostPenalty, ConstraintType::GlassHull, ConstraintType::MaxSemiDiameter,
           ConstraintType::MinCenterThickness, ConstraintType::MaxCenterThickness,
           ConstraintType::MinEdgeThickness, ConstraintType::MaxIncidenceAngle,
-          ConstraintType::SineCondition}) {
+          ConstraintType::SineCondition, ConstraintType::Distortion}) {
         if (name == to_string(t)) {
             return t;
         }
@@ -369,6 +372,7 @@ bool is_paraxial(ConstraintType type) {
     case ConstraintType::ParaxialFocus:
     case ConstraintType::Petzval:
     case ConstraintType::SineCondition:
+    case ConstraintType::Distortion:
         return true;
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
@@ -398,6 +402,7 @@ bool is_mechanical(ConstraintType type) {
     case ConstraintType::GhostPenalty:
     case ConstraintType::GlassHull:
     case ConstraintType::SineCondition:
+    case ConstraintType::Distortion:
         return false;
     }
     return false;
@@ -406,6 +411,9 @@ bool is_mechanical(ConstraintType type) {
 bool supports_shift(const ConstraintSpec& spec) {
     if (is_mechanical(spec.type)) {
         return true;
+    }
+    if (spec.type == ConstraintType::Distortion) {
+        return false; // ein Residuum pro Feld, Verschiebung nicht umgesetzt (ADR-0019)
     }
     return is_paraxial(spec.type) && spec.mode_or_default() != ConstraintMode::Equal;
 }
@@ -418,7 +426,8 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
         return 0.0; // OSC = 0
     }
     if (type == ConstraintType::Petzval || type == ConstraintType::GhostPenalty ||
-        type == ConstraintType::GlassHull || is_mechanical(type)) {
+        type == ConstraintType::GlassHull || type == ConstraintType::Distortion ||
+        is_mechanical(type)) {
         return std::nullopt; // Grenze im Eintrag (max_curvature usw.) bzw. keine Sollgröße
     }
     if (!system.target) {
@@ -441,6 +450,7 @@ std::optional<double> constraint_target(const SystemDescription& system, Constra
     case ConstraintType::MinEdgeThickness:
     case ConstraintType::MaxIncidenceAngle:
     case ConstraintType::SineCondition:
+    case ConstraintType::Distortion:
         break;
     }
     return std::nullopt;
@@ -451,6 +461,8 @@ std::optional<double> constraint_bound(const SystemDescription& system,
     switch (spec.type) {
     case ConstraintType::Petzval:
         return spec.max_curvature;
+    case ConstraintType::Distortion:
+        return spec.max_distortion;
     case ConstraintType::MaxSemiDiameter:
         return spec.semi_diameter;
     case ConstraintType::MinCenterThickness:
@@ -495,6 +507,10 @@ void check_constraints(const SystemDescription& system) {
             if (equality_only(c.type) && *c.mode != ConstraintMode::Equal) {
                 fail(path + ".mode", name + " ist nur als Gleichung definiert (\"mode\": "
                                             "\"equal\" oder Feld weglassen)");
+            }
+            if (c.type == ConstraintType::Distortion && *c.mode != ConstraintMode::Max) {
+                fail(path + ".mode", "distortion ist nur als Obergrenze |D_f| ≤ max_distortion "
+                                     "definiert (\"mode\": \"max\" oder Feld weglassen)");
             }
             if (c.type == ConstraintType::Petzval && *c.mode != ConstraintMode::Max) {
                 fail(path + ".mode", "petzval ist nur als Obergrenze |κ_P| ≤ max_curvature "
@@ -566,6 +582,24 @@ void check_constraints(const SystemDescription& system) {
             }
         } else if (c.max_curvature) {
             fail(path + ".max_curvature", "nur bei petzval erlaubt");
+        }
+
+        if (c.type == ConstraintType::Distortion) {
+            // Grenze im Eintrag (ADR-0019)
+            if (!c.max_distortion) {
+                fail(path + ".max_distortion",
+                     "Pflichtfeld bei distortion fehlt (größte zulässige |D| als Anteil)");
+            }
+            if (!(std::isfinite(*c.max_distortion) && *c.max_distortion >= 0.0)) {
+                fail(path + ".max_distortion",
+                     "muss endlich und mindestens 0 sein, ist " + num(*c.max_distortion));
+            }
+            if (system.source.type != SourceType::Collimated) {
+                fail(path + ".type", "distortion (Hauptstrahl im Feldwinkel) verlangt eine "
+                                     "kollimierte Quelle");
+            }
+        } else if (c.max_distortion) {
+            fail(path + ".max_distortion", "nur bei distortion erlaubt");
         }
 
         if (c.type == ConstraintType::SineCondition) {

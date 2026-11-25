@@ -49,6 +49,12 @@ enum class ConstraintType {
     // Achsbündels bei λ_ref (M11-T4): ein Residuum √w · OSC(ρ_k) pro Zone, Soll 0, nur
     // Gleichung, nur kollimierte Quelle, höchstens ein Eintrag (docs/optimierung.md, 2.7)
     SineCondition,
+    // Verzeichnung (ADR-0019): relative Abweichung D_f = (ȳ_f − h_f)/h_f der Höhe des realen
+    // Hauptstrahls bei λ_ref in der Bildebene (batch_chief_ray_height) von der idealen Höhe
+    // h_f = f_soll tan θ_f; ein Residuum √w · max(0, |D_f| − D_max) pro Feld (0 auf der Achse),
+    // Grenze im Eintrag (max_distortion, Pflicht), nur Obergrenze, nur kollimierte Quelle,
+    // höchstens ein Eintrag (docs/optimierung.md, 2.8)
+    Distortion,
 };
 
 // Medium nach der Fläche, für das eine Dicken-Bedingung gilt (M4-T3): Glas (jedes Material
@@ -143,13 +149,17 @@ struct ConstraintSpec {
     // Nur SineCondition (M11-T4): Pupillenzonen ρ_k ∈ (0, 1], keine doppelt; leer = Standard
     // (kDefaultSineConditionZones).
     std::vector<double> zones{};
+    // Nur Distortion (Pflicht, ADR-0019): größter zulässiger Betrag der relativen Verzeichnung
+    // D_max ≥ 0 (Anteil, 0,01 = 1 %). Einzige Quelle der Grenze (nicht in `target`).
+    std::optional<double> max_distortion{};
 
     friend bool operator==(const ConstraintSpec&, const ConstraintSpec&) = default;
 
-    // Fehlender Modus: Equal, bei Petzval Max (einzig erlaubter Modus).
+    // Fehlender Modus: Equal, bei Petzval und Distortion Max (einzig erlaubter Modus).
     ConstraintMode mode_or_default() const {
-        return mode.value_or(type == ConstraintType::Petzval ? ConstraintMode::Max
-                                                             : ConstraintMode::Equal);
+        return mode.value_or(type == ConstraintType::Petzval || type == ConstraintType::Distortion
+                                 ? ConstraintMode::Max
+                                 : ConstraintMode::Equal);
     }
     // Fehlendes Gewicht: kDefaultGlassHullWeight bei GlassHull, sonst kDefaultConstraintWeight.
     double weight_or_default() const {
@@ -238,7 +248,7 @@ bool supports_shift(const ConstraintSpec& spec);
 // Namen für Meldungen und Dateiformat: "focal_length", "parfocal_length", "working_distance",
 // "paraxial_focus", "petzval", "ghost_penalty", "glass_hull", "max_semi_diameter",
 // "min_center_thickness", "max_center_thickness", "min_edge_thickness", "max_incidence_angle",
-// "sine_condition" bzw. "equal", "min", "max", bzw. "glass", "air" bzw. "semi_diameter", "rays".
+// "sine_condition", "distortion" bzw. "equal", "min", "max", bzw. "glass", "air" bzw. "semi_diameter", "rays".
 std::string_view to_string(ConstraintType type);
 std::string_view to_string(ConstraintMode mode);
 std::string_view to_string(ConstraintMedium medium);
