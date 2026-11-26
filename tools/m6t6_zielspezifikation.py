@@ -63,6 +63,15 @@ alles wie vorher. Farbbudget der Stufe p1f (--farbe apertur) seit M6-T14b 5 (vor
 4). Rückkehr zu Geisterplatten im Zyklus: findet `mikroptim insert --ghost-return` keine Lage, wird
 die Stufe übersprungen (Eintrag `skipped` der Zusammenfassung) statt den Zyklus abzubrechen (F25).
 
+Standards seit M6-T15 (Entscheidung Maintainer 2026-11-26, Bericht docs/ergebnisse/m6-t15.md): mit
+--aktuell bzw. --farbregel nimmt der Rückbau-Lauf des Zyklus eine Entfernung auch an, wenn F_B
+höchstens min(1,1 × F_B vor dem Rückbau, F_max) ist (--rueckbau-relativ 0.1, synth
+--prune-relative), und fügt danach im Abschluss nicht wieder ein (Sperre, synth
+--prune-finish-lock); alle synth-Läufe nehmen Aperturschritte nur an, wenn der größte RMS der voll
+gewichteten Tupel höchstens 0,1 Wellen ist (--apertur-rms-grenze 0.1, synth --aperture-rms-limit;
+M6T15_STANDARDS). Abschalten: --ohne-m6t15 (alle drei; Läufe aus M6-T14/M6-T14b bitgleich
+nachrechnen) oder einzeln --rueckbau-relativ aus, --ohne-rueckbau-sperre, --apertur-rms-grenze aus.
+
 Die Bausteine (add_gap_variables, set_field, ...) sind auch einzeln nutzbar.
 """
 
@@ -82,6 +91,12 @@ DISTORTION_WEIGHT = 1e4
 # Schwerpunkt (ADR-0019), Verzeichnung |D| <= 1 %, Querfarbe aus realen Hauptstrahlen
 M6T14_STANDARDS = {'bildpunkt': 'schwerpunkt', 'verzeichnung': '0.01',
                    'farb_querfarbe_strahlen': True}
+# M6-T15 (Entscheidung Maintainer 2026-11-26, Befund F26 und Querfarbe/Tupel-RMS aus M6-T14b):
+# Standards mit --aktuell/--farbregel – Rückbau im Zyklus relativ zum Zustand davor (δ = 0,1, wie
+# in M6-T14b vorgeschlagen), Sperre gegen Wiedereinfügen im Abschluss, Aperturgrenze 0,1 Wellen
+# (größter RMS der voll gewichteten Tupel, 1,4 × Maréchal-Ziel; Bericht docs/ergebnisse/m6-t15.md)
+M6T15_STANDARDS = {'rueckbau_relativ': '0.1', 'rueckbau_sperre': True,
+                   'apertur_rms_grenze': '0.1'}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -458,6 +473,10 @@ def synth_options(args):
             opts += ['--prune-attempts', str(args.rueckbau_versuche)]
         if getattr(args, 'rueckbau_stufen', None):
             opts += ['--prune-stages', str(args.rueckbau_stufen)]
+    # M6-T15: Aperturgrenze (wirkt nur in Aperturschritten)
+    limit = apertur_rms_grenze(args)
+    if limit is not None:
+        opts += ['--aperture-rms-limit', repr(limit)]
     for a in args.synth_arg:
         opts.extend(a.split())
     return opts
@@ -1048,6 +1067,26 @@ def apply_m6t14_standards(args):
     return True
 
 
+def apply_m6t15_standards(args):
+    """M6-T15: Standards M6T15_STANDARDS setzen, wenn synth mit den aktuellen Standards rechnet
+    (--aktuell, --farbregel bzw. --farb-achromat, wie M6-T14b) und weder --ohne-m6t15 noch eine
+    einzelne Angabe es verhindert (--rueckbau-relativ aus|D, --ohne-rueckbau-sperre,
+    --apertur-rms-grenze aus|R). Ändert args; liefert, ob die Standards gelten."""
+    if getattr(args, 'ohne_m6t15', False):
+        return False
+    if not (getattr(args, 'aktuell', False) or getattr(args, 'farbregel', False) or
+            getattr(args, 'farb_achromat', False)):
+        return False
+    if getattr(args, 'rueckbau_relativ', None) is None:
+        args.rueckbau_relativ = M6T15_STANDARDS['rueckbau_relativ']
+    if not (getattr(args, 'rueckbau_sperre', False) or
+            getattr(args, 'ohne_rueckbau_sperre', False)):
+        args.rueckbau_sperre = M6T15_STANDARDS['rueckbau_sperre']
+    if getattr(args, 'apertur_rms_grenze', None) is None:
+        args.apertur_rms_grenze = M6T15_STANDARDS['apertur_rms_grenze']
+    return True
+
+
 def f12_guard(args):
     """Hilfsbedingung paraxial_focus gegen die Falle F12 im OSC-Versuch: nur bei der alten
     Konvention `last_surface` standardmäßig an (M6-T7: mit der neuen Konvention entbehrlich)."""
@@ -1319,6 +1358,35 @@ def reopen_after_prune(r, tag, pruned, kind, na, field, state, common, zopt):
     return (out if reached else None), info
 
 
+def cycle_prune_options(args):
+    """synth-Optionen des Rückbau-Laufs im Zyklus (M6-T10): ρ = --rueckbau-faktor (Standard 0,5),
+    --rueckbau-versuche (30), --rueckbau-stufen; seit M6-T15 (Befund F26) mit --rueckbau-relativ D
+    zusätzlich die relative Annahme (synth --prune-relative D) und mit der Sperre kein Einfügen im
+    Abschluss nach einem Rückbau (synth --prune-finish-lock)."""
+    opts = ['--prune', '--prune-factor', repr(args.rueckbau_faktor or 0.5),
+            '--prune-attempts', str(args.rueckbau_versuche or 30)]
+    if args.rueckbau_stufen:
+        opts += ['--prune-stages', str(args.rueckbau_stufen)]
+    relative = rueckbau_relativ(args)
+    if relative is not None:
+        opts += ['--prune-relative', repr(relative)]
+    if getattr(args, 'rueckbau_sperre', False):
+        opts.append('--prune-finish-lock')
+    return opts
+
+
+def rueckbau_relativ(args):
+    """δ der relativen Annahme des Rückbaus aus --rueckbau-relativ (None: aus)."""
+    v = getattr(args, 'rueckbau_relativ', None)
+    return None if v in (None, 'aus') else float(v)
+
+
+def apertur_rms_grenze(args):
+    """Aperturgrenze [Wellen] aus --apertur-rms-grenze (None: aus)."""
+    v = getattr(args, 'apertur_rms_grenze', None)
+    return None if v in (None, 'aus') else float(v)
+
+
 def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
     """Eine Stufe des Zyklus (M6-T10): reales System → Geisterplatten (Rückkehr) → Stufe
     (synth_loop wie im Hauptlauf) → Z2 (ohne Platten nachoptimiert) → Rückbau am realen System
@@ -1408,10 +1476,7 @@ def cycle_stage(r, args, k, kind, cur, common, relax, rings, log=print):
         nap, fp = prune_point(s, kind, q, nak, fk)
     p_in = r.path(tag + '_rueckbau_in.json')
     save(s, p_in)
-    prune_opts = ['--prune', '--prune-factor', repr(args.rueckbau_faktor or 0.5),
-                  '--prune-attempts', str(args.rueckbau_versuche or 30)]
-    if args.rueckbau_stufen:
-        prune_opts += ['--prune-stages', str(args.rueckbau_stufen)]
+    prune_opts = cycle_prune_options(args)
     # höchstens die Elemente von Z2: ist der Startpunkt nicht annehmbar (F_B > F_max), fügte
     # synth sonst zuerst ein (Lauf D: 13 → 14 Elemente statt Rückbau)
     pruned = r.synth(tag + '_rueckbau', p_in,
@@ -1486,6 +1551,12 @@ def cycle_run(args):
         summary['prune_point'] = args.rueckbau_punkt
     if getattr(args, 'farb_ziel', None) not in (None, 'zwei'):
         summary['color_target'] = args.farb_ziel
+    # M6-T15: nur mit den Optionen (Zusammenfassungen davor bleiben gleich)
+    if (rueckbau_relativ(args) is not None or getattr(args, 'rueckbau_sperre', False) or
+            apertur_rms_grenze(args) is not None):
+        summary['m6t15'] = {'prune_relative': rueckbau_relativ(args),
+                            'prune_finish_lock': bool(getattr(args, 'rueckbau_sperre', False)),
+                            'aperture_rms_limit': apertur_rms_grenze(args)}
     path = r.path('m6t10_zyklus.json')
 
     def write():
@@ -1868,6 +1939,20 @@ def main():
     ap.add_argument('--ohne-m6t14', action='store_true',
                     help='M6-T14b: Bildpunkt, Verzeichnung und Querfarbe wie vor M6-T14b (keine '
                          'Standards aus M6T14_STANDARDS; Läufe aus M6-T11 bis M6-T13 nachrechnen)')
+    ap.add_argument('--rueckbau-relativ', default=None, metavar='D',
+                    help='M6-T15 (F26): Rückbau im Zyklus auch annehmen, wenn F_B <= min((1 + D) '
+                         'x F_B vor dem Rückbau, F_max) (synth --prune-relative D); aus: nur die '
+                         'feste Schwelle. Standard mit --aktuell/--farbregel 0.1')
+    ap.add_argument('--ohne-rueckbau-sperre', action='store_true',
+                    help='M6-T15 (F26): im Rückbau-Lauf des Zyklus nach einem Rückbau im '
+                         'Abschluss wieder einfügen wie vor M6-T15 (ohne synth --prune-finish-lock)')
+    ap.add_argument('--apertur-rms-grenze', default=None, metavar='R',
+                    help='M6-T15: Aperturschritte nur annehmen, wenn der größte RMS der voll '
+                         'gewichteten Tupel <= R Wellen bleibt (synth --aperture-rms-limit R); '
+                         'aus: keine Grenze. Standard mit --aktuell/--farbregel 0.1')
+    ap.add_argument('--ohne-m6t15', action='store_true',
+                    help='M6-T15: Rückbau und Aperturöffnung wie vor M6-T15 (keine Standards aus '
+                         'M6T15_STANDARDS; Läufe aus M6-T14/M6-T14b bitgleich nachrechnen)')
     ap.add_argument('--farb-varianten', action='store_true',
                     help='M6-T13: Varianten der Farbregel für --einfuegen-verbessern ohne doppelte '
                          'Linse, mit Modul, Geisterdiagnose und Feldregel (synth --color-variants)')
@@ -1906,6 +1991,16 @@ def main():
             args.farb_modul or args.farb_varianten):
         args.farbregel = True
     apply_m6t14_standards(args)  # M6-T14b
+    apply_m6t15_standards(args)  # M6-T15
+    for name, value in (('--rueckbau-relativ', args.rueckbau_relativ),
+                        ('--apertur-rms-grenze', args.apertur_rms_grenze)):
+        if value not in (None, 'aus'):
+            try:
+                ok = float(value) > 0.0 or (name == '--rueckbau-relativ' and float(value) == 0.0)
+            except ValueError:
+                ok = False
+            if not ok:
+                ap.error(f'{name}: Zahl (> 0 bzw. >= 0) oder aus erwartet')
     if args.zyklus:
         return cycle_run(args)
     if args.apertur_zweig:
@@ -1919,6 +2014,7 @@ def main():
     # M6-T13: Ablauf der Farbe im Hauptlauf (apply_color_mode)
     apply_color_mode(args, ap.error)
     apply_m6t14_standards(args)  # M6-T14b: nach der Farbregel aus --farbe
+    apply_m6t15_standards(args)  # M6-T15: ebenso
     new_mode = args.farbe in NEW_COLOR_MODES
     if args.farb_ziel is None:
         args.farb_ziel = 'zwei'

@@ -54,6 +54,13 @@ struct MockSpec {
     bool predict = false;           // Prädiktor (M11-T3): predict liefert den aktuellen Zustand
     // Augmented Lagrangian (M11-T2): Rückgaben von update_shifts der Reihe nach (danach 0)
     std::vector<double> shift_changes{};
+    // Rückbau relativ (M6-T15): unter der Kapazität F_B = F_max/2 · (1 − element_bonus · (n − 1))
+    // mit n Elementen außerhalb der Rückbau-Homotopie (mehr Elemente, kleineres F_B)
+    double element_bonus = 0.0;
+    // Aperturgrenze (M6-T15): rms_main = 0,05 bis zur Apertur rms_capacity0 + rms_capacity_step ·
+    // (n − 1), darüber 0,2; die Diagnose meldet dort Bedarf (wie über der Kapazität)
+    double rms_capacity0 = std::numeric_limits<double>::infinity();
+    double rms_capacity_step = 0.0;
 };
 
 struct MockCall {
@@ -147,6 +154,10 @@ public:
         return c;
     }
 
+    double rms_capacity(const SystemDescription& system) const {
+        return spec_.rms_capacity0 + spec_.rms_capacity_step * (elements(system) - 1);
+    }
+
     HomotopySolve solve(SystemDescription& system, const HomotopyPoint& p) override {
         const int e = elements(system);
         const double from = system.surfaces.front().thickness;
@@ -162,6 +173,11 @@ public:
         s.iterations = jump <= spec_.fast_delta ? 10 : 100;
         double fb =
             p.aperture <= capacity(system) + 1e-12 ? 0.5 * spec_.threshold : 2.0 * spec_.threshold;
+        if (spec_.element_bonus != 0.0 && p.aperture <= capacity(system) + 1e-12) {
+            const auto n = std::count_if(system.surfaces.begin(), system.surfaces.end(),
+                                         [](const Surface& x) { return x.group != "collapsing"; });
+            fb *= 1.0 - spec_.element_bonus * static_cast<double>(n - 1);
+        }
         if (jump > spec_.max_jump + 1e-12) {
             fb = 2.0 * spec_.threshold;
         }
@@ -182,6 +198,7 @@ public:
         s.merit = fb;
         s.start_merit = fb;
         s.rms = std::sqrt(fb);
+        s.rms_main = p.aperture <= rms_capacity(system) + 1e-12 ? 0.05 : 0.2;
         system.surfaces.front().thickness = p.aperture;
         return s;
     }
@@ -225,7 +242,8 @@ public:
 
     HomotopyNeed diagnose(const SystemDescription& system, const HomotopyPoint& p) override {
         HomotopyNeed n;
-        if (spec_.need && p.aperture > capacity(system) + 1e-12) {
+        if (spec_.need && (p.aperture > capacity(system) + 1e-12 ||
+                           p.aperture > rms_capacity(system) + 1e-12)) {
             n.recommendation = GhostOperator::A;
             n.text = "Bedarf";
         } else if (spec_.need && spec_.goal_never) {

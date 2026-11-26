@@ -994,6 +994,190 @@ TEST(HomotopyControl, PruneOffUnchangedAndInvalidOptions) {
     }
 }
 
+// Relative Annahme des Rückbaus (M6-T15, Befund F26). Modell: F_B = F_max/2 · (1 − 0,1 (n − 1))
+// mit n Elementen, also 0,40 mit drei, 0,45 mit zwei, 0,50 mit einem Element (Kapazität 10: die
+// Zusatzelemente sind für die Apertur nicht nötig). Mit ρ = 0,4 verwirft die feste Schwelle jede Entfernung
+// (F_B,vor = 0,40 liegt schon an der Schwelle, wie in M6-T14b 0,54–0,64 F_max über 0,5 F_max).
+// Mit δ = 0,2 gilt die Grenze max(0,4, min(1,2 · 0,40, F_max)) = 0,48: Element 2 geht (0,45),
+// Element 1 nicht (0,50 > 0,48), weil der Bezug F_B vor dem Rückbau bleibt (je Entfernung wäre es
+// 0,54). δ = 0 ändert nichts; ein großes δ bleibt durch F_max begrenzt.
+TEST(HomotopyControl, PruneRelativeToStateBeforeRemoval) {
+    MockSpec spec;
+    spec.element_bonus = 0.1;
+    const auto run = [&](double relative, const MockSpec& sp, const SystemDescription& start) {
+        MockModel m(sp);
+        HomotopyOptions o = mock_options(0.3);
+        o.prune = true;
+        o.prune_merit_factor = 0.4;
+        o.prune_attempts = 2;
+        o.prune_relative = relative;
+        return run_homotopy(m, start, mock_point(0.3), o);
+    };
+    const SystemDescription three = mock_system(0.3, {nullptr, nullptr});
+    const HomotopyResult fixed = run(-1.0, spec, three);
+    EXPECT_EQ(fixed.removals, 0);
+    EXPECT_EQ(fixed.elements, 3);
+    EXPECT_EQ(fixed.removal_attempts, 2);
+    const HomotopyResult rel = run(0.2, spec, three);
+    EXPECT_EQ(rel.status, HomotopyStatus::GoalReached) << rel.message;
+    EXPECT_EQ(rel.removals, 1);
+    EXPECT_EQ(rel.elements, 2);
+    EXPECT_EQ(rel.insertions, 0);
+    const auto notes = steps_of(rel, HomotopyStepKind::Removal);
+    ASSERT_EQ(notes.size(), 2U); // Runde 1: Element 2 entfernt; Runde 2: Element 1 verworfen
+    EXPECT_TRUE(notes[0]->accepted);
+    EXPECT_FALSE(notes[1]->accepted);
+    EXPECT_NE(notes[0]->operation.find("F_B 0.45 ≤ 0.48"), std::string::npos)
+        << notes[0]->operation;
+    EXPECT_NE(notes[0]->operation.find("relativ: Bezug F_B vor dem Rückbau 0.4, Faktor 1.2"),
+              std::string::npos)
+        << notes[0]->operation;
+    EXPECT_NE(notes[1]->operation.find("F_B 0.5 > 0.48"), std::string::npos)
+        << notes[1]->operation;
+    // δ = 0: Grenze bleibt ρ F_max = F_B vorher, keine Entfernung
+    EXPECT_EQ(run(0.0, spec, three).removals, 0);
+    // großes δ: höchstens F_max. Zwei Elemente mit Kapazität 0,4; ohne Element 1 nur 0,2 < 0,3,
+    // F_B = 2 F_max ≤ 6 · 0,5 – ohne Begrenzung wäre die Entfernung angenommen
+    MockSpec cap;
+    cap.capacity0 = 0.2;
+    cap.capacity_step = 0.2;
+    const HomotopyResult capped = run(5.0, cap, mock_system(0.3, {nullptr}));
+    EXPECT_EQ(capped.removals, 0);
+    EXPECT_EQ(capped.elements, 2);
+    const auto cap_notes = steps_of(capped, HomotopyStepKind::Removal);
+    ASSERT_FALSE(cap_notes.empty());
+    EXPECT_NE(cap_notes[0]->operation.find("F_B 2 > 1"), std::string::npos)
+        << cap_notes[0]->operation;
+    // ungültig: nicht endlich
+    MockModel m({});
+    HomotopyOptions bad = mock_options(0.5);
+    bad.prune = true;
+    bad.prune_relative = std::numeric_limits<double>::infinity();
+    EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), bad),
+                 std::invalid_argument);
+}
+
+// Sperre im Abschluss (M6-T15, F26; M6-T14b Z1S: 4 entfernt, 7 eingefügt): Das Ziel ist nie
+// erreicht; der Rückbau entfernt beide überflüssigen Elemente, danach fügte der Abschluss bis zur
+// Elementzahl wieder ein. Mit Sperre endet der Lauf GoalNotReached am verkleinerten System; ohne
+// Rückbau im Lauf fügt der Abschluss auch mit Sperre ein (wie bisher).
+TEST(HomotopyControl, PruneFinishLockKeepsRemovedElements) {
+    MockSpec spec;
+    spec.goal_never = true;
+    const auto run = [&](bool lock, int min_elements) {
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.3);
+        o.prune = true;
+        o.max_elements = 3;
+        o.prune_min_elements = min_elements;
+        o.prune_finish_lock = lock;
+        return run_homotopy(m, mock_system(0.3, {"useless", "useless"}), mock_point(0.3), o);
+    };
+    const HomotopyResult old = run(false, 1);
+    EXPECT_EQ(old.status, HomotopyStatus::MaxElements) << old.message;
+    // die entfernten Elemente kommen wieder (2 Einfügungen bis zur Elementzahl), der Rückbau am
+    // Ende des abgebrochenen Laufs entfernt sie erneut
+    EXPECT_EQ(old.insertions, 2);
+    EXPECT_EQ(old.removals, 4);
+    const HomotopyResult locked = run(true, 1);
+    EXPECT_EQ(locked.status, HomotopyStatus::GoalNotReached) << locked.message;
+    EXPECT_NE(locked.message.find("kein Einfügen im Abschluss nach 2 Rückbau(ten) (Sperre, F26)"),
+              std::string::npos)
+        << locked.message;
+    EXPECT_EQ(locked.removals, 2);
+    EXPECT_EQ(locked.insertions, 0);
+    EXPECT_EQ(locked.elements, 1);
+    EXPECT_EQ(locked.steps.back().kind, HomotopyStepKind::Goal);
+    // ohne Rückbau vor dem Abschluss (Mindestzahl 3) wirkt die Sperre nicht: einmal eingefügt
+    const HomotopyResult none2 = [&] {
+        MockModel m(spec);
+        HomotopyOptions o = mock_options(0.3);
+        o.prune = true;
+        o.max_elements = 4;
+        o.prune_min_elements = 3;
+        o.prune_finish_lock = true;
+        return run_homotopy(m, mock_system(0.3, {"useless", "useless"}), mock_point(0.3), o);
+    }();
+    EXPECT_EQ(none2.status, HomotopyStatus::MaxElements) << none2.message;
+    EXPECT_EQ(none2.insertions, 1);
+}
+
+// Aperturgrenze (M6-T15): Modell mit F_B = F_max/2 überall (Kapazität 10), aber größter RMS der
+// voll gewichteten Tupel 0,05 bis NA 0,4 (ein Element) bzw. 0,6 (zwei), darüber 0,2 Wellen. Ohne
+// Grenze öffnet die Apertur bis 0,5 ohne Einfügen; mit Grenze 0,1 sind die Schritte über 0,4
+// nicht erreicht (Δ halbiert), unter Δ_min wird eingefügt und das Ziel erreicht; ohne Bedarf
+// endet die Phase unter 0,4 (StepTooSmall). Feldschritte prüft die Grenze nicht.
+TEST(HomotopyControl, ApertureRmsLimit) {
+    MockSpec spec;
+    spec.rms_capacity0 = 0.4;
+    spec.rms_capacity_step = 0.2;
+    const auto run = [](const MockSpec& sp, double limit) {
+        MockModel m(sp);
+        HomotopyOptions o = mock_options(0.5);
+        o.aperture_rms_limit = limit;
+        return run_homotopy(m, MockModel::start(0.3), mock_point(0.3), o);
+    };
+    const HomotopyResult off = run(spec, 0.0);
+    EXPECT_EQ(off.status, HomotopyStatus::GoalReached) << off.message;
+    EXPECT_EQ(off.insertions, 0);
+    EXPECT_EQ(off.point.aperture, 0.5);
+    for (const HomotopyStep& s : off.steps) {
+        EXPECT_TRUE(std::isnan(s.solve.rms_main)) << s.index; // ohne Grenze nicht im Protokoll
+        EXPECT_EQ(homotopy_step_json(s).find("rms_main"), std::string::npos);
+    }
+
+    const HomotopyResult on = run(spec, 0.1);
+    EXPECT_EQ(on.status, HomotopyStatus::GoalReached) << on.message;
+    EXPECT_EQ(on.insertions, 1);
+    EXPECT_EQ(on.point.aperture, 0.5);
+    bool rejected = false;
+    for (const HomotopyStep* s : steps_of(on, HomotopyStepKind::Aperture)) {
+        if (s->accepted) {
+            EXPECT_LE(s->solve.rms_main, 0.1) << s->index;
+        } else if (s->solve.rms_main > 0.1) {
+            rejected = true;
+            EXPECT_NE(s->operation.find("größter RMS der voll gewichteten Tupel 0.20000 > "
+                                        "Aperturgrenze 0.10000 Wellen"),
+                      std::string::npos)
+                << s->operation;
+        }
+    }
+    EXPECT_TRUE(rejected);
+    const nlohmann::json j = nlohmann::json::parse(homotopy_result_json(on));
+    EXPECT_DOUBLE_EQ(j["steps"][0]["lm"]["rms_main_waves"].get<double>(), 0.05);
+    // die erste Einfügung kommt erst nach dem Schritt über 0,4
+    const auto ins = steps_of(on, HomotopyStepKind::Insertion);
+    ASSERT_EQ(ins.size(), 1U);
+    EXPECT_LE(ins[0]->point.aperture, 0.4 + 1e-12);
+    EXPECT_GE(ins[0]->point.aperture, 0.4 - 0.004 - 1e-12);
+
+    MockSpec no_need = spec;
+    no_need.need = false;
+    const HomotopyResult stop = run(no_need, 0.1);
+    EXPECT_EQ(stop.status, HomotopyStatus::StepTooSmall) << stop.message;
+    EXPECT_LE(stop.point.aperture, 0.4 + 1e-12);
+    EXPECT_NE(stop.message.find("Aperturgrenze 0.10000 Wellen"), std::string::npos)
+        << stop.message;
+
+    // Feldphase: Apertur 0,45 über der Grenze, Feld 0,5 → 1 wird trotzdem angenommen
+    MockModel mf(spec);
+    HomotopyOptions of = mock_options(0.45);
+    of.target_field = 1.0;
+    of.aperture_rms_limit = 0.1;
+    HomotopyPoint p = mock_point(0.45);
+    p.field = 0.5;
+    const HomotopyResult field = run_homotopy(mf, MockModel::start(0.45), p, of);
+    EXPECT_EQ(field.status, HomotopyStatus::GoalReached) << field.message;
+    EXPECT_EQ(field.point.field, 1.0);
+    EXPECT_EQ(field.insertions, 0);
+
+    MockModel m({});
+    HomotopyOptions bad = mock_options(0.5);
+    bad.aperture_rms_limit = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_THROW(run_homotopy(m, MockModel::start(0.3), mock_point(0.3), bad),
+                 std::invalid_argument);
+}
+
 TEST(HomotopyControl, JointApertureFieldInvalidOptions) {
     MockModel m({});
     HomotopyOptions o = mock_options(0.5);
@@ -1664,6 +1848,38 @@ TEST(OpticalHomotopy, GoalUsesRealSystem) {
     EXPECT_EQ(g0.tuples[0].failed, 0);
     const HomotopyGoal g2 = m.goal(s, m.start_point(), 100.0);
     EXPECT_TRUE(g2.reached);
+}
+
+// Aperturgrenze (M6-T15): rms_main ist der größte RMS der voll gewichteten Tupel (Feld- mal
+// Spektralgewicht ≥ 0,5 × größtes). Zweilinser ohne Geisterplatten, Felder mit Gewicht 1 und
+// 0,25, Wellenlängen 486/546 nm mit 1 und 656 nm mit 0,1: nur Feld 0 bei 486 und 546 nm zählen.
+// Orakel: die Tupel der Zielprüfung am selben Zustand (ohne Platten dieselben Strahlen).
+TEST(OpticalHomotopy, RmsMainOnlyFullyWeightedTuples) {
+    LoadedSystem start = load_residual_system("zweilinser_mechanik.json");
+    start.system.source.field_weights = {1.0, 0.25};
+    OpticalHomotopyOptions o;
+    Spectrum sp = start.system.spectrum;
+    sp.wavelengths_nm = {486.13, 546.07, 656.27};
+    sp.weights = {1.0, 1.0, 0.1};
+    o.spectra = {sp};
+    o.lm.max_iterations = 2;
+    OpticalHomotopyModel m(start, o);
+    SystemDescription s = m.start_system();
+    const HomotopyPoint p = m.start_point();
+    const HomotopySolve sv = m.solve(s, p);
+    const HomotopyGoal g = m.goal(s, p, 1.0);
+    ASSERT_EQ(g.tuples.size(), 6U);
+    double all = 0.0;
+    double main = 0.0;
+    for (const HomotopyTupleRms& t : g.tuples) {
+        all = std::max(all, t.rms);
+        if (t.field == 0 && t.wavelength < 2) {
+            main = std::max(main, t.rms);
+        }
+    }
+    EXPECT_NEAR(sv.rms, all, kWeightedMerit * all);
+    EXPECT_NEAR(sv.rms_main, main, kWeightedMerit * main);
+    EXPECT_LT(sv.rms_main, sv.rms); // Feldrand bzw. 656 nm sind schlechter
 }
 
 } // namespace

@@ -102,6 +102,10 @@ struct SynthArgs {
     double prune_factor = HomotopyOptions{}.prune_merit_factor;
     double prune_tolerance = HomotopyOptions{}.prune_tolerance;
     int prune_min_elements = HomotopyOptions{}.prune_min_elements;
+    // M6-T15 (F26): relative Annahme des Rückbaus, Sperre im Abschluss; Aperturgrenze
+    double prune_relative = HomotopyOptions{}.prune_relative;
+    bool prune_finish_lock = false;
+    double aperture_rms_limit = 0.0;
     bool have_max_elements = false;
     // M6-T10: Rückkehr vom realen System zu Geisterplatten vor dem Lauf
     bool start_from_real = false;
@@ -374,6 +378,14 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         } else if (arg == "--prune-tolerance") {
             a.have_prune_detail = true;
             a.prune_tolerance = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--prune-relative") {
+            a.have_prune_detail = true;
+            a.prune_relative = non_negative(arg, next_value(args, i, arg));
+        } else if (arg == "--prune-finish-lock") {
+            a.have_prune_detail = true;
+            a.prune_finish_lock = true;
+        } else if (arg == "--aperture-rms-limit") {
+            a.aperture_rms_limit = positive(arg, next_value(args, i, arg));
         } else if (arg == "--prune-min-elements") {
             a.have_prune_detail = true;
             a.prune_min_elements = parse_int(arg, next_value(args, i, arg));
@@ -626,8 +638,12 @@ SynthArgs parse_args(std::span<const std::string_view> args) {
         a.max_elements = *a.element_budget;
     }
     if (a.have_prune_detail && !a.prune && !a.element_budget) {
-        throw UsageError("--prune-stages, --prune-attempts, --prune-factor, --prune-tolerance und "
-                         "--prune-min-elements verlangen --prune oder --element-budget");
+        throw UsageError("--prune-stages, --prune-attempts, --prune-factor, --prune-tolerance, "
+                         "--prune-relative, --prune-finish-lock und --prune-min-elements "
+                         "verlangen --prune oder --element-budget");
+    }
+    if (a.beam && a.aperture_rms_limit > 0.0) {
+        throw UsageError("--aperture-rms-limit gibt es nur ohne --beam");
     }
     if ((!a.ghost_glasses.empty() || a.ghost_order || a.ghost_weight || a.ghost_locations) &&
         !a.start_from_real) {
@@ -711,7 +727,14 @@ void print_synth_usage(std::ostream& out) {
            "  --prune-attempts N        Kandidaten pro Rückbau-Runde (Standard 4)\n"
            "  --prune-factor F          Annahme bei F_B <= F x F_max, 0 < F <= 1 (Standard 1)\n"
            "  --prune-tolerance E       zusätzlich F_B <= (1 + E) x F_B vorher (Standard aus)\n"
+           "  --prune-relative D        Annahme auch bei F_B <= min((1 + D) x F_B vor dem\n"
+           "                            Rückbau, F_max) (M6-T15, F26; Standard aus)\n"
+           "  --prune-finish-lock       nach einem Rückbau im Abschluss nicht wieder einfügen\n"
+           "                            (M6-T15, F26; Standard aus)\n"
            "  --prune-min-elements N    nie unter N Glaselemente (Standard 1)\n"
+           "  --aperture-rms-limit R    Aperturschritte nur annehmen, wenn zusätzlich der\n"
+           "                            größte RMS der voll gewichteten Tupel <= R Wellen ist\n"
+           "                            (M6-T15; nicht mit --beam; Standard aus)\n"
            "  --start-from-real         Rückkehr zu Geisterplatten vor dem Lauf (M6-T10): die\n"
            "                            Startdatei ohne Platten bekommt Wörterbücher mit\n"
            "                            Koeffizienten 0 (Merit unverändert) in der Mitte der\n"
@@ -1084,6 +1107,9 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
         h.prune_merit_factor = a.prune_factor;
         h.prune_tolerance = a.prune_tolerance;
         h.prune_min_elements = a.prune_min_elements;
+        h.prune_relative = a.prune_relative;
+        h.prune_finish_lock = a.prune_finish_lock;
+        h.aperture_rms_limit = a.aperture_rms_limit;
         h.augmented_lagrangian.rounds = a.al_rounds;
         h.augmented_lagrangian.tolerance = a.al_tolerance;
         h.al_penalty_scale = a.al_scale;
@@ -1132,7 +1158,18 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                        (a.prune_tolerance >= 0.0
                             ? " und <= (1 + " + fixed(a.prune_tolerance, 4) + ") x F_B vorher"
                             : std::string()) +
+                       (a.prune_relative >= 0.0
+                            ? " oder <= min((1 + " + fixed(a.prune_relative, 4) +
+                                  ") x F_B vor dem Rückbau, F_max)"
+                            : std::string()) +
+                       (a.prune_finish_lock ? ", Abschluss ohne Einfügen nach Rückbau"
+                                            : std::string()) +
                        ", mindestens " + std::to_string(a.prune_min_elements) + " Element(e)");
+            }
+            if (a.aperture_rms_limit > 0.0) {
+                kv(out, "Aperturgrenze (M6-T15)",
+                   "größter RMS der voll gewichteten Tupel <= " + fixed(a.aperture_rms_limit, 5) +
+                       " Wellen");
             }
             if (ghost_return) {
                 std::string lagen;
@@ -1349,6 +1386,15 @@ int run_synth_command(std::span<const std::string_view> args, std::ostream& out,
                 {"merit_factor", a.prune_factor},
                 {"tolerance", a.prune_tolerance >= 0.0 ? Json(a.prune_tolerance) : Json(nullptr)},
                 {"min_elements", a.prune_min_elements}};
+            if (a.prune_relative >= 0.0) {
+                options["prune"]["relative"] = a.prune_relative; // M6-T15, nur mit Option
+            }
+            if (a.prune_finish_lock) {
+                options["prune"]["finish_lock"] = true; // M6-T15, nur mit Option
+            }
+        }
+        if (a.aperture_rms_limit > 0.0) {
+            options["aperture_rms_limit"] = a.aperture_rms_limit; // M6-T15, nur mit Option
         }
         if (a.field_rule) {
             options["field_rule"] =

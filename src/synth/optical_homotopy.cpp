@@ -153,6 +153,32 @@ double max_rms(const std::vector<HomotopyTupleRms>& t) {
     return m;
 }
 
+// Voll gewichtete Tupel (Aperturgrenze, M6-T15): Feld- mal Spektralgewicht mindestens
+// kMainTupleWeightShare × größtes Gewicht der Tupel (Zielspezifikation: 436–656 nm mit Gewicht 1,
+// nicht 405/707 nm mit 0,1).
+constexpr double kMainTupleWeightShare = 0.5;
+
+std::vector<HomotopyTupleRms> main_tuples(const SystemDescription& d,
+                                          const std::vector<HomotopyTupleRms>& tuples) {
+    const auto weight = [&](const HomotopyTupleRms& t) {
+        const double wf = d.source.type == SourceType::Collimated
+                              ? d.source.field_weights.at(static_cast<std::size_t>(t.field))
+                              : 1.0;
+        return wf * d.spectrum.weights.at(static_cast<std::size_t>(t.wavelength));
+    };
+    double wmax = 0.0;
+    for (const HomotopyTupleRms& t : tuples) {
+        wmax = std::max(wmax, weight(t));
+    }
+    std::vector<HomotopyTupleRms> out;
+    for (const HomotopyTupleRms& t : tuples) {
+        if (weight(t) >= kMainTupleWeightShare * wmax) {
+            out.push_back(t);
+        }
+    }
+    return out;
+}
+
 // Zustand am Punkt, vorbereitet für den LM: geladenes System, Vorlage mit einer Variante,
 // Variablen und Startwerte.
 struct Prepared {
@@ -223,7 +249,9 @@ HomotopySolve finish_solve(const Prepared& pr, SystemDescription& system, const 
     const int run0 = 0;
     const SystemBatchHost at =
         lm_point_batch(pr.set, pr.base, std::span<const int>(&run0, 1), run.x);
-    s.rms = max_rms(tuple_rms(pr.l, at, quadrature));
+    const std::vector<HomotopyTupleRms> tuples = tuple_rms(pr.l, at, quadrature);
+    s.rms = max_rms(tuples);
+    s.rms_main = max_rms(main_tuples(pr.l.system, tuples));
     s.wavefront = make_cpu_merit(quadrature, {}, threads)(at).at(0);
     s.ghost_penalty = ghost_penalty_merit(make_ghost_penalty(pr.l.system), at, 0);
     return s;
