@@ -459,6 +459,10 @@ TEST(BeamSearch, InvalidOptionsThrow) {
     o.homotopy.penalty_factor = 1.0;
     EXPECT_THROW(run_beam_search(m, MockModel::start(0.3), mock_point(0.3), o),
                  std::invalid_argument);
+    o = beam_options(0.6, 2);
+    o.homotopy.aperture_rms_limit = 0.1; // M6-T15: nur im Controller ohne Strahlsuche
+    EXPECT_THROW(run_beam_search(m, MockModel::start(0.3), mock_point(0.3), o),
+                 std::invalid_argument);
 }
 
 // Protokoll: Stammbaum als Text, JSON (Kandidaten, Kandidat und Gruppe pro Schritt) und DOT.

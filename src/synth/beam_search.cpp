@@ -106,6 +106,9 @@ void check_beam_options(const BeamOptions& o) {
         invalid("gemeinsame Apertur-/Feld-Homotopie und Einfügen mit Verbesserung (M6-T8) "
                 "werden in der Strahlsuche nicht unterstützt");
     }
+    if (o.homotopy.aperture_rms_limit > 0.0) {
+        invalid("Aperturgrenze (M6-T15) wird in der Strahlsuche nicht unterstützt");
+    }
     if (o.beam_width < 1 || o.alternatives < 1 || o.perturbed_starts < 0) {
         invalid("verlangt Strahlbreite ≥ 1, Varianten ≥ 1 und gestörte Starts ≥ 0");
     }

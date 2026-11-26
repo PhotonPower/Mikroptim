@@ -588,6 +588,67 @@ def test_m6t14_standards(tool):
     assert tool.apply_m6t14_standards(args(farbregel=False, aktuell=True))
 
 
+def test_m6t15_standards_and_switches(tool):
+    """M6-T15 (Entscheidung Maintainer 2026-11-26): mit --aktuell/--farbregel Rückbau relativ
+    (δ = 0,1) mit Sperre im Abschluss und Aperturgrenze 0,1 Wellen; --ohne-m6t15 bzw. ohne
+    --aktuell/--farbregel wie vorher (Optionen der synth-Aufrufe bitgleich), einzeln abschaltbar."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=True, farb_achromat=False, sinusbedingung=None,
+                    feldregel=False, synth_arg=[], rueckbau_relativ=None, rueckbau_sperre=False,
+                    ohne_rueckbau_sperre=False, apertur_rms_grenze=None, ohne_m6t15=False,
+                    rueckbau_faktor=None, rueckbau_versuche=None, rueckbau_stufen=None)
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.M6T15_STANDARDS == {"rueckbau_relativ": "0.1", "rueckbau_sperre": True,
+                                    "apertur_rms_grenze": "0.1"}
+    old_prune = ["--prune", "--prune-factor", "0.5", "--prune-attempts", "30"]
+    # alter Weg: --ohne-m6t15 bzw. ohne --aktuell/--farbregel
+    for a in (args(ohne_m6t15=True), args(farbregel=False)):
+        assert not tool.apply_m6t15_standards(a)
+        assert tool.cycle_prune_options(a) == old_prune
+        assert "--aperture-rms-limit" not in tool.synth_options(a)
+    a_old = args(ohne_m6t15=True)
+    tool.apply_m6t15_standards(a_old)
+    # Standard
+    a = args()
+    assert tool.apply_m6t15_standards(a)
+    assert tool.cycle_prune_options(a) == old_prune + ["--prune-relative", "0.1",
+                                                       "--prune-finish-lock"]
+    opts = tool.synth_options(a)
+    assert opts[-2:] == ["--aperture-rms-limit", "0.1"]
+    assert opts[:-2] == tool.synth_options(a_old)  # sonst gleich
+    assert tool.apply_m6t15_standards(args(farbregel=False, aktuell=True))
+    # einzeln
+    a = args(rueckbau_relativ="aus", ohne_rueckbau_sperre=True, apertur_rms_grenze="aus")
+    assert tool.apply_m6t15_standards(a)
+    assert tool.cycle_prune_options(a) == old_prune
+    assert "--aperture-rms-limit" not in tool.synth_options(a)
+    a = args(rueckbau_relativ="0.2", apertur_rms_grenze="0.0714", rueckbau_faktor=0.4,
+             rueckbau_stufen=2)
+    tool.apply_m6t15_standards(a)
+    assert tool.cycle_prune_options(a) == [
+        "--prune", "--prune-factor", "0.4", "--prune-attempts", "30", "--prune-stages", "2",
+        "--prune-relative", "0.2", "--prune-finish-lock"]
+    assert tool.synth_options(a)[-2:] == ["--aperture-rms-limit", "0.0714"]
+
+
+def test_main_path_m6t15_standard_and_switch(tool, tmp_path, monkeypatch):
+    """M6-T15: Der Standardablauf übergibt allen synth-Aufrufen die Aperturgrenze 0,1 Wellen;
+    mit --ohne-m6t15 sind Optionen und Startdatei wie vor M6-T15."""
+    calls, opts, _ = _fake_main_path(tool, tmp_path / "neu", monkeypatch, [])
+    assert opts[-2:] == ["--aperture-rms-limit", "0.1"]
+    calls_old, opts_old, _ = _fake_main_path(tool, tmp_path / "alt", monkeypatch, ["--ohne-m6t15"])
+    assert "--aperture-rms-limit" not in opts_old
+    assert opts[:-2] == opts_old
+    assert [c["opts"] for c in calls] == [c["opts"] for c in calls_old]
+    assert (tool.load(str(tmp_path / "neu" / "out" / "p0_start.json")) ==
+            tool.load(str(tmp_path / "alt" / "out" / "p0_start.json")))
+    _, opts_one, _ = _fake_main_path(tool, tmp_path / "einzeln", monkeypatch,
+                                     ["--apertur-rms-grenze", "aus"])
+    assert opts_one == opts_old
+
+
 def test_main_path_m6t14_standards_and_switch(tool, tmp_path, monkeypatch):
     """M6-T14b: Der Standardablauf (--farbe apertur) rechnet mit Schwerpunkt, Verzeichnung 1 %,
     Querfarbe aus Strahlen und Farbbudget 5 in p1f; --ohne-m6t14 --farb-budget 4 ergibt dieselben

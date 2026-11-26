@@ -1,0 +1,28 @@
+mikroptim synth 0.1.0: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\Z1S\c1_feld_r2_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6200, Feldanteil 0.647, 17 Glaselement(e)
+  Ziel                                        NA 0.6200, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 18; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Aperturgrenze (M6-T15)                      größter RMS der voll gewichteten Tupel <= 0.10000 Wellen
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Querfarbe (Seidel oder reale Hauptstrahlen): Modul nach |y·ȳ|, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6200  0.647   0  -        max_iterations       500  4.939326e-03  4.931279e-03  0.14941   7.153e-06  17  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6200  0.647   0  -        max_iterations       500  4.865712e-03  4.861602e-03  0.14758   6.969e-06  17  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6200  0.647   0  -        max_iterations       500  4.858767e-03  4.832820e-03  0.14767   6.804e-06  17  ok: Gewichte der einseitigen Bedingungen ×1
+      3  field            0.6200  0.772   0  0.12500  max_iterations       500  3.894533e-02  3.885342e-02  0.33143   2.640e-04  17  shrink (Delta 0.06250)
+      4  field            0.6200  0.709   0  0.06250  max_iterations       500  7.544528e-03  7.503066e-03  0.19297   2.037e-05  17  shrink (Delta 0.03125)
+      5  field            0.6200  0.678   0  0.03125  max_iterations       500  5.829086e-03  5.797213e-03  0.17150   1.190e-05  17  shrink (Delta 0.01562)
+      6  field            0.6200  0.662   0  0.01562  max_iterations       500  5.227298e-03  5.200124e-03  0.15880   8.205e-06  17  insert (Delta 0.00781): Feldregel (RMS Rand/Achse 0.126726/0.0444982 Wellen, W131 = 0.453624, W222 = 0.199913, W220 = 0.036333): Operator A im Luftspalt nach Fläche 0 (|ȳ/y| = 0.00616331)
+      7  insertion        0.6200  0.647   0  -        -                      -  -             -             -         -            17  -: Einfügen verworfen: Fehler der Optimierung (variables.items[1].min: Startwert 0.25 (surfaces[0].thickness) liegt unter der unteren Schranke 0.5) (Einfügen nur mit Verbesserung)
+
+Status: step_too_small (Feldanteil 0.646875: Schrittweite unter Δ_min = 0.015625 (letzter Versuch F_B = 0.00520012); kein Einfügen verbessert F_B (1 Varianten, F_B inf ≥ 0.00483282))
+Endpunkt: NA 0.6200, Feldanteil 0.647, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.6200)
+Glaselemente: 17 -> 17 (0 Einfügungen), Optimierungen: 7, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                200.1
+Ergebnis geschrieben: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\Z1S\c1_feld_r3.json
+Protokoll geschrieben: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\Z1S\c1_feld_r3_log.json

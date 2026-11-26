@@ -167,6 +167,12 @@ void check_options_impl(const HomotopyOptions& o) {
         invalid("Rückbau ungültig (Stufen und Versuche ≥ 1, Mindestzahl ≥ 0, 0 < Faktor ≤ 1, "
                 "Toleranz endlich)");
     }
+    if (!std::isfinite(o.prune_relative)) {
+        invalid("relative Annahme des Rückbaus muss endlich sein (< 0: aus)");
+    }
+    if (!std::isfinite(o.aperture_rms_limit)) {
+        invalid("Aperturgrenze des RMS muss endlich sein (≤ 0: aus)");
+    }
 }
 
 } // namespace
@@ -359,6 +365,8 @@ private:
     int insertions_at_prune_ = 0;
     bool pruned_ = false;
     std::optional<HomotopyPoint> limit_prune_point_;
+    // F_B am Beginn des laufenden Rückbaus (Bezug der relativen Annahme, M6-T15)
+    double prune_reference_ = std::numeric_limits<double>::quiet_NaN();
 
     void emit(HomotopyStep step) {
         step.index = static_cast<int>(r_.steps.size());
@@ -389,6 +397,10 @@ private:
             step.solve.shift_change =
                 model_.update_shifts(system, point, o_.augmented_lagrangian.max_shift);
         }
+        if (!(o_.aperture_rms_limit > 0.0)) {
+            // ohne Aperturgrenze (M6-T15) nicht im Protokoll: bitgleich wie vorher
+            step.solve.rms_main = std::numeric_limits<double>::quiet_NaN();
+        }
         step.solved = true;
         step.seconds = std::chrono::duration<double>(Clock::now() - t0).count();
         ++r_.solves;
@@ -398,6 +410,21 @@ private:
     bool acceptable(const HomotopySolve& s) const {
         return std::isfinite(s.merit) && s.status != LmStatus::NumericalError &&
                s.failed_rays == 0 && s.wavefront + s.ghost_penalty <= threshold_;
+    }
+
+    // Aperturgrenze (M6-T15): in den Schritten der Apertur (auch gemeinsam mit dem Feld) muss
+    // zusätzlich der größte RMS der voll gewichteten Tupel unter der Grenze bleiben. Liefert
+    // leer, wenn der Schritt sie einhält (oder die Grenze aus ist), sonst den Grund.
+    std::string aperture_rms_violation(HomotopyStepKind kind, const HomotopySolve& s) const {
+        if (!(o_.aperture_rms_limit > 0.0) ||
+            (kind != HomotopyStepKind::Aperture && kind != HomotopyStepKind::ApertureField)) {
+            return {};
+        }
+        if (s.rms_main <= o_.aperture_rms_limit) {
+            return {};
+        }
+        return "größter RMS der voll gewichteten Tupel " + number(s.rms_main, "%.5f") +
+               " > Aperturgrenze " + number(o_.aperture_rms_limit, "%.5f") + " Wellen";
     }
 
     bool fast(const HomotopySolve& s) const {
@@ -676,6 +703,7 @@ private:
     int prune(State& s, const std::string& reason) {
         pruned_ = true;
         insertions_at_prune_ = r_.insertions;
+        prune_reference_ = good_fb_;
         int removed = 0;
         for (;;) {
             const std::vector<HomotopyRemoval> candidates =
@@ -708,6 +736,12 @@ private:
         ++r_.removal_attempts;
         const double before = good_fb_;
         double limit = o_.prune_merit_factor * threshold_;
+        const bool relative = o_.prune_relative >= 0.0 && std::isfinite(prune_reference_);
+        if (relative) {
+            // M6-T15 (F26): relativ zum Zustand vor dem Rückbau, höchstens F_max
+            limit = std::max(limit, std::min((1.0 + o_.prune_relative) * prune_reference_,
+                                             threshold_));
+        }
         if (o_.prune_tolerance >= 0.0 && std::isfinite(before)) {
             limit = std::min(limit, (1.0 + o_.prune_tolerance) * before);
         }
@@ -759,6 +793,10 @@ private:
                              number(limit) + ", vorher " + number(before);
         } else {
             note.operation = "Rückbau verworfen (" + reason + "): " + c.text + ": " + why;
+        }
+        if (relative) {
+            note.operation += " (relativ: Bezug F_B vor dem Rückbau " + number(prune_reference_) +
+                              ", Faktor " + number(1.0 + o_.prune_relative) + ")";
         }
         for (const std::string& w : warnings) {
             note.operation += "; Warnung: " + w;
@@ -853,7 +891,13 @@ private:
             if (predicted) {
                 step.operation = "Prädiktor (Sekante)";
             }
-            if (acceptable(step.solve)) {
+            const bool ok_fb = acceptable(step.solve);
+            // M6-T15: annehmbar nach F_B, aber über der Aperturgrenze → nicht erreicht
+            const std::string rms_note = ok_fb ? aperture_rms_violation(kind, step.solve) : "";
+            if (!rms_note.empty()) {
+                step.operation += (step.operation.empty() ? "" : "; ") + rms_note;
+            }
+            if (ok_fb && rms_note.empty()) {
                 step.accepted = true;
                 if (fast(step.solve) ||
                     (o_.grow_margin > 0.0 &&
@@ -886,14 +930,15 @@ private:
                                   (elements_ >= o_.max_elements && !o_.prune_at_limit)
                               ? HomotopyAction::Stop
                               : HomotopyAction::Insert;
-            step.operation = need.text;
+            step.operation = need.text + (rms_note.empty() ? "" : "; " + rms_note);
             emit(step);
             prev.reset(); // neue Topologie: Sekante neu aufbauen
             const double before = good_fb_;
             insert(s, need, HomotopyStatus::StepTooSmall,
                    std::string(name) + " " + number(from) + ": Schrittweite unter Δ_min = " +
                        number(c.min) + " (letzter Versuch F_B = " +
-                       number(step.solve.wavefront + step.solve.ghost_penalty) + ")",
+                       number(step.solve.wavefront + step.solve.ghost_penalty) +
+                       (rms_note.empty() ? "" : ", " + rms_note) + ")",
                    // Spektrumbreite: Zweige am verworfenen, farbigeren Punkt wählen
                    kind == HomotopyStepKind::SpectrumWidth ? &trial.point : nullptr,
                    std::isfinite(before) ? &before : nullptr);
@@ -996,6 +1041,12 @@ private:
             r_.steps.back().recommendation = need.recommendation;
             const std::string why = "Ziel am Endpunkt verfehlt (größter RMS " +
                                     number(r_.goal.max_rms, "%.5f") + " Wellen)";
+            if (o_.prune_finish_lock && r_.removals > 0) {
+                // M6-T15 (F26): nach einem Rückbau nicht wieder einfügen; Ende an diesem Zustand
+                throw Stop{HomotopyStatus::GoalNotReached,
+                           why + "; kein Einfügen im Abschluss nach " +
+                               std::to_string(r_.removals) + " Rückbau(ten) (Sperre, F26)"};
+            }
             State next = saved;
             if (o_.insertion_must_improve && o_.insertion_improve_finish &&
                 std::isfinite(saved_fb)) {
@@ -1097,6 +1148,9 @@ Json step_object(const HomotopyStep& s) {
                        {"failed_rays", s.solve.failed_rays}};
         if (std::isfinite(s.solve.shift_change)) {
             j["lm"]["shift_change"] = s.solve.shift_change; // nur mit Augmented Lagrangian
+        }
+        if (std::isfinite(s.solve.rms_main)) {
+            j["lm"]["rms_main_waves"] = s.solve.rms_main; // nur mit Aperturgrenze (M6-T15)
         }
     } else {
         j["lm"] = nullptr;

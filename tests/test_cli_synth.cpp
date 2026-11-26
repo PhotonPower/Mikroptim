@@ -550,6 +550,101 @@ TEST(CliSynth, PruneAndElementBudget) {
     EXPECT_NE(help.find("--element-budget"), std::string::npos);
 }
 
+// M6-T15: relative Annahme und Sperre des Rückbaus, Aperturgrenze. Ohne Option weder in den
+// Optionen noch in den Schritten; eine Grenze, die nicht greift (100 Wellen), ändert am Lauf nichts
+// außer den Einträgen rms_main_waves; eine Grenze unter dem RMS des Startsystems hält die Apertur
+// (ohne weiteres Element Abbruch mit der Grenze in der Meldung).
+TEST(CliSynth, M6T15PruneRelativeAndApertureLimit) {
+    SynthTempDir dir("m6t15");
+    const std::vector<std::string> base{kStart,     "--target-na",      "0.4", "--merit-factor",
+                                        "10",       "--max-elements",   "1",   "--max-iterations",
+                                        "10",       "--element-stages", "2",   "--json"};
+    const auto run = [&](std::vector<std::string> extra, const std::string& name) {
+        std::vector<std::string> a = base;
+        a.insert(a.end(), extra.begin(), extra.end());
+        a.insert(a.end(), {"-o", dir.file(name)});
+        const SynthCliResult r = synth(a);
+        EXPECT_EQ(r.code, cli::kExitOk) << r.err;
+        nlohmann::json j = nlohmann::json::parse(r.out);
+        for (nlohmann::json& st : j["result"]["steps"]) {
+            st.erase("seconds");
+        }
+        j.erase("output");
+        j.erase("seconds");
+        j["result"].erase("seconds");
+        return j;
+    };
+    const nlohmann::json off = run({}, "aus.json");
+    EXPECT_FALSE(off["options"].contains("aperture_rms_limit"));
+    for (const auto& st : off["result"]["steps"]) {
+        if (st["lm"].is_object()) {
+            EXPECT_FALSE(st["lm"].contains("rms_main_waves"));
+        }
+    }
+    nlohmann::json wide = run({"--aperture-rms-limit", "100"}, "weit.json");
+    EXPECT_EQ(wide["options"]["aperture_rms_limit"], 100.0);
+    int with_main = 0;
+    for (nlohmann::json& st : wide["result"]["steps"]) {
+        if (st["lm"].is_object() && st["lm"].contains("rms_main_waves")) {
+            // eine Wellenlänge, Felder mit Gewicht 1: alle Tupel voll gewichtet
+            EXPECT_EQ(st["lm"]["rms_main_waves"], st["lm"]["rms_waves"]);
+            st["lm"].erase("rms_main_waves");
+            ++with_main;
+        }
+    }
+    EXPECT_GT(with_main, 0);
+    wide["options"].erase("aperture_rms_limit");
+    EXPECT_EQ(wide, off);
+
+    const double start_rms = off["result"]["steps"][0]["lm"]["rms_waves"].get<double>();
+    const nlohmann::json tight =
+        run({"--aperture-rms-limit", std::to_string(0.5 * start_rms)}, "eng.json");
+    EXPECT_NE(tight["result"]["status"], "goal_reached");
+    EXPECT_NE(tight["result"]["message"].get<std::string>().find("Aperturgrenze"),
+              std::string::npos)
+        << tight["result"]["message"];
+    EXPECT_LT(tight["result"]["point"]["aperture"].get<double>(),
+              off["result"]["point"]["aperture"].get<double>());
+
+    // Rückbau: Optionen im Protokoll nur mit Angabe
+    const nlohmann::json p0 = run({"--prune", "--prune-min-elements", "0"}, "p0.json");
+    EXPECT_FALSE(p0["options"]["prune"].contains("relative"));
+    EXPECT_FALSE(p0["options"]["prune"].contains("finish_lock"));
+    const nlohmann::json p1 = run({"--prune", "--prune-min-elements", "0", "--prune-relative",
+                                   "0.1", "--prune-finish-lock"},
+                                  "p1.json");
+    EXPECT_EQ(p1["options"]["prune"]["relative"], 0.1);
+    EXPECT_EQ(p1["options"]["prune"]["finish_lock"], true);
+    bool note = false;
+    for (const auto& st : p1["result"]["steps"]) {
+        if (st["kind"] == "removal") {
+            note = true;
+            EXPECT_NE(st["operation"].get<std::string>().find("relativ: Bezug F_B vor dem Rückbau"),
+                      std::string::npos)
+                << st["operation"];
+        }
+    }
+    EXPECT_TRUE(note);
+
+    const SynthCliResult text = synth({kStart, "--max-iterations", "10", "--merit-factor", "10",
+                                       "--aperture-rms-limit", "0.2", "--prune",
+                                       "--prune-relative", "0.1", "--quiet"});
+    ASSERT_EQ(text.code, cli::kExitOk) << text.err;
+    EXPECT_NE(text.out.find("Aperturgrenze (M6-T15)"), std::string::npos) << text.out;
+    EXPECT_NE(text.out.find("x F_B vor dem Rückbau, F_max)"), std::string::npos) << text.out;
+
+    EXPECT_EQ(synth({kStart, "--prune", "--prune-relative", "-1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune-relative", "0.1"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--prune-finish-lock"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--aperture-rms-limit", "0"}).code, cli::kExitUsage);
+    EXPECT_EQ(synth({kStart, "--aperture-rms-limit", "0.1", "--beam", "2"}).code,
+              cli::kExitUsage);
+    const std::string help = synth({"--help"}).out;
+    EXPECT_NE(help.find("--prune-relative"), std::string::npos);
+    EXPECT_NE(help.find("--prune-finish-lock"), std::string::npos);
+    EXPECT_NE(help.find("--aperture-rms-limit"), std::string::npos);
+}
+
 TEST(CliSynth, StartFromReal) {
     // M6-T10: Rückkehr zu Geisterplatten vor dem Lauf (reales System ohne Platten)
     const SynthTempDir dir("start_from_real");

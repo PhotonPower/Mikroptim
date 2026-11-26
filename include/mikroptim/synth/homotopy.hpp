@@ -85,6 +85,11 @@ struct HomotopySolve {
     // Augmented Lagrangian (M11-T2): max √w |Δθ| der Fortschreibung nach dem Lauf
     // (HomotopyModel::update_shifts); NaN ohne Augmented Lagrangian
     double shift_change = std::numeric_limits<double>::quiet_NaN();
+    // Aperturgrenze (M6-T15): größter RMS-Wellenfrontfehler [Wellen] der voll gewichteten Tupel
+    // (Feld- mal Spektralgewicht ≥ 0,5 × größtes Gewicht; Zielspezifikation: 436–656 nm, nicht
+    // die schwach gewichteten 405/707 nm), mit Geisterplatten wie `rms`. NaN ohne gültigen Strahl
+    // bzw. wenn das Modell ihn nicht liefert; der Controller setzt NaN ohne aperture_rms_limit.
+    double rms_main = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Diagnose (Bedarf an einem neuen Element).
@@ -397,6 +402,21 @@ struct HomotopyOptions {
     double prune_merit_factor = 1.0; // (0, 1]
     double prune_tolerance = -1.0;   // < 0: aus
     int prune_min_elements = 1;
+    // Relative Annahme des Rückbaus (M6-T15, Befund F26): δ = prune_relative ≥ 0 hebt die
+    // Grenze auf max(prune_merit_factor · F_max, min((1 + δ) · F_B,vor, F_max)) an; F_B,vor ist
+    // F_B am Beginn des Rückbaus (vor dem ersten Entfernen dieses Aufrufs), die Verschlechterung
+    // über alle Entfernungen eines Rückbaus bleibt so ≤ (1 + δ). prune_tolerance gilt danach wie
+    // bisher. < 0: aus (bitgleich).
+    double prune_relative = -1.0;
+    // Sperre im Abschluss (M6-T15, F26): nach einem übernommenen Rückbau in diesem Lauf fügt der
+    // Abschluss bei verfehltem Ziel nicht ein (Ende GoalNotReached am Zustand nach der
+    // μ-Fortsetzung), statt die entfernten Elemente sofort wieder einzufügen (M6-T14b, Z1S).
+    bool prune_finish_lock = false;
+    // Aperturgrenze (M6-T15): > 0 verlangt in den Schritten der Apertur (auch der gemeinsamen
+    // Apertur-/Feld-Homotopie) zusätzlich HomotopySolve::rms_main ≤ aperture_rms_limit [Wellen];
+    // sonst gilt der Schritt als nicht erreicht (Δ halbiert, unter Δ_min Einfügen bzw. Ende).
+    // ≤ 0: aus (bitgleich). Nur im Controller ohne Strahlsuche.
+    double aperture_rms_limit = 0.0;
 
     // Penalty-Fortsetzung der einseitigen Bedingungen am Start und nach jedem Einfügen:
     // Faktoren penalty_factor^{−(K−1)}, …, 1/penalty_factor, 1 (K = penalty_stages).
