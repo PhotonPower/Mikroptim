@@ -1,0 +1,3592 @@
+{
+  "format": "mikroptim.synth/1",
+  "version": "0.1.0",
+  "input": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_rueckbau.json",
+  "backend": {
+    "gpu": true,
+    "device": 0,
+    "device_name": "NVIDIA GeForce RTX 3090"
+  },
+  "options": {
+    "target_na": 0.649999999999999,
+    "start": {
+      "aperture": 0.649999999999999,
+      "field": 0.48343749999999996,
+      "spectrum": 0
+    },
+    "rms_target_waves": 0.07142857142857142,
+    "merit_factor": 1.0,
+    "max_elements": 18,
+    "max_iterations": 500,
+    "stall": {
+      "window": 0,
+      "tolerance": 0.001
+    },
+    "augmented_lagrangian": null,
+    "color_rule": 2.0,
+    "sine_condition": null,
+    "spectrum_stages": 0,
+    "spectrum_continuous": false,
+    "split": {
+      "preselect": false,
+      "start_at_target": false,
+      "achromat_start": false,
+      "spectrum_rank": [
+        404.66,
+        435.83,
+        486.13,
+        546.07,
+        587.56,
+        656.27,
+        706.52
+      ],
+      "member_start": true
+    },
+    "quadrature": {
+      "rings": 16,
+      "spokes": 8
+    },
+    "jacobian": "fd",
+    "tolerance_aware": null,
+    "element_thickness": 0.5,
+    "element_max_thickness": 5.0,
+    "saddle_delta": 0.002,
+    "insertion_improve": {
+      "attempts": 4,
+      "finish": true
+    },
+    "grow_margin": 0.8,
+    "color_rule_ext": {
+      "chromatic_share": 0.5,
+      "module": "doublet",
+      "always": false,
+      "anomalous": false,
+      "incidence_deg": 40.0,
+      "variants": true,
+      "lateral_rays": true
+    },
+    "prune": {
+      "after_phases": false,
+      "element_budget": 18,
+      "stages": 3,
+      "attempts": 4,
+      "merit_factor": 1.0,
+      "tolerance": null,
+      "min_elements": 1
+    },
+    "aperture_rms_limit": 0.1,
+    "field_rule": {
+      "ratio": 1.5,
+      "min_rms_waves": 0.05,
+      "glass": null
+    }
+  },
+  "result": {
+    "status": "max_elements",
+    "message": "Ziel am Endpunkt verfehlt (größter RMS 0.19071 Wellen); Bedarf (Operator B), aber höchste Elementzahl 18 erreicht",
+    "start_point": {
+      "aperture": 0.649999999999999,
+      "field": 0.48343749999999996,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 0.01,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "target": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+    },
+    "merit_threshold": 0.00510204081632653,
+    "start_elements": 18,
+    "elements": 18,
+    "insertions": 1,
+    "removal_attempts": 5,
+    "removals": 1,
+    "solves": 36,
+    "goal": {
+      "reached": false,
+      "target_waves": 0.07142857142857142,
+      "max_rms_waves": 0.1907106373566689,
+      "tuples": [
+        {
+          "field": 0,
+          "wavelength": 0,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 404.66,
+          "rms_waves": 0.049880704554153485,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 1,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 435.83,
+          "rms_waves": 0.01937918264315996,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 2,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 486.13,
+          "rms_waves": 0.009889090780126704,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 3,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 546.07,
+          "rms_waves": 0.014472508831584083,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 4,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 587.56,
+          "rms_waves": 0.014394893831861147,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 5,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 656.27,
+          "rms_waves": 0.015850207330983544,
+          "failed_rays": 0
+        },
+        {
+          "field": 0,
+          "wavelength": 6,
+          "field_angle_deg": 0.0,
+          "wavelength_nm": 706.52,
+          "rms_waves": 0.030811219069827814,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 0,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 404.66,
+          "rms_waves": 0.14389178525832627,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 1,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 435.83,
+          "rms_waves": 0.04485033730526248,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 2,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 486.13,
+          "rms_waves": 0.030034385612069486,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 3,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 546.07,
+          "rms_waves": 0.022762682293484656,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 4,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 587.56,
+          "rms_waves": 0.016323134070901704,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 5,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 656.27,
+          "rms_waves": 0.03469210764044172,
+          "failed_rays": 0
+        },
+        {
+          "field": 1,
+          "wavelength": 6,
+          "field_angle_deg": 0.8371772949966728,
+          "wavelength_nm": 706.52,
+          "rms_waves": 0.058448825298389524,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 0,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 404.66,
+          "rms_waves": 0.1907106373566689,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 1,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 435.83,
+          "rms_waves": 0.058905306863341424,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 2,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 486.13,
+          "rms_waves": 0.046933033908584144,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 3,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 546.07,
+          "rms_waves": 0.032100379353897354,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 4,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 587.56,
+          "rms_waves": 0.018652137473180473,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 5,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 656.27,
+          "rms_waves": 0.045568641943889196,
+          "failed_rays": 0
+        },
+        {
+          "field": 2,
+          "wavelength": 6,
+          "field_angle_deg": 1.1947985260961371,
+          "wavelength_nm": 706.52,
+          "rms_waves": 0.0764406200476344,
+          "failed_rays": 0
+        }
+      ]
+    },
+    "seconds": 367.5066943,
+    "steps": [
+      {
+        "index": 0,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.48343749999999996,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.01,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.001141912788618034,
+          "merit": 0.0008843238992363086,
+          "wavefront": 0.0008838658974463186,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.15903853639935278,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.04076543363742341
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.01",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.0593612
+      },
+      {
+        "index": 1,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.48343749999999996,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.1,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0008884301430071274,
+          "merit": 0.0008805467939227452,
+          "wavefront": 0.000880501816637121,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.15811670684846488,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.04074452482687648
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.4367139
+      },
+      {
+        "index": 2,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.48343749999999996,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0008809512721047958,
+          "merit": 0.0008788608207512333,
+          "wavefront": 0.0008788508082955041,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.15748712359766204,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.04060260790757555
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.9123573
+      },
+      {
+        "index": 3,
+        "kind": "field",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.125,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 44.16874929082539,
+          "merit": 0.0011820034214905064,
+          "wavefront": 0.0011811854264278633,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1868930355880398,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.0606227073026742
+        },
+        "accepted": true,
+        "action": "grow",
+        "next_delta": 0.25,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 18,
+        "goal": null,
+        "seconds": 13.1256413
+      },
+      {
+        "index": 4,
+        "kind": "smoothing",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0011820034214905064,
+          "merit": 0.0011275593461171234,
+          "wavefront": 0.0011272566589204437,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.18713530098396305,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.057789756383925854
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "ε ×0.1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 14.0982234
+      },
+      {
+        "index": 5,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.18714 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.18713530098396305,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.06957871616557718,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.026836796805665895,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.013161436434915892,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.007959454756992874,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.010030510889037243,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.012499794382037136,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.0236738743366549,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.14652879463661575,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04647953367949983,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.032515600707546916,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.023020054529121287,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014512867043333414,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.02831652115803767,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.049170335057826725,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.18713530098396305,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.057789756383925854,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.050505766898244694,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.036093892737089774,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.020057711119314245,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.036788681608868536,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06461866079812349,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0021452
+      },
+      {
+        "index": 6,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0011275593461171234,
+          "merit": 0.0011088970650097077,
+          "wavefront": 0.001108738861141525,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.18648265726691612,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.056200617362222316
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×10",
+        "elements": 18,
+        "goal": null,
+        "seconds": 13.8437441
+      },
+      {
+        "index": 7,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.18648 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.18648265726691612,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.06794807583720643,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.025424861241729532,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.01264413595467614,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.008546131965328073,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01088877068733022,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.013586960546118266,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.024436733128546145,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.145755534541243,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04514681412880727,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.03116176024915248,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.02212770900026611,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014512590437860847,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.02948787323392976,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.05030931943148726,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.18648265726691612,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.056200617362222316,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.04880004687698319,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.03468262261318596,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.019395694121129244,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.03814985606640459,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06605029717104119,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0021453
+      },
+      {
+        "index": 8,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0011088970650097077,
+          "merit": 0.0010991730538152918,
+          "wavefront": 0.001099076905381669,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.18565673011386946,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.05503879997253688
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×100",
+        "elements": 18,
+        "goal": null,
+        "seconds": 13.4798268
+      },
+      {
+        "index": 9,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "B",
+        "operation": "Ziel verfehlt: größter RMS 0.18566 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.18565673011386946,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.06681674044105418,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.024520717937829006,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.012418058744812773,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.009065810176824772,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.011523777477086826,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.01428441407552202,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.024895659082332777,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.14497972578187895,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.044192601115357055,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.030339559326616156,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.02160075366022234,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014632474878650846,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.030310968670390008,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.05109056755946457,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.18565673011386946,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.05503879997253688,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.04776210265644706,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.0337898578236886,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01905840424101548,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.039112847296116755,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06704372843769002,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0022216
+      },
+      {
+        "index": 10,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2.561203184207084,
+          "merit": 0.0011546347043208851,
+          "wavefront": 0.0011545083443904214,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.20199261247989023,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.0626813271753331
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 1.613 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)",
+        "elements": 18,
+        "goal": null,
+        "seconds": 7.8852131
+      },
+      {
+        "index": 11,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2.7520374215799817,
+          "merit": 0.0014063135186784623,
+          "wavefront": 0.001405106578868792,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.2189295781336275,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06797249451314419
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 1.613 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.0681466
+      },
+      {
+        "index": 12,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2.980155281774655,
+          "merit": 0.001401989506516976,
+          "wavefront": 0.0014015319039833059,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.20198569922538032,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.07055056866288943
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 1.613 Wellen), Rückbau-Stufe 3/3 (Anteil 1)",
+        "elements": 18,
+        "goal": null,
+        "seconds": 10.8859849
+      },
+      {
+        "index": 13,
+        "kind": "removal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 1.613 Wellen) entfernt (Elementbudget 18): F_B 0.00140153 ≤ 0.00510204, vorher 0.00109908",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0
+      },
+      {
+        "index": 14,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2834.3130044542154,
+          "merit": 0.006813714651333526,
+          "wavefront": 0.006783647732156531,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.27180714138946593,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.13024140005780094
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.156 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.7791006
+      },
+      {
+        "index": 15,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 10787.0828392502,
+          "merit": 0.03477199984137665,
+          "wavefront": 0.0345687820332819,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.35273107512452967,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.2832470066623241
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.156 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 7.3508346
+      },
+      {
+        "index": 16,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 2332,
+          "start_merit": 232864.75222281224,
+          "merit": 1153.2259310377756,
+          "wavefront": 59.74906750336513,
+          "ghost_penalty": 0.0,
+          "rms_waves": 11.597439498420519,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 11.015369162256572
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.156 Wellen), Rückbau-Stufe 3/3 (Anteil 1)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 43.7915945
+      },
+      {
+        "index": 17,
+        "kind": "removal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Rückbau verworfen (Elementbudget 18): Element ab Fläche 1 (CAF2, Seidel-Beitrag 8.156 Wellen): F_B 59.7491 > 0.00510204",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0
+      },
+      {
+        "index": 18,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 901.5375429421683,
+          "merit": 0.06683119897121657,
+          "wavefront": 0.06480530383674787,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.4202051237246056,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.3775992260001704
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 16 (SYN-36, Kittglied, Seidel-Beitrag 10.61 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.0098019
+      },
+      {
+        "index": 19,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2362.1262929385484,
+          "merit": 0.7381946841560727,
+          "wavefront": 0.7188650175939485,
+          "ghost_penalty": 0.0,
+          "rms_waves": 1.2912284698089203,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 1.1481709944318623
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 16 (SYN-36, Kittglied, Seidel-Beitrag 10.61 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 5.8228483
+      },
+      {
+        "index": 20,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 4080.725758103826,
+          "merit": 0.27436849901707955,
+          "wavefront": 0.2723131680650941,
+          "ghost_penalty": 0.0,
+          "rms_waves": 1.8570948246205796,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 1.1802035860377424
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 16 (SYN-36, Kittglied, Seidel-Beitrag 10.61 Wellen), Rückbau-Stufe 3/3 (Anteil 1)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 5.5829577
+      },
+      {
+        "index": 21,
+        "kind": "removal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Rückbau verworfen (Elementbudget 18): Element ab Fläche 16 (SYN-36, Kittglied, Seidel-Beitrag 10.61 Wellen): F_B 0.272313 > 0.00510204",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0
+      },
+      {
+        "index": 22,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 16.31441323761493,
+          "merit": 0.04515074459545471,
+          "wavefront": 0.042492986940374254,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.4774338175837287,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.3148831246736065
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 12 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.6847715
+      },
+      {
+        "index": 23,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 13.414704543358871,
+          "merit": 0.02583668382985349,
+          "wavefront": 0.024035491527881828,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.26731965477920017,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.20347474617154224
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 12 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.4802002
+      },
+      {
+        "index": 24,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 10.324142485653065,
+          "merit": 0.02457864771319385,
+          "wavefront": 0.023641464604433678,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.2655332934350091,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.2251732437675871
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 12 Wellen), Rückbau-Stufe 3/3 (Anteil 1)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.9658997
+      },
+      {
+        "index": 25,
+        "kind": "removal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Rückbau verworfen (Elementbudget 18): Element ab Fläche 13 (SYN-36, Kittglied, Seidel-Beitrag 12 Wellen): F_B 0.0236415 > 0.00510204",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0
+      },
+      {
+        "index": 26,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 1570.7407164851138,
+          "merit": 1.4069856870351412,
+          "wavefront": 0.4970751963870888,
+          "ghost_penalty": 0.0,
+          "rms_waves": 1.3937395651916027,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 1.072185764544764
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 21 (SYN-36, Kittglied, Seidel-Beitrag 16.17 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.7786198
+      },
+      {
+        "index": 27,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2796.8710398818052,
+          "merit": 6.651583324049591,
+          "wavefront": 0.6841153894499372,
+          "ghost_penalty": 0.0,
+          "rms_waves": 2.1217977739312914,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 1.4702324270190803
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 21 (SYN-36, Kittglied, Seidel-Beitrag 16.17 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.7055469
+      },
+      {
+        "index": 28,
+        "kind": "removal_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2597.304997442858,
+          "merit": 17.457056162968808,
+          "wavefront": 1.0764975570071273,
+          "ghost_penalty": 0.0,
+          "rms_waves": 2.841413515179426,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 1.986033538938297
+        },
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Element ab Fläche 21 (SYN-36, Kittglied, Seidel-Beitrag 16.17 Wellen), Rückbau-Stufe 3/3 (Anteil 1)",
+        "elements": 16,
+        "goal": null,
+        "seconds": 6.5220129
+      },
+      {
+        "index": 29,
+        "kind": "removal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Rückbau verworfen (Elementbudget 18): Element ab Fläche 21 (SYN-36, Kittglied, Seidel-Beitrag 16.17 Wellen): F_B 1.0765 > 0.00510204",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0
+      },
+      {
+        "index": 30,
+        "kind": "smoothing",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.001401989506515181,
+          "merit": 0.0013605386706050297,
+          "wavefront": 0.0013603661685291759,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1998847290777291,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.067661401516979
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "ε ×0.1",
+        "elements": 16,
+        "goal": null,
+        "seconds": 11.0994546
+      },
+      {
+        "index": 31,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.19988 Wellen (Ziel 0.07143)",
+        "elements": 16,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.1998847290777291,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.03747805661920883,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.015267953734919118,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.00808999455388334,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.016447877470268664,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.013503240478282023,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.013803608758576303,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.03249368918764174,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1473408838453957,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04935857852899181,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.03269721958225505,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.024997626297993448,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.016120557917147827,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.035095726958385996,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06090187145168701,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1998847290777291,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.067661401516979,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.050400887270488776,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.03422816162118342,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01957176194584975,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.04764757432922867,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.08017815525653177,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0019337
+      },
+      {
+        "index": 32,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0013605386706050297,
+          "merit": 0.0013464798790165905,
+          "wavefront": 0.0013464068332163536,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1984055128418388,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06622548591825882
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×10",
+        "elements": 16,
+        "goal": null,
+        "seconds": 10.5763587
+      },
+      {
+        "index": 33,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.19841 Wellen (Ziel 0.07143)",
+        "elements": 16,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.1984055128418388,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.03660239637242508,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.015127766173866032,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.00806617340516324,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.016591078602887308,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01391059041425104,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.014434628459696851,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.032769468987947664,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1462855441520443,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04843437301761928,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.03180114486364147,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.024396367142795326,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.016211964843243262,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.035848774826447105,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06155295424732409,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1984055128418388,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.06622548591825882,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.04913751076439495,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.033135575426306206,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.019219524366916072,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.048508545735875874,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.08102645812744902,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0018508
+      },
+      {
+        "index": 34,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0013464798790165905,
+          "merit": 0.001327456574632692,
+          "wavefront": 0.001327417525164423,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19611806134325593,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06397097866668915
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×100",
+        "elements": 16,
+        "goal": null,
+        "seconds": 10.2937264
+      },
+      {
+        "index": 35,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "B",
+        "operation": "Ziel verfehlt: größter RMS 0.19612 Wellen (Ziel 0.07143)",
+        "elements": 16,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.19611806134325593,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.035942995797031106,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.01550379901736274,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.00833527518273977,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.01679523784049251,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014511983676146568,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.01535558241893704,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.03315878052680362,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1447852574802553,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04709160751635138,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.03076146947390723,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.0237884209041635,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01646220979277484,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.036685207266420765,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.06222337031550629,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.19611806134325593,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.06397097866668915,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.04766278060405933,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.03198968156459403,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.018911048754151547,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.04933789608055951,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.08180727002875471,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0019158
+      },
+      {
+        "index": 36,
+        "kind": "insertion",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "B",
+        "operation": "Null-Kittglied (Farbregel, Modul): nach Fläche 12 bei 1.2719 mm, c0 = -0.00659475/mm, Gläser CAF2 + SYN-11 (spektraler Rest 4.90222e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm",
+        "elements": 16,
+        "goal": null,
+        "seconds": 0.0024745
+      },
+      {
+        "index": 37,
+        "kind": "insertion_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": 0,
+        "stage": 0.03125,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.034884664346654395,
+          "merit": 0.0013517169451463076,
+          "wavefront": 0.001351581122444214,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1990726097480907,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06720810805593405
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 16,
+        "goal": null,
+        "seconds": 13.3982346
+      },
+      {
+        "index": 38,
+        "kind": "insertion_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": 0,
+        "stage": 0.0625,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.054366305145737384,
+          "merit": 0.0013218802536027,
+          "wavefront": 0.001321834581476471,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19582203410599253,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06376671914453916
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 16,
+        "goal": null,
+        "seconds": 12.1367933
+      },
+      {
+        "index": 39,
+        "kind": "insertion_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": 0,
+        "stage": 0.125,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.170439276525703,
+          "merit": 0.0013037174512063577,
+          "wavefront": 0.0013036812240486899,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19472276194727342,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06255295449773139
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 16,
+        "goal": null,
+        "seconds": 11.1826552
+      },
+      {
+        "index": 40,
+        "kind": "insertion_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": 0,
+        "stage": 0.25,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.6350056752336977,
+          "merit": 0.0012882124975046288,
+          "wavefront": 0.0012881759907284835,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19398276988063287,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06162655404602821
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 16,
+        "goal": null,
+        "seconds": 11.1663039
+      },
+      {
+        "index": 41,
+        "kind": "insertion_stage",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": 0,
+        "stage": 0.5,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 2.6490480054460104,
+          "merit": 0.0032066305879299237,
+          "wavefront": 0.0032002839645100378,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.16932433848788978,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.10137106829134747
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "",
+        "elements": 16,
+        "goal": null,
+        "seconds": 8.106276
+      },
+      {
+        "index": 42,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.01,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.003206518561951633,
+          "merit": 0.001282520282961483,
+          "wavefront": 0.0012816012790823634,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19436735616789483,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06320140572965145
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.972365
+      },
+      {
+        "index": 43,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 0.1,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.001290759076007945,
+          "merit": 0.0012570995784267599,
+          "wavefront": 0.0012569982549143271,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19243152448610107,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06112264596641955
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×0.1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 8.8740845
+      },
+      {
+        "index": 44,
+        "kind": "penalty",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 1.0,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.001257996096847903,
+          "merit": 0.0012474648436681798,
+          "wavefront": 0.001247441077032193,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1920359371196226,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.06058793419712026
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Gewichte der einseitigen Bedingungen ×1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 9.7382723
+      },
+      {
+        "index": 45,
+        "kind": "smoothing",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0012474648436681798,
+          "merit": 0.001237418457247122,
+          "wavefront": 0.001237359935758087,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19156511812604365,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.05994025648343992
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "ε ×0.1",
+        "elements": 18,
+        "goal": null,
+        "seconds": 9.8628081
+      },
+      {
+        "index": 46,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 1.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.19157 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.19156511812604365,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.04864044048091735,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.018693791138155495,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.00909860670296758,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.014356695860412163,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014217038578408704,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.01574092390491823,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.030970078438319615,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1440847003996825,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.045301721839724064,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.030064669954562744,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.022658876826003857,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01629935965277465,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.03509288202139884,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.059007788824576364,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.19156511812604365,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.05994025648343992,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.04695564971941479,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.031839682331291246,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.018729245927172233,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.04637597604084551,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.0773844741873911,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.002059
+      },
+      {
+        "index": 47,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.001237418457247122,
+          "merit": 0.0012298052103686427,
+          "wavefront": 0.0012297609824692126,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.19113817608402695,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.059439522996506323
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×10",
+        "elements": 18,
+        "goal": null,
+        "seconds": 9.7034467
+      },
+      {
+        "index": 48,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 10.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "Ziel verfehlt: größter RMS 0.19114 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.19113817608402695,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.04917469293575693,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.019043639654088156,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.009473188835533457,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.014405611303866061,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01429419192428535,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.015798285207903984,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.030911369722081534,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.14396785468669615,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.045084366270351964,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.03004700406197847,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.0227056872230775,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.01630434429214847,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.03490535105615344,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.05875165745370372,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.19113817608402695,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.059439522996506323,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.0469414717850492,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.03196120561548338,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.018685216057411663,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.04599550950151365,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.07694420700882808,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.0022397
+      },
+      {
+        "index": 49,
+        "kind": "ghost_weight",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": {
+          "status": "max_iterations",
+          "iterations": 500,
+          "start_merit": 0.0012298052103686427,
+          "merit": 0.001221706476272564,
+          "wavefront": 0.0012216841605961323,
+          "ghost_penalty": 0.0,
+          "rms_waves": 0.1907106373566689,
+          "ghost_sum_mm": 0.0,
+          "failed_rays": 0,
+          "rms_main_waves": 0.058905306863341424
+        },
+        "accepted": true,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "none",
+        "operation": "μ ×100",
+        "elements": 18,
+        "goal": null,
+        "seconds": 9.9833617
+      },
+      {
+        "index": 50,
+        "kind": "goal",
+        "point": {
+          "aperture": 0.649999999999999,
+          "field": 0.56875,
+          "spectrum": 0,
+          "ghost_weight": 100.0,
+          "ghost_smoothing": 0.1,
+          "penalty_scale": 1.0,
+          "extrema_beta": 0.0,
+          "spectrum_width": 1.0
+        },
+        "delta": 0.0,
+        "branch": null,
+        "stage": null,
+        "lm": null,
+        "accepted": false,
+        "action": "none",
+        "next_delta": 0.0,
+        "recommendation": "B",
+        "operation": "Ziel verfehlt: größter RMS 0.19071 Wellen (Ziel 0.07143)",
+        "elements": 18,
+        "goal": {
+          "reached": false,
+          "target_waves": 0.07142857142857142,
+          "max_rms_waves": 0.1907106373566689,
+          "tuples": [
+            {
+              "field": 0,
+              "wavelength": 0,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.049880704554153485,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 1,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.01937918264315996,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 2,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.009889090780126704,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 3,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.014472508831584083,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 4,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.014394893831861147,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 5,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.015850207330983544,
+              "failed_rays": 0
+            },
+            {
+              "field": 0,
+              "wavelength": 6,
+              "field_angle_deg": 0.0,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.030811219069827814,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 0,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.14389178525832627,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 1,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.04485033730526248,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 2,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.030034385612069486,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 3,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.022762682293484656,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 4,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.016323134070901704,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 5,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.03469210764044172,
+              "failed_rays": 0
+            },
+            {
+              "field": 1,
+              "wavelength": 6,
+              "field_angle_deg": 0.8371772949966728,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.058448825298389524,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 0,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 404.66,
+              "rms_waves": 0.1907106373566689,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 1,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 435.83,
+              "rms_waves": 0.058905306863341424,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 2,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 486.13,
+              "rms_waves": 0.046933033908584144,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 3,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 546.07,
+              "rms_waves": 0.032100379353897354,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 4,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 587.56,
+              "rms_waves": 0.018652137473180473,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 5,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 656.27,
+              "rms_waves": 0.045568641943889196,
+              "failed_rays": 0
+            },
+            {
+              "field": 2,
+              "wavelength": 6,
+              "field_angle_deg": 1.1947985260961371,
+              "wavelength_nm": 706.52,
+              "rms_waves": 0.0764406200476344,
+              "failed_rays": 0
+            }
+          ]
+        },
+        "seconds": 0.002143
+      }
+    ]
+  },
+  "output": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_wieder.json"
+}

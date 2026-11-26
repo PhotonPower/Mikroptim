@@ -1,0 +1,58 @@
+mikroptim synth 0.1.0: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\F3ZS\c2_apertur_start.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6500, Feldanteil 0.569, 18 Glaselement(e)
+  Ziel                                        NA 0.9500, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 20; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Aperturgrenze (M6-T15)                      größter RMS der voll gewichteten Tupel <= 0.10000 Wellen
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Querfarbe (Seidel oder reale Hauptstrahlen): Modul nach |y·ȳ|, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6500  0.569   0  -        max_iterations       500  5.570559e-03  5.552206e-03  0.36077   8.801e-06  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6500  0.569   0  -        max_iterations       500  5.528150e-03  5.524697e-03  0.36099   9.462e-06  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6500  0.569   0  -        converged_step        47  5.528545e-03  5.526692e-03  0.36124   9.586e-06  18  ok: Gewichte der einseitigen Bedingungen ×1
+      3  insertion        0.6500  0.569   0  -        -                      -  -             -             -         -            18  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 15 bei 0.144812 mm, c0 = -0.0111195/mm, Gläser CAF2 + SYN-11 (spektraler Rest 4.90222e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+      4  insertion_stage  0.6500  0.569   0  -        converged_step       186  5.556479e-03  5.529620e-03  0.36093   9.586e-06  18  ok, Zweig 0, Stufe 0.03125
+      5  insertion_stage  0.6500  0.569   0  -        max_iterations       500  5.567284e-03  5.540373e-03  0.36023   9.650e-06  18  ok, Zweig 0, Stufe 0.0625
+      6  insertion_stage  0.6500  0.569   0  -        max_iterations       500  5.618609e-03  5.591588e-03  0.35569   9.991e-06  18  ok, Zweig 0, Stufe 0.125
+      7  insertion_stage  0.6500  0.569   0  -        max_iterations       500  6.041983e-03  6.011996e-03  0.34909   1.723e-05  18  ok, Zweig 0, Stufe 0.25
+      8  insertion_stage  0.6500  0.569   0  -        max_iterations       500  9.995132e-03  9.958435e-03  0.35592   6.045e-05  18  ok, Zweig 0, Stufe 0.5
+      9  penalty          0.6500  0.569   0  -        max_iterations       500  8.003022e-03  7.977703e-03  0.34524   3.689e-05  20  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     10  penalty          0.6500  0.569   0  -        max_iterations       500  7.701381e-03  7.691194e-03  0.34610   3.318e-05  20  ok: Gewichte der einseitigen Bedingungen ×0.1
+     11  penalty          0.6500  0.569   0  -        max_iterations       500  6.142541e-03  6.114756e-03  0.34045   1.289e-05  20  ok: Gewichte der einseitigen Bedingungen ×1
+     12  insertion        0.6500  0.569   0  -        -                      -  -             -             -         -            18  -: Einfügen verworfen: F_B danach 0.00611476 ≥ 0.00552669 davor und > F_max = 0.00510204 (Einfügen nur mit Verbesserung, Startphase)
+     13  insertion        0.6500  0.569   0  -        -                      -  -             -             -         -            18  ok: Null-Kittglied (Farbregel, Modul): nach Fläche 12 bei 0.665569 mm, c0 = -0.00625806/mm, Gläser CAF2 + SYN-11 (spektraler Rest 4.90222e-05, Summe |phi|/phi = 4.70059), Dicke je bis 0.5 mm
+     14  insertion_stage  0.6500  0.569   0  -        converged_step       401  5.535545e-03  5.533663e-03  0.35998   9.700e-06  18  ok, Zweig 0, Stufe 0.03125
+     15  insertion_stage  0.6500  0.569   0  -        converged_step       292  5.542986e-03  5.541041e-03  0.35952   9.813e-06  18  ok, Zweig 0, Stufe 0.0625
+     16  insertion_stage  0.6500  0.569   0  -        max_iterations       500  5.555496e-03  5.553487e-03  0.36004   9.990e-06  18  ok, Zweig 0, Stufe 0.125
+     17  insertion_stage  0.6500  0.569   0  -        max_iterations       500  5.576158e-03  5.574029e-03  0.36190   1.028e-05  18  ok, Zweig 0, Stufe 0.25
+     18  insertion_stage  0.6500  0.569   0  -        max_iterations       500  5.632166e-03  5.629975e-03  0.35775   1.067e-05  18  ok, Zweig 0, Stufe 0.5
+     19  penalty          0.6500  0.569   0  -        max_iterations       500  5.230690e-03  5.215167e-03  0.34816   8.442e-06  20  ok: Zweig 0 von 1 übernommen; Gewichte der einseitigen Bedingungen ×0.01
+     20  penalty          0.6500  0.569   0  -        max_iterations       500  5.192919e-03  5.189576e-03  0.34801   9.239e-06  20  ok: Gewichte der einseitigen Bedingungen ×0.1
+     21  penalty          0.6500  0.569   0  -        converged_step        43  5.194248e-03  5.192414e-03  0.34854   9.376e-06  20  ok: Gewichte der einseitigen Bedingungen ×1
+     22  removal_stage    0.6500  0.569   0  -        max_iterations       500  5.443250e-03  5.438234e-03  0.35088   1.762e-05  20  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 0.1777 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     23  removal_stage    0.6500  0.569   0  -        max_iterations       500  5.822536e-03  5.816660e-03  0.35186   2.510e-05  20  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 0.1777 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     24  removal_stage    0.6500  0.569   0  -        max_iterations       500  6.217236e-03  6.211277e-03  0.35191   3.158e-05  20  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 0.1777 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     25  removal          0.6500  0.569   0  -        -                      -  -             -             -         -            20  -: Rückbau verworfen (Elementbudget 20): Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 0.1777 Wellen): F_B 0.00621128 > 0.00510204
+     26  removal_stage    0.6500  0.569   0  -        max_iterations       500  8.654637e-03  8.638435e-03  0.38902   6.328e-05  20  -: Element ab Fläche 16 (CAF2, Kittglied, Seidel-Beitrag 0.7192 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     27  removal_stage    0.6500  0.569   0  -        max_iterations       500  1.224297e-02  1.220559e-02  0.40250   1.038e-04  20  -: Element ab Fläche 16 (CAF2, Kittglied, Seidel-Beitrag 0.7192 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     28  removal_stage    0.6500  0.569   0  -        max_iterations       500  1.302882e-02  1.300853e-02  0.38980   1.296e-04  20  -: Element ab Fläche 16 (CAF2, Kittglied, Seidel-Beitrag 0.7192 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     29  removal          0.6500  0.569   0  -        -                      -  -             -             -         -            20  -: Rückbau verworfen (Elementbudget 20): Element ab Fläche 16 (CAF2, Kittglied, Seidel-Beitrag 0.7192 Wellen): F_B 0.0130085 > 0.00510204
+     30  removal_stage    0.6500  0.569   0  -        max_iterations       500  4.718725e+00  4.560531e+00  4.09514   1.855e-02  20  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 9.191 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     31  removal_stage    0.6500  0.569   0  -        max_iterations      4083  3.678037e+11  1.419960e+04  249.49329   1.648e-01  20  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 9.191 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     32  removal_stage    0.6500  0.569   0  -        converged_step       168  7.690352e+37  7.690352e+29  528.05338   1.670e-01  20  -: Element ab Fläche 1 (CAF2, Seidel-Beitrag 9.191 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     33  removal          0.6500  0.569   0  -        -                      -  -             -             -         -            20  -: Rückbau verworfen (Elementbudget 20): Element ab Fläche 1 (CAF2, Seidel-Beitrag 9.191 Wellen): 342 versagte Strahlen
+     34  removal_stage    0.6500  0.569   0  -        max_iterations       500  1.671488e-01  1.669968e-01  0.41689   2.289e-03  20  -: Element ab Fläche 22 (SYN-36, Kittglied, Seidel-Beitrag 13.85 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     35  removal_stage    0.6500  0.569   0  -        max_iterations       500  1.810018e+00  1.795495e+00  1.83478   1.506e-02  20  -: Element ab Fläche 22 (SYN-36, Kittglied, Seidel-Beitrag 13.85 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     36  removal_stage    0.6500  0.569   0  -        max_iterations       500  2.354675e+00  2.344109e+00  3.18887   1.877e-02  20  -: Element ab Fläche 22 (SYN-36, Kittglied, Seidel-Beitrag 13.85 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     37  removal          0.6500  0.569   0  -        -                      -  -             -             -         -            20  -: Rückbau verworfen (Elementbudget 20): Element ab Fläche 22 (SYN-36, Kittglied, Seidel-Beitrag 13.85 Wellen): F_B 2.34411 > 0.00510204
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.00519241 > F_max = 0.00510204); Bedarf (Operator B), aber höchste Elementzahl 20 erreicht)
+Endpunkt: NA 0.6500, Feldanteil 0.569, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.9500)
+Glaselemente: 18 -> 20 (2 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 31, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                984.8
+Ergebnis geschrieben: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\F3ZS\c2_apertur_r0.json
+Protokoll geschrieben: C:\Users\frenn\Documents\Mikroptim\.claude\worktrees\agent-a7f7a02a6dec5ede6\docs\ergebnisse\m6-t15\F3ZS\c2_apertur_r0_log.json

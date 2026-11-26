@@ -1,0 +1,571 @@
+{
+ "start": "C:/Users/frenn/Documents/Mikroptim/.claude/worktrees/agent-a7f7a02a6dec5ede6/docs/ergebnisse/m6-t14/F3ZS/c2_feld_z2r_s2.json",
+ "start_state": {
+  "aperture": 0.649999999999999,
+  "field": 0.521875,
+  "spectrum": "erweitert",
+  "elements": 22
+ },
+ "kinds": [
+  "apertur",
+  "feld"
+ ],
+ "synth_options": [
+  "--color-rule",
+  "--color-chromatic",
+  "0.5",
+  "--color-module",
+  "doublet",
+  "--color-lateral-rays",
+  "--field-rule",
+  "--insertion-improve",
+  "4",
+  "--aperture-rms-limit",
+  "0.1"
+ ],
+ "ghost_positions": "aperture,field",
+ "element_budget": 20,
+ "stages": [
+  {
+   "kind": "apertur",
+   "tag": "c0_apertur",
+   "start": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c_start.json",
+   "start_state": {
+    "aperture": 0.649999999999999,
+    "field": 0.521875,
+    "spectrum": "erweitert",
+    "elements": 22
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_real.json",
+    "output": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_start.json",
+    "surfaces_before": 34,
+    "surfaces_after": 34,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 14041.256894484708,
+    "merit_after": 14041.256894484735,
+    "relative_change": 1.9431907882765904e-15,
+    "focal_length_before": 3.2900313375511887,
+    "focal_length_after": 3.2900313375511887,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 2,
+       "distance": 0.19228166714374534,
+       "norm_radius": 2.2019598283705384,
+       "marginal_height": 2.062220150208478,
+       "ratio": 0.04166490728126123,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 11,
+       "distance": 0.1740951766858263,
+       "norm_radius": 2.445131216792789,
+       "marginal_height": 1.7410103139428057,
+       "ratio": 0.2371574266744259,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 27628.69474304616,
+     "merit_after": 27628.6947430463,
+     "relative_change": 5.135283255184784e-15
+    },
+    "warnings": []
+   },
+   "ghost_start": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_start.json",
+   "result": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_r3_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c0_apertur_r0",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.521875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 999.9888617992401,
+     "relaxed_gaps": [],
+     "relax": "c0_apertur_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "c0_apertur_r1",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.521875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 465.6206126213074,
+     "relaxed_gaps": [],
+     "relax": "c0_apertur_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "c0_apertur_r2",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.521875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 473.5777745246887,
+     "relaxed_gaps": [],
+     "relax": "c0_apertur_r2_relax",
+     "forced": [
+      {
+       "gap": 5,
+       "file": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_r2_ins5.json",
+       "merit": 0.004793452474
+      }
+     ]
+    },
+    {
+     "round": 3,
+     "synth": "c0_apertur_r3",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.521875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 21,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 739.4480919837952,
+     "relaxed_gaps": [],
+     "relax": "c0_apertur_r3_relax"
+    }
+   ],
+   "point": {
+    "aperture": 0.649999999999999,
+    "field": 0.521875,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 1.0
+   },
+   "elements_stage": 21,
+   "z2": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2_s2.json",
+   "elements_z2": 21,
+   "prune": {
+    "status": "max_elements",
+    "removals": 0,
+    "attempts": 20,
+    "elements_before": 21,
+    "elements_after": 21,
+    "point": {
+     "aperture": 0.5524999999999991,
+     "field": 0.521875,
+     "spectrum_width": 1.0
+    },
+    "reopen": {
+     "reached": true,
+     "skipped": "nichts entfernt"
+    }
+   },
+   "z2r": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_s2.json",
+   "elements": 21,
+   "eval": {
+    "pupille": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_pupille.json",
+    "unendlich": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_unendlich.json",
+    "psf": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_psf.json",
+    "vektor": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_vektor.json"
+   },
+   "eval_full_field": {
+    "pupille": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_vollfeld_pupille.json",
+    "unendlich": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_vollfeld_unendlich.json",
+    "psf": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_vollfeld_psf.json",
+    "vektor": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_vollfeld_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.649999999999999,
+    "field": 0.521875,
+    "spectrum": "erweitert",
+    "elements": 21
+   },
+   "seconds": 4370.076630115509
+  },
+  {
+   "kind": "feld",
+   "tag": "c1_feld",
+   "start": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c0_apertur_z2r_s2.json",
+   "start_state": {
+    "aperture": 0.649999999999999,
+    "field": 0.521875,
+    "spectrum": "erweitert",
+    "elements": 21
+   },
+   "ghost_return": {
+    "format": "mikroptim.insert/1",
+    "operator": "ghost_return",
+    "input": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_real.json",
+    "output": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_start.json",
+    "surfaces_before": 32,
+    "surfaces_after": 32,
+    "first_new_surface": null,
+    "new_surfaces": 0,
+    "ghost_plates_before": 0,
+    "ghost_plates_after": 6,
+    "merit_before": 18840.935433267343,
+    "merit_after": 18840.935433267645,
+    "relative_change": 1.6026393278512948e-14,
+    "focal_length_before": 3.290026830264711,
+    "focal_length_after": 3.290026830264709,
+    "details": {
+     "positions": [
+      {
+       "location": "aperture",
+       "after_surface": 2,
+       "distance": 0.18886011446998774,
+       "norm_radius": 2.2156739640898824,
+       "marginal_height": 2.0622491476805873,
+       "ratio": 0.0415811413881871,
+       "plates": [
+        0,
+        1,
+        2
+       ],
+       "gap_fixed": true
+      },
+      {
+       "location": "field",
+       "after_surface": 20,
+       "distance": 0.11804220975912195,
+       "norm_radius": 2.515738472532902,
+       "marginal_height": 1.3569349805309476,
+       "ratio": 0.4996837542042476,
+       "plates": [
+        3,
+        4,
+        5
+       ],
+       "gap_fixed": true
+      }
+     ],
+     "notes": [],
+     "merit_before": 20904.990256848057,
+     "merit_after": 20904.990256847792,
+     "relative_change": 1.2703782668862943e-14
+    },
+    "warnings": []
+   },
+   "ghost_start": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_start.json",
+   "result": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_r3_restart.json",
+   "rounds": [
+    {
+     "round": 0,
+     "synth": "c1_feld_r0",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.5375,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 1,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 1203.134527206421,
+     "relaxed_gaps": [],
+     "relax": "c1_feld_r0_relax"
+    },
+    {
+     "round": 1,
+     "synth": "c1_feld_r1",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 501.14004397392273,
+     "relaxed_gaps": [],
+     "relax": "c1_feld_r1_relax"
+    },
+    {
+     "round": 2,
+     "synth": "c1_feld_r2",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 1.0,
+     "seconds": 734.0852513313293,
+     "relaxed_gaps": [],
+     "relax": "c1_feld_r2_relax"
+    },
+    {
+     "round": 3,
+     "synth": "c1_feld_r3",
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 20,
+     "insertions": 0,
+     "goal": {
+      "reached": false,
+      "target_waves": 0.0,
+      "max_rms_waves": 0.0,
+      "tuples": []
+     },
+     "mu_scale": 0.5,
+     "seconds": 641.2121345996857,
+     "relaxed_gaps": [],
+     "relax": "c1_feld_r3_relax",
+     "forced": [
+      {
+       "gap": 5,
+       "file": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_r3_ins5.json",
+       "merit": 0.1690150202
+      }
+     ]
+    }
+   ],
+   "point": {
+    "aperture": 0.649999999999999,
+    "field": 0.56875,
+    "spectrum": 0,
+    "ghost_weight": 1.0,
+    "ghost_smoothing": 1.0,
+    "penalty_scale": 1.0,
+    "extrema_beta": 0.0,
+    "spectrum_width": 1.0
+   },
+   "elements_stage": 21,
+   "z2": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2_s2.json",
+   "elements_z2": 21,
+   "prune": {
+    "status": "goal_not_reached",
+    "removals": 2,
+    "attempts": 10,
+    "elements_before": 21,
+    "elements_after": 18,
+    "point": {
+     "aperture": 0.649999999999999,
+     "field": 0.48343749999999996,
+     "spectrum_width": 1.0
+    },
+    "reopen": {
+     "reached": true,
+     "status": "max_elements",
+     "point": {
+      "aperture": 0.649999999999999,
+      "field": 0.56875,
+      "spectrum": 0,
+      "ghost_weight": 1.0,
+      "ghost_smoothing": 1.0,
+      "penalty_scale": 1.0,
+      "extrema_beta": 0.0,
+      "spectrum_width": 1.0
+     },
+     "elements": 18
+    }
+   },
+   "z2r": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_s2.json",
+   "elements": 18,
+   "eval": {
+    "pupille": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_pupille.json",
+    "unendlich": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_unendlich.json",
+    "psf": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_psf.json",
+    "vektor": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_vektor.json"
+   },
+   "eval_full_field": {
+    "pupille": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_vollfeld_pupille.json",
+    "unendlich": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_vollfeld_unendlich.json",
+    "psf": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_vollfeld_psf.json",
+    "vektor": "C:\\Users\\frenn\\Documents\\Mikroptim\\.claude\\worktrees\\agent-a7f7a02a6dec5ede6\\docs\\ergebnisse\\m6-t15\\F3ZS\\c1_feld_z2r_vollfeld_vektor.json"
+   },
+   "end_state": {
+    "aperture": 0.649999999999999,
+    "field": 0.56875,
+    "spectrum": "erweitert",
+    "elements": 18
+   },
+   "seconds": 4359.736438035965
+  }
+ ],
+ "prune_point": 0.85,
+ "color_target": "voll",
+ "m6t15": {
+  "prune_relative": 0.1,
+  "prune_finish_lock": true,
+  "aperture_rms_limit": 0.1
+ },
+ "times": {
+  "c0_apertur_start": 0.03951549530029297,
+  "c0_apertur_r0": 999.9888617992401,
+  "c0_apertur_r0_relax": 48.36694312095642,
+  "c0_apertur_r1": 465.6206126213074,
+  "c0_apertur_r1_relax": 50.337783336639404,
+  "c0_apertur_r2": 473.5777745246887,
+  "c0_apertur_r2_relax": 55.60568809509277,
+  "c0_apertur_r2_ins5_insert": 0.028130292892456055,
+  "c0_apertur_r2_ins5": 51.82407832145691,
+  "c0_apertur_r3": 739.4480919837952,
+  "c0_apertur_r3_relax": 54.32870936393738,
+  "c0_apertur_z2_s0": 45.526479959487915,
+  "c0_apertur_z2_s1": 47.50473666191101,
+  "c0_apertur_z2_s2": 50.63418006896973,
+  "c0_apertur_rueckbau": 1147.3699564933777,
+  "c0_apertur_z2r_s0": 45.02350449562073,
+  "c0_apertur_z2r_s1": 45.74772000312805,
+  "c0_apertur_z2r_s2": 46.06646132469177,
+  "c0_apertur_z2r_pupille": 0.17348980903625488,
+  "c0_apertur_z2r_unendlich": 0.18277192115783691,
+  "c0_apertur_z2r_psf": 0.3199958801269531,
+  "c0_apertur_z2r_vektor": 0.7903950214385986,
+  "c0_apertur_z2r_vollfeld_pupille": 0.18332171440124512,
+  "c0_apertur_z2r_vollfeld_unendlich": 0.1759636402130127,
+  "c0_apertur_z2r_vollfeld_psf": 0.34925317764282227,
+  "c0_apertur_z2r_vollfeld_vektor": 0.7520718574523926,
+  "c1_feld_start": 0.036553144454956055,
+  "c1_feld_r0": 1203.134527206421,
+  "c1_feld_r0_relax": 52.90986514091492,
+  "c1_feld_r1": 501.14004397392273,
+  "c1_feld_r1_relax": 75.01633501052856,
+  "c1_feld_r2": 734.0852513313293,
+  "c1_feld_r2_relax": 67.76713490486145,
+  "c1_feld_r3": 641.2121345996857,
+  "c1_feld_r3_relax": 9.681439399719238,
+  "c1_feld_r3_ins5_insert": 0.026174545288085938,
+  "c1_feld_r3_ins5": 49.550532817840576,
+  "c1_feld_z2_s0": 50.4192852973938,
+  "c1_feld_z2_s1": 63.98227047920227,
+  "c1_feld_z2_s2": 69.87374782562256,
+  "c1_feld_rueckbau": 397.0824944972992,
+  "c1_feld_wieder": 367.5690529346466,
+  "c1_feld_z2r_s0": 35.689698219299316,
+  "c1_feld_z2r_s1": 36.567591190338135,
+  "c1_feld_z2r_s2": 0.815199613571167,
+  "c1_feld_z2r_pupille": 0.18323135375976562,
+  "c1_feld_z2r_unendlich": 0.19164395332336426,
+  "c1_feld_z2r_psf": 0.34981417655944824,
+  "c1_feld_z2r_vektor": 0.8291006088256836,
+  "c1_feld_z2r_vollfeld_pupille": 0.17790770530700684,
+  "c1_feld_z2r_vollfeld_unendlich": 0.16893696784973145,
+  "c1_feld_z2r_vollfeld_psf": 0.31944990158081055,
+  "c1_feld_z2r_vollfeld_vektor": 0.8182485103607178
+ }
+}
