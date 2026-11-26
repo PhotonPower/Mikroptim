@@ -82,6 +82,14 @@ gestörte Starts; ``--regel-einzellauf`` rechnet nur den Einzellauf (wie bis M10
 Zusammenfassung führen die Referenz als eigene Zeile (``V3RS Referenz (Median 5 gestörte
 Starts)``), den Einzellauf als ``V3RS Einzellauf``.
 
+Standards von ``synth`` (M6-T14b, Entscheidung Maintainer 2026-11-25): Seit M6-T13b vergrößert
+``synth`` die Schrittweite auch nach langsamen Schritten (``--grow-margin 0.8``); die Läufe der
+Regel und von V0/V1 verschieben sich dadurch gegenüber den Referenzen aus M10-T7 bis M6-T11b.
+``--synth-vor-m6t13b`` rechnet mit den Standards davor (``--no-grow-margin``,
+``--no-insertion-improve-finish``, ``--no-color-variants`` an jedem ``synth`` von V0/V1 und von
+``synth_segment``) und reproduziert so die Referenzen; die Ergebnisse tragen
+``synth_defaults: "vor M6-T13b"``.
+
 Ollama: ``--num-ctx`` (Standard 65536) setzt die Kontextlänge; größer als das Maximum des
 Modells (``/api/show``) wird auf das Maximum begrenzt, 0 heißt Modellmaximum.
 """
@@ -360,12 +368,16 @@ def prepare_perturbed(vb, work_root, name, k, sigma, seed) -> dict:
                                                     "changes": changes}}
 
 
-def run_synth(bench, work, beam=False) -> dict:
+def run_synth(bench, work, beam=False, before_m6t13b=False) -> dict:
     out = work / "ergebnis.json"
     args = ["synth", bench["start"], "--target-na", bench["na"], "--max-elements",
             bench["max_elements"], "-o", out, "--quiet"]
     if beam:
         args += ["--beam", 3, "--alternatives", 2]
+    if before_m6t13b:
+        # M6-T14b: Standards von synth wie vor M6-T13b (wie synth_segment)
+        from mikroptim.design import actions  # noqa: PLC0415
+        args += list(actions.SYNTH_ARGS_BEFORE_M6T13B)
     t = time.perf_counter()
     rep = cli_json(args)
     sec = time.perf_counter() - t
@@ -658,6 +670,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--zusammenfassung", action="store_true",
                     help="Tabelle über Wiederholungen: Ziel-Treffer x/n, beste und mediane NA "
                     "und RMS, Elemente, Kosten pro Lauf")
+    ap.add_argument("--synth-vor-m6t13b", action="store_true",
+                    help="M6-T14b: synth (V0/V1 und synth_segment) mit den Standards vor M6-T13b "
+                    "(--no-grow-margin u. a.), um die Referenzen aus M10-T7 bis M6-T11b zu "
+                    "reproduzieren")
     ap.add_argument("--neu-bewerten", action="store_true",
                     help="vorhandene Ergebnisse mit den aktuellen Regeln neu bewerten")
     return ap
@@ -748,6 +764,10 @@ def main(argv=None) -> int:
         return 0
     out.mkdir(parents=True, exist_ok=True)
     from mikroptim import design
+    from mikroptim.design import actions as design_actions
+
+    # M6-T14b: synth mit den Standards vor M6-T13b (gilt für alle Sitzungen dieses Prozesses)
+    design_actions.SYNTH_DEFAULTS_BEFORE_M6T13B = bool(args.synth_vor_m6t13b)
 
     variants = args.varianten.split(",")
     for v in variants:  # Tippfehler vor dem ersten Lauf melden
@@ -787,9 +807,9 @@ def main(argv=None) -> int:
                 steps = args.steps or vb["steps"]
                 print(f"{b} {tag}: läuft …", flush=True)
                 if base == "V0":
-                    res = run_synth(vb, work)
+                    res = run_synth(vb, work, before_m6t13b=args.synth_vor_m6t13b)
                 elif base == "V1":
-                    res = run_synth(vb, work, beam=True)
+                    res = run_synth(vb, work, beam=True, before_m6t13b=args.synth_vor_m6t13b)
                 elif base == "V3":
                     res = run_session(vb, work, design.RuleDecider(), None, steps)
                 elif base == "V3AL":
@@ -810,6 +830,8 @@ def main(argv=None) -> int:
                     raise SystemExit(f"Variante {v}: im Skript nicht umgesetzt (V2: "
                                      "tools/m6t6_zielspezifikation.py)")
                 res["reference_sphere"] = rs
+                if args.synth_vor_m6t13b:
+                    res["synth_defaults"] = "vor M6-T13b"  # M6-T14b
                 res.update({"benchmark": b, "variant": v, "tag": tag, "target_na": bench["na"]})
                 if n is not None:
                     res["repetition"] = n

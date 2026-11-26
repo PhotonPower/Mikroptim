@@ -300,6 +300,9 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
             args += ["--ghost-dictionary-extra", int(a["ghost_dictionary_extra"])]
         if SHRINK_SHORT_GAPS:
             args += ["--shrink-short-gaps"]
+        if SYNTH_DEFAULTS_BEFORE_M6T13B:
+            # M6-T14b: Standards von synth wie vor M6-T13b (Referenzen aus M10-T7 reproduzieren)
+            args += list(SYNTH_ARGS_BEFORE_M6T13B)
         rep = cli_json(args)
         retry = int(a.get("start_retry_cycles", START_RETRY_CYCLES))
         info = None
@@ -345,6 +348,15 @@ def modify_action(a: dict, system_path, workdir) -> list[tuple[pathlib.Path, dic
 #: Plattenspalt unter 2 × Schranke die Schranke der Teilstücke (Warnung) statt abzulehnen; damit
 #: darf ``free_gaps`` die Plattenspalte wieder freigeben (Befund E14).
 SHRINK_SHORT_GAPS = True
+#: Standards von ``mikroptim synth`` wie vor M6-T13b (M6-T14b, Entscheidung Maintainer 2026-11-25):
+#: Seit M6-T13b vergrößert ``synth`` die Schrittweite auch nach langsamen Schritten (Q = 0,8); das
+#: verschiebt die Läufe der Regel gegenüber den Referenzen aus M10-T7 (Bewertung, Abschnitt 14).
+#: True hängt an jeden ``synth`` von ``synth_segment`` (auch den zweiten Versuch nach E19) die
+#: Abschalter an; die beiden übrigen wirken dort ohne Farbregel bzw. ``--insertion-improve`` ohnehin
+#: nicht und stehen nur der Vollständigkeit halber da. ``tools/m10t7_bewertung.py --synth-vor-m6t13b``.
+SYNTH_DEFAULTS_BEFORE_M6T13B = False
+SYNTH_ARGS_BEFORE_M6T13B = ("--no-grow-margin", "--no-insertion-improve-finish",
+                            "--no-color-variants")
 #: LM-Zyklen des ``optimize`` vor dem zweiten Versuch nach ``start_rejected`` ohne Bedarf einer
 #: Geisterplatte (Befund E19, M10-T7e); 0 schaltet ab, pro Aktion ``start_retry_cycles``.
 START_RETRY_CYCLES = 20

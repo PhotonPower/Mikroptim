@@ -40,6 +40,11 @@ struct GhostReturnOptions {
     double smoothing = 1e-6;
     // Innere Luftspalte (Field, Aperture, Front) brauchen mindestens diese Dicke [mm].
     double min_gap = 0.2;
+    // Passt so keine Lage, weil alle inneren Luftspalte dünner als min_gap sind (Befund F25 aus
+    // M6-T14: nach vielen Einfügungen liegen sie an ihrer unteren Schranke), gelten die Lagen
+    // unter allen inneren Luftspalten mit Dicke > 0 (Notiz je Lage). false: Fehler wie vor M6-T14b.
+    // Passt eine Lage, ändert die Option nichts.
+    bool thin_gap_fallback = true;
     // Spalte mit Platten werden fest (Dickenvariablen entfernt): Operator A teilt genau diese
     // Spalte, und eine geerbte untere Schranke wäre dort ein Fehler (docs/optimierung.md,
     // Abschnitt 6); die Lage der Platten (Abstand vom Scheitel) bliebe sonst nicht im Spalt.
@@ -79,7 +84,8 @@ struct GhostReturnResult {
 // Dickenvariablen der Plattenspalte und setzt die Normierungsradien aus den realen
 // Strahlhöhen. Die Spaltwahl rechnet paraxial (compute_aberrations, λ_ref, größter Feldwinkel)
 // am realen System. Wirft std::invalid_argument, wenn das System schon Geisterplatten hat, ohne
-// Glas, bei ungültigen Optionen oder wenn keine Lage passt; FormatError/GlassError beim Laden.
+// Glas, bei ungültigen Optionen oder wenn keine Lage passt (auch nicht mit thin_gap_fallback; die
+// Meldung nennt den dicksten inneren Luftspalt); FormatError/GlassError beim Laden.
 GhostReturnResult return_to_ghost_plates(const LoadedSystem& real,
                                          const GhostReturnOptions& options);
 

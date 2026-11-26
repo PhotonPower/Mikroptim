@@ -1,0 +1,38 @@
+mikroptim synth 0.1.0: docs\ergebnisse\m6-t14b\Z1S\c1_feld_r1_restart.json
+  System                                      Zielspezifikation 50x/0,95: Einzellinse als Start der Synthese (NA 0,3)
+  Start                                       NA 0.6200, Feldanteil 0.569, 18 Glaselement(e)
+  Ziel                                        NA 0.6200, RMS <= 0.07143 Wellen
+  Schwelle F_max [Wellen²]                    5.102041e-03
+  Backend                                     GPU
+  Jacobi-Matrix                               finite Differenzen (zentral)
+  Rückbau                                     am Elementbudget 18; 3 Stufen, 4 Versuche pro Runde, F_B <= 1.000 x F_max, mindestens 1 Element(e)
+  Feldregel                                   RMS Rand >= 1.500 x Achse, größter RMS >= 0.0500 Wellen, Glas der Linse vor dem Spalt
+  Farbregel (M6-T11)                          chromatischer Anteil >= 0.500 x RMS, Modul Null-Kittglied ohne teilbare Linse, Querfarbe (Seidel oder reale Hauptstrahlen): Modul nach |y·ȳ|, Varianten: teilbare Linsen, Modul, Geisterdiagnose, Feldregel, Vorauswahl nach dem spektralen Rest, Startradien des Glieds
+
+Schritt  Art              NA      Feld  Sp  Delta     Status            Zyklen  F [W^2]       F_B [W^2]     RMS [W]   Sum|a| [mm]  El  Entscheidung
+      0  penalty          0.6200  0.569   0  -        max_iterations       500  5.235826e-03  5.231772e-03  0.15301   1.456e-05  18  ok: Gewichte der einseitigen Bedingungen ×0.01
+      1  penalty          0.6200  0.569   0  -        max_iterations       500  5.233695e-03  5.227688e-03  0.15273   1.463e-05  18  ok: Gewichte der einseitigen Bedingungen ×0.1
+      2  penalty          0.6200  0.569   0  -        max_iterations       500  5.228862e-03  5.178065e-03  0.15219   1.450e-05  18  ok: Gewichte der einseitigen Bedingungen ×1
+      3  removal_stage    0.6200  0.569   0  -        max_iterations       500  5.220983e-03  5.170826e-03  0.15558   1.250e-05  18  -: Element ab Fläche 8 (CAF2, Kittglied, Seidel-Beitrag 0.1076 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      4  removal_stage    0.6200  0.569   0  -        max_iterations       500  5.197813e-03  5.147560e-03  0.15775   1.231e-05  18  -: Element ab Fläche 8 (CAF2, Kittglied, Seidel-Beitrag 0.1076 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      5  removal_stage    0.6200  0.569   0  -        max_iterations       500  5.530065e-03  5.477313e-03  0.14825   2.201e-05  18  -: Element ab Fläche 8 (CAF2, Kittglied, Seidel-Beitrag 0.1076 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+      6  removal          0.6200  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 8 (CAF2, Kittglied, Seidel-Beitrag 0.1076 Wellen): F_B 0.00547731 > 0.00510204
+      7  removal_stage    0.6200  0.569   0  -        max_iterations       500  5.937943e-03  5.885726e-03  0.16773   2.046e-05  18  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 3.447 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+      8  removal_stage    0.6200  0.569   0  -        max_iterations       500  6.710469e-03  6.657804e-03  0.18262   2.208e-05  18  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 3.447 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+      9  removal_stage    0.6200  0.569   0  -        max_iterations       500  7.800762e-03  7.746354e-03  0.19779   3.746e-05  18  -: Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 3.447 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     10  removal          0.6200  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 13 (CAF2, Kittglied, Seidel-Beitrag 3.447 Wellen): F_B 0.00774635 > 0.00510204
+     11  removal_stage    0.6200  0.569   0  -        max_iterations       500  1.312346e-02  1.305474e-02  0.21881   1.749e-04  18  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 8.402 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     12  removal_stage    0.6200  0.569   0  -        max_iterations       500  3.206110e-02  3.198440e-02  0.24303   7.170e-04  18  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 8.402 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     13  removal_stage    0.6200  0.569   0  -        max_iterations       500  3.186717e-02  3.179610e-02  0.25800   5.709e-04  18  -: Element ab Fläche 11 (SYN-30, Seidel-Beitrag 8.402 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     14  removal          0.6200  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 11 (SYN-30, Seidel-Beitrag 8.402 Wellen): F_B 0.0317961 > 0.00510204
+     15  removal_stage    0.6200  0.569   0  -        max_iterations       500  7.120964e-02  7.115493e-02  0.33787   1.921e-03  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 12.13 Wellen), Rückbau-Stufe 1/3 (Anteil 0.333333)
+     16  removal_stage    0.6200  0.569   0  -        max_iterations       500  2.398978e-01  2.397861e-01  0.68678   5.300e-03  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 12.13 Wellen), Rückbau-Stufe 2/3 (Anteil 0.5)
+     17  removal_stage    0.6200  0.569   0  -        converged_step       152  6.851498e+75  6.851498e+67  207.18835   1.257e-02  18  -: Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 12.13 Wellen), Rückbau-Stufe 3/3 (Anteil 1)
+     18  removal          0.6200  0.569   0  -        -                      -  -             -             -         -            18  -: Rückbau verworfen (Elementbudget 18): Element ab Fläche 1 (CAF2, Kittglied, Seidel-Beitrag 12.13 Wellen): 210 versagte Strahlen
+
+Status: max_elements (Startpunkt nicht annehmbar (F_B = 0.00517806 > F_max = 0.00510204); Bedarf (Operator B), aber höchste Elementzahl 18 erreicht)
+Endpunkt: NA 0.6200, Feldanteil 0.569, Spektrumstufe 0, mu x1, eps x1 (Ziel NA 0.6200)
+Glaselemente: 18 -> 18 (0 Einfügungen, 0 Rückbauten in 4 Versuchen), Optimierungen: 15, F_max = 5.102041e-03 Wellen^2
+  Laufzeit [s]                                337.0
+Ergebnis geschrieben: docs\ergebnisse\m6-t14b\Z1S\c1_feld_r2.json
+Protokoll geschrieben: docs\ergebnisse\m6-t14b\Z1S\c1_feld_r2_log.json

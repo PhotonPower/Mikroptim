@@ -28,6 +28,10 @@ Zu trennen sind also: Verzeichnung (Lage des Bildes bei λ_ref) als eigene, begr
 - Die Farbregel der Synthese kann die Querfarbe aus realen Hauptstrahlen erkennen (`--color-lateral-rays`, optimierung.md §7), weil die Seidel-Summen am Punkt bei hoher NA nur die Längsfarbe sehen (M6-T13).
 - Der zulässige Restwert der Verzeichnung (D_max) ist ein offener Punkt der Spezifikation und Entscheidung des Maintainers; Messungen nennen ihren Wert.
 
+## Nachtrag M6-T14b (Entscheidung Maintainer 2026-11-25)
+
+- **`centroid` ist die Standardwahl der Synthese:** `tools/m6t6_zielspezifikation.py` setzt mit `--aktuell`/`--farbregel` (also im Standardablauf und im Zyklus mit den Farbwerkzeugen) `reference_point: centroid`, die Nebenbedingung `distortion` mit **D_max = 1 %** (Gewicht 10⁴) und die Querfarbe aus realen Hauptstrahlen (`--color-lateral-rays`); abschaltbar mit `--ohne-m6t14` (bitgleich wie vor M6-T14b) oder einzeln. Der **Programmstandard bleibt `ideal`** (Punkt 7): Bibliothek, Dateiformat und CLI ändern sich nicht, Dateien ohne das Feld rechnen bitgleich. Bericht: [m6-t14b.md](../ergebnisse/m6-t14b.md).
+
 ## Verworfene Alternativen
 
 - **Kippung pro Tupel abziehen** (wie die Tolerierung): entfernt auch die Querfarbe aus der Merit; sie müsste als dritter Term zurückkommen.

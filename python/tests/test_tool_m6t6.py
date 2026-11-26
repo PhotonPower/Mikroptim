@@ -392,7 +392,7 @@ def test_color_mode_default_is_color_early(tool, tmp_path, monkeypatch):
     i = p1f["opts"].index("--start-field")
     assert p1f["opts"][i + 1] == "0.1" and p1f["opts"][i + 3] == "0.1"
     assert p1f["progress"] == 1.0  # Fortschritt = Spektrumbreite
-    assert p1f["kw"]["stage_budget"] == 4
+    assert p1f["kw"]["stage_budget"] == 5  # seit M6-T14b (vorher 4)
     assert calls[2]["start"] == "p1f_final.json"  # Feldstufe ab dem polychromatischen System
     assert calls[2]["spectrum"] == tool.SPECTRA["voll"][0]
     assert calls[3]["start"] == "p2_final.json"
@@ -545,3 +545,128 @@ def test_synth_options_lateral_rays(tool):
                                      "--color-lateral-rays"]
     a.farb_modul = None
     assert tool.synth_options(a) == ["--color-rule"]
+
+
+def test_m6t14_standards(tool):
+    """M6-T14b (Entscheidung Maintainer 2026-11-25): mit --aktuell/--farbregel gelten Bildpunkt
+    Schwerpunkt, Verzeichnung 1 % und Querfarbe aus Strahlen, soweit nicht angegeben; ohne
+    --aktuell/--farbregel, mit --ohne-m6t14 oder bei last_surface nicht."""
+    def args(**kw):
+        base = dict(aktuell=False, farbregel=True, farb_achromat=False, bildpunkt=None,
+                    verzeichnung=None, farb_querfarbe_strahlen=False,
+                    ohne_farb_querfarbe_strahlen=False, ohne_m6t14=False,
+                    referenzsphaere="image_infinite")
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    assert tool.M6T14_STANDARDS == {"bildpunkt": "schwerpunkt", "verzeichnung": "0.01",
+                                    "farb_querfarbe_strahlen": True}
+    a = args()
+    assert tool.apply_m6t14_standards(a)
+    assert (a.bildpunkt, a.verzeichnung, a.farb_querfarbe_strahlen) == (
+        "schwerpunkt", "0.01", True)
+    s = {"reference_sphere": "image_infinite"}
+    tool.set_reference_point(s, a)
+    assert s["reference_point"] == "centroid"
+    assert s["constraints"]["items"] == [{"type": "distortion", "max_distortion": 0.01,
+                                          "weight": tool.DISTORTION_WEIGHT}]
+    # einzelne Angaben bleiben bzw. schalten ab
+    a = args(bildpunkt="wie-start", verzeichnung="aus", ohne_farb_querfarbe_strahlen=True)
+    assert tool.apply_m6t14_standards(a)
+    assert (a.bildpunkt, a.verzeichnung, a.farb_querfarbe_strahlen) == ("wie-start", "aus", False)
+    s = {"reference_sphere": "image_infinite"}
+    tool.set_reference_point(s, a)
+    assert s == {"reference_sphere": "image_infinite"}
+    a = args(bildpunkt="hauptstrahl", verzeichnung="0.02,10")
+    tool.apply_m6t14_standards(a)
+    assert (a.bildpunkt, a.verzeichnung) == ("hauptstrahl", "0.02,10")
+    # keine Standards: alter Weg
+    for a in (args(ohne_m6t14=True), args(farbregel=False),
+              args(referenzsphaere="last_surface")):
+        assert not tool.apply_m6t14_standards(a)
+        assert (a.bildpunkt, a.verzeichnung, a.farb_querfarbe_strahlen) == (None, None, False)
+    assert tool.apply_m6t14_standards(args(farbregel=False, aktuell=True))
+
+
+def test_main_path_m6t14_standards_and_switch(tool, tmp_path, monkeypatch):
+    """M6-T14b: Der Standardablauf (--farbe apertur) rechnet mit Schwerpunkt, Verzeichnung 1 %,
+    Querfarbe aus Strahlen und Farbbudget 5 in p1f; --ohne-m6t14 --farb-budget 4 ergibt dieselben
+    Dateien und Optionen wie vor M6-T14b (Startdatei ohne reference_point und distortion)."""
+    calls, opts, _ = _fake_main_path(tool, tmp_path / "neu", monkeypatch, [])
+    assert "--color-lateral-rays" in opts
+    assert calls[1]["tag"] == "p1f" and calls[1]["kw"]["stage_budget"] == 5
+    p0 = tool.load(str(tmp_path / "neu" / "out" / "p0_start.json"))
+    assert p0["reference_point"] == "centroid"
+    assert {"type": "distortion", "max_distortion": 0.01,
+            "weight": tool.DISTORTION_WEIGHT} in p0["constraints"]["items"]
+
+    calls_old, opts_old, _ = _fake_main_path(tool, tmp_path / "alt", monkeypatch,
+                                             ["--ohne-m6t14", "--farb-budget", "4"])
+    assert "--color-lateral-rays" not in opts_old
+    assert [o for o in opts if o != "--color-lateral-rays"] == opts_old
+    assert calls_old[1]["kw"]["stage_budget"] == 4
+    p0_old = tool.load(str(tmp_path / "alt" / "out" / "p0_start.json"))
+    assert "reference_point" not in p0_old
+    assert all(c["type"] != "distortion" for c in p0_old["constraints"]["items"])
+    start = json.loads((tmp_path / "alt" / "start.json").read_text(encoding="utf-8"))
+    p0.pop("reference_point")
+    p0["constraints"]["items"] = [c for c in p0["constraints"]["items"]
+                                  if c["type"] != "distortion"]
+    assert p0 == p0_old  # sonst gleich
+    assert "reference_point" not in start
+
+
+def test_cycle_skips_stage_without_ghost_position(tool, tmp_path, monkeypatch):
+    """M6-T14b (Befund F25): Scheitert die Rückkehr zu Geisterplatten (insert --ghost-return,
+    „keine Lage passt“), wird die Stufe übersprungen (Eintrag skipped) und der Zyklus läuft mit
+    der nächsten Stufe weiter, statt abzubrechen."""
+    s = json.loads((ROOT / "data" / "systems" / "zielspezifikation_start.json")
+                   .read_text(encoding="utf-8"))
+    tool.set_field(s, [a * 0.5 for a in tool.FIELD_ANGLES], tool.FIELD_WEIGHTS)
+    start = tmp_path / "start.json"
+    start.write_text(json.dumps(s), encoding="utf-8")
+    seen = []
+
+    def fake_stage(r, args, k, kind, cur, common, relax, rings, log=print):
+        seen.append((k, kind))
+        if kind == "apertur":
+            raise tool.GhostReturnError("mikroptim insert: Fehler: return_to_ghost_plates: "
+                                        "keine Lage passt")
+        x = json.loads(open(cur, encoding="utf-8").read())
+        f = min(0.8, tool.system_state(x)["field"] + 0.3)
+        tool.set_field(x, [a * f for a in tool.FIELD_ANGLES], tool.FIELD_WEIGHTS)
+        out = os.path.join(r.out, f"c{k}_{kind}_z2r_s0.json")
+        tool.save(x, out)
+        return {"kind": kind, "tag": f"c{k}_{kind}", "z2r": out,
+                "end_state": tool.system_state(x)}
+
+    monkeypatch.setattr(tool, "cycle_stage", fake_stage)
+    args = types.SimpleNamespace(
+        exe="mikroptim", out=str(tmp_path / "zyklus"), gpu=False, aktuell=False, farbregel=False,
+        farb_achromat=False, sinusbedingung=None, feldregel=True, synth_arg=[],
+        elementbudget=12, rueckbau=False, start=str(start), referenzsphaere="image_infinite",
+        zyklus="apertur,feld", zyklus_wiederholen=3, geister_lagen="aperture,field")
+    assert tool.cycle_run(args) == 0
+    # Durchlauf 1: apertur übersprungen, feld 0,5 → 0,8; Durchlauf 2: apertur wieder (feld hat
+    # geöffnet) und übersprungen, feld ohne Fortschritt → Ende
+    assert seen == [(0, "apertur"), (0, "feld"), (1, "apertur"), (1, "feld")]
+    summary = json.loads((tmp_path / "zyklus" / "m6t10_zyklus.json").read_text(encoding="utf-8"))
+    assert [x["tag"] for x in summary["skipped"]] == ["c0_apertur", "c1_apertur"]
+    assert "keine Lage passt" in summary["skipped"][0]["reason"]
+    assert len(summary["stages"]) == 2
+    assert summary["final_state"]["field"] == pytest.approx(0.8)
+
+
+def test_return_to_ghosts_error_carries_message(tool, tmp_path):
+    """M6-T14b: Ein gescheitertes insert --ghost-return wird zu GhostReturnError mit der Meldung
+    des Programms aus dem Bericht."""
+    runner = tool.Runner("mikroptim", str(tmp_path), gpu=False)
+
+    def fail(name, args, text_name=None):
+        with open(runner.path(text_name), "w", encoding="utf-8") as f:
+            f.write("mikroptim insert: Fehler: return_to_ghost_plates: keine Lage passt\n")
+        raise RuntimeError(f"{name}: mikroptim endete mit 1")
+
+    runner.run = fail
+    with pytest.raises(tool.GhostReturnError, match="keine Lage passt"):
+        tool.return_to_ghosts(runner, "c1_apertur_start", "real.json")

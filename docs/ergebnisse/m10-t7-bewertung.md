@@ -699,3 +699,9 @@ python tools/m10t7_bewertung.py --out docs/ergebnisse/m6-t11b --work <arbeit_B2_
     --varianten V3RS --nur-starts 3
 python tools/m10t7_bewertung.py --out docs/ergebnisse/m6-t11b --archiv --tabelle --zusammenfassung
 ```
+
+**Nachtrag M6-T14b (2026-11-25):** Seit M6-T13b rechnet `synth` mit `--grow-margin 0.8` (Standard); das verschiebt die Läufe der Regel gegenüber den Zahlen dieses Abschnitts (Einzellauf V3RS: B2 RMS 0,0938 statt 0,0907, B3 0,0552 statt 0,0595 bei gleicher NA und Elementzahl; B1 unverändert). Mit `--synth-vor-m6t13b` (`--no-grow-margin --no-insertion-improve-finish --no-color-variants` an jedem `synth` von V0/V1 und `synth_segment`) reproduziert das Skript die Referenzen: B1 0,600/0,0154/4, B2 0,790/0,0907/4, B3 0,850/0,0595/4 wie oben. Ergebnisse: [`m6-t14b/m10t7/`](m6-t14b/m10t7/), Bericht [M6-T14b](m6-t14b.md).
+
+```bash
+python tools/m10t7_bewertung.py --out <dir> --varianten V3RS --synth-vor-m6t13b   # Referenzen wie M6-T11b
+```

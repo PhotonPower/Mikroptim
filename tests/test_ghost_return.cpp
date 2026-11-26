@@ -279,10 +279,86 @@ TEST(GhostReturn, LocationsParseAndErrors) {
     bad = o;
     bad.penalty_weight = 0.0;
     EXPECT_THROW(return_to_ghost_plates(l, bad), std::invalid_argument);
-    // Kein innerer Spalt dick genug: keine Lage passt
+    // Kein innerer Spalt dick genug und ohne Rückfall (M6-T14b): keine Lage passt
     bad = o;
     bad.min_gap = 100.0;
+    bad.thin_gap_fallback = false;
     EXPECT_THROW(return_to_ghost_plates(l, bad), std::invalid_argument);
+    // ohne Luftspalt im Inneren hilft auch der Rückfall nicht
+    SystemDescription glued = real_system();
+    for (const int s : {3, 5}) {
+        glued.surfaces[static_cast<std::size_t>(s)].material = catalog_glass("N-BK7");
+    }
+    bad = o;
+    bad.min_gap = 0.0;
+    EXPECT_THROW(return_to_ghost_plates(prepare_test_system(glued), bad), std::invalid_argument);
+}
+
+// Befund F25 (M6-T14): Nach vielen Einfügungen liegen alle inneren Luftspalte an ihrer unteren
+// Schranke (0,1 mm) unter min_gap = 0,2 mm; vorher meldete die Rückkehr „keine Lage passt“ und der
+// Zyklus brach ab. Mit dem Rückfall gelten die Lagen unter allen inneren Luftspalten: Orakel ist
+// die Spaltwahl des Aberrationsberichts ohne Mindestdicke, Merit unverändert, Notiz je Lage.
+TEST(GhostReturn, ThinGapFallbackF25) {
+    SystemDescription thin = real_system();
+    thin.surfaces[3].thickness = 0.15; // innere Luftspalte (nach 3 und 5), beide < 0,2 mm
+    thin.surfaces[5].thickness = 0.12;
+    validate_system(thin);
+    const LoadedSystem l = prepare_test_system(thin);
+    const GhostReturnOptions o =
+        options({GhostReturnLocation::Aperture, GhostReturnLocation::Field});
+    ASSERT_GT(o.min_gap, 0.15);
+    ASSERT_TRUE(o.thin_gap_fallback); // Standard
+
+    // ohne Rückfall: Fehler wie vor M6-T14b, die Meldung nennt den dicksten Spalt
+    GhostReturnOptions off = o;
+    off.thin_gap_fallback = false;
+    try {
+        (void)return_to_ghost_plates(l, off);
+        ADD_FAILURE() << "kein Fehler ohne Rückfall";
+    } catch (const std::invalid_argument& e) {
+        const std::string m = e.what();
+        EXPECT_NE(m.find("keine Lage passt"), std::string::npos) << m;
+        EXPECT_NE(m.find("0.15 mm nach Fläche 3"), std::string::npos) << m;
+    }
+
+    const Expected e = expected_gaps(l, 0.0);
+    ASSERT_GE(e.aperture, 1);
+    ASSERT_GE(e.field, 1);
+    const GhostReturnResult r = return_to_ghost_plates(l, o);
+    const std::vector<int> gaps =
+        e.aperture == e.field ? std::vector<int>{e.aperture} : std::vector<int>{e.aperture, e.field};
+    ASSERT_EQ(r.positions.size(), gaps.size());
+    for (std::size_t k = 0; k < gaps.size(); ++k) {
+        const GhostReturnPosition& p = r.positions[k];
+        EXPECT_EQ(p.after_surface, gaps[k]);
+        EXPECT_EQ(p.distance, 0.5 * thin.surfaces[static_cast<std::size_t>(gaps[k])].thickness);
+        EXPECT_TRUE(p.gap_fixed); // Spalt hatte eine Dickenvariable
+        EXPECT_GT(p.norm_radius, 0.0);
+        for (const int g : p.plates) {
+            EXPECT_EQ(r.system.ghost_plates.at(static_cast<std::size_t>(g)).after_surface,
+                      gaps[k]);
+        }
+    }
+    int fallback_notes = 0;
+    for (const std::string& n : r.notes) {
+        fallback_notes += n.find("F25") != std::string::npos ? 1 : 0;
+    }
+    EXPECT_EQ(fallback_notes, static_cast<int>(gaps.size()));
+    EXPECT_LE(relative_change(system_merit(thin), system_merit(r.system)),
+              kInsertionMeritRelative);
+    EXPECT_LE(relative_change(r.merit_before, r.merit_after), kInsertionMeritRelative);
+
+    // Passt eine Lage (hier der Blendenspalt), greift der Rückfall nicht: gleiches Ergebnis wie
+    // ohne Rückfall
+    GhostReturnOptions stop = options({GhostReturnLocation::Stop, GhostReturnLocation::Aperture});
+    const GhostReturnResult with = return_to_ghost_plates(l, stop);
+    stop.thin_gap_fallback = false;
+    const GhostReturnResult without = return_to_ghost_plates(l, stop);
+    ASSERT_EQ(with.positions.size(), 1u);
+    EXPECT_EQ(with.positions[0].after_surface, 0);
+    EXPECT_EQ(with.system.ghost_plates, without.system.ghost_plates);
+    EXPECT_EQ(with.notes, without.notes);
+    EXPECT_EQ(with.merit_after, without.merit_after);
 }
 
 } // namespace

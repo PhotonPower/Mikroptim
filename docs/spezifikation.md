@@ -50,4 +50,4 @@ Die Linsendaten werden vom Maintainer als JSON in `data/systems/` eingetragen.
 3. **DIC-Tauglichkeit:** spannungsarme Gläser und Fassung; beeinflusst Glasauswahl und Tolerierung.
 4. **Lage der Aperturblende:** In Version 1 ist die Blende die erste Fläche in Tracerichtung (ADR-0006).
 5. **Spektrale Gewichte:** Kompromiss aus Hellempfindlichkeit V(λ) und flacher Gewichtung, oder Kameraempfindlichkeit × Lichtquelle.
-6. **Verzeichnung:** zulässiger Restwert.
+6. **Verzeichnung:** zulässiger Restwert. *Für die Synthese entschieden am 2026-11-25 (M6-T14b):* |D| ≤ 1 % am Feldrand (Nebenbedingung `distortion`, [ADR-0019](adr/0019-verzeichnung-hauptstrahl.md)); Standard von `tools/m6t6_zielspezifikation.py`. Der Wert für das fertige Objektiv bleibt offen.
